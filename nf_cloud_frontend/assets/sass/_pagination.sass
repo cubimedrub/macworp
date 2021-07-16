@@ -1,0 +1,31 @@
+.pagination
+
+  li
+    .form-control
+      background-color: $primary
+      color: white
+      border-color: $primary
+      
+      &[type=number]
+        -moz-appearance: textfield
+
+      &::-webkit-outer-spin-button, &::-webkit-inner-spin-button
+        -webkit-appearance: none
+        margin: 0
+
+  li:first-of-type
+    .form-control
+      border-top-right-radius: 0
+      border-bottom-right-radius: 0
+
+  li:last-of-type
+    .form-control
+      border-top-left-radius: 0
+      border-bottom-left-radius: 0
+
+  li:not(:first-of-type)
+    .form-control
+      border-left: 0
+
+  li:not(:first-of-type):not(:last-of-type)
+    background-color: $primary

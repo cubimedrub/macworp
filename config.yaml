@@ -1,0 +1,23 @@
+# Interface to use (0.0.0.0 = all interfaces)
+interface: 0.0.0.0
+# Port to use
+port: 80
+# An aritrary ascii string to sign sessions etc. Make sure to back it up!
+secret: ""
+# Debug outputs
+debug: false
+# Enforce https for full urls?
+use_https: false
+upload_path: "./uploads"
+# Database
+database:
+  # Database url: 
+  url: "postgresql://user:password@host:port/database"
+  # Number of connections
+  pool_size: 1 # Bjoern (the application server) is single threaded, so it is useless to support more then one connection in production
+matomo:
+  enabled: false
+  url: ""
+  site_id: 1
+  auth_token: ""
+

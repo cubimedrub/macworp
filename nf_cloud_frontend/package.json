@@ -1,0 +1,26 @@
+{
+  "name": "nf_cloud_frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "nuxt",
+    "build": "nuxt build",
+    "start": "nuxt start",
+    "generate": "nuxt generate"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^5.15.3",
+    "@nuxt/content": "^1.14.0",
+    "@popperjs/core": "^2.9.2",
+    "bootstrap": "^5.0.1",
+    "core-js": "^3.9.1",
+    "lodash.debounce": "^4.0.8",
+    "nuxt": "^2.15.6",
+    "toastr": "^2.1.4"
+  },
+  "devDependencies": {
+    "fibers": "^5.0.0",
+    "node-sass": "^6.0.0",
+    "sass-loader": "10"
+  }
+}

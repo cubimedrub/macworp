@@ -1,0 +1,38 @@
+.divider
+    display: flex
+    align-items: center
+    text-align: center
+    margin-bottom: 0.25rem
+    color: $rub-blue
+    font-weight: bold
+
+    &::before, &::after
+        content: ''
+        flex: 1
+        border-bottom: 2px solid $rub-grey
+
+    &::before
+        margin-right: .25em
+
+    &::after
+        margin-left: .25em
+
+.text-wrap-anywhere
+    overflow-wrap: anywhere
+
+.d-inline-table
+    display: inline-table
+
+.matplotlib
+    svg
+        width: 100%
+
+.h-min-content
+    height: min-content
+
+.unselectable
+    user-select: none;
+    -moz-user-select: none;
+    -khtml-user-select: none;
+    -webkit-user-select: none;
+    -o-user-select: none;

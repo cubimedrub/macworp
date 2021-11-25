@@ -1,7 +1,13 @@
 <template>
     <div>
         <div v-if="workflow && !workflow_not_found">
-            <h1>Workflow "{{ workflow.name }}"</h1>
+            <div class="d-flex justify-content-between align-items-center">
+                <h1>Workflow "{{ workflow.name }}"</h1>
+                <button @click="startWorkflow" :disabled="workflow.is_scheduled" class="btn btn-success btn-sm">
+                    Start workflow
+                    <i class="fas fa-play"></i>
+                </button>
+            </div>
             <table class="table">
                 <tbody>
                     <tr>
@@ -20,6 +26,22 @@
                     delete
                 </button>
             </div>
+            <h2>Nextflow Workflow</h2>
+            <select v-model="workflow.nextflow_workflow" @change="updateWorkflow" class="form-select">
+                <option v-for="nf_workflow in nextflow_workflows" :key="nf_workflow" :value="nf_workflow">{{nf_workflow}}</option>
+            </select>
+            <h2 class="mb-0">Nextflow parameters</h2>
+            <small>One argument per line</small>
+            <textarea 
+                v-model="workflow.nextflow_arguments"
+                :rows="Math.max(5, nextflow_arguments_lines)"
+                v-on:keydown.ctrl.83.capture.prevent.stop="updateWorkflow"
+                v-on:keydown.meta.83.capture.prevent.stop="updateWorkflow"
+                type="textarea" 
+                class="form-control mb-1" />
+            <button @click="updateWorkflow" type="button" class="btn btn-primary mb-3">
+                <i class="fas fa-save"></i>
+            </button>
             <h2>Files</h2>
             <div @click="passClickToFileInput" @drop.prevent="addDroppedFiles" @dragover.prevent class="filedrop-area d-flex justify-content-center align-items-center mb-3">
                 <span class="unselectable">
@@ -55,17 +77,21 @@
 </template>
 
 <script>
+
 export default {
     data(){
         return {
             workflow: null,
             upload_queue: [],
             is_uploading: false,
-            workflow_not_found: false
+            workflow_not_found: false,
+            nextflow_workflows: []
         }
     },
     mounted(){
         this.loadWorkflow()
+        this.getNextflowWorkflows()
+
     },
     methods: {
         loadWorkflow(){
@@ -158,6 +184,52 @@ export default {
                     this.handleUnknownResponse(response)
                 }
             })
+        },
+        startWorkflow(){
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}/schedule`, {
+                method:'POST',
+            }).then(response => {
+                if(response.ok) {
+                    return response.json().then(response_data => {
+                        this.workflow.is_scheduled = response_data.is_scheduled
+                    })
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
+        },
+        updateWorkflow(){
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}/update`, {
+                method:'POST',
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    nextflow_arguments: this.workflow.nextflow_arguments,
+                    nextflow_workflow: this.workflow.nextflow_workflow
+                })
+            }).then(response => {
+                if(!response.ok) {
+                    this.handleUnknownResponse(response)
+                }
+            })
+        },
+        getNextflowWorkflows(){
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/nextflow-workflows`, {
+            }).then(response => {
+                if(response.ok) {
+                    response.json().then(data => {
+                        this.nextflow_workflows = data.nextflow_workflows
+                    })
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
+        }
+    },
+    computed: {
+        nextflow_arguments_lines(){
+            return (this.workflow.nextflow_arguments.match(/\n/g) || "").length + 1
         }
     }
 }

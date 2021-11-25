@@ -7,6 +7,14 @@ services:
     environment:
       POSTGRES_PASSWORD: developer
       POSTGRES_DB: nf_cloud
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - 127.0.0.1:15673:15672
+      - 127.0.0.1:5673:5672
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: developer
   # backend_1: &backend
   #   build:
   #     context: .

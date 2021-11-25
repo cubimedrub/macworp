@@ -127,6 +127,8 @@ if config['debug']:
     def add_cors_header_in_development_mode(response):
         return add_allow_cors_headers(response)
 
+from nf_cloud_backend.utility.rabbit_mq import RabbitMQ
+RabbitMQ.prepare_queues()
 
 # Import controllers.
 # Do not move this import to the top of the files. Each controller uses 'app' to build the routes.

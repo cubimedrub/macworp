@@ -97,6 +97,8 @@ class Configuration():
             cls._validate_ascii_string(config['secret'], 'secret')
             cls._validate_psql_url(config['database']['url'], 'database.url')
             cls._validate_type(config['database']['pool_size'], int, 'integer', 'database.pool_size')
+            cls._validate_amqp_url(config['rabbit_mq']['url'], 'rabbit_mq.url')
+            cls._validate_type(config['workflows'], str, 'string', 'workflows')
         except KeyError as key_error:
             raise KeyError(f"The configuration key {key_error} is missing.")
 
@@ -105,6 +107,13 @@ class Configuration():
         Configuration._validate_type(url, str, 'string', key_path)
         if not url.startswith('postgresql://'):
             raise TypeError(f"{key_path} must start with 'postgresql://'.")
+        return True
+    
+    @staticmethod
+    def _validate_amqp_url(url, key_path: str):
+        Configuration._validate_type(url, str, 'string', key_path)
+        if not url.startswith('amqp://'):
+            raise TypeError(f"{key_path} must start with 'amqp://'.")
         return True
 
     @staticmethod

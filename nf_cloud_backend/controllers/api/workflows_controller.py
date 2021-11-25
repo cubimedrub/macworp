@@ -1,8 +1,9 @@
+import pathlib
+import pika
 from collections import defaultdict
-from os import error
 from flask import request, jsonify
 
-from nf_cloud_backend import app, get_database_connection
+from nf_cloud_backend import app, get_database_connection, config
 from nf_cloud_backend.models.workflow import Workflow
 
 class WorkflowsController:
@@ -59,6 +60,38 @@ class WorkflowsController:
         return jsonify({
                 "errors": errors
             }), error_status_code
+
+    @staticmethod
+    @app.route("/api/workflows/<int:id>/update", methods=["POST"])
+    def update(id: int):
+        errors = defaultdict(list)
+        data = request.json
+
+        if not "nextflow_arguments" in data:
+            errors["is_scheduled"] = "can not be empty"
+        elif not isinstance(data["nextflow_arguments"], str):
+            errors["is_scheduled"] = "must be string"
+
+        if len(errors):
+            jsonify({
+                "errors": errors
+            })
+
+        database_connection = get_database_connection()
+        with database_connection:
+            with database_connection.cursor() as database_cursor:
+                workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
+                if workflow:
+                    workflow.nextflow_arguments = data["nextflow_arguments"]
+                    workflow.nextflow_workflow = data["nextflow_workflow"]
+                    if workflow.update(database_cursor):
+                        return jsonify({}), 200
+                    else:
+                        return jsonify({}), 422
+                else:
+                    return jsonify({}), 404
+
+
 
     @staticmethod
     @app.route("/api/workflows/<int:id>/delete", methods=["POST"])
@@ -132,3 +165,56 @@ class WorkflowsController:
             return jsonify({
                 "file": filename
             })
+
+    @staticmethod
+    @app.route("/api/workflows/<int:id>/schedule", methods=["POST"])
+    def schedule(id: int):
+        database_connection = get_database_connection()
+        with database_connection:
+            with database_connection.cursor() as database_cursor:
+                workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
+                if workflow and not workflow.is_scheduled:
+                    if workflow.nextflow_arguments.strip() == "":
+                        return jsonify({
+                            "errors": {
+                                "nextflow_arguments": "cannot be empty"
+                            }
+                        }), 422
+                    workflow.is_scheduled = True
+                    workflow.update(database_cursor)
+                    connection = pika.BlockingConnection(pika.URLParameters(config['rabbit_mq']['url']))
+                    channel = connection.channel()
+                    channel.basic_publish(exchange='', routing_key=config['rabbit_mq']['workflow_queue'], body=workflow.get_queue_represenation())
+                    connection.close()
+                    return jsonify({
+                        "is_scheduled": workflow.is_scheduled
+                    })
+                else:
+                    return jsonify({
+                            "errors": {
+                                "general": "workflow not found"
+                            }
+                        }), 422
+
+    @staticmethod
+    @app.route("/api/workflows/<int:id>/finished", methods=["POST"])
+    def finished(id: int):
+        database_connection = get_database_connection()
+        with database_connection:
+            with database_connection.cursor() as database_cursor:
+                workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
+                workflow.is_scheduled = False
+                workflow.update(database_cursor)
+                return "", 200
+
+    @staticmethod
+    @app.route("/api/workflows/nextflow-workflows")
+    def nextflow_workflows():
+        return jsonify({
+            "nextflow_workflows": [
+                str(workflow).split("/")[1]
+                for workflow in pathlib.Path(config["workflows"]).glob("*/Nextflow/main.nf")
+            ]
+        })
+
+

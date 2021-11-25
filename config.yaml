@@ -20,4 +20,15 @@ matomo:
   url: ""
   site_id: 1
   auth_token: ""
-
+rabbit_mq:
+  # RabbitMQ url. Make sure to encode the virtual host: https://pika.readthedocs.io/en/stable/modules/parameters.html#pika.connection.URLParameters
+  url: "amqp://user:password@host:port/virtual_host"
+  workflow_queue: workflows
+# Folder for nextflow workflows. Structure of directory should be:
+# |- Name of Workflow 1
+# |  |- main.nf
+# |  |- Other scripts and files
+# |- Name of Workflow 2
+# |  |- main.nf
+# |  |- ...
+workflows: ./workflows

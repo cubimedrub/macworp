@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import pathlib
 import shutil
 from typing import Union, List
@@ -10,10 +11,13 @@ from nf_cloud_backend import config, app
 
 class Workflow:
     TABLE_NAME = "workflows"
-    def __init__(self, id: int, name: str):
+    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_arguments: str = "", is_scheduled: bool = False):
         self.__id = id
         self.__name = name
         self.__file_directory = None
+        self.__nextflow_workflow = nextflow_workflow
+        self.__nextflow_arguments = nextflow_arguments
+        self.__is_scheduled = is_scheduled
         self.__create_file_directory()
 
     @property
@@ -27,6 +31,30 @@ class Workflow:
     @property
     def file_directory(self) -> pathlib.Path:
         return self.__file_directory
+
+    @property
+    def nextflow_workflow(self) -> str:
+        return self.__nextflow_workflow
+
+    @nextflow_workflow.setter
+    def nextflow_workflow(self, value: str):
+        self.__nextflow_workflow = value
+
+    @property
+    def nextflow_arguments(self) -> str:
+        return self.__nextflow_arguments
+
+    @nextflow_arguments.setter
+    def nextflow_arguments(self, value: str):
+        self.__nextflow_arguments = value
+
+    @property
+    def is_scheduled(self) -> bool:
+        return self.__is_scheduled
+
+    @is_scheduled.setter
+    def is_scheduled(self, value: bool):
+        self.__is_scheduled = value
     
     @property
     def file_names(self) -> List[pathlib.Path]:
@@ -52,6 +80,9 @@ class Workflow:
         return {
             "id": self.id,
             "name": self.name,
+            "nextflow_arguments": self.nextflow_arguments,
+            "nextflow_workflow": self.nextflow_workflow,
+            "is_scheduled": self.is_scheduled,
             "files": self.file_names
         }
 
@@ -69,11 +100,14 @@ class Workflow:
         Returns if the insertion was successfull.
         """
         if self.id == None:
-            INSERT_QUERY = f"INSERT INTO {self.__class__.TABLE_NAME} (name) VALUES (%s) RETURNING ID;"
+            INSERT_QUERY = f"INSERT INTO {self.__class__.TABLE_NAME} (name, nextflow_workflow, nextflow_arguments, is_scheduled) VALUES (%s, %s, %s, %s) RETURNING ID;"
             database_cursor.execute(
                 INSERT_QUERY,
                 (
                     self.name,
+                    self.nextflow_workflow,
+                    self.nextflow_arguments,
+                    self.is_scheduled
                 )
             )
             row = database_cursor.fetchone()
@@ -96,11 +130,14 @@ class Workflow:
         Returns if the update was successfull.
         """
         if self.id != None:
-            INSERT_QUERY = f"UPDATE {self.__class__.TABLE_NAME} SET name = %s WHERE id = %s;"
+            INSERT_QUERY = f"UPDATE {self.__class__.TABLE_NAME} SET name = %s, nextflow_workflow = %s, nextflow_arguments = %s, is_scheduled = %s WHERE id = %s;"
             database_cursor.execute(
                 INSERT_QUERY,
                 (
                     self.name,
+                    self.nextflow_workflow,
+                    self.nextflow_arguments,
+                    self.is_scheduled,
                     self.id
                 )
             )
@@ -156,6 +193,19 @@ class Workflow:
             return True
         return False
 
+    def get_queue_represenation(self) -> str:
+        """
+        Returns
+        -------
+        JSON string for message queue
+        """
+        return json.dumps({
+            "id": self.id,
+            "nextflow_workflow": self.nextflow_workflow,
+            "nextflow_arguments": self.nextflow_arguments.replace("\n", " ")
+        })
+
+
     #### Class methods ####
     @classmethod
     def select(cls, database_cursor, condition: str, condition_values: list, offset: int = None, limit: int = None, order_by: str = None, order_direction: str = None, fetchall: bool = False):
@@ -179,7 +229,7 @@ class Workflow:
         -------
         Workflow or list of workflows
         """
-        select_query = f"SELECT id, name FROM {cls.TABLE_NAME}"
+        select_query = f"SELECT id, name, nextflow_workflow, nextflow_arguments, is_scheduled FROM {cls.TABLE_NAME}"
         if len(condition):
             select_query += f" WHERE {condition}"
         if offset:
@@ -192,11 +242,11 @@ class Workflow:
         database_cursor.execute(select_query, condition_values)
         
         if fetchall:
-            return [cls(row[0], row[1]) for row in database_cursor.fetchall()]
+            return [cls(row[0], row[1], row[2], row[3], row[4]) for row in database_cursor.fetchall()]
         else:
             row = database_cursor.fetchone()
             if row:
-                return cls(row[0], row[1])
+                return cls(row[0], row[1], row[2], row[3], row[4])
             else:
                 return None
 

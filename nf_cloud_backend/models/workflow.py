@@ -11,13 +11,14 @@ from nf_cloud_backend import config, app
 
 class Workflow:
     TABLE_NAME = "workflows"
-    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_arguments: str = "", is_scheduled: bool = False):
+    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_arguments: str = "", is_scheduled: bool = False, nextflow_log: dict = {}):
         self.__id = id
         self.__name = name
         self.__file_directory = None
         self.__nextflow_workflow = nextflow_workflow
         self.__nextflow_arguments = nextflow_arguments
         self.__is_scheduled = is_scheduled
+        self.__nextflow_log = nextflow_log
         self.__create_file_directory()
 
     @property
@@ -55,6 +56,14 @@ class Workflow:
     @is_scheduled.setter
     def is_scheduled(self, value: bool):
         self.__is_scheduled = value
+
+    @property
+    def nextflow_log(self) -> dict:
+        return self.__nextflow_log
+
+    @nextflow_log.setter
+    def nextflow_log(self, value: str):
+        self.__nextflow_log = value
     
     @property
     def file_names(self) -> List[pathlib.Path]:
@@ -82,6 +91,7 @@ class Workflow:
             "name": self.name,
             "nextflow_arguments": self.nextflow_arguments,
             "nextflow_workflow": self.nextflow_workflow,
+            "nextflow_log": self.nextflow_log,
             "is_scheduled": self.is_scheduled,
             "files": self.file_names
         }
@@ -100,14 +110,15 @@ class Workflow:
         Returns if the insertion was successfull.
         """
         if self.id == None:
-            INSERT_QUERY = f"INSERT INTO {self.__class__.TABLE_NAME} (name, nextflow_workflow, nextflow_arguments, is_scheduled) VALUES (%s, %s, %s, %s) RETURNING ID;"
+            INSERT_QUERY = f"INSERT INTO {self.__class__.TABLE_NAME} (name, nextflow_workflow, nextflow_arguments, is_scheduled, nextflow_log) VALUES (%s, %s, %s, %s, %s) RETURNING ID;"
             database_cursor.execute(
                 INSERT_QUERY,
                 (
                     self.name,
                     self.nextflow_workflow,
                     self.nextflow_arguments,
-                    self.is_scheduled
+                    self.is_scheduled,
+                    json.dumps(self.nextflow_log)
                 )
             )
             row = database_cursor.fetchone()
@@ -130,7 +141,7 @@ class Workflow:
         Returns if the update was successfull.
         """
         if self.id != None:
-            INSERT_QUERY = f"UPDATE {self.__class__.TABLE_NAME} SET name = %s, nextflow_workflow = %s, nextflow_arguments = %s, is_scheduled = %s WHERE id = %s;"
+            INSERT_QUERY = f"UPDATE {self.__class__.TABLE_NAME} SET name = %s, nextflow_workflow = %s, nextflow_arguments = %s, is_scheduled = %s, nextflow_log = %s WHERE id = %s;"
             database_cursor.execute(
                 INSERT_QUERY,
                 (
@@ -138,6 +149,7 @@ class Workflow:
                     self.nextflow_workflow,
                     self.nextflow_arguments,
                     self.is_scheduled,
+                    json.dumps(self.nextflow_log),
                     self.id
                 )
             )
@@ -229,7 +241,7 @@ class Workflow:
         -------
         Workflow or list of workflows
         """
-        select_query = f"SELECT id, name, nextflow_workflow, nextflow_arguments, is_scheduled FROM {cls.TABLE_NAME}"
+        select_query = f"SELECT id, name, nextflow_workflow, nextflow_arguments, is_scheduled, nextflow_log FROM {cls.TABLE_NAME}"
         if len(condition):
             select_query += f" WHERE {condition}"
         if offset:
@@ -242,11 +254,11 @@ class Workflow:
         database_cursor.execute(select_query, condition_values)
         
         if fetchall:
-            return [cls(row[0], row[1], row[2], row[3], row[4]) for row in database_cursor.fetchall()]
+            return [cls(row[0], row[1], row[2], row[3], row[4], row[5]) for row in database_cursor.fetchall()]
         else:
             row = database_cursor.fetchone()
             if row:
-                return cls(row[0], row[1], row[2], row[3], row[4])
+                return cls(row[0], row[1], row[2], row[3], row[4], row[5])
             else:
                 return None
 

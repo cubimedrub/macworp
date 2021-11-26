@@ -1,3 +1,4 @@
+import json
 import pathlib
 import pika
 from collections import defaultdict
@@ -67,10 +68,11 @@ class WorkflowsController:
         errors = defaultdict(list)
         data = request.json
 
-        if not "nextflow_arguments" in data:
-            errors["is_scheduled"] = "can not be empty"
-        elif not isinstance(data["nextflow_arguments"], str):
-            errors["is_scheduled"] = "must be string"
+        for key in ["nextflow_workflow", "nextflow_arguments"]:
+            if not key in data:
+                errors[key].append("can not be empty")
+            elif not isinstance(data[key], str):
+                errors[key].append("must be string")
 
         if len(errors):
             jsonify({
@@ -217,4 +219,27 @@ class WorkflowsController:
             ]
         })
 
+    @staticmethod
+    @app.route("/api/workflows/<int:id>/nextflow-log", methods=["POST"])
+    def nextflow_log(id: int):
+        errors = defaultdict(list)
+        nextflow_log = json.loads(request.data.decode("utf-8"))
+
+        if nextflow_log is None:
+            errors["request body"].append("cannot be empty")
+        elif not isinstance(nextflow_log, dict):
+            errors["request body"].append("must be a string")
+
+        if len(errors):
+            return jsonify({
+                "errors": errors
+            }), 422
+            
+        database_connection = get_database_connection()
+        with database_connection:
+            with database_connection.cursor() as database_cursor:
+                workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
+                workflow.nextflow_log = nextflow_log
+                workflow.update(database_cursor)
+                return "", 200
 

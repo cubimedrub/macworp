@@ -1,7 +1,7 @@
 #!/usr/bin/env nextflow
 
 params.inFile = params.inFile ?: { log.error "No input file provided."; exit 1 }() 
-params.outFile = "./result.txt"
+params.outDir = "./"
 
 process readFile {
 
@@ -33,14 +33,19 @@ process toUppercase {
 
 process writeWordsIntoNewlines {
 
+    publishDir "${params.outDir}", mode:"copy"
+
     input:
     val upper_file_content from upper_file_content
+
+    output:
+    file "${params.outDir}/out.txt" into out_file
 
     """
     for word in ${upper_file_content}
     do
         echo \$word
-        echo \$word >> "${params.outFile}"
+        echo \$word >> "${params.outDir}/out.txt"
     done
     """
 }

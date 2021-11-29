@@ -7,15 +7,16 @@ import shutil
 from typing import Union, List
 
 
-from nf_cloud_backend import config, app
+from nf_cloud_backend import config
 
 class Workflow:
     TABLE_NAME = "workflows"
-    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_arguments: str = "", is_scheduled: bool = False, nextflow_log: dict = {}):
+    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_workflow_type: str = "", nextflow_arguments: str = "", is_scheduled: bool = False, nextflow_log: dict = {}):
         self.__id = id
         self.__name = name
         self.__file_directory = None
         self.__nextflow_workflow = nextflow_workflow
+        self.__nextflow_workflow_type = nextflow_workflow_type
         self.__nextflow_arguments = nextflow_arguments
         self.__is_scheduled = is_scheduled
         self.__nextflow_log = nextflow_log
@@ -40,6 +41,15 @@ class Workflow:
     @nextflow_workflow.setter
     def nextflow_workflow(self, value: str):
         self.__nextflow_workflow = value
+
+    @property
+    def nextflow_workflow_type(self) -> str:
+        return self.__nextflow_workflow_type
+
+    @nextflow_workflow_type.setter
+    def nextflow_workflow_type(self, value: str):
+        self.__nextflow_workflow_type = value
+
 
     @property
     def nextflow_arguments(self) -> str:
@@ -91,6 +101,7 @@ class Workflow:
             "name": self.name,
             "nextflow_arguments": self.nextflow_arguments,
             "nextflow_workflow": self.nextflow_workflow,
+            "nextflow_workflow_type": self.nextflow_workflow_type,
             "nextflow_log": self.nextflow_log,
             "is_scheduled": self.is_scheduled,
             "files": self.file_names
@@ -110,12 +121,13 @@ class Workflow:
         Returns if the insertion was successfull.
         """
         if self.id == None:
-            INSERT_QUERY = f"INSERT INTO {self.__class__.TABLE_NAME} (name, nextflow_workflow, nextflow_arguments, is_scheduled, nextflow_log) VALUES (%s, %s, %s, %s, %s) RETURNING ID;"
+            INSERT_QUERY = f"INSERT INTO {self.__class__.TABLE_NAME} (name, nextflow_workflow, nextflow_workflow_type, nextflow_arguments, is_scheduled, nextflow_log) VALUES (%s, %s, %s, %s, %s, %s) RETURNING ID;"
             database_cursor.execute(
                 INSERT_QUERY,
                 (
                     self.name,
                     self.nextflow_workflow,
+                    self.nextflow_workflow_type,
                     self.nextflow_arguments,
                     self.is_scheduled,
                     json.dumps(self.nextflow_log)
@@ -141,12 +153,13 @@ class Workflow:
         Returns if the update was successfull.
         """
         if self.id != None:
-            INSERT_QUERY = f"UPDATE {self.__class__.TABLE_NAME} SET name = %s, nextflow_workflow = %s, nextflow_arguments = %s, is_scheduled = %s, nextflow_log = %s WHERE id = %s;"
+            INSERT_QUERY = f"UPDATE {self.__class__.TABLE_NAME} SET name = %s, nextflow_workflow = %s, nextflow_workflow_type = %s, nextflow_arguments = %s, is_scheduled = %s, nextflow_log = %s WHERE id = %s;"
             database_cursor.execute(
                 INSERT_QUERY,
                 (
                     self.name,
                     self.nextflow_workflow,
+                    self.nextflow_workflow_type,
                     self.nextflow_arguments,
                     self.is_scheduled,
                     json.dumps(self.nextflow_log),
@@ -214,6 +227,7 @@ class Workflow:
         return json.dumps({
             "id": self.id,
             "nextflow_workflow": self.nextflow_workflow,
+            "nextflow_workflow_type": self.nextflow_workflow_type,
             "nextflow_arguments": self.nextflow_arguments.replace("\n", " ")
         })
 
@@ -241,7 +255,7 @@ class Workflow:
         -------
         Workflow or list of workflows
         """
-        select_query = f"SELECT id, name, nextflow_workflow, nextflow_arguments, is_scheduled, nextflow_log FROM {cls.TABLE_NAME}"
+        select_query = f"SELECT id, name, nextflow_workflow, nextflow_workflow_type, nextflow_arguments, is_scheduled, nextflow_log FROM {cls.TABLE_NAME}"
         if len(condition):
             select_query += f" WHERE {condition}"
         if offset:
@@ -254,11 +268,11 @@ class Workflow:
         database_cursor.execute(select_query, condition_values)
         
         if fetchall:
-            return [cls(row[0], row[1], row[2], row[3], row[4], row[5]) for row in database_cursor.fetchall()]
+            return [cls(row[0], row[1], row[2], row[3], row[4], row[5], row[6]) for row in database_cursor.fetchall()]
         else:
             row = database_cursor.fetchone()
             if row:
-                return cls(row[0], row[1], row[2], row[3], row[4], row[5])
+                return cls(row[0], row[1], row[2], row[3], row[4], row[5], row[6])
             else:
                 return None
 

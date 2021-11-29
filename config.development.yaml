@@ -8,4 +8,13 @@ database:
   pool_size: 4 # In development mode, more than one connections are supported
 rabbit_mq:
   url: "amqp://admin:developer@127.0.0.1:5673/%2f"
-workflows: ./test_workflows
+workflows:
+  local:
+    "Hello World":
+      directory: ./test_workflows/hello_world
+      script: "main.nf"
+  docker:
+    "Hello World":
+      image: nfcore/base
+      directory: ./test_workflows/hello_world
+      script: "main.nf"

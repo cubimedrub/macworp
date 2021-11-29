@@ -27,9 +27,24 @@
                 </button>
             </div>
             <h2>Nextflow Workflow</h2>
-            <select v-model="workflow.nextflow_workflow" @change="updateWorkflow" class="form-select">
-                <option v-for="nf_workflow in nextflow_workflows" :key="nf_workflow" :value="nf_workflow">{{nf_workflow}}</option>
-            </select>
+            <div class="dropdown mb-3">
+                <button :class="{show: show_nextflow_workflow_dropdown}" :aria_expanded="show_nextflow_workflow_dropdown" @click="toggleNextflowWorkflowDropdown" class="btn btn-primary" type="button" id="nextflow-workflow-dropdown" data-bs-toggle="dropdown">
+                    <span v-if="workflow.nextflow_workflow"><i :class="getNextflowTypeIconClass(workflow.nextflow_workflow_type)" class="me-2"></i> {{workflow.nextflow_workflow}}</span>
+                    <span v-else>Select a workflow...</span>
+                    <i :class="{'fa-caret-down': !show_nextflow_workflow_dropdown, 'fa-caret-up': show_nextflow_workflow_dropdown}" class="fas ms-2"></i>
+                </button>
+                <ul :class="{show: show_nextflow_workflow_dropdown}" class="dropdown-menu" aria-labelledby="nextflow-workflow-dropdown">
+                    <template v-for="(nf_workflows, nf_workflow_type) in nextflow_workflows">
+                        <li :key="nf_workflow_type + 'divider'"><h6 class="dropdown-header"><i :class="getNextflowTypeIconClass(nf_workflow_type)" class="me-2"></i>{{getNextflowTypeName(nf_workflow_type)}}</h6></li>
+                        <li v-for="nf_workflow in nf_workflows" :key="nf_workflow_type + nf_workflow" :value="nf_workflow">
+                            <button @click="setNextflowWorkflow(nf_workflow, nf_workflow_type); toggleNextflowWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
+                                {{nf_workflow}}
+                            </button>
+                        </li>
+                    </template>
+                </ul>
+                
+            </div>
             <h2 class="mb-0">Nextflow parameters</h2>
             <small>One argument per line</small>
             <textarea 
@@ -78,6 +93,16 @@
 
 <script>
 
+const NEXTFLOW_WORKFLOW_TYPE_ICON_CLASS_MAP = {
+    "local": "fas fa-hdd",
+    "docker": "fab fa-docker"
+}
+
+const NEXTFLOW_WORKFLOW_TYPE_NAME_MAP = {
+    "local": "Local",
+    "docker": "Docker"
+}
+
 export default {
     data(){
         return {
@@ -85,7 +110,11 @@ export default {
             upload_queue: [],
             is_uploading: false,
             workflow_not_found: false,
-            nextflow_workflows: []
+            nextflow_workflows: {
+                local: [],
+                docker: {}
+            },
+            show_nextflow_workflow_dropdown: false
         }
     },
     mounted(){
@@ -206,7 +235,8 @@ export default {
                 },
                 body: JSON.stringify({
                     nextflow_arguments: this.workflow.nextflow_arguments,
-                    nextflow_workflow: this.workflow.nextflow_workflow
+                    nextflow_workflow: this.workflow.nextflow_workflow,
+                    nextflow_workflow_type: this.workflow.nextflow_workflow_type
                 })
             }).then(response => {
                 if(!response.ok) {
@@ -225,6 +255,20 @@ export default {
                     this.handleUnknownResponse(response)
                 }
             })
+        },
+        toggleNextflowWorkflowDropdown(){
+            this.show_nextflow_workflow_dropdown = !this.show_nextflow_workflow_dropdown
+        },
+        setNextflowWorkflow(nextflow_workflow, nextflow_workflow_type){
+            this.workflow.nextflow_workflow = nextflow_workflow
+            this.workflow.nextflow_workflow_type = nextflow_workflow_type
+            this.updateWorkflow()
+        },
+        getNextflowTypeIconClass(nextflow_workflow_type){
+            return NEXTFLOW_WORKFLOW_TYPE_ICON_CLASS_MAP[nextflow_workflow_type]
+        },
+        getNextflowTypeName(nextflow_workflow_type){
+            return NEXTFLOW_WORKFLOW_TYPE_NAME_MAP[nextflow_workflow_type]
         }
     },
     computed: {

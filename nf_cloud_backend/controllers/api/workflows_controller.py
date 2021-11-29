@@ -68,7 +68,7 @@ class WorkflowsController:
         errors = defaultdict(list)
         data = request.json
 
-        for key in ["nextflow_workflow", "nextflow_arguments"]:
+        for key in ["nextflow_workflow", "nextflow_workflow", "nextflow_arguments"]:
             if not key in data:
                 errors[key].append("can not be empty")
             elif not isinstance(data[key], str):
@@ -86,6 +86,7 @@ class WorkflowsController:
                 if workflow:
                     workflow.nextflow_arguments = data["nextflow_arguments"]
                     workflow.nextflow_workflow = data["nextflow_workflow"]
+                    workflow.nextflow_workflow_type = data["nextflow_workflow_type"]
                     if workflow.update(database_cursor):
                         return jsonify({}), 200
                     else:
@@ -213,10 +214,16 @@ class WorkflowsController:
     @app.route("/api/workflows/nextflow-workflows")
     def nextflow_workflows():
         return jsonify({
-            "nextflow_workflows": [
-                str(workflow).split("/")[1]
-                for workflow in pathlib.Path(config["workflows"]).glob("*/Nextflow/main.nf")
-            ]
+            "nextflow_workflows":{
+                "local": sorted([
+                    workflow
+                    for workflow in config["workflows"]["local"].keys()
+                ]),
+                "docker": sorted([
+                    workflow
+                    for workflow in config["workflows"]["docker"].keys()
+                ])
+            }
         })
 
     @staticmethod

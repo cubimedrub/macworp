@@ -245,7 +245,7 @@ export default {
             })
         },
         getNextflowWorkflows(){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/nextflow-workflows`, {
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/nextflow-workflows`, {
             }).then(response => {
                 if(response.ok) {
                     response.json().then(data => {

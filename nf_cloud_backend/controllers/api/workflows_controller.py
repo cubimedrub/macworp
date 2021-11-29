@@ -211,22 +211,6 @@ class WorkflowsController:
                 return "", 200
 
     @staticmethod
-    @app.route("/api/workflows/nextflow-workflows")
-    def nextflow_workflows():
-        return jsonify({
-            "nextflow_workflows":{
-                "local": sorted([
-                    workflow
-                    for workflow in config["workflows"]["local"].keys()
-                ]),
-                "docker": sorted([
-                    workflow
-                    for workflow in config["workflows"]["docker"].keys()
-                ])
-            }
-        })
-
-    @staticmethod
     @app.route("/api/workflows/<int:id>/nextflow-log", methods=["POST"])
     def nextflow_log(id: int):
         errors = defaultdict(list)
@@ -249,4 +233,3 @@ class WorkflowsController:
                 workflow.nextflow_log = nextflow_log
                 workflow.update(database_cursor)
                 return "", 200
-

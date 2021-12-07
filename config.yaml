@@ -36,3 +36,39 @@ workflows:
     #   directory: "/path/to/script/directory"
     #   script: "main_script.nf"
     #   image: "docker/image:name"
+    #   # Each argument will be added as `--arg1 value --arg2 value` to the nextflow command.
+    #   args:
+    #     # Dynamic arguments are rendered as formular for users
+    #     dynamic:
+    #       # Creates an single file picker
+    #       arg1:
+    #         type: file
+    #         desc: ""
+    #       # Creates a select for multiple files, which are added as a
+    #       # comma-seperated list.
+    #       arg2:
+    #         type: files
+    #         desc: ""
+    #       # Creates a text box for a file glob or wildcard, e.g. *.txt or *.raws
+    #       # The fildcard argument will be prepended with the workdirectory.
+    #       arg3:
+    #         type: file-glob
+    #         desc: ""
+    #       # Creates a number input
+    #       arg4:
+    #         type: number
+    #         desc: "" 
+    #       # Creates a textbox 
+    #       arg5:
+    #         type: text
+    #         desc: ""
+    #       # Creates a multiline text box.
+    #       arg6:
+    #         type: text
+    #         desc: ""
+    #         is_multiline: true
+    #     static:
+    #       # Static arguments are not editable by the user.
+    #       staticArg1:
+    #         type: text
+    #         value: ./

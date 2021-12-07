@@ -11,7 +11,7 @@ from nf_cloud_backend import config
 
 class Workflow:
     TABLE_NAME = "workflows"
-    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_workflow_type: str = "", nextflow_arguments: str = "", is_scheduled: bool = False, nextflow_log: dict = {}):
+    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_workflow_type: str = "", nextflow_arguments: dict = {}, is_scheduled: bool = False, nextflow_log: dict = {}):
         self.__id = id
         self.__name = name
         self.__file_directory = None
@@ -52,11 +52,11 @@ class Workflow:
 
 
     @property
-    def nextflow_arguments(self) -> str:
+    def nextflow_arguments(self) -> dict:
         return self.__nextflow_arguments
 
     @nextflow_arguments.setter
-    def nextflow_arguments(self, value: str):
+    def nextflow_arguments(self, value: dict):
         self.__nextflow_arguments = value
 
     @property
@@ -128,7 +128,7 @@ class Workflow:
                     self.name,
                     self.nextflow_workflow,
                     self.nextflow_workflow_type,
-                    self.nextflow_arguments,
+                    json.dumps(self.nextflow_arguments),
                     self.is_scheduled,
                     json.dumps(self.nextflow_log)
                 )
@@ -160,7 +160,7 @@ class Workflow:
                     self.name,
                     self.nextflow_workflow,
                     self.nextflow_workflow_type,
-                    self.nextflow_arguments,
+                    json.dumps(self.nextflow_arguments),
                     self.is_scheduled,
                     json.dumps(self.nextflow_log),
                     self.id
@@ -228,7 +228,7 @@ class Workflow:
             "id": self.id,
             "nextflow_workflow": self.nextflow_workflow,
             "nextflow_workflow_type": self.nextflow_workflow_type,
-            "nextflow_arguments": self.nextflow_arguments.replace("\n", " ")
+            "nextflow_arguments": self.nextflow_arguments
         })
 
 

@@ -1,5 +1,4 @@
 import json
-import pathlib
 import pika
 from collections import defaultdict
 from flask import request, jsonify
@@ -172,16 +171,18 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/<int:id>/schedule", methods=["POST"])
     def schedule(id: int):
+        errors = defaultdict(list)
         database_connection = get_database_connection()
         with database_connection:
             with database_connection.cursor() as database_cursor:
                 workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
                 if workflow and not workflow.is_scheduled:
-                    if workflow.nextflow_arguments.strip() == "":
+                    for arg_name, arg_definition in workflow.nextflow_arguments.items():
+                        if not "value" in arg_definition or "value" in arg_definition and arg_definition["value"] is None:
+                            errors[arg_name].append("cannot be empty")
+                    if len(errors) > 0:
                         return jsonify({
-                            "errors": {
-                                "nextflow_arguments": "cannot be empty"
-                            }
+                            "errors": errors
                         }), 422
                     workflow.is_scheduled = True
                     workflow.update(database_cursor)

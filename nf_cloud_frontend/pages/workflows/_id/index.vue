@@ -46,16 +46,18 @@
                 
             </div>
             <h2 class="mb-0">Nextflow parameters</h2>
-            <small>One argument per line</small>
-            <textarea 
-                v-model="workflow.nextflow_arguments"
-                :rows="Math.max(5, nextflow_arguments_lines)"
-                v-on:keydown.ctrl.83.capture.prevent.stop="updateWorkflow"
-                v-on:keydown.meta.83.capture.prevent.stop="updateWorkflow"
-                type="textarea" 
-                class="form-control mb-1" />
+            <template v-for="(argument_value, argument_name) in workflow.nextflow_arguments">
+                <div :key="argument_name">
+                    <FilePicker v-if="argument_value.type == 'file'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :available_files="workflow.files"></FilePicker>
+                    <FilesPicker  v-if="argument_value.type == 'files'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :available_files="workflow.files"></FilesPicker>
+                    <TextInput v-if="argument_value.type == 'text'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="workflow.nextflow_arguments[argument_name].is_multiline"></TextInput>
+                    <NumberInput v-if="argument_value.type == 'number'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
+                    <FileGlob v-if="argument_value.type == 'file-glob'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
+                </div>
+            </template>
             <button @click="updateWorkflow" type="button" class="btn btn-primary mb-3">
-                <i class="fas fa-save"></i>
+                <i class="fas fa-save me-2"></i>
+                save
             </button>
             <h2>Files</h2>
             <div @click="passClickToFileInput" @drop.prevent="addDroppedFiles" @dragover.prevent class="filedrop-area d-flex justify-content-center align-items-center mb-3">
@@ -92,6 +94,8 @@
 </template>
 
 <script>
+import Vue from "vue"
+
 
 const NEXTFLOW_WORKFLOW_TYPE_ICON_CLASS_MAP = {
     "local": "fas fa-hdd",
@@ -102,6 +106,11 @@ const NEXTFLOW_WORKFLOW_TYPE_NAME_MAP = {
     "local": "Local",
     "docker": "Docker"
 }
+
+/**
+ * Event name for argument changes.
+ */
+const ARGUMENT_CHANGED_EVENT = "ARGUMENT_CHANGED"
 
 export default {
     data(){
@@ -114,13 +123,17 @@ export default {
                 local: [],
                 docker: {}
             },
-            show_nextflow_workflow_dropdown: false
+            show_nextflow_workflow_dropdown: false,
+            /**
+             * Event bus for communication with child components.
+             */
+            local_event_bus: new Vue()
         }
     },
     mounted(){
         this.loadWorkflow()
         this.getNextflowWorkflows()
-
+        this.bindNextflowArgumentChangeEvent()
     },
     methods: {
         loadWorkflow(){
@@ -129,6 +142,7 @@ export default {
                 if(response.ok) {
                     response.json().then(response_data => {
                         this.workflow = response_data.workflow
+                        this.bindNextflowArgumentChangeEvent()
                     })
                 } else if(response.status == 404) {
                     this.workflow_not_found = true
@@ -262,18 +276,57 @@ export default {
         setNextflowWorkflow(nextflow_workflow, nextflow_workflow_type){
             this.workflow.nextflow_workflow = nextflow_workflow
             this.workflow.nextflow_workflow_type = nextflow_workflow_type
-            this.updateWorkflow()
+            this.getDynamicNextflowArguments()
         },
         getNextflowTypeIconClass(nextflow_workflow_type){
             return NEXTFLOW_WORKFLOW_TYPE_ICON_CLASS_MAP[nextflow_workflow_type]
         },
         getNextflowTypeName(nextflow_workflow_type){
             return NEXTFLOW_WORKFLOW_TYPE_NAME_MAP[nextflow_workflow_type]
+        },
+        /**
+         * Sets a nee value to the nextflow argument
+         * 
+         * @param {string} argument_name
+         * @param {any} argument_value
+         */
+        setNextflowArgument(argument_name, argument_value){
+            this.workflow.nextflow_arguments[argument_name].value = argument_value
+        },
+        /**
+         * Binds the argument change event to the local event bus.
+         */
+        bindNextflowArgumentChangeEvent(){
+            this.local_event_bus.$on(
+                this.argument_changed_event, 
+                (argument_name, new_value) => {this.setNextflowArgument(argument_name, new_value)}
+            )
+        },
+        /**
+         * Fetches the dynamic nextflow arguments from the NFCloud
+         * and assigns it to the workflow.
+         */
+        getDynamicNextflowArguments(){
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/nextflow-workflows/${this.workflow.nextflow_workflow_type}/${this.workflow.nextflow_workflow}/arguments`, {
+            }).then(response => {
+                if(response.ok) {
+                    response.json().then(data => {
+                        this.workflow.nextflow_arguments = data.arguments
+                    })
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
         }
     },
     computed: {
-        nextflow_arguments_lines(){
-            return (this.workflow.nextflow_arguments.match(/\n/g) || "").length + 1
+        /**
+         * Returns the argument change event so it is usable in the template.
+         * 
+         * @returns {string}
+         */
+        argument_changed_event(){
+            return ARGUMENT_CHANGED_EVENT
         }
     }
 }

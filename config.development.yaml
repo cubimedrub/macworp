@@ -13,8 +13,58 @@ workflows:
     "Hello World":
       directory: ./test_workflows/hello_world
       script: "main.nf"
+      args:
+        dynamic:
+          inFile:
+            type: file
+            desc: Single file
+          inFiles:
+            type: files
+            desc: Multiple files
+          txtFiles:
+            type: file-glob
+            desc: File "regex", e.g. *.txt
+          numberOfNewlines:
+            type: number
+            desc: Number input 
+          singleLineText:
+            type: text
+            desc: Single line text
+          multilineText:
+            type: text
+            desc: Multiline text
+            is_multiline: true
+        static:
+          outDir:
+            type: text
+            value: ./
   docker:
     "Hello World":
       image: nfcore/base
       directory: ./test_workflows/hello_world
       script: "main.nf"
+      args:
+        dynamic:
+          inFile:
+            type: file
+            desc: Single file
+          inFiles:
+            type: files
+            desc: Multiple files
+          txtFiles:
+            type: file-glob
+            desc: File "regex", e.g. *.txt
+          numberOfNewlines:
+            type: number
+            desc: Number input 
+          singleLineText:
+            type: text
+            desc: Single line text
+          multilineText:
+            type: text
+            desc: Multiline text
+            is_multiline: true
+        static:
+          outDir:
+            type: text
+            value: ./

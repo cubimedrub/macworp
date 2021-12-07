@@ -30,3 +30,15 @@ class NextflowWorkflowControllers:
                 ])
             }
         })
+
+    @staticmethod
+    @app.route("/api/nextflow-workflows/<string:nextflow_workflow_type>/<string:nextflow_workflow>/arguments")
+    def arguments(nextflow_workflow_type: str, nextflow_workflow: str):
+        """
+        Returns
+        -------
+        JSON where each key is the name of a workflow argument with value type definition and description.
+        """
+        return jsonify({
+            "arguments": config["workflows"][nextflow_workflow_type][nextflow_workflow]["args"]["dynamic"]
+        })

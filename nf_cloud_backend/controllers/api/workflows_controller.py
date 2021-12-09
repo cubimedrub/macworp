@@ -3,7 +3,7 @@ import pika
 from collections import defaultdict
 from flask import request, jsonify
 
-from nf_cloud_backend import app, get_database_connection, config
+from nf_cloud_backend import app, get_database_connection, config, socketio
 from nf_cloud_backend.models.workflow import Workflow
 
 class WorkflowsController:
@@ -209,6 +209,7 @@ class WorkflowsController:
                 workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
                 workflow.is_scheduled = False
                 workflow.update(database_cursor)
+                socketio.emit("finished-workflow", {}, to=f"workflow{workflow.id}")
                 return "", 200
 
     @staticmethod

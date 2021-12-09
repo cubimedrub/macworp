@@ -7,6 +7,7 @@ import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 from threading import Thread
 from werkzeug.exceptions import HTTPException
+from flask_socketio import SocketIO
 
 from nf_cloud_backend.utility.configuration import Configuration
 from nf_cloud_backend.utility.headers.cross_origin_resource_sharing import add_allow_cors_headers
@@ -22,6 +23,9 @@ app.config.update(
     SECRET_KEY = bytes(config['secret'], "ascii"),
     PREFERRED_URL_SCHEME = 'https' if config['use_https'] else 'http'
 )
+
+# SocketIO for bi-directional 
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 # Initialize connection pool for database

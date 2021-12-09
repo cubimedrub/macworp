@@ -95,6 +95,7 @@
 
 <script>
 import Vue from "vue"
+import socket from '~/plugins/socket.io.js'
 
 
 const NEXTFLOW_WORKFLOW_TYPE_ICON_CLASS_MAP = {
@@ -135,14 +136,19 @@ export default {
         this.getNextflowWorkflows()
         this.bindNextflowArgumentChangeEvent()
     },
+    deactivated(){
+        this.disconnectFromWorkflowSocketIoRoom()
+    },
     methods: {
         loadWorkflow(){
+            this.disconnectFromWorkflowSocketIoRoom()
             return fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}`)
             .then(response => {
                 if(response.ok) {
                     response.json().then(response_data => {
                         this.workflow = response_data.workflow
                         this.bindNextflowArgumentChangeEvent()
+                        this.connectToWorkflowSocketIoRoom()
                     })
                 } else if(response.status == 404) {
                     this.workflow_not_found = true
@@ -317,6 +323,19 @@ export default {
                     this.handleUnknownResponse(response)
                 }
             })
+        },
+        /**
+         * Connect to workflow room
+         */
+        connectToWorkflowSocketIoRoom(){
+            socket.emit("join", {"room": `workflow${this.workflow.id}`})
+            socket.on("finished-workflow", () => this.workflow.is_scheduled = false)
+        },
+        /**
+         * Disconnect from workflow room
+         */
+        disconnectFromWorkflowSocketIoRoom(){
+            if(this.workflow != null) socket.emit("leave", {"room": `workflow${this.workflow.id}`});
         }
     },
     computed: {

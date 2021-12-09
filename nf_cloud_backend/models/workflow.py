@@ -11,7 +11,7 @@ from nf_cloud_backend import config
 
 class Workflow:
     TABLE_NAME = "workflows"
-    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_workflow_type: str = "", nextflow_arguments: dict = {}, is_scheduled: bool = False, nextflow_log: dict = {}):
+    def __init__(self, id: int, name: str, nextflow_workflow: str = "", nextflow_workflow_type: str = "", nextflow_arguments: dict = {}, is_scheduled: bool = False, submitted_processes: int = 0, completed_processes: int = 0):
         self.__id = id
         self.__name = name
         self.__file_directory = None
@@ -19,7 +19,8 @@ class Workflow:
         self.__nextflow_workflow_type = nextflow_workflow_type
         self.__nextflow_arguments = nextflow_arguments
         self.__is_scheduled = is_scheduled
-        self.__nextflow_log = nextflow_log
+        self.__submitted_processes = submitted_processes
+        self.__completed_tasks = completed_processes
         self.__create_file_directory()
 
     @property
@@ -68,13 +69,21 @@ class Workflow:
         self.__is_scheduled = value
 
     @property
-    def nextflow_log(self) -> dict:
-        return self.__nextflow_log
+    def submitted_processes(self) -> int:
+        return self.__submitted_processes
 
-    @nextflow_log.setter
-    def nextflow_log(self, value: str):
-        self.__nextflow_log = value
-    
+    @submitted_processes.setter
+    def submitted_processes(self, value: int):
+        self.__submitted_processes = value
+
+    @property
+    def completed_processes(self) -> int:
+        return self.__completed_tasks
+
+    @completed_processes.setter
+    def completed_processes(self, value: int):
+        self.__completed_tasks = value
+
     @property
     def file_names(self) -> List[pathlib.Path]:
         if self.file_directory and self.file_directory.is_dir():
@@ -102,7 +111,8 @@ class Workflow:
             "nextflow_arguments": self.nextflow_arguments,
             "nextflow_workflow": self.nextflow_workflow,
             "nextflow_workflow_type": self.nextflow_workflow_type,
-            "nextflow_log": self.nextflow_log,
+            "submitted_processes": self.submitted_processes,
+            "completed_processes": self.completed_processes,
             "is_scheduled": self.is_scheduled,
             "files": self.file_names
         }
@@ -121,7 +131,7 @@ class Workflow:
         Returns if the insertion was successfull.
         """
         if self.id == None:
-            INSERT_QUERY = f"INSERT INTO {self.__class__.TABLE_NAME} (name, nextflow_workflow, nextflow_workflow_type, nextflow_arguments, is_scheduled, nextflow_log) VALUES (%s, %s, %s, %s, %s, %s) RETURNING ID;"
+            INSERT_QUERY = f"INSERT INTO {self.__class__.TABLE_NAME} (name, nextflow_workflow, nextflow_workflow_type, nextflow_arguments, is_scheduled, submitted_processes, completed_processes) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING ID;"
             database_cursor.execute(
                 INSERT_QUERY,
                 (
@@ -130,7 +140,8 @@ class Workflow:
                     self.nextflow_workflow_type,
                     json.dumps(self.nextflow_arguments),
                     self.is_scheduled,
-                    json.dumps(self.nextflow_log)
+                    self.submitted_processes,
+                    self.completed_processes
                 )
             )
             row = database_cursor.fetchone()
@@ -153,7 +164,7 @@ class Workflow:
         Returns if the update was successfull.
         """
         if self.id != None:
-            INSERT_QUERY = f"UPDATE {self.__class__.TABLE_NAME} SET name = %s, nextflow_workflow = %s, nextflow_workflow_type = %s, nextflow_arguments = %s, is_scheduled = %s, nextflow_log = %s WHERE id = %s;"
+            INSERT_QUERY = f"UPDATE {self.__class__.TABLE_NAME} SET name = %s, nextflow_workflow = %s, nextflow_workflow_type = %s, nextflow_arguments = %s, is_scheduled = %s, submitted_processes = %s, completed_processes = %s WHERE id = %s;"
             database_cursor.execute(
                 INSERT_QUERY,
                 (
@@ -162,7 +173,8 @@ class Workflow:
                     self.nextflow_workflow_type,
                     json.dumps(self.nextflow_arguments),
                     self.is_scheduled,
-                    json.dumps(self.nextflow_log),
+                    self.submitted_processes,
+                    self.completed_processes,
                     self.id
                 )
             )
@@ -255,7 +267,7 @@ class Workflow:
         -------
         Workflow or list of workflows
         """
-        select_query = f"SELECT id, name, nextflow_workflow, nextflow_workflow_type, nextflow_arguments, is_scheduled, nextflow_log FROM {cls.TABLE_NAME}"
+        select_query = f"SELECT id, name, nextflow_workflow, nextflow_workflow_type, nextflow_arguments, is_scheduled, submitted_processes, completed_processes FROM {cls.TABLE_NAME}"
         if len(condition):
             select_query += f" WHERE {condition}"
         if offset:
@@ -268,11 +280,11 @@ class Workflow:
         database_cursor.execute(select_query, condition_values)
         
         if fetchall:
-            return [cls(row[0], row[1], row[2], row[3], row[4], row[5], row[6]) for row in database_cursor.fetchall()]
+            return [cls(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]) for row in database_cursor.fetchall()]
         else:
             row = database_cursor.fetchone()
             if row:
-                return cls(row[0], row[1], row[2], row[3], row[4], row[5], row[6])
+                return cls(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7])
             else:
                 return None
 

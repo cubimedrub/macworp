@@ -26,6 +26,12 @@
                     delete
                 </button>
             </div>
+            <div v-if="workflow.is_scheduled">
+                <h2>Progress</h2>
+                <div class="progress">
+                    <div class="progress-bar bg-success" role="progressbar" :style="progress_bar_style"></div>
+                </div>
+            </div>
             <h2>Nextflow Workflow</h2>
             <div class="dropdown mb-3">
                 <button :class="{show: show_nextflow_workflow_dropdown}" :aria_expanded="show_nextflow_workflow_dropdown" @click="toggleNextflowWorkflowDropdown" class="btn btn-primary" type="button" id="nextflow-workflow-dropdown" data-bs-toggle="dropdown">
@@ -128,7 +134,8 @@ export default {
             /**
              * Event bus for communication with child components.
              */
-            local_event_bus: new Vue()
+            local_event_bus: new Vue(),
+            logs: []
         }
     },
     mounted(){
@@ -329,7 +336,20 @@ export default {
          */
         connectToWorkflowSocketIoRoom(){
             socket.emit("join", {"room": `workflow${this.workflow.id}`})
-            socket.on("finished-workflow", () => this.workflow.is_scheduled = false)
+            socket.on("new-nextflow-log", (new_log) => {
+                this.workflow.nextflow_log = new_log
+                this.logs.push(new_log)
+            })
+            socket.on("finished-workflow", () => {
+                this.workflow.is_scheduled = false
+                this.workflow.submitted_processes = 0
+                this.workflow.completed_processes = 0
+            })
+            socket.on("new-progress", data => {
+                console.error(data)
+                this.workflow.submitted_processes = data.submitted_processes
+                this.workflow.completed_processes = data.completed_processes
+            })
         },
         /**
          * Disconnect from workflow room
@@ -346,6 +366,14 @@ export default {
          */
         argument_changed_event(){
             return ARGUMENT_CHANGED_EVENT
+        },
+        /**
+         * Returns value for style attribute of progress bar.
+         * @return {string}
+         */
+        progress_bar_style(){
+            var progress = this.workflow.completed_processes / this.workflow.submitted_processes * 100
+            return `width: ${progress}%`
         }
     }
 }

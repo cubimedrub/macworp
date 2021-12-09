@@ -208,6 +208,8 @@ class WorkflowsController:
             with database_connection.cursor() as database_cursor:
                 workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
                 workflow.is_scheduled = False
+                workflow.submitted_processes = 0
+                workflow.completed_processes = 0
                 workflow.update(database_cursor)
                 socketio.emit("finished-workflow", {}, to=f"workflow{workflow.id}")
                 return "", 200
@@ -227,11 +229,24 @@ class WorkflowsController:
             return jsonify({
                 "errors": errors
             }), 422
-            
-        database_connection = get_database_connection()
-        with database_connection:
-            with database_connection.cursor() as database_cursor:
-                workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
-                workflow.nextflow_log = nextflow_log
-                workflow.update(database_cursor)
-                return "", 200
+
+        if "event" in nextflow_log and "trace" in nextflow_log:
+            database_connection = get_database_connection()
+            with database_connection:
+                with database_connection.cursor() as database_cursor:
+                    workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
+                    if nextflow_log["event"] == "process_submitted":
+                        workflow.submitted_processes += 1
+                    if nextflow_log["event"] == "process_completed":
+                        workflow.completed_processes += 1
+                    workflow.update(database_cursor)
+                    socketio.emit(
+                        "new-progress", 
+                        {
+                            "submitted_processes": workflow.submitted_processes,
+                            "completed_processes": workflow.completed_processes
+                        }, 
+                        to=f"workflow{workflow.id}"
+                    )
+        
+        return "", 200

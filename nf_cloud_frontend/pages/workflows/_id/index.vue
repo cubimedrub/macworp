@@ -54,8 +54,29 @@
             <h2 class="mb-0">Nextflow parameters</h2>
             <template v-for="(argument_value, argument_name) in workflow.nextflow_arguments">
                 <div :key="argument_name">
-                    <FilePicker v-if="argument_value.type == 'file'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :available_files="workflow.files"></FilePicker>
-                    <FilesPicker  v-if="argument_value.type == 'files'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :available_files="workflow.files"></FilesPicker>
+                    <PathSelector 
+                        v-if="argument_value.type == 'path'" 
+                        :label="argument_name" 
+                        :description="argument_value.desc"
+                        :initial_value="workflow.nextflow_arguments[argument_name].value"
+                        :parent_event_bus="local_event_bus"
+                        :value_change_event="argument_changed_event"
+                        :workflow_id="workflow.id"
+                        :with_selectable_files="argument_value.selectable_files"
+                        :with_selectable_folders="argument_value.selectable_folders"
+                    ></PathSelector>
+                    <MultiplePathSelector 
+                        v-if="argument_value.type == 'paths'" 
+                        :label="argument_name"
+                        :description="argument_value.desc"
+                        :initial_value="workflow.nextflow_arguments[argument_name].value"
+                        :parent_event_bus="local_event_bus"
+                        :value_change_event="argument_changed_event" 
+                        :available_files="workflow.files"
+                        :workflow_id="workflow.id"
+                        :with_selectable_files="argument_value.selectable_files"
+                        :with_selectable_folders="argument_value.selectable_folders"
+                    ></MultiplePathSelector>
                     <TextInput v-if="argument_value.type == 'text'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="workflow.nextflow_arguments[argument_name].is_multiline"></TextInput>
                     <NumberInput v-if="argument_value.type == 'number'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
                     <FileGlob v-if="argument_value.type == 'file-glob'" :label="argument_name" :description="argument_value.desc" :initial_value="workflow.nextflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
@@ -66,32 +87,11 @@
                 save
             </button>
             <h2>Files</h2>
-            <div @click="passClickToFileInput" @drop.prevent="addDroppedFiles" @dragover.prevent class="filedrop-area d-flex justify-content-center align-items-center mb-3">
-                <span class="unselectable">
-                    Drag new files here or click here
-                    <input @change="addSelectedFiles" ref="file-input" multiple type="file" class="hidden-file-input" />
-                </span>
-            </div>
-            <ul class="list-group mb-3">
-                <li v-for="file in workflow.files" :key="file" class="list-group-item d-flex justify-content-between">
-                    <span>{{ file }}</span>
-                    <button @click="deleteFile(file)" type="button" class="btn btn-danger btn-sm">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </li>
-            </ul>
-            <div v-if="upload_queue.length">
-                <h3>Upload queue</h3>
-                <ul class="list-group">
-                    <li v-for="upload_item in upload_queue" :key="upload_item.file.name" class="list-group-item d-flex justify-content-between">
-                        <span>{{ upload_item.file.name }}</span>
-                        <div class="w-25 d-flex justify-content-end align-items-center">
-                            <Spinner v-if="upload_item.is_uploading"></Spinner>
-                            <span v-else>wait for upload...</span>
-                        </div>
-                    </li>
-                </ul>
-            </div>
+            <EditableFileBrowser 
+                :workflow_id="workflow.id"
+                :parent_event_bus="local_event_bus"
+                :reload_event="this.reload_workflow_files_event"
+            ></EditableFileBrowser>
         </div>
         <div v-if="!workflow && workflow_not_found">
             Workflow not found
@@ -113,6 +113,8 @@ const NEXTFLOW_WORKFLOW_TYPE_NAME_MAP = {
     "local": "Local",
     "docker": "Docker"
 }
+
+const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 
 /**
  * Event name for argument changes.
@@ -170,72 +172,6 @@ export default {
             }).then(response => {
                 if(response.ok || response.status == 404) {
                     this.$router.push({name: "workflows"})
-                } else {
-                    this.handleUnknownResponse(response)
-                }
-            })
-        },
-        addSelectedFiles(event) {
-            var selected_files = event.target.files
-            if(!selected_files) return
-            this.addFiles([...selected_files])
-        },
-        addDroppedFiles(event) {
-            var dopped_files = event.dataTransfer.files
-            if(!dopped_files) return
-            this.addFiles([...dopped_files])
-        },
-        addFiles(new_files){
-            new_files.forEach(new_file => {
-                this.upload_queue.push({
-                    is_uploading: false,
-                    file: new_file
-                })
-            });
-            this.uploadNewFiles()
-        },
-        async uploadNewFiles() {
-            if(!this.is_uploading){
-                this.is_uploading = true;
-                while(this.upload_queue.length > 0){
-                    var form_data = new FormData();
-                    form_data.append("file", this.upload_queue[0].file);
-                    this.upload_queue[0].is_uploading = true;
-                    await fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}/upload-file`, {
-                        method:'POST',
-                        body: form_data
-                    }).then(response => {
-                        if(response.ok) {
-                            return response.json().then(response_data => {
-                                this.workflow.files.push(response_data.file)
-                                this.upload_queue.shift()
-                                return Promise.resolve()
-                            })
-                        } else {
-                            this.handleUnknownResponse(response)
-                        }
-                    })
-                }
-                this.is_uploading = false
-            }
-        },
-        passClickToFileInput(){
-            this.$refs["file-input"].click()
-        },
-        deleteFile(filename){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}/delete-file`, {
-                method:'POST',
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    "filename": filename
-                })
-            }).then(response => {
-                if(response.ok) {
-                    return response.json().then(response_data => {
-                        this.workflow.files = this.workflow.files.filter(file => file != response_data.file);
-                    })
                 } else {
                     this.handleUnknownResponse(response)
                 }
@@ -344,6 +280,7 @@ export default {
                 this.workflow.is_scheduled = false
                 this.workflow.submitted_processes = 0
                 this.workflow.completed_processes = 0
+                this.local_event_bus.$emit(this.reload_workflow_files_event)
             })
             socket.on("new-progress", data => {
                 console.error(data)
@@ -374,6 +311,13 @@ export default {
         progress_bar_style(){
             var progress = this.workflow.completed_processes / this.workflow.submitted_processes * 100
             return `width: ${progress}%`
+        },
+        /**
+         * Provide access to RELOAD_WORKFLOW_FILES_EVENT in vue instance.
+         * @return {string}
+         */
+        reload_workflow_files_event(){
+            return RELOAD_WORKFLOW_FILES_EVENT
         }
     }
 }

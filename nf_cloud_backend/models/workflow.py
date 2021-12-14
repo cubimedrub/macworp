@@ -84,12 +84,6 @@ class Workflow:
     def completed_processes(self, value: int):
         self.__completed_tasks = value
 
-    @property
-    def file_names(self) -> List[pathlib.Path]:
-        if self.file_directory and self.file_directory.is_dir():
-            return [path.name for path in self.file_directory.iterdir() if path.is_file()]
-        return []
-
     def __create_file_directory(self):
         self.__file_directory = pathlib.Path(config["upload_path"]).joinpath(str(self.id))
         self.__file_directory.mkdir(parents=True, exist_ok=True)
@@ -113,8 +107,7 @@ class Workflow:
             "nextflow_workflow_type": self.nextflow_workflow_type,
             "submitted_processes": self.submitted_processes,
             "completed_processes": self.completed_processes,
-            "is_scheduled": self.is_scheduled,
-            "files": self.file_names
+            "is_scheduled": self.is_scheduled
         }
 
     def insert(self, database_cursor) -> bool:
@@ -207,28 +200,68 @@ class Workflow:
             return True
         return False
 
-    def add_file(self, filename: str, file: Union[io.BytesIO, io.StringIO]):
-        with self.file_directory.joinpath(filename).open("wb") as workflow_file:
+    def add_file(self, directory: str, filename: str, file: Union[io.BytesIO, io.StringIO]):
+        if len(directory) > 0 and directory[0] == "/":
+            directory = directory[1:]
+
+        target_directory = self.file_directory.joinpath(directory)
+        if not target_directory.is_dir():
+            target_directory.mkdir(parents=True, exist_ok=True)
+        with target_directory.joinpath(filename).open("wb") as workflow_file:
             workflow_file.write(file)
 
-    def remove_file(self, filename: str) -> bool:
+    def remove_path(self, path: str) -> bool:
         """
         Removes the given file from the file directory.
 
         Parameters
         ----------
-        filename : str
-            File name
+        path : str
+            File or folder path. If path ends with a slash it is a directory.
 
         Returns
         -------
         Returns true (file was deleted) or false (file does not exists) 
         """
-        file_path = self.file_directory.joinpath(filename)
-        if file_path.is_file():
-            file_path.unlink()
+        if len(path) > 0 and path[0] == "/":
+            path = path[1:]
+        full_path = self.file_directory.joinpath(path)
+        if full_path.is_file():
+            full_path.unlink()
+            return True
+        elif full_path.is_dir():
+            shutil.rmtree(full_path)
             return True
         return False
+
+    def create_folder(self, target_path: str, new_path: str) -> bool:
+        """
+        Creates a folder in the work directory of the workflow.
+        Creates parents as well, if path contains multiple segments.
+
+        Parameters
+        ----------
+        target_path : str
+            Path where the new folder will be created.
+        new_path : str
+            Path to new folder
+
+        Returns
+        -------
+        True if path was created, otherwise False
+        """
+        if len(target_path) > 0 and target_path[0] == "/":
+            target_path = target_path[1:]
+        if len(new_path) > 0 and new_path[0] == "/":
+            new_path = new_path[1:]
+
+        path_to_create = self.file_directory.joinpath(target_path).joinpath(new_path)
+
+        if not path_to_create.is_dir():
+            path_to_create.mkdir(parents=True, exist_ok=True)
+            return True
+        return False
+
 
     def get_queue_represenation(self) -> str:
         """

@@ -2,6 +2,8 @@
 
 params.inFile = params.inFile ?: { log.error "No inFile file provided."; exit 1 }()
 params.inFiles = params.inFiles ?: { log.error "No inFiles files provided."; exit 1 }()
+params.inFolder = params.inFolder ?: { log.error "No inFolder file provided."; exit 1 }()
+params.inFolders = params.inFolders ?: { log.error "No inFolders files provided."; exit 1 }()
 params.numberOfNewlines = params.numberOfNewlines ?: { log.error "No numberOfNewlines provided."; exit 1 }()
 params.singleLineText = params.singleLineText ?: { log.error "No singleLineText provided."; exit 1 }()
 params.multilineText = params.multilineText ?: { log.error "No multilineText provided."; exit 1 }()
@@ -14,7 +16,7 @@ params.outDir = "./"
 text_files = Channel.fromPath(params.txtFiles)
 
 /**
- * Use file from NF-Cloud FilePicker,
+ * Use file from NF-Cloud PathSelector,
  * converts it to uppercase and 
  * returns it.
  */
@@ -31,7 +33,24 @@ process readInFileAndConvertToUpperCase {
 }
 
 /**
- * Use comma separated files from NF-Cloud FilesPicker,
+ * Use file from NF-Cloud PathSelector,
+ * converts it to uppercase and 
+ * returns it.
+ */
+process listInFolderContent {
+    input:
+    path in_folder from params.inFolder
+
+    output:
+    env in_folder_content into in_folder_content
+
+    """
+    in_folder_content=\$(ls -lah ${in_folder})
+    """
+}
+
+/**
+ * Use comma separated files from NF-Cloud MultiplePathSelector,
  * write them as markdown list to a file
  * and returns file.
  */
@@ -46,6 +65,26 @@ process selectedFilesToMarkdownList {
     for file in \$(echo "${in_files}" | tr ',' ' ')
     do 
         echo "* \$file" >> selected_files_list
+    done
+    """
+}
+
+/**
+ * Use comma separated folder from NF-Cloud MultiplePathSelector,
+ * write them as markdown list to a file
+ * and returns file.
+ */
+process selectedFoldersToMarkdownList {
+    input:
+    val in_files from params.inFiles
+
+    output:
+    path selected_folder_list into selected_folder_list
+
+    """
+    for file in \$(echo "${in_files}" | tr ',' ' ')
+    do 
+        echo "* \$file" >> selected_folder_list
     done
     """
 }
@@ -81,8 +120,10 @@ process createMarkdownFile {
 
     input:
     val in_file_content from in_file_content
-    val selected_files_list from selected_files_list
+    path selected_files_list from selected_files_list
     val txt_files from txt_file_codeblocks.collect()
+    path selected_folder_list from selected_folder_list
+    val in_folder_content from in_folder_content
 
     output:
     path "${params.outDir}/out.md" into out_file
@@ -94,7 +135,9 @@ process createMarkdownFile {
 
     echo "## Arguments" >> \$out_md
     echo '* params.inFile: `${params.inFile}`' >> \$out_md
+    echo '* params.inFolder: `${params.inFolder}`' >> \$out_md
     echo '* params.inFiles: `${params.inFiles}`' >> \$out_md
+    echo '* params.inFolders: `${params.inFolders}`' >> \$out_md
     echo '* params.numberOfNewlines: `${params.numberOfNewlines}`' >> \$out_md
     echo '* params.singleLineText: `${params.singleLineText}`' >> \$out_md
     # sed is for escaping the newlines.
@@ -108,7 +151,15 @@ process createMarkdownFile {
 
     echo "## List of inFiles" >> \$out_md
     cat ${selected_files_list} >> \$out_md
-     echo "" >> \$out_md
+    echo "" >> \$out_md
+
+    echo "## inFolder content" >> \$out_md
+    echo "${in_folder_content}" >> \$out_md
+    echo "" >> \$out_md
+
+    echo "## List of inFolders" >> \$out_md
+    cat ${selected_folder_list} >> \$out_md
+    echo "" >> \$out_md
 
     echo "## FileGlob selected file names and content" >> \$out_md
     text_files=(${txt_files.join(' ')})

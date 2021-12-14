@@ -2,6 +2,7 @@ import json
 import pika
 from collections import defaultdict
 from flask import request, jsonify
+from urllib.parse import unquote
 
 from nf_cloud_backend import app, get_database_connection, config, socketio
 from nf_cloud_backend.models.workflow import Workflow
@@ -123,37 +124,92 @@ class WorkflowsController:
                 "count": Workflow.count(database_cursor)
             })
     
+
     @staticmethod
-    @app.route("/api/workflows/<int:id>/upload-file", methods=["POST"])
-    def upload_file(id: int):
-        if "file" in request.files:
-            new_file = request.files["file"]
-        else:
-            return jsonify({
-                "errors": {
-                    "file": "is missing"
-                }
-            })
-        
+    @app.route("/api/workflows/<int:id>/files")
+    def files(id: int):
+        directory = unquote(request.args.get('dir', "", type=str))
+        if len(directory) > 0 and directory[0] == "/":
+            directory = directory[1:]
         database_connection = get_database_connection()
         with database_connection.cursor() as database_cursor:
             workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
-            workflow.add_file(new_file.filename, new_file.read())
+            directory = workflow.file_directory.joinpath(directory)
+            if directory.is_dir():
+                files = []
+                folders = []
+                for entry in directory.iterdir():
+                    if entry.is_dir():
+                        folders.append(entry.name)
+                    else:
+                        files.append(entry.name)
+
+                folders.sort()
+                files.sort()
+                return jsonify({
+                    "folders": folders,
+                    "files": files
+                })
+        return jsonify({
+            "errors": {
+                "general": "directory not found"
+            }
+        }), 404
+
+
+    @staticmethod
+    @app.route("/api/workflows/<int:id>/upload-file", methods=["POST"])
+    def upload_file(id: int):
+        errors = defaultdict(list)
+
+        if not "file" in request.files:
+            errors["file"].append("cannot be empty")
+
+        directory = request.form.get("directory", None)
+        if directory is None:
+            errors["directory"].append("cannot be empty")
+        elif not isinstance(directory, str):
+            errors["directory"].append("is not type string")
+
+        if len(errors) > 0:
             return jsonify({
+                "errors": errors
+            }), 422
+        
+        new_file = request.files["file"]
+
+        database_connection = get_database_connection()
+        with database_connection.cursor() as database_cursor:
+            workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
+            workflow.add_file(directory, new_file.filename, new_file.read())
+            return jsonify({
+                "directory": directory,
                 "file": new_file.filename
             })
     
     @staticmethod
-    @app.route("/api/workflows/<int:id>/delete-file", methods=["POST"])
-    def delete_file(id: int):
+    @app.route("/api/workflows/<int:id>/delete-path", methods=["POST"])
+    def delete_path(id: int):
+        """
+        Deletes a path.
+
+        Parameters
+        ----------
+        id : int
+            Workflow id
+
+        Returns
+        -------
+        Response
+        """
         errors = defaultdict(list)
         data = request.json
 
-        filename = data.get("filename", None)
-        if filename == None:
-            errors["filename"].append("missing")
-        elif not isinstance(filename, str):
-            errors["filename"].append("not a string")
+        path = data.get("path", None)
+        if path == None:
+            errors["path"].append("missing")
+        elif not isinstance(path, str):
+            errors["path"].append("not a string")
 
         if len(errors):
             return jsonify({
@@ -163,10 +219,52 @@ class WorkflowsController:
         database_connection = get_database_connection()
         with database_connection.cursor() as database_cursor:
             workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
-            workflow.remove_file(filename)
+            workflow.remove_path(path)
+            return "", 200
+
+    @staticmethod
+    @app.route("/api/workflows/<int:id>/create-folder", methods=["POST"])
+    def create_folder(id: int):
+        """
+        Creates the given path within the workflow directory
+
+        Parameters
+        ----------
+        id : int
+            Workflow ID
+
+        Returns
+        -------
+        Status code 422
+            Dictionary with key `errors`, value is a dictionary with parameter names as key and string array with errors
+        Status code 200
+            Empty if all has worked
+        """
+        errors = defaultdict(list)
+        data = request.json
+
+        target_path = data.get("target_path", None)
+        if target_path == None:
+            errors["target_path"].append("missing")
+        elif not isinstance(target_path, str):
+            errors["target_path"].append("not a string")
+
+        new_path = data.get("new_path", None)
+        if new_path == None:
+            errors["new_path"].append("missing")
+        elif not isinstance(new_path, str):
+            errors["new_path"].append("not a string")
+
+        if len(errors):
             return jsonify({
-                "file": filename
-            })
+                "errors": errors
+            }), 422
+
+        database_connection = get_database_connection()
+        with database_connection.cursor() as database_cursor:
+            workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
+            workflow.create_folder(target_path, new_path)
+            return "", 200
 
     @staticmethod
     @app.route("/api/workflows/<int:id>/schedule", methods=["POST"])

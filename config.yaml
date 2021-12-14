@@ -42,13 +42,21 @@ workflows:
     #     dynamic:
     #       # Creates an single file picker
     #       arg1:
-    #         type: file
+    #         type: path
     #         desc: ""
+    #         # If true files can be selected
+    #         selectable_files: false
+    #         # If true folder can be selected
+    #         selectable_folders: true
     #       # Creates a select for multiple files, which are added as a
     #       # comma-seperated list.
     #       arg2:
-    #         type: files
+    #         type: paths
     #         desc: ""
+    #         # If true files can be selected
+    #         selectable_files: false
+    #         # If true folder can be selected
+    #         selectable_folders: true
     #       # Creates a text box for a file glob or wildcard, e.g. *.txt or *.raws
     #       # The fildcard argument will be prepended with the workdirectory.
     #       arg3:

@@ -16,11 +16,25 @@ workflows:
       args:
         dynamic:
           inFile:
-            type: file
+            type: path
             desc: Single file
+            selectable_files: true
+            selectable_folders: false
+          inFolder:
+            type: path
+            desc: Single folder
+            selectable_files: false
+            selectable_folders: true
           inFiles:
-            type: files
+            type: paths
             desc: Multiple files
+            selectable_files: true
+            selectable_folders: false
+          inFolders:
+            type: paths
+            desc: Multiple folder
+            selectable_files: false
+            selectable_folders: true
           txtFiles:
             type: file-glob
             desc: File "regex", e.g. *.txt
@@ -46,11 +60,25 @@ workflows:
       args:
         dynamic:
           inFile:
-            type: file
+            type: path
             desc: Single file
+            selectable_files: true
+            selectable_folders: false
+          inFolder:
+            type: path
+            desc: Single folder
+            selectable_files: false
+            selectable_folders: true
           inFiles:
-            type: files
+            type: paths
             desc: Multiple files
+            selectable_files: true
+            selectable_folders: false
+          inFolders:
+            type: paths
+            desc: Multiple folder
+            selectable_files: false
+            selectable_folders: true
           txtFiles:
             type: file-glob
             desc: File "regex", e.g. *.txt

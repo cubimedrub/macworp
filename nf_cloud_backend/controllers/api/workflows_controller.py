@@ -68,11 +68,15 @@ class WorkflowsController:
         errors = defaultdict(list)
         data = request.json
 
-        for key in ["nextflow_workflow", "nextflow_workflow", "nextflow_arguments"]:
+        for key in ["nextflow_workflow", "nextflow_arguments"]:
             if not key in data:
                 errors[key].append("can not be empty")
-            elif not isinstance(data[key], str):
-                errors[key].append("must be string")
+        
+        if not isinstance(data["nextflow_workflow"], str):
+                errors["nextflow_workflow"].append("must be string")
+
+        if not isinstance(data["nextflow_arguments"], dict):
+            errors["nextflow_arguments"].append("must be a dictionary")
 
         if len(errors):
             jsonify({

@@ -86,7 +86,6 @@ class WorkflowsController:
                 if workflow:
                     workflow.nextflow_arguments = data["nextflow_arguments"]
                     workflow.nextflow_workflow = data["nextflow_workflow"]
-                    workflow.nextflow_workflow_type = data["nextflow_workflow_type"]
                     if workflow.update(database_cursor):
                         return jsonify({}), 200
                     else:

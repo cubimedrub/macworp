@@ -24,21 +24,21 @@ rabbit_mq:
   # RabbitMQ url. Make sure to encode the virtual host: https://pika.readthedocs.io/en/stable/modules/parameters.html#pika.connection.URLParameters
   url: "amqp://user:password@host:port/virtual_host"
   workflow_queue: workflows
-workflows:
-  local: {}
+workflows: {}
     # E.g.
     # "Workflow Name":
+    #   # This will create the nextflow command: nextflow run -nf-arg1 nf-arg1-value main.nf --arg1 arg1-value ... --arg6 arg6-value --staticArg1 ./
     #   directory: "/path/to/script/directory"
     #   script: "main_script.nf"
-  docker: {}
-    # E.g.
-    # "Workflow Name":
-    #   directory: "/path/to/script/directory"
-    #   script: "main_script.nf"
-    #   image: "docker/image:name"
-    #   # Each argument will be added as `--arg1 value --arg2 value` to the nextflow command.
+    #   # Optional array of directly applied nextflow parameters, e.g. -profile 
+    #   nextflow_parameters: 
+    #     - "-nf-arg1"
+    #     - "nf-arg1-value"
+    #   # Script arguments
+    #   # Each argument will be added as `--arg1 value --arg2 value` to the nextflow script.
     #   args:
     #     # Dynamic arguments are rendered as formular for users
+    #     # If you want to add a default parameter, just add a vaule key to the argument.
     #     dynamic:
     #       # Creates an single file picker
     #       arg1:

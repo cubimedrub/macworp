@@ -98,8 +98,7 @@ class Configuration():
             cls._validate_psql_url(config['database']['url'], 'database.url')
             cls._validate_type(config['database']['pool_size'], int, 'integer', 'database.pool_size')
             cls._validate_amqp_url(config['rabbit_mq']['url'], 'rabbit_mq.url')
-            cls._validate_type(config['workflows']['local'], dict, 'dict', 'workflows.local')
-            cls._validate_type(config['workflows']['docker'], dict, 'dict', 'workflows.docker')
+            cls._validate_type(config['workflows'], dict, 'dict', 'workflows.local')
         except KeyError as key_error:
             raise KeyError(f"The configuration key {key_error} is missing.")
 

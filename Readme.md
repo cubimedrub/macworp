@@ -50,3 +50,18 @@ For development, Flask is configured to add CORS-Headers by default.
 
 ## Production
 Coming soon
+
+
+## ToDos
+* Try to move Nextflow intermediate result folders into a subfolder.
+* Add some more inputs
+    * `Radio` 
+    * `Select`
+* Add description to workflows
+* Improve logging
+    * Save Nextflow stdout/stderr
+    * Enable report and show resulting HTML in web interface
+* Rework docker deployment
+    * Investigate if the worker is able to run Nextflow in Docker containers when running in container itself
+
+

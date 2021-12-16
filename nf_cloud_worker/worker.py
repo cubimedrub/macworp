@@ -29,6 +29,7 @@ class Worker:
     """
 
     __slots__ = [
+        "__nf_bin",
         "__nf_cloud_url",
         "__rabbit_mq_url",
         "__workflow_queue",
@@ -39,6 +40,7 @@ class Worker:
         "__stop_event"
     ]
 
+    __nf_bin: pathlib.Path
     __nf_cloud_url: str
     __rabbit_mq_url: str
     __workflow_queue: str
@@ -48,7 +50,8 @@ class Worker:
     __channel: Channel
     __stop_event: Event
 
-    def __init__(self, nf_cloud_url: str, rabbit_mq_url: str, workflow_queue: str, workflow_data_path: pathlib.Path, nextflow_workflows: dict, stop_event: Event):
+    def __init__(self, nf_bin: pathlib.Path, nf_cloud_url: str, rabbit_mq_url: str, workflow_queue: str, workflow_data_path: pathlib.Path, nextflow_workflows: dict, stop_event: Event):
+        self.__nf_bin = nf_bin
         self.__nf_cloud_url = nf_cloud_url
         self.__rabbit_mq_url = rabbit_mq_url
         self.__workflow_queue = workflow_queue
@@ -78,6 +81,7 @@ class Worker:
                             weblog_url = f"{self.__nf_cloud_url}/api/workflows/{workflow_params['id']}/nextflow-log"
                             workflow = None
                             workflow = Workflow(
+                                self.__nf_bin,
                                 work_dir,
                                 self.__get_nextflow_workflow_path(
                                     workflow_params["nextflow_workflow"]

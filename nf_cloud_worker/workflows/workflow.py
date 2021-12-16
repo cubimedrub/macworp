@@ -14,13 +14,10 @@ class Workflow:
     Running workflows
     """
 
-    NEXTFLOW_RUN_ARGUMENTS: ClassVar[List[str]] = ["nextflow", "run"]
-    """Basic arguments to run a nextflow script.
-    """
-
     PRECEDING_SLASH_REGES: ClassVar[re.Pattern] = re.compile(r"^/+")
 
     __slots__ = [
+        "__nf_bin",
         "__work_dir",
         "__nextflow_workflow_path",
         "__nextflow_main_script_name",
@@ -30,6 +27,7 @@ class Workflow:
         "__nextflow_weblog_url",
     ]
 
+    __nf_bin: pathlib.Path
     __work_dir: pathlib.Path
     __nextflow_workflow_path: pathlib.Path
     __nextflow_main_script_name: str
@@ -38,7 +36,8 @@ class Workflow:
     __static_nextflow_arguments: dict
     __nextflow_weblog_url: str
 
-    def __init__(self, work_dir: pathlib.Path, nextflow_workflow_path: pathlib.Path, nextflow_main_script_name: list, direct_nextflow_paramters: str, dynamic_nextflow_arguments: dict, static_nextflow_arguments: dict, nextflow_weblog_url: str):
+    def __init__(self, nf_bin: pathlib.Path, work_dir: pathlib.Path, nextflow_workflow_path: pathlib.Path, nextflow_main_script_name: list, direct_nextflow_paramters: str, dynamic_nextflow_arguments: dict, static_nextflow_arguments: dict, nextflow_weblog_url: str):
+        self.__nf_bin = nf_bin
         self.__work_dir = work_dir
         self.__nextflow_workflow_path = nextflow_workflow_path
         self.__nextflow_main_script_name = nextflow_main_script_name
@@ -104,7 +103,10 @@ class Workflow:
         Nextflow command as list
         """
         return self._pre_nextflow_arguments() \
-            + self.__class__.NEXTFLOW_RUN_ARGUMENTS \
+            + [
+                str(self.__nf_bin),
+                "run"
+            ] \
             + self._nextflow_run_parameters() \
             + self.__get_arguments_as_list() \
             + [str(self.__nextflow_main_scrip_path())] \

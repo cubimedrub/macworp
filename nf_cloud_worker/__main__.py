@@ -35,6 +35,7 @@ def main():
                 )
 
     worker = Worker(
+        pathlib.Path(cli.arguments.nf_bin),
         cli.arguments.nf_cloud_url,
         cli.arguments.rabbitmq_url,
         cli.arguments.workflow_queue,

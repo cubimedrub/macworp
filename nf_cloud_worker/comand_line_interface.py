@@ -16,6 +16,7 @@ class ComandLineInterface:
 
     def __init__(self):
         self.__arg_parser = argparse.ArgumentParser(description="NF Cloud worker")
+        self.__arg_parser.add_argument("--nf-bin", "-n", type=str, help="Path to nextflow binary.")
         self.__arg_parser.add_argument("--nf-cloud-url", "-c", type=str, help="Cloud URL")
         self.__arg_parser.add_argument("--rabbitmq-url", "-r", type=str, help="RabbitMQ URL")
         self.__arg_parser.add_argument("--workflow-queue", "-q", type=str, help="Name of the workflow queue")

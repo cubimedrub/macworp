@@ -5,6 +5,7 @@
 /.db
 local.env
 config.local.yaml
+nextflow
 
 # uploads
 /uploads

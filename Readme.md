@@ -11,6 +11,8 @@ A web interface written in [NuxtJS](https://nuxtjs.org/). This is basically a GU
 ## Worker
 A worker witten in python which runs the scheduled workflows.
 
+![NF-Cloud structure](./nf-cloud.png)
+
 
 ## Developing
 Make sure the dependencies in

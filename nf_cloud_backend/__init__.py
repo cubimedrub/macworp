@@ -7,6 +7,7 @@ import traceback
 # 3rd party imports
 import eventlet
 from flask import Flask, g as request_store, request
+from flask_cors import CORS
 from flask_socketio import SocketIO
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
@@ -23,6 +24,9 @@ config, env = Configuration.get_config_and_env()
 app = Flask('app')
 """Flask app
 """
+
+# Allow CORS in general
+CORS(app)
 
 # Default Flask parameter
 app.config.update(
@@ -190,25 +194,6 @@ def handle_exception(e):
         app.logger.error(traceback.format_exc()) # pylint: disable=no-member
         response = add_allow_cors_headers(response)
     return response
-
-# Allow cross resource requests in development/debug mode.
-if config['debug']:
-    @app.after_request
-    def add_cors_header_in_development_mode(response):
-        """
-        Adding CORS header to responses.
-
-        Parameters
-        ----------
-        response : Respone
-            Response
-
-        Returns
-        -------
-        Response
-            Reponse with CORS headers
-        """
-        return add_allow_cors_headers(response)
 
 # Do not move this the top of the file, cause the modeule imports some values which are set during the initialization.
 from nf_cloud_backend.utility.rabbit_mq import RabbitMQ # pylint: disable=wrong-import-position

@@ -98,7 +98,6 @@
 
 <script>
 import Vue from "vue"
-import socket from '~/plugins/socket.io.js'
 
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 
@@ -246,18 +245,18 @@ export default {
          * Connect to workflow room
          */
         connectToWorkflowSocketIoRoom(){
-            socket.emit("join", {"room": `workflow${this.workflow.id}`})
-            socket.on("new-nextflow-log", (new_log) => {
+            this.$socket.emit("join", {"room": `workflow${this.workflow.id}`})
+            this.$socket.on("new-nextflow-log", (new_log) => {
                 this.workflow.nextflow_log = new_log
                 this.logs.push(new_log)
             })
-            socket.on("finished-workflow", () => {
+            this.$socket.on("finished-workflow", () => {
                 this.workflow.is_scheduled = false
                 this.workflow.submitted_processes = 0
                 this.workflow.completed_processes = 0
                 this.local_event_bus.$emit(this.reload_workflow_files_event)
             })
-            socket.on("new-progress", data => {
+            this.$socket.on("new-progress", data => {
                 console.error(data)
                 this.workflow.submitted_processes = data.submitted_processes
                 this.workflow.completed_processes = data.completed_processes
@@ -267,7 +266,7 @@ export default {
          * Disconnect from workflow room
          */
         disconnectFromWorkflowSocketIoRoom(){
-            if(this.workflow != null) socket.emit("leave", {"room": `workflow${this.workflow.id}`});
+            if(this.workflow != null) this.$socket.emit("leave", {"room": `workflow${this.workflow.id}`});
         }
     },
     computed: {

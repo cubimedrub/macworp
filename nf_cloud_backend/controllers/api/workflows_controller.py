@@ -1,16 +1,32 @@
-import json
-import pika
+# std imports
 from collections import defaultdict
-from flask import request, jsonify
+import json
 from urllib.parse import unquote
 
+# 3rd party imports
+from flask import request, jsonify, send_file, Response
+import pika
+
+
+# internal imports
 from nf_cloud_backend import app, get_database_connection, config, socketio
 from nf_cloud_backend.models.workflow import Workflow
 
 class WorkflowsController:
+    """
+    Controller for workflow endpoints.
+    """
+
     @staticmethod
     @app.route("/api/workflows")
     def index():
+        """
+        Endpoint for listing all workflows.
+
+        Returns
+        -------
+        Response
+        """
         offset = request.args.get("offset", None)
         limit = request.args.get("limit", None)
         database_connection = get_database_connection()
@@ -22,6 +38,18 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/<int:id>")
     def show(id: int):
+        """
+        Endpoint for requesting workflow attributes.
+
+        Parameters
+        ----------
+        id : int
+            Workflow ID
+
+        Returns
+        -------
+        Response
+        """
         database_connection = get_database_connection()
         with database_connection.cursor() as database_cursor:
             workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
@@ -35,6 +63,20 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/create", methods=["POST"]) 
     def create():
+        """
+        Endpoint for creating a workflow.
+
+        Returns
+        -------
+        Response
+            200 - on success
+            422 - on errors
+
+        Raises
+        ------
+        RuntimeError
+            Workflow cannot be inserted.
+        """
         errors = defaultdict(list)
         error_status_code = 422
 
@@ -65,6 +107,21 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/<int:id>/update", methods=["POST"])
     def update(id: int):
+        """
+        Endpoint for updating workflow.
+
+        Parameters
+        ----------
+        id : int
+            Workflow ID
+
+        Returns
+        -------
+        Response
+            200 - on success
+            404 - when ressource not found
+            422 - on error
+        """
         errors = defaultdict(list)
         data = request.json
 
@@ -121,6 +178,14 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/count") 
     def count():
+        """
+        Returns number of workflows
+
+        Returns
+        -------
+        Response
+            200
+        """
         database_connection = get_database_connection()
         with database_connection.cursor() as database_cursor:
             return jsonify({
@@ -131,6 +196,20 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/<int:id>/files")
     def files(id: int):
+        """
+        List files
+
+        Parameters
+        ----------
+        id : int
+            Workflow ID
+
+        Returns
+        -------
+        Reponse
+            200 - on success
+            404 - when workflow was not found
+        """
         directory = unquote(request.args.get('dir', "", type=str))
         if len(directory) > 0 and directory[0] == "/":
             directory = directory[1:]
@@ -163,6 +242,20 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/<int:id>/upload-file", methods=["POST"])
     def upload_file(id: int):
+        """
+        Upload files
+
+        Parameters
+        ----------
+        id : int
+            Workflow ID
+
+        Returns
+        -------
+        Response
+            200 - on success
+            422 - on error
+        """
         errors = defaultdict(list)
 
         if not "file" in request.files:
@@ -272,6 +365,20 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/<int:id>/schedule", methods=["POST"])
     def schedule(id: int):
+        """
+        Endpoint to schedule workflow for execution in RabbitMQ.
+
+        Parameters
+        ----------
+        id : int
+            Workflow ID
+
+        Returns
+        -------
+        Response
+            200 - successfull
+            422 - errors
+        """
         errors = defaultdict(list)
         database_connection = get_database_connection()
         with database_connection:
@@ -304,6 +411,19 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/<int:id>/finished", methods=["POST"])
     def finished(id: int):
+        """
+        Endpoint to finialize set workflow as finished by the worker.
+
+        Parameters
+        ----------
+        id : int
+            ID of workflow
+
+        Return
+        ------
+        Response
+            200 - Empty response
+        """
         database_connection = get_database_connection()
         with database_connection:
             with database_connection.cursor() as database_cursor:
@@ -318,6 +438,21 @@ class WorkflowsController:
     @staticmethod
     @app.route("/api/workflows/<int:id>/nextflow-log", methods=["POST"])
     def nextflow_log(id: int):
+        """
+        Endpoint for Nextflow to report log.
+        If log is received, a event is send to the browser with submitted and completed processes.
+
+        Parameters
+        ----------
+        id : int
+            ID of workflow
+
+        Returns
+        -------
+        Response
+            200 - emtpy, on success
+            422 - on errors
+        """
         errors = defaultdict(list)
         nextflow_log = json.loads(request.data.decode("utf-8"))
 
@@ -351,3 +486,5 @@ class WorkflowsController:
                     )
         
         return "", 200
+
+

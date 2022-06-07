@@ -1,12 +1,12 @@
+# std imports
 from __future__ import annotations
-
 import io
 import json
 import pathlib
 import shutil
-from typing import Union, List
+from typing import Union
 
-
+# 3rd party imports
 from nf_cloud_backend import config
 
 class Workflow:

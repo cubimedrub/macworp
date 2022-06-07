@@ -41,11 +41,12 @@ export default {
     },
     methods: {
         moveFolderUp(){
-            var position_last_path_segment = this.current_directory.lastIndexOf("/")
-            this.current_directory = this.current_directory.slice(0, position_last_path_segment)
+            let path_segments = this.current_directory.split("/").filter(segment => segment.length > 0)
+            path_segments.pop()
+            this.current_directory = path_segments.length > 0 ? `${path_segments.join("/")}/` : ""
         },
         moveIntoFolder(path){
-            this.current_directory = `${this.current_directory}/${path}`
+            this.current_directory = `${this.current_directory}${path}`
         },
         getFolderContent(){
             var url_encoded_path = encodeURIComponent(this.current_directory)

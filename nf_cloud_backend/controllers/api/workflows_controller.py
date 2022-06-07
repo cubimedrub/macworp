@@ -211,13 +211,11 @@ class WorkflowsController:
             404 - when workflow was not found
         """
         directory = unquote(request.args.get('dir', "", type=str))
-        if len(directory) > 0 and directory[0] == "/":
-            directory = directory[1:]
         database_connection = get_database_connection()
         with database_connection.cursor() as database_cursor:
             workflow = Workflow.select(database_cursor, "id = %s", [id], fetchall=False)
-            directory = workflow.file_directory.joinpath(directory)
-            if directory.is_dir():
+            directory = workflow.get_path(directory)
+            if directory.is_dir() and workflow.in_file_director:
                 files = []
                 folders = []
                 for entry in directory.iterdir():

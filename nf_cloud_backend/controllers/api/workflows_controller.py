@@ -6,7 +6,7 @@ from urllib.parse import unquote
 # 3rd party imports
 from flask import request, jsonify, send_file, Response
 import pika
-
+import zipstream
 
 # internal imports
 from nf_cloud_backend import app, get_database_connection, config, socketio
@@ -484,5 +484,42 @@ class WorkflowsController:
                     )
         
         return "", 200
+
+    @staticmethod
+    @app.route("/api/workflows/<int:w_id>/download")
+    def download(w_id: int):
+        """
+        Downloads a file or folder.
+        If path is a folder the response is a zip package.
+
+        Parameters
+        ----------
+        w_id : int
+            Workflow ID
+        path : strs
+            Path to folder or file.
+        """
+        path = unquote(request.args.get('path', "", type=str))
+        database_connection = get_database_connection()
+        with database_connection.cursor() as database_cursor:
+            workflow = Workflow.select(database_cursor, "id = %s", [w_id], fetchall=False)
+            if workflow is None:
+                return jsonify({}), 404
+            path_to_download = workflow.get_path(path)
+            if not path_to_download.exists():
+                return "", 404
+            elif path_to_download.is_file():
+                return send_file(path_to_download, as_attachment=True)
+            else:
+                def build_stream():
+                        stream = zipstream.ZipFile(mode='w', compression=zipstream.ZIP_DEFLATED)
+                        project_path_len = len(str(workflow.file_directory))
+                        for path in path_to_download.glob("**/*"):
+                            if path.is_file():
+                                stream.write(path, arcname=str(path)[project_path_len:])    # Remove absolut path before project subfolder, including project id
+                        yield from stream
+                response = Response(build_stream(), mimetype='application/zip')
+                response.headers["Content-Disposition"] = f"attachment; filename={workflow.name}--{path.replace('/', '+')}.zip"
+                return response
 
 

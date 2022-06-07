@@ -20,15 +20,25 @@
                     <i class="fas fa-folder"></i>
                     {{path}}
                 </span>
-                <button @click="deletePath(`${current_directory}/${path}`)" type="button" class="btn btn-danger btn-sm">
-                    <i class="fas fa-trash"></i>
-                </button>
+                <div class="btn-group">
+                    <a :href="getDownloadUrl(path)" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-download"></i>
+                    </a>
+                    <button @click="deletePath(`${current_directory}/${path}`)" type="button" class="btn btn-danger btn-sm">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </li>
             <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
                 <span>{{ file }}</span>
-                <button @click="deletePath(`${current_directory}/${file}`)" type="button" class="btn btn-danger btn-sm">
-                    <i class="fas fa-trash"></i>
-                </button>
+                <div class="btn-group">
+                    <a :href="getDownloadUrl(file)" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-download"></i>
+                    </a>
+                    <button @click="deletePath(`${current_directory}/${file}`)" type="button" class="btn btn-danger btn-sm">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </li>
         </ul>
         <div @click="passClickToFileInput" @drop.prevent="addDroppedFiles" @dragover.prevent class="filedrop-area d-flex justify-content-center align-items-center mb-3">
@@ -212,6 +222,10 @@ export default {
             var temp_path = path.lastIndexOf("/") == path.length - 1 ? path.slice(0, path.length - 1) : path
             var start_of_last_segment = temp_path.lastIndexOf("/")
             return path.slice(start_of_last_segment + 1, path.length)
+        },
+        getDownloadUrl(path){
+            let complete_path = `${this.current_directory}${path}`
+            return `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.workflow_id}/download?path=${complete_path}`
         }
     },
     computed: {

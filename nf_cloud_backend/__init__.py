@@ -5,6 +5,7 @@ from threading import Thread
 import traceback
 
 # 3rd party imports
+import eventlet
 from flask import Flask, g as request_store, request
 from flask_socketio import SocketIO
 import psycopg2
@@ -30,6 +31,13 @@ app.config.update(
     SECRET_KEY = bytes(config['secret'], "ascii"),
     PREFERRED_URL_SCHEME = 'https' if config['use_https'] else 'http'
 )
+
+async_mode = "threading"
+"""Mode for SocketIO
+"""
+if env == Environment.production:
+    eventlet.monkey_patch()
+    async_mode = "eventlet"
 
 # SocketIO for bi-directional 
 socketio = SocketIO(app, cors_allowed_origins="*")

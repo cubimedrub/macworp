@@ -41,6 +41,7 @@ yarn --cwd ./nf_cloud_frontend install
 # Shell 1
 docker-compose up
 # Shell 2
+pipenv run db:migrate 'postgresql://postgres:developer@127.0.0.1:5433/nf_cloud'
 pipenv run dev
 ```
 
@@ -49,6 +50,11 @@ pipenv run dev
 | Frontend | `http://localhost:5000` |
 | API | `http://localhost:3001` |
 For development, Flask is configured to add CORS-Headers by default.
+
+### Database migrations
+To keep track of database changes, this project uses [`peewee_migrate`](https://github.com/klen/peewee_migrate).
+Migrations are located in `nf_cloud_backend/migrations/`. For now this needs to be added manually when using `pw_migrate`. 
+
 
 ## Production
 Coming soon

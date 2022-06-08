@@ -2,7 +2,7 @@
 from flask import request, jsonify
 
 # internal imports
-from nf_cloud_backend import app, get_database_connection, config
+from nf_cloud_backend import app, config
 
 
 class NextflowWorkflowControllers:

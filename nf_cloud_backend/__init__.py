@@ -9,8 +9,7 @@ import eventlet
 from flask import Flask, g as request_store, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
-import psycopg2
-from psycopg2.pool import ThreadedConnectionPool
+from playhouse.flask_utils import FlaskDB
 from werkzeug.exceptions import HTTPException
 
 # internal imports
@@ -59,46 +58,10 @@ socketio = SocketIO(
 """SocketIO for bidirectional communication (events) between server and browser.
 """
 
-
-database_pool = ThreadedConnectionPool(
-    1,
-    config['database']['pool_size'],
+db_wrapper = FlaskDB(
+    app,
     config['database']['url']
 )
-"""Initialize connection pool for database
-Please use `get_database_connection` to get a database connection which is valid for the current request. 
-It will be put back automatically.
-However, if you want to use a database connection in a generator for streaming, 
-you have to manually get and put back the connection.
-The best way to deal with it in a generator, 
-is to use a try/catch-block and put the connection back when GeneratorExit is thrown or in the finally-block.
-"""
- 
-def get_database_connection(timeout: int = 200):
-    """
-    Takes a database connection from the pool, stores it in the request_store and returns it.
-    It is automatically returned to the database pool after the requests is finished.
-
-    Parameters
-    ----------
-    timeout : int
-        Timeout in ms to get a connections
-
-    Returns
-    -------
-    Database connection
-    """
-    timeout_at = (time.time_ns() * 1000) + timeout
-    while True:
-        try:
-            if "database_connection" not in request_store:
-                request_store.database_connection = database_pool.getconn() # pylint: disable=assigning-non-slot
-            return request_store.database_connection
-        except psycopg2.pool.PoolError as error:
-            if time.time_ns() * 1e6 < timeout_at:
-                continue
-            else:
-                raise error
 
 @app.before_request
 def track_request():
@@ -123,20 +86,6 @@ def track_request():
         ))
         track_thread.start()
         request_store.track_thread = track_thread 
-
-@app.teardown_appcontext
-def return_database_connection_to_pool(exception=None): #pylint: disable=unused-argument
-    """
-    Returns the database connection to the pool
-
-    Parameters
-    ----------
-    exception : Any, optional
-        Required for `
-    """
-    database_connection = request_store.pop("database_connection", None)
-    if database_connection:
-        database_pool.putconn(database_connection)
 
 @app.teardown_appcontext
 def wait_for_track_request(exception=None): #pylint: disable=unused-argument

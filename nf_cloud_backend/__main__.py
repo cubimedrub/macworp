@@ -1,6 +1,12 @@
-from nf_cloud_backend import app, env, config, socketio
-from nf_cloud_backend.utility.configuration import Environment
+# internal imports
+from nf_cloud_backend.command_line_interface import ComandLineInterface
 
-if __name__ == '__main__':
-    print(f"Start NF-Cloud webinterface in {env.name} mode on {config['interface']}:{config['port']}")
-    socketio.run(app, config['interface'], config['port'])
+def main():
+    """
+    Main function
+    """
+    cli = ComandLineInterface()
+    cli.start()
+
+if __name__ == "__main__":
+    main()

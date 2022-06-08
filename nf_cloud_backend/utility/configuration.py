@@ -18,30 +18,12 @@ class Environment(Enum):
 
 class Configuration():
     @staticmethod
-    def get_config_and_env(consider_cli: bool = True) -> tuple:
+    def get_config_and_env() -> tuple:
         environment = Environment.get(os.getenv('NF_CLOUD_WEB_ENV', Environment.development.name))
-
-        cli_args = None
-        if consider_cli:
-            cli_args = Configuration._parse_cli()
-            # Override with CLI argument
-            if cli_args.environment:
-                environment = Environment.get(cli_args.environment)
 
         # Read config from files
         config = Configuration._read_files(environment)
-        
-        if consider_cli:
-            # Overwrite with CLI argument
-            if cli_args.interface:
-                config['interface'] = cli_args.interface
-
-            # Overwrite with CLI argument
-            if cli_args.port:
-                config['port'] = cli_args.port
-
         Configuration._validate_config(config)
-
         return config, environment
 
     @staticmethod
@@ -76,15 +58,6 @@ class Configuration():
                     config = Configuration._merge_dicts_recursively(new_config, config)
 
         return config
-
-    @staticmethod
-    def _parse_cli():
-        cli_parser = argparse.ArgumentParser(description='Run database webinterface')
-        cli_parser.add_argument('--environment', '-e', required=False, choices=[Environment.production.name, Environment.development.name], help='Sets the execution environment (Overrides environment variable MDCHQ_ENV).')
-        cli_parser.add_argument('--interface', '-i', type=str, required=False, help='Sets on which interface the HQ is running.')
-        cli_parser.add_argument('--port', '-p', type=int, required=False, help='Sets on which port the HQ is running.')
-
-        return cli_parser.parse_args()
 
     @classmethod
     def _validate_config(cls, config: dict) -> bool:

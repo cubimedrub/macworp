@@ -63,15 +63,15 @@
 </template>
 
 <script>
-import WorkflowFileBrowser from '../mixins/workflow_file_browser'
+import ProjectFileBrowser from '../mixins/project_file_browser'
 
 export default {
     /**
-     * Implements logic for navigating through the workflow work directory with 
+     * Implements logic for navigating through the project work directory with 
      * the ability to create new directories, upload new files and delete present files.
      */
     mixins: [
-        WorkflowFileBrowser
+        ProjectFileBrowser
     ],
     data(){
         return {
@@ -116,7 +116,7 @@ export default {
                     form_data.append("file", this.upload_queue[0].file);
                     form_data.append("directory", this.upload_queue[0].directory);
                     this.upload_queue[0].is_uploading = true;
-                    await fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.workflow_id}/upload-file`, {
+                    await fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/upload-file`, {
                         method:'POST',
                         body: form_data
                     }).then(response => {
@@ -145,7 +145,7 @@ export default {
          * @param {String} path
          */
         deletePath(path){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.workflow_id}/delete-path`, {
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/delete-path`, {
                 method:'POST',
                 headers: {
                     "Content-Type": "application/json"
@@ -171,7 +171,7 @@ export default {
              */
             if(!this.is_creating_folder){
                 this.is_creating_folder = true
-                fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.workflow_id}/create-folder`, {
+                fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/create-folder`, {
                     method:'POST',
                     headers: {
                         "Content-Type": "application/json"
@@ -225,7 +225,7 @@ export default {
         },
         getDownloadUrl(path){
             let complete_path = `${this.current_directory}${path}`
-            return `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.workflow_id}/download?path=${complete_path}`
+            return `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${complete_path}`
         }
     },
     computed: {

@@ -19,34 +19,34 @@ class Workflow:
     __slots__ = [
         "__nf_bin",
         "__work_dir",
-        "__nextflow_workflow_path",
+        "__workflow_path",
         "__nextflow_main_script_name",
-        "__direct_nextflow_paramters",
+        "__fix_nextflow_paramters",
         "__dynamic_nextflow_arguments",
-        "__static_nextflow_arguments",
+        "__static_workflow_arguments",
         "__nextflow_weblog_url",
     ]
 
     __nf_bin: pathlib.Path
     __work_dir: pathlib.Path
-    __nextflow_workflow_path: pathlib.Path
+    __workflow_path: pathlib.Path
     __nextflow_main_script_name: str
-    __direct_nextflow_paramters: list
+    __fix_nextflow_paramters: list
     __dynamic_nextflow_arguments: dict
-    __static_nextflow_arguments: dict
+    __static_workflow_arguments: dict
     __nextflow_weblog_url: str
 
-    def __init__(self, nf_bin: pathlib.Path, work_dir: pathlib.Path, nextflow_workflow_path: pathlib.Path, nextflow_main_script_name: list, direct_nextflow_paramters: str, dynamic_nextflow_arguments: dict, static_nextflow_arguments: dict, nextflow_weblog_url: str):
+    def __init__(self, nf_bin: pathlib.Path, work_dir: pathlib.Path, workflow_path: pathlib.Path, nextflow_main_script_name: list, fix_nextflow_paramters: str, dynamic_nextflow_arguments: dict, static_workflow_arguments: dict, nextflow_weblog_url: str):
         self.__nf_bin = nf_bin
         self.__work_dir = work_dir
-        self.__nextflow_workflow_path = nextflow_workflow_path
+        self.__workflow_path = workflow_path
         self.__nextflow_main_script_name = nextflow_main_script_name
-        self.__direct_nextflow_paramters = direct_nextflow_paramters
+        self.__fix_nextflow_paramters = fix_nextflow_paramters
         self.__dynamic_nextflow_arguments = dynamic_nextflow_arguments
-        self.__static_nextflow_arguments = static_nextflow_arguments
+        self.__static_workflow_arguments = static_workflow_arguments
         self.__nextflow_weblog_url = nextflow_weblog_url
 
-    def _pre_nextflow_arguments(self) -> List[str]:
+    def _pre_workflow_arguments(self) -> List[str]:
         """
         Arguments which are add before the nextflow command. Useful for `firejail`.
         
@@ -72,11 +72,11 @@ class Workflow:
             str(self.__work_dir),
             "-with-weblog",
             self.__nextflow_weblog_url
-        ] + self.__direct_nextflow_paramters
+        ] + self.__fix_nextflow_paramters
 
-    def _post_nextflow_arguments(self) -> List[str]:
+    def _post_workflow_arguments(self) -> List[str]:
         """
-        AbstractWorkflow._post_nextflow_arguments() returns the given nextflow arguments
+        AbstractWorkflow._post_workflow_arguments() returns the given nextflow arguments
 
         Returns
         -------
@@ -92,7 +92,7 @@ class Workflow:
         -------
         Path to main script
         """
-        return self.__nextflow_workflow_path.joinpath(self.__nextflow_main_script_name)
+        return self.__workflow_path.joinpath(self.__nextflow_main_script_name)
 
     def _nextflow_command(self) -> List[str]:
         """
@@ -102,7 +102,7 @@ class Workflow:
         -------
         Nextflow command as list
         """
-        return self._pre_nextflow_arguments() \
+        return self._pre_workflow_arguments() \
             + [
                 str(self.__nf_bin),
                 "run"
@@ -110,7 +110,7 @@ class Workflow:
             + self._nextflow_run_parameters() \
             + self.__get_arguments_as_list() \
             + [str(self.__nextflow_main_scrip_path())] \
-            + self._post_nextflow_arguments()
+            + self._post_workflow_arguments()
 
     @classmethod
     def remove_preceding_slash(cls, some_string: str) -> str:
@@ -141,12 +141,12 @@ class Workflow:
         -------
         Nextflow process argument as list.
         """
-        nextflow_arguments = []
+        workflow_arguments = []
         # Merge arguments
         merged_arguments = merge(
             {},
             self.__dynamic_nextflow_arguments if self.__dynamic_nextflow_arguments is not None else {},
-            self.__static_nextflow_arguments if self.__static_nextflow_arguments is not None else {}
+            self.__static_workflow_arguments if self.__static_workflow_arguments is not None else {}
         )
         for arg_name, arg_definition in merged_arguments.items():
             arg_value = arg_definition["value"]
@@ -167,10 +167,10 @@ class Workflow:
                 # Path.joinpath removes wildcards. So we need to append 
                 # the value manually to the path.
                 arg_value = f"{self.__work_dir}/{self.__class__.remove_preceding_slash(arg_value)}"
-            nextflow_arguments.append(f"--{arg_name}")
-            nextflow_arguments.append(arg_value)
+            workflow_arguments.append(f"--{arg_name}")
+            workflow_arguments.append(arg_value)
             
-        return nextflow_arguments
+        return workflow_arguments
 
     def start(self):
         """

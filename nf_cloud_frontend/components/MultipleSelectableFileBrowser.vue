@@ -31,15 +31,15 @@
 
 
 <script>
-import WorkflowFileBrowser from "../mixins/workflow_file_browser"
+import ProjectFileBrowser from "../mixins/project_file_browser"
 
 export default {
     /**
-     * Implements logic for navigating through the workflow work directory with 
+     * Implements logic for navigating through the project work directory with 
      * the ability to select multiple paths.
      */
     mixins: [
-        WorkflowFileBrowser
+        ProjectFileBrowser
     ],
     props: {
         /**

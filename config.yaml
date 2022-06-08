@@ -23,7 +23,8 @@ matomo:
 rabbit_mq:
   # RabbitMQ url. Make sure to encode the virtual host: https://pika.readthedocs.io/en/stable/modules/parameters.html#pika.connection.URLParameters
   url: "amqp://user:password@host:port/virtual_host"
-  workflow_queue: workflows
+  # Queue for scheduled projects
+  project_workflow_queue: project_workflow
 workflows: {}
     # E.g.
     # "Workflow Name":

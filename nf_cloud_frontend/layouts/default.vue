@@ -19,9 +19,9 @@
                         </p>
                         <ul class="nav flex-column">
                                 <li class="nav-item">
-                                        <NuxtLink to="/workflows" class="nav-link">
+                                        <NuxtLink to="/projects" class="nav-link">
                                                 <i class="fas fa-random"></i>
-                                                <span>Workflow</span>
+                                                <span>Project</span>
                                         </NuxtLink>
                                 </li>
                         </ul>

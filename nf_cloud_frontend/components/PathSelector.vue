@@ -24,7 +24,7 @@
                     </div>
                     <div class="modal-body">
                         <SelectableFileBrowser 
-                            :workflow_id="workflow_id"
+                            :project_id="project_id"
                             :parent_event_bus="local_event_bus"
                             :select_event="value_change_event"
                             :with_selectable_files="with_selectable_files"
@@ -56,9 +56,9 @@ export default {
     ],
     props: {
         /**
-         * Workflow ID
+         * Project ID
          */
-        workflow_id: {
+        project_id: {
             type: Number,
             required: true
         },

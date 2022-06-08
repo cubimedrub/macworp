@@ -2,10 +2,10 @@ import Vue from "vue"
 
 export default {
     /**
-     * Implements logic for navigating through the workflow work directory.
+     * Implements logic for navigating through the project work directory.
      */
     props: {
-        workflow_id: {
+        project_id: {
             type: Number,
             required: true
         },
@@ -50,7 +50,7 @@ export default {
         },
         getFolderContent(){
             var url_encoded_path = encodeURIComponent(this.current_directory)
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.workflow_id}/files?dir=${url_encoded_path}`)
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/files?dir=${url_encoded_path}`)
             .then(response => {
                 if(response.ok) {
                     return response.json().then(response_data => {

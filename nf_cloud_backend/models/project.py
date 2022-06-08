@@ -16,17 +16,17 @@ from playhouse.postgres_ext import BinaryJSONField
 # internal import
 from nf_cloud_backend import config, db_wrapper as db
 
-class Workflow(db.Model):
+class Project(db.Model):
     id = BigAutoField(primary_key=True)
     name = CharField(max_length=512, null=False)
-    nextflow_workflow = CharField(max_length=255, null=False, default="")
-    nextflow_arguments = BinaryJSONField(null=False, default={})
+    workflow = CharField(max_length=255, null=False, default="")
+    workflow_arguments = BinaryJSONField(null=False, default={})
     is_scheduled = BooleanField(null=False, default=False)
     submitted_processes = IntegerField(null=False, default=0)
     completed_processes = IntegerField(null=False, default=0)
 
     class Meta:
-        db_table="workflows"
+        db_table="projects"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -66,13 +66,13 @@ class Workflow(db.Model):
         """
         Returns
         -------
-        Returns the workflow as JSON
+        Returns the project as JSON
         """
         return {
             "id": self.id,
             "name": self.name,
-            "nextflow_arguments": self.nextflow_arguments,
-            "nextflow_workflow": self.nextflow_workflow,
+            "workflow_arguments": self.workflow_arguments,
+            "workflow": self.workflow,
             "submitted_processes": self.submitted_processes,
             "completed_processes": self.completed_processes,
             "is_scheduled": self.is_scheduled
@@ -100,7 +100,7 @@ class Workflow(db.Model):
 
     def in_file_director(self, path: pathlib.Path) -> bool:
         """
-        Checks if the given path is part of the workflows file directory.
+        Checks if the given path is part of the project's file directory.
 
         Parameters
         ----------
@@ -116,18 +116,18 @@ class Workflow(db.Model):
     
     def get_path(self, path: str) -> pathlib.Path:
         """
-        Adds the given path to the workflow file directory. If the joined path results in a target
+        Adds the given path to the project's file directory. If the joined path results in a target
         outside project directory the project directory itself is returned.
 
         Parameters
         ----------
         path : str
-            Path within the workflow directory
+            Path within the project directory
 
         Returns
         -------
         Path
-            Absolute path within the workflow directory.
+            Absolute path within the project directory.
 
         Raises
         ------
@@ -156,8 +156,8 @@ class Workflow(db.Model):
         target_directory = self.get_path(directory)
         if not target_directory.is_dir():
             target_directory.mkdir(parents=True, exist_ok=True)
-        with target_directory.joinpath(filename).open("wb") as workflow_file:
-            workflow_file.write(file)
+        with target_directory.joinpath(filename).open("wb") as project_file:
+            project_file.write(file)
 
     def remove_path(self, path: str) -> bool:
         """
@@ -183,7 +183,7 @@ class Workflow(db.Model):
 
     def create_folder(self, target_path: str, new_path: str) -> bool:
         """
-        Creates a folder in the work directory of the workflow.
+        Creates a folder in the work directory of the project.
         Creates parents as well, if path contains multiple segments.
 
         Parameters
@@ -215,6 +215,6 @@ class Workflow(db.Model):
         """
         return json.dumps({
             "id": self.id,
-            "nextflow_workflow": self.nextflow_workflow,
-            "nextflow_arguments": self.nextflow_arguments
+            "workflow": self.workflow,
+            "workflow_arguments": self.workflow_arguments
         })

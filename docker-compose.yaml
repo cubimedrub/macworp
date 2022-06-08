@@ -3,15 +3,15 @@ services:
   psql:
     image: postgres:13
     ports:
-      - 127.0.0.1:5433:5432
+      - 127.0.0.1:5434:5432
     environment:
       POSTGRES_PASSWORD: developer
       POSTGRES_DB: nf_cloud
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - 127.0.0.1:15673:15672
-      - 127.0.0.1:5673:5672
+      - 127.0.0.1:15674:15672
+      - 127.0.0.1:5674:5672
     environment:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: developer

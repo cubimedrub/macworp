@@ -32,9 +32,9 @@ class Worker:
         "__nf_bin",
         "__nf_cloud_url",
         "__rabbit_mq_url",
-        "__workflow_queue",
-        "__workflow_data_path",
-        "__nextflow_workflows",
+        "__project_queue",
+        "__project_data_path",
+        "__workflows",
         "__connection",
         "__channel",
         "__stop_event"
@@ -43,20 +43,20 @@ class Worker:
     __nf_bin: pathlib.Path
     __nf_cloud_url: str
     __rabbit_mq_url: str
-    __workflow_queue: str
-    __workflow_data_path: pathlib.Path
-    __nextflow_workflows: dict
+    __project_queue: str
+    __project_data_path: pathlib.Path
+    __workflows: dict
     __connection: pika.BaseConnection
     __channel: Channel
     __stop_event: Event
 
-    def __init__(self, nf_bin: pathlib.Path, nf_cloud_url: str, rabbit_mq_url: str, workflow_queue: str, workflow_data_path: pathlib.Path, nextflow_workflows: dict, stop_event: Event):
+    def __init__(self, nf_bin: pathlib.Path, nf_cloud_url: str, rabbit_mq_url: str, workflow_queue: str, workflow_data_path: pathlib.Path, workflows: dict, stop_event: Event):
         self.__nf_bin = nf_bin
         self.__nf_cloud_url = nf_cloud_url
         self.__rabbit_mq_url = rabbit_mq_url
-        self.__workflow_queue = workflow_queue
-        self.__workflow_data_path = workflow_data_path
-        self.__nextflow_workflows = nextflow_workflows
+        self.__project_queue = workflow_queue
+        self.__project_data_path = workflow_data_path
+        self.__workflows = workflows
         self.__connection = None
         self.__channel = None
         self.__stop_event = stop_event
@@ -70,38 +70,38 @@ class Worker:
 
                 # Second return value 'properties' is unnecessary. After 5 second it consume will return '(None, None, None)' if no message was send.
                 # This will give us time for maintenance, e.g. stop if a stop signal was received
-                for method_frame, _, body in self.__channel.consume(self.__workflow_queue, inactivity_timeout=self.__class__.INACTIVITY_TIMEOUT):
+                for method_frame, _, body in self.__channel.consume(self.__project_queue, inactivity_timeout=self.__class__.INACTIVITY_TIMEOUT):
                     if method_frame and body:
                         try:
                             # Parse identification arguments
-                            workflow_params = json.loads(body)
-                            print("workflow_params:", workflow_params)
+                            project_params = json.loads(body)
+                            print("project_params:", project_params)
 
-                            work_dir = self.__workflow_data_path.joinpath(f"{workflow_params['id']}/")
-                            weblog_url = f"{self.__nf_cloud_url}/api/workflows/{workflow_params['id']}/nextflow-log"
+                            work_dir = self.__project_data_path.joinpath(f"{project_params['id']}/")
+                            weblog_url = f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/workflow-log"
                             workflow = None
                             workflow = Workflow(
                                 self.__nf_bin,
                                 work_dir,
-                                self.__get_nextflow_workflow_path(
-                                    workflow_params["nextflow_workflow"]
+                                self.__get_workflow_path(
+                                    project_params["workflow"]
                                 ),
-                                self.__get_nextflow_workflow_script_path(
-                                    workflow_params["nextflow_workflow"]
+                                self.__get_workflow_script_path(
+                                    project_params["workflow"]
                                 ),
                                 self.__get_direct_nextflow_parameters(
-                                    workflow_params["nextflow_workflow"]
+                                    project_params["workflow"]
                                 ),
-                                workflow_params["nextflow_arguments"],
-                                self.__get_nextflow_workflow_static_arguments(
-                                    workflow_params["nextflow_workflow"]
+                                project_params["workflow_arguments"],
+                                self.__get_workflow_static_arguments(
+                                    project_params["workflow"]
                                 ),
                                 weblog_url
                             )
                             workflow.start()
                             self.__channel.basic_ack(delivery_tag = method_frame.delivery_tag)
                         finally:
-                            requests.post(f"{self.__nf_cloud_url}/api/workflows/{workflow_params['id']}/finished")
+                            requests.post(f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/finished")
                     if self.__stop_event.is_set():
                         break
 
@@ -126,21 +126,21 @@ class Worker:
         print("RabbitMQ connetion was closed unexpectedly. Will try to reconnect in a few seconds. Error was:", error)
         time.sleep(5)
 
-    def __get_nextflow_workflow_path(self, nextflow_workflow: str) -> pathlib.Path:
-        directory = self.__nextflow_workflows[nextflow_workflow]["directory"]
+    def __get_workflow_path(self, workflow: str) -> pathlib.Path:
+        directory = self.__workflows[workflow]["directory"]
         return pathlib.Path(directory).absolute()
 
-    def __get_nextflow_workflow_script_path(self, nextflow_workflow: str) -> str:
-        return self.__nextflow_workflows[nextflow_workflow]["script"]
+    def __get_workflow_script_path(self, workflow: str) -> str:
+        return self.__workflows[workflow]["script"]
 
-    def __get_nextflow_workflow_static_arguments(self, nextflow_workflow: str) -> str:
-        if "static" in self.__nextflow_workflows[nextflow_workflow]["args"]:
-            return self.__nextflow_workflows[nextflow_workflow]["args"]["static"]
+    def __get_workflow_static_arguments(self, workflow: str) -> str:
+        if "static" in self.__workflows[workflow]["args"]:
+            return self.__workflows[workflow]["args"]["static"]
         return {}
 
-    def __get_direct_nextflow_parameters(self, nextflow_workflow: str) -> list:
-        if "nextflow_parameters" in self.__nextflow_workflows[nextflow_workflow]:
-            return self.__nextflow_workflows[nextflow_workflow]["nextflow_parameters"]
+    def __get_direct_nextflow_parameters(self, workflow: str) -> list:
+        if "nextflow_parameters" in self.__workflows[workflow]:
+            return self.__workflows[workflow]["nextflow_parameters"]
         return []
 
 

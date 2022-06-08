@@ -54,7 +54,7 @@ export default {
 
   server: {
     host: process.env.NF_CLOUD_FRONTEND_INTERFACE || "127.0.0.1",
-    port: process.env.NF_CLOUD_FRONTEND_PORT || 5000,
+    port: process.env.NF_CLOUD_FRONTEND_PORT || 5001,
     timing: false
   }
 }

@@ -19,7 +19,7 @@ class RabbitMQ:
 
                 # Create main queue
                 channel.queue_declare(
-                    queue=config['rabbit_mq']['workflow_queue'], 
+                    queue=config['rabbit_mq']['project_workflow_queue'], 
                     durable=True
                 )
 
@@ -53,7 +53,7 @@ class RabbitMQ:
 
             # Get queue statistics
             queue_state = channel.queue_declare(
-                queue=config['rabbit_mq']['workflow_queue'], 
+                queue=config['rabbit_mq']['project_workflow_queue'], 
                 durable=True,
                 passive=True
             )

@@ -12,18 +12,18 @@ description: Learn how the API works
 
 
 
-# Workflows
-## List workflows
-* url: `/api/workflows"
+# Projects
+## List projects
+* url: `/api/projects"
 ### Output
 ```json
 {
-    "workflows": [
+    "projects": [
         {
             "id": <int>,
             "name": <string>,
-            "nextflow_arguments": <dict>,
-            "nextflow_workflow": <string>,
+            "workflow_arguments": <dict>,
+            "nextflow_project": <string>,
             "submitted_processes": <int>,
             "completed_processes": <int>,
             "is_scheduled": <boolean>
@@ -32,16 +32,16 @@ description: Learn how the API works
     ]
 }
 ```
-## Get a specific workflow
-* url: `/api/workflows/<int:id>"
+## Get a specific project
+* url: `/api/projects/<int:id>"
 ### Output
 ```json
 {
-    "workflow": {
+    "project": {
         "id": <int>,
         "name": <string>,
-        "nextflow_arguments": <dict>,
-        "nextflow_workflow": <string>,
+        "workflow_arguments": <dict>,
+        "nextflow_project": <string>,
         "submitted_processes": <int>,
         "completed_processes": <int>,
         "is_scheduled": <boolean>
@@ -49,8 +49,8 @@ description: Learn how the API works
 }
 ```
 
-## Create a workflow
-* url: `/api/workflows/create", 
+## Create a project
+* url: `/api/projects/create", 
 * methods: `POST`
 ### Request body
 ```json
@@ -61,11 +61,11 @@ description: Learn how the API works
 ### Output
 ```json
 {
-    "workflow": {
+    "project": {
         "id": <int>,
         "name": <string>,
-        "nextflow_arguments": <dict>,
-        "nextflow_workflow": <string>,
+        "workflow_arguments": <dict>,
+        "nextflow_project": <string>,
         "submitted_processes": <int>,
         "completed_processes": <int>,
         "is_scheduled": <boolean>
@@ -73,13 +73,13 @@ description: Learn how the API works
 }
 ```
 
-## Update a workflow
-* url: `/api/workflows/<int:id>/update", 
+## Update a project
+* url: `/api/projects/<int:id>/update", 
 * methods: `POST`
 ### Request body
 ```json
 {
-    "nextflow_workflow": "<string>",
+    "nextflow_project": "<string>",
     "nextflow_argumenty: <dict>
 }
 ```
@@ -88,16 +88,16 @@ description: Learn how the API works
 {}
 ```
 
-## Delete a workflow
-* url: `/api/workflows/<int:id>/delete`
+## Delete a project
+* url: `/api/projects/<int:id>/delete`
 * methods: `POST`
 ### Output
 ```json
 {}
 ```
 
-## Get workflow count
-* url: `/api/workflows/count"
+## Get project count
+* url: `/api/projects/count"
 ### Output
 ```json
 {
@@ -105,8 +105,8 @@ description: Learn how the API works
 }
 ```
 
-## List workflow files
-* url: `/api/workflows/<int:id>/files"
+## List project files
+* url: `/api/projects/<int:id>/files"
 ### Output
 ```json
 {
@@ -116,7 +116,7 @@ description: Learn how the API works
 ```
 
 ## Upload a new file
-* url: `/api/workflows/<int:id>/upload-file", 
+* url: `/api/projects/<int:id>/upload-file", 
 * methods: `POST`
 ### Request body (`multipart/form-data`)
 * file: `<binary file>`
@@ -129,8 +129,8 @@ description: Learn how the API works
 }
 ```
 
-## Delete file/folder from workflow
-* url: `/api/workflows/<int:id>/delete-path", 
+## Delete file/folder from project
+* url: `/api/projects/<int:id>/delete-path", 
 * methods: `POST`
 ### Request body
 ```json
@@ -143,8 +143,8 @@ description: Learn how the API works
 ""
 ```
 
-## Create a new folder within a workflow
-* url: `/api/workflows/<int:id>/create-folder", 
+## Create a new folder within a project
+* url: `/api/projects/<int:id>/create-folder", 
 * methods: `POST`
 ### Request body
 ```json
@@ -157,8 +157,8 @@ description: Learn how the API works
 ""
 ```
 
-## Schedule a workflow for execution
-* url: `/api/workflows/<int:id>/schedule", 
+## Schedule a project for execution
+* url: `/api/projects/<int:id>/schedule", 
 * methods: `POST`
 ### Output
 ```json
@@ -170,7 +170,7 @@ description: Learn how the API works
 ## Finalize execution
 Should only by used by worker.    
 Signals that the execution is finished.
-* url: `/api/workflows/<int:id>/finished", 
+* url: `/api/projects/<int:id>/finished", 
 * methods: `POST`
 ### Output
 ```
@@ -179,7 +179,7 @@ Signals that the execution is finished.
 
 ## Nextflow weblog endpoint
 Should only by nextflow for reporting traces.
-* url: `/api/workflows/<int:id>/nextflow-log", 
+* url: `/api/projects/<int:id>/nextflow-log", 
 * methods: `POST`
 ## Request body
 See: https://www.nextflow.io/docs/latest/tracing.html#weblog-via-http
@@ -188,22 +188,22 @@ See: https://www.nextflow.io/docs/latest/tracing.html#weblog-via-http
 ""
 ```
 
-# Nextflow workflows
-## List available nextflow workflows
-* url: `/api/nextflow-workflows`
+# Nextflow projects
+## List available nextflow projects
+* url: `/api/nextflow-projects`
 ### Output
 ```json
 {
-    "nextflow_workflows": [
+    "nextflow_projects": [
         <string>,
         <string>
     ]
 }
 ```
 
-## Get dynamic arguments for a nextflow workflow
+## Get dynamic arguments for a nextflow project
 Returns the dynamic arguments as defined in the configuration.
-* url: `/api/nextflow-workflows/<string:nextflow_workflow>/arguments`
+* url: `/api/nextflow-projects/<string:nextflow_project>/arguments`
 ### Output
 ```json
 {

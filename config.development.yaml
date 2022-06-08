@@ -4,10 +4,10 @@ secret: "development"
 debug: true
 use_https: false
 database:
-  url: postgresql://postgres:developer@127.0.0.1:5433/nf_cloud
+  url: postgresql://postgres:developer@127.0.0.1:5434/nf_cloud
   pool_size: 4 # In development mode, more than one connections are supported
 rabbit_mq:
-  url: "amqp://admin:developer@127.0.0.1:5673/%2f"
+  url: "amqp://admin:developer@127.0.0.1:5674/%2f"
 workflows:
   "Hello World (Locally)":
     directory: ./test_workflows/hello_world

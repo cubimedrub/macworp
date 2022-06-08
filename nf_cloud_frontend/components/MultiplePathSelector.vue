@@ -25,7 +25,7 @@
                     <div class="modal-body">
                         <MultipleSelectableFileBrowser 
                             :selected_paths="current_value"
-                            :workflow_id="workflow_id"
+                            :project_id="project_id"
                             :parent_event_bus="local_event_bus"
                             :select_event="selected_path_event"
                             :unselect_event="unselected_path_event"
@@ -61,9 +61,9 @@ export default {
     ],
     props: {
         /**
-         * Workflow ID
+         * Project ID
          */
-        workflow_id: {
+        project_id: {
             type: Number,
             required: true
         },

@@ -1,17 +1,17 @@
 <template>
     <div>
-        <h1>Start a new workflow</h1>
+        <h1>Start a new project</h1>
         <div class="row mb-3">
-            <label for="workflow-name" class="col-sm-2 col-form-label">Name</label>
+            <label for="project-name" class="col-sm-2 col-form-label">Name</label>
             <div class="col-sm-10 d-flex flex-column justify-content-center">
-                <input v-model="name" v-on:keyup.enter="createWorkflow" id="workflow-name" class="form-control" type="text">
+                <input v-model="name" v-on:keyup.enter="createProject" id="project-name" class="form-control" type="text">
                 <small v-if="errors.name">
                     <AttributeErrorList :errors="errors.name"></AttributeErrorList>
                 </small>    
             </div>
         </div>
         <div class="d-flex justify-content-end">
-            <button @click="createWorkflow" :disable="is_creating" type="button" class="btn btn-primary">
+            <button @click="createProject" :disable="is_creating" type="button" class="btn btn-primary">
                 submit
                 <i class="fas fa-angle-right"></i>
             </button>
@@ -34,10 +34,10 @@ export default {
         this.is_creating = false
     },
     methods: {
-        createWorkflow(){
+        createProject(){
             if(!this.is_creating){
                 this.is_creating = true
-                return fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/create`, {
+                return fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/create`, {
                     method: "POST",
                     cache: "no-cache",
                     headers: {
@@ -50,7 +50,7 @@ export default {
                     if(response.ok) {
                         response.json().then(response_data => {
                             this.name = null
-                            this.$router.push({name: "workflows-id", params: {id: response_data.id}})
+                            this.$router.push({name: "projects-id", params: {id: response_data.id}})
                         })
                     } else if (response.status == 422) {
                         response.json().then(response_data => {

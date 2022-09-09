@@ -45,10 +45,12 @@ pipenv run db:migrate 'postgresql://postgres:developer@127.0.0.1:5433/nf_cloud'
 pipenv run dev
 ```
 
-| Component | Access |
-| --- | --- |
-| Frontend | `http://localhost:5000` |
-| API | `http://localhost:3001` |
+| Component | Access | User | Password |
+| --- | --- | --- | --- |
+| Frontend | `http://localhost:5000` | | |
+| API | `http://localhost:3001` | | |
+| Fusionauth | `http://localhost:9011` | `developer@example.com` | `developer` |
+
 For development, Flask is configured to add CORS-Headers by default.
 
 ### Database migrations

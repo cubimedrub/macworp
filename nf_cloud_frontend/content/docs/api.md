@@ -7,6 +7,10 @@ description: Learn how the API works
 * method: `GET`
 * content type: `application/json`
 
+### Endpoints require authentication
+* headers
+    * x-access-token: <JWT TOKEN>
+
 ## Response
 * content type: `application/json`
 
@@ -210,3 +214,36 @@ Returns the dynamic arguments as defined in the configuration.
     "arguments": <dict>
 }
 ```
+
+# Users
+
+## get login provider
+* url: `/api/users/login-providers`
+### Output
+```json
+{
+  "<provider_type>": {
+    "<provider_name>": "<description>"
+  }
+}
+```
+Provider type is something like `openid`, `oauth`, ...
+## Login per openid
+* url: `/api/users/openid/<string:provider>/login`
+### Output
+Redirect (status code 302) to the OpenID provider
+
+## Callback for OpenID provider
+* url: `/api/users/openid/<string:provider>/callback`
+### Output
+Redirects (status code 302) to frontend. The `Location`-header contains a URL which got the JWT token as query parameter token.
+
+
+## Logout the current user
+* url: `/api/users/logout`
+
+### Output
+* Empty (status code 200)
+* Redirects (status code 302) to frontend. The `Location`-header contains a URL which got the JWT token as query parameter token.
+* Unauthorized (status code 401)
+

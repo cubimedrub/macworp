@@ -41,7 +41,8 @@ export default {
                     method: "POST",
                     cache: "no-cache",
                     headers: {
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        "x-access-token": this.$store.state.login.jwt
                     },
                     body: JSON.stringify({
                         name: this.name

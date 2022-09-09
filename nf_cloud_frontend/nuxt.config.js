@@ -1,6 +1,8 @@
 export default {
   // Target: https://go.nuxtjs.dev/config-target
   target: 'server',
+  // Disable server side rendering, so that middleware is executed on page refresh and route changes.
+  ssr: false,
 
   // Global page headers: https://go.nuxtjs.dev/config-head
   head: {

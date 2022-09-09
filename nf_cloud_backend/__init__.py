@@ -1,21 +1,29 @@
 # std importd
 import json
-import time
+from operator import is_
+import re
 from threading import Thread
 import traceback
 
+
 # 3rd party imports
 import eventlet
-from flask import Flask, g as request_store, request
+from flask import Flask, g as request_store, request, Request
 from flask_cors import CORS
+from flask_login import LoginManager
 from flask_socketio import SocketIO
+import jwt
+from oauthlib.oauth2 import WebApplicationClient
 from playhouse.flask_utils import FlaskDB
 from werkzeug.exceptions import HTTPException
 
 # internal imports
+from nf_cloud_backend.constants import ACCESS_TOKEN_HEADER
 from nf_cloud_backend.utility.configuration import Configuration, Environment
 from nf_cloud_backend.utility.headers.cross_origin_resource_sharing import add_allow_cors_headers
 from nf_cloud_backend.utility.matomo import track_request as matomo_track_request
+
+from nf_cloud_backend import models   # Import module only to prevent circular imports
 
 # Load config and environment.
 config, env = Configuration.get_config_and_env()
@@ -31,7 +39,7 @@ CORS(app)
 app.config.update(
     ENV = env.name,
     DEBUG = config['debug'],
-    SECRET_KEY = bytes(config['secret'], "ascii"),
+    SECRET_KEY = config['secret'],
     PREFERRED_URL_SCHEME = 'https' if config['use_https'] else 'http'
 )
 
@@ -62,6 +70,59 @@ db_wrapper = FlaskDB(
     app,
     config['database']['url']
 )
+
+openid_clients = {
+    provider: WebApplicationClient(provider_data["client_id"])
+    for provider, provider_data in config["login_providers"]["openid"].items()
+}
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+# Do not move import up, it would result in cyclic dependencies
+from nf_cloud_backend.authorization.jwt import JWT                      # pylint: disable=wrong-import-position
+
+@login_manager.request_loader
+def load_user_from_request(incomming_request: Request):
+    """
+    Get user by Authorization-header.
+
+    Parameters
+    ----------
+    incomming_request : Request
+        Incomming request
+
+    Returns
+    -------
+    User : optional
+    """
+
+    auth_header = incomming_request.headers.get(ACCESS_TOKEN_HEADER, None)
+    if auth_header is not None:
+        try:
+            user, is_unexpired = JWT.decode_auth_token_to_user(
+                app.config["SECRET_KEY"],
+                auth_header
+            )
+            if user is not None and is_unexpired:
+                return user
+        except (
+            jwt.ExpiredSignatureError,
+            jwt.InvalidTokenError
+        ):
+            return None
+    auth_header = incomming_request.headers.get("Authorization", None)
+    if auth_header is not None:
+        basic_auth = incomming_request.authorization
+        if basic_auth.username == config["worker_credentials"]["username"] \
+            and basic_auth.password == config["worker_credentials"]["password"]:
+            return models.user.User(
+                id=0,
+                provider_type="local",
+                provider="local",
+                login_id="worker"
+            )
+    return None
 
 @app.before_request
 def track_request():

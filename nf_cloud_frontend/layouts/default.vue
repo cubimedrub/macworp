@@ -1,5 +1,5 @@
 <template>
-    <main class="container-fluid mr-0">
+    <main v-if="$store.state.login.jwt != null" class="container-fluid mr-0">
         <div class="row application-content-row">
             <nav :class="{'extended-menu': show_menu}" class="col-12 col-lg-2 position-sticky d-flex flex-column py-3 application-nav-column collapsed-menu">
                 <div class="d-flex justify-content-between align-items-center">
@@ -44,6 +44,12 @@
                                 <span v-if="$store.state.errors.errors.length" class="badge badge-pill bg-danger">{{ $store.state.errors.errors.length }}</span>
                             </NuxtLink>
                         </li>
+                        <li class="nav-item">
+                            <button @click="logout" type="button" class="btn btn-link text-decoration-none">
+                                <i class="fas fa-sign-out-alt"></i>
+                                <span>Logout</span>
+                            </button>
+                        </li>
                     </ul>
                     <div class="external-pages-menu">
                         <ul class="nav flex-column">
@@ -69,7 +75,11 @@
 </template>
 
 <script>
+
 export default {
+    middleware: [
+        "validate_login"
+    ],
     data(){
         return {
             show_menu: false
@@ -78,6 +88,23 @@ export default {
     methods: {
         toggleMenu(){
             this.show_menu = !this.show_menu
+        },
+        async logout(){
+            return fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/users/logout`,
+                {
+                    headers: {
+                        "x-access-token": this.$store.state.login.jwt
+                    },
+                }
+            ).then(response => {
+                if(response.ok) {
+                    this.$store.commit("login/invalidate")
+                    this.$router.push({name: "login"})
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
         }
     }
 }

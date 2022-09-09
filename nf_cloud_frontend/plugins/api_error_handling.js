@@ -1,5 +1,7 @@
 import Vue from 'vue'
 
+import validateLogin from "../utils/validate_login"
+
 Vue.mixin({
     methods: {
         handleUnknownResponse(response){
@@ -7,6 +9,18 @@ Vue.mixin({
                 "title": `API responded with ${response.status} - ${response.statusText}`,
                 "date": new Date().toISOString().toString(),
                 "description": response.statusText
+            }
+            if(response.status == 401){ 
+                validateLogin(this.$config, this.$store).then(is_valid => {
+                    if(is_valid) {
+                        new_error.description = `API reported user was unauthorized when fetching data from ${response.url}, but 'is-logged'-endpoint reported a valid login?`
+                        this.$store.commit("errors/add", new_error)
+                    }
+                    else this.$router.push({name: "login"})
+                }).catch(error => {
+                    console.error(error)
+                    this.$router.push({name: "login"})
+                })
             }
             if(response.headers.has("Date")){
                 new_error.date = new Date(response.headers.get("Date")).toUTCString()

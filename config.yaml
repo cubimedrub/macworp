@@ -25,6 +25,22 @@ rabbit_mq:
   url: "amqp://user:password@host:port/virtual_host"
   # Queue for scheduled projects
   project_workflow_queue: project_workflow
+# Basic auth for worker
+worker_credentials:
+  username: ""
+  password: ""
+login_providers:
+  openid: {}
+    # E.g.
+    # google:
+    #   description: Login with Google
+    #   client_id: xyz
+    #   client_secret: abc
+    #   client_discovery_url: https://...
+    #   # Optional, may be given by provider
+    #   scope: ~
+# Redirect after successfull login. Can be null when frontend and backend using the same domain and port
+frontend_host_url: ~
 workflows: {}
     # E.g.
     # "Workflow Name":

@@ -118,6 +118,9 @@ export default {
                     this.upload_queue[0].is_uploading = true;
                     await fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/upload-file`, {
                         method:'POST',
+                        headers: {
+                            "x-access-token": this.$store.state.login.jwt
+                        },
                         body: form_data
                     }).then(response => {
                         if(response.ok) {
@@ -148,7 +151,8 @@ export default {
             fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/delete-path`, {
                 method:'POST',
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "x-access-token": this.$store.state.login.jwt
                 },
                 body: JSON.stringify({
                     "path": path
@@ -174,7 +178,8 @@ export default {
                 fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/create-folder`, {
                     method:'POST',
                     headers: {
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        "x-access-token": this.$store.state.login.jwt
                     },
                     body: JSON.stringify({
                         "new_path": this.new_folder_path,

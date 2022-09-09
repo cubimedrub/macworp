@@ -9,6 +9,7 @@ from threading import Event
 # external imports
 import pika
 import requests
+from requests.auth import HTTPBasicAuth
 from pika.channel import Channel
 
 # internal imports
@@ -37,7 +38,9 @@ class Worker:
         "__workflows",
         "__connection",
         "__channel",
-        "__stop_event"
+        "__stop_event",
+        "__api_user",
+        "__api_password"
     ]
 
     __nf_bin: pathlib.Path
@@ -49,8 +52,12 @@ class Worker:
     __connection: pika.BaseConnection
     __channel: Channel
     __stop_event: Event
+    __api_user: str
+    __api_password: str
 
-    def __init__(self, nf_bin: pathlib.Path, nf_cloud_url: str, rabbit_mq_url: str, workflow_queue: str, workflow_data_path: pathlib.Path, workflows: dict, stop_event: Event):
+    def __init__(self, nf_bin: pathlib.Path, nf_cloud_url: str, rabbit_mq_url: str, 
+        workflow_queue: str, workflow_data_path: pathlib.Path, workflows: dict,
+        stop_event: Event, api_user: str, api_password: str):
         self.__nf_bin = nf_bin
         self.__nf_cloud_url = nf_cloud_url
         self.__rabbit_mq_url = rabbit_mq_url
@@ -60,6 +67,8 @@ class Worker:
         self.__connection = None
         self.__channel = None
         self.__stop_event = stop_event
+        self.__api_user = api_user
+        self.__api_password = api_password
 
     def start(self):
         while not self.__stop_event.is_set():
@@ -79,7 +88,8 @@ class Worker:
 
                             work_dir = self.__project_data_path.joinpath(f"{project_params['id']}/")
                             weblog_url = f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/workflow-log"
-                            workflow = None
+                            # Add basic auth
+                            weblog_url = weblog_url.replace("://", f"://{self.__api_user}:{self.__api_password}@")
                             workflow = Workflow(
                                 self.__nf_bin,
                                 work_dir,
@@ -96,12 +106,18 @@ class Worker:
                                 self.__get_workflow_static_arguments(
                                     project_params["workflow"]
                                 ),
-                                weblog_url
+                                weblog_url,
                             )
                             workflow.start()
                             self.__channel.basic_ack(delivery_tag = method_frame.delivery_tag)
                         finally:
-                            requests.post(f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/finished")
+                            requests.post(
+                                f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/finished",
+                                auth=HTTPBasicAuth(
+                                    self.__api_user,
+                                    self.__api_password
+                                )
+                            )
                     if self.__stop_event.is_set():
                         break
 

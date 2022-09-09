@@ -1,5 +1,9 @@
+# 3rd party imports
 from flask_socketio import join_room, leave_room
+
+# internal imports
 from nf_cloud_backend import socketio, app
+from nf_cloud_backend.authorization import jwt
 
 class SocketIoController:
     """
@@ -7,7 +11,7 @@ class SocketIoController:
     """
 
     @staticmethod
-    @socketio.on("join")
+    @socketio.on("join_project_updates")
     def on_join(data: dict):
         """
         Joining a room
@@ -17,11 +21,11 @@ class SocketIoController:
         data : dict
             Dict with key `room` and value room name
         """
-        room = data["room"]
+        room = f"project{data['project_id']}"
         join_room(room)
 
     @staticmethod
-    @socketio.on("leave")
+    @socketio.on("leave_project_updates")
     def on_leave(data: dict):
         """
         Leave a room
@@ -31,5 +35,5 @@ class SocketIoController:
         data : dict
             Dict with key `room` and value room name
         """
-        room = data["room"]
+        room = f"project{data['project_id']}"
         leave_room(room)

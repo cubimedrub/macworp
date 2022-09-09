@@ -50,8 +50,14 @@ export default {
         },
         getFolderContent(){
             var url_encoded_path = encodeURIComponent(this.current_directory)
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/files?dir=${url_encoded_path}`)
-            .then(response => {
+            fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/files?dir=${url_encoded_path}`,
+                {
+                    headers: {
+                        "x-access-token": this.$store.state.login.jwt
+                    }
+                }
+            ).then(response => {
                 if(response.ok) {
                     return response.json().then(response_data => {
                         this.current_directory_folders = response_data.folders.map(folder => `${folder}/`)

@@ -133,8 +133,14 @@ export default {
     methods: {
         loadProject(){
             this.disconnectFromProjectSocketIoRoom()
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}`)
-            .then(response => {
+            return fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}`,
+                {
+                    headers: {
+                        "x-access-token": this.$store.state.login.jwt
+                    }
+                }
+            ).then(response => {
                 if(response.ok) {
                     response.json().then(response_data => {
                         this.project = response_data.project
@@ -149,9 +155,15 @@ export default {
             })
         },
         deleteProject(){
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/delete`, {
-                method: "POST"
-            }).then(response => {
+            return fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/delete`, 
+                {
+                    method: "POST",
+                    headers: {
+                        "x-access-token": this.$store.state.login.jwt
+                    }
+                }
+            ).then(response => {
                 if(response.ok || response.status == 404) {
                     this.$router.push({name: "projects"})
                 } else {
@@ -160,9 +172,15 @@ export default {
             })
         },
         startProject(){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`, {
-                method:'POST',
-            }).then(response => {
+            fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`, 
+                {
+                    method:'POST',
+                    headers: {
+                        "x-access-token": this.$store.state.login.jwt
+                    }
+                }
+            ).then(response => {
                 if(response.ok) {
                     return response.json().then(response_data => {
                         this.project.is_scheduled = response_data.is_scheduled
@@ -173,16 +191,20 @@ export default {
             })
         },
         updateProject(){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/update`, {
-                method:'POST',
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    workflow_arguments: this.project.workflow_arguments,
-                    workflow: this.project.workflow,
-                })
-            }).then(response => {
+            fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/update`, 
+                {
+                    method:'POST',
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-access-token": this.$store.state.login.jwt
+                    },
+                    body: JSON.stringify({
+                        workflow_arguments: this.project.workflow_arguments,
+                        workflow: this.project.workflow,
+                    })
+                }
+            ).then(response => {
                 if(!response.ok) {
                     this.handleUnknownResponse(response)
                 }
@@ -245,7 +267,10 @@ export default {
          * Connect to project room
          */
         connectToProjectSocketIoRoom(){
-            this.$socket.emit("join", {"room": `project${this.project.id}`})
+            this.$socket.emit("join_project_updates", {
+                "project_id": this.project.id,
+                "access_token": this.$store.state.login.jwt
+            })
             this.$socket.on("new-workflow-log", (new_log) => {
                 this.project.workflow_log = new_log
                 this.logs.push(new_log)
@@ -266,7 +291,9 @@ export default {
          * Disconnect from project room
          */
         disconnectFromProjectSocketIoRoom(){
-            if(this.project != null) this.$socket.emit("leave", {"room": `project${this.project.id}`});
+            if(this.project != null) this.$socket.emit("leave_project_updates", {
+                "project_id": this.project.id
+            });
         }
     },
     computed: {

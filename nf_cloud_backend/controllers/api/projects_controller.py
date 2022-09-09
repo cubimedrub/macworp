@@ -5,6 +5,7 @@ from urllib.parse import unquote
 
 # 3rd party imports
 from flask import request, jsonify, send_file, Response
+from flask_login import login_required
 import pika
 import zipstream
 
@@ -19,6 +20,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects")
+    @login_required
     def index():
         """
         Endpoint for listing all project.
@@ -38,6 +40,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>")
+    @login_required
     def show(id: int):
         """
         Endpoint for requesting project attributes.
@@ -60,7 +63,8 @@ class ProjectsController:
             return jsonify({}), 404
 
     @staticmethod
-    @app.route("/api/projects/create", methods=["POST"]) 
+    @app.route("/api/projects/create", methods=["POST"])
+    @login_required
     def create():
         """
         Endpoint for creating a project.
@@ -99,6 +103,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>/update", methods=["POST"])
+    @login_required
     def update(id: int):
         """
         Endpoint for updating project.
@@ -143,6 +148,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>/delete", methods=["POST"])
+    @login_required
     def delete(id: int):
         project = Project.get(Project.id == id)
         if project:
@@ -169,6 +175,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>/files")
+    @login_required
     def files(id: int):
         """
         List files
@@ -218,6 +225,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>/upload-file", methods=["POST"])
+    @login_required
     def upload_file(id: int):
         """
         Upload files
@@ -262,6 +270,7 @@ class ProjectsController:
     
     @staticmethod
     @app.route("/api/projects/<int:id>/delete-path", methods=["POST"])
+    @login_required
     def delete_path(id: int):
         """
         Deletes a path.
@@ -297,6 +306,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>/create-folder", methods=["POST"])
+    @login_required
     def create_folder(id: int):
         """
         Creates the given path within the project directory
@@ -341,6 +351,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>/schedule", methods=["POST"])
+    @login_required
     def schedule(id: int):
         """
         Endpoint to schedule project for execution in RabbitMQ.
@@ -391,6 +402,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>/finished", methods=["POST"])
+    @login_required
     def finished(id: int):
         """
         Endpoint to finialize set project as finished by the worker.
@@ -417,6 +429,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:id>/workflow-log", methods=["POST"])
+    @login_required
     def workflow_log(id: int):
         """
         Endpoint for Nextflow to report log.
@@ -471,6 +484,7 @@ class ProjectsController:
 
     @staticmethod
     @app.route("/api/projects/<int:w_id>/download")
+    @login_required
     def download(w_id: int):
         """
         Downloads a file or folder.

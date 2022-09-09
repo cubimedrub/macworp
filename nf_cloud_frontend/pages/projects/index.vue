@@ -40,8 +40,14 @@ export default {
     },
     methods: {
         async loadTotalProjectCount(){
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/count`)
-            .then(response => {
+            return fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/projects/count`,
+                {
+                    headers: {
+                        "x-access-token": this.$store.state.login.jwt
+                    },
+                }
+            ).then(response => {
                 if(response.ok) {
                     response.json().then(response_data => {
                         this.total_project_count = response_data.count
@@ -53,8 +59,12 @@ export default {
         },
         async loadProjects(){
             var query_string = `?offset=${this.offset}&limit=${this.projects_per_page}`
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects${query_string}`, {
-                cache: 'no-cache',
+            return fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/projects${query_string}`, {
+                headers: {
+                    "x-access-token": this.$store.state.login.jwt
+                },
+                cache: "no-cache",
             })
             .then(response => {
                 if(response.ok) {

@@ -31,17 +31,19 @@ def main():
             with workflow_config_path.open("r") as workflow_file:
                 merge(
                     workflows,
-                    yaml.load(workflow_file, Loader=yaml.CLoader)["workflows"]
+                    yaml.load(workflow_file, Loader=yaml.CLoader).get("workflows", {})
                 )
 
     worker = Worker(
-        pathlib.Path(cli.arguments.nf_bin),
+        pathlib.Path(cli.arguments.nf_bin).absolute(),
         cli.arguments.nf_cloud_url,
         cli.arguments.rabbitmq_url,
         cli.arguments.workflow_queue,
         pathlib.Path(cli.arguments.workflow_data_path).absolute(),
         workflows,
-        stop_event
+        stop_event,
+        cli.arguments.api_user,
+        cli.arguments.api_password
     )
     worker.start()
 

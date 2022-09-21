@@ -5,7 +5,7 @@
 * C/C++-headers for libev (Ubuntu: `libev-dev`, Arch Linux: `libev`)
 * Rust Compiler
 * Docker
-* Python 3.x
+* Python 3.x  (have a look into the `Pipfile`)
 * [pyenv](https://github.com/pyenv/pyenv)
 * [pipenv](https://pipenv.pypa.io/en/latest/)
 

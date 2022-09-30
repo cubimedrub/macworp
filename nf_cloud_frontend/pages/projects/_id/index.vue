@@ -3,7 +3,7 @@
         <div v-if="project && !project_not_found">
             <div class="d-flex justify-content-between align-items-center">
                 <h1>Project "{{ project.name }}"</h1>
-                <button @click="startProject" :disabled="project.is_scheduled" class="btn btn-success btn-sm">
+                <button @click="startProject" :disabled="project.is_scheduled || !workflows.includes(project.workflow)" class="btn btn-success btn-sm">
                     Start project
                     <i class="fas fa-play"></i>
                 </button>
@@ -172,23 +172,25 @@ export default {
             })
         },
         startProject(){
-            fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`, 
-                {
-                    method:'POST',
-                    headers: {
-                        "x-access-token": this.$store.state.login.jwt
+            if(workflows.include(project.workflow)){
+                fetch(
+                    `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`, 
+                    {
+                        method:'POST',
+                        headers: {
+                            "x-access-token": this.$store.state.login.jwt
+                        }
                     }
-                }
-            ).then(response => {
-                if(response.ok) {
-                    return response.json().then(response_data => {
-                        this.project.is_scheduled = response_data.is_scheduled
-                    })
-                } else {
-                    this.handleUnknownResponse(response)
-                }
-            })
+                ).then(response => {
+                    if(response.ok) {
+                        return response.json().then(response_data => {
+                            this.project.is_scheduled = response_data.is_scheduled
+                        })
+                    } else {
+                        this.handleUnknownResponse(response)
+                    }
+                })
+            }
         },
         updateProject(){
             fetch(

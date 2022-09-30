@@ -25,10 +25,13 @@ are installed.
 
 ### Prepare development environment
 ```bash
-# Install the correct python version
-pyenv install $(cat .python-version)
+# Create environment
+pipenv shell
 
-# Create an environment
+# Upgrade pip and setuptools
+pip install --upgrade pip setuptools
+
+# Install dependencies
 pipenv install -d
 
 # Install node requirements

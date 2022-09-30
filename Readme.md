@@ -44,7 +44,7 @@ yarn --cwd ./nf_cloud_frontend install
 # Shell 1
 docker-compose up
 # Shell 2
-pipenv run db:migrate 'postgresql://postgres:developer@127.0.0.1:5433/nf_cloud'
+pipenv run db:migrate 'postgresql://postgres:developer@127.0.0.1:5434/nf_cloud'
 pipenv run dev
 ```
 

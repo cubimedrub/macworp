@@ -21,6 +21,8 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: developer
+    volumes:
+      - ./docker/rabbitmq/10-default-guest-user.conf:/etc/rabbitmq/conf.d/10-default-guest-user.conf:ro
   fusionauth:
     image: fusionauth/fusionauth-app:latest
     ports:

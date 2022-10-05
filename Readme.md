@@ -62,7 +62,9 @@ Migrations are located in `nf_cloud_backend/migrations/`. For now this needs to 
 
 
 ## Production
-Coming soon
+Still work in progress.
+### RabbitMQ
+Set the `consumer_timeout` to a high value. Otherwise scheduled workflows can't be acknowledged after finishing and getting rescheduled.
 
 
 ## ToDos

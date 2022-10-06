@@ -1,9 +1,9 @@
 # std imports
-import pathlib
+from pathlib import Path
+from multiprocessing import Event
 import signal
-from threading import Event
 
-# external imports
+# 3rd party imports
 import yaml
 from mergedeep import merge
 
@@ -13,37 +13,41 @@ from nf_cloud_worker.worker import Worker
 
 
 def main():
+    """
+    Main function which parses CLI-commands and starts worker.
+    """
     stop_event = Event()
 
-    def handle_stop_signals(signum, frame):
+    def handle_stop_signals(_signum, _frame):
         print("receive stop signal. stopping worker ...")
         stop_event.set()
 
     signal.signal(signal.SIGTERM, handle_stop_signals)
     signal.signal(signal.SIGINT, handle_stop_signals)
 
-    cli = CLI()
+    cli: CLI = CLI()
 
-    workflows = {}
+    workflows: dict = {}
     for workflow_config_path_option in cli.arguments.workflows:
-        workflow_config_path = pathlib.Path(workflow_config_path_option)
+        workflow_config_path = Path(workflow_config_path_option)
         if workflow_config_path.is_file():
-            with workflow_config_path.open("r") as workflow_file:
+            with workflow_config_path.open("r", encoding="utf-8") as workflow_file:
                 merge(
                     workflows,
                     yaml.load(workflow_file, Loader=yaml.CLoader).get("workflows", {})
                 )
 
     worker = Worker(
-        pathlib.Path(cli.arguments.nf_bin).absolute(),
+        Path(cli.arguments.nf_bin).absolute(),
         cli.arguments.nf_cloud_url,
-        cli.arguments.rabbitmq_url,
-        cli.arguments.workflow_queue,
-        pathlib.Path(cli.arguments.workflow_data_path).absolute(),
-        workflows,
-        stop_event,
         cli.arguments.api_user,
-        cli.arguments.api_password
+        cli.arguments.api_password,
+        Path(cli.arguments.projects_data_path).absolute(),
+        cli.arguments.rabbitmq_url,
+        cli.arguments.project_queue_name,
+        workflows,
+        cli.arguments.number_of_workers,
+        stop_event
     )
     worker.start()
 

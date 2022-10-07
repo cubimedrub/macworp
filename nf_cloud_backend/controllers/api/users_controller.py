@@ -1,15 +1,16 @@
 # std imports
+import secrets
 
 # 3rd party imports
 from flask import jsonify, request
 from flask_login import login_required, logout_user
 
 # internal imports
-from nf_cloud_backend import app, config
+from nf_cloud_backend import app, config, cache
 from nf_cloud_backend.authorization.provider_type import ProviderType
 from nf_cloud_backend.authorization.jwt import JWT
 from nf_cloud_backend.authorization.openid_connect import OpenIdConnect
-from nf_cloud_backend.constants import ACCESS_TOKEN_HEADER
+from nf_cloud_backend.constants import ACCESS_TOKEN_HEADER, ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX
 
 
 class UsersController:
@@ -130,4 +131,33 @@ class UsersController:
         return jsonify({"errors": {
             "general": "login is expired"
         }}), 401
-        
+
+
+    @staticmethod
+    @app.route("/api/users/one-time-use-token")
+    @login_required
+    def one_time_use_token():
+        """
+        Generates an authentication token for one time use.
+        The token can be used via an URL query parameter, when it is not possible
+        to add the JWT token to the header, e.g. for download links.
+
+        Returns
+        -------
+        Response
+            200
+        """
+        original_auth_token: str = request.headers.get(ACCESS_TOKEN_HEADER, None)
+        while True:
+            one_time_use_token: str = secrets.token_hex(32)
+            if cache.has(one_time_use_token):
+                continue
+            # Put the password and JWT token for ten seconds in the cache
+            cache.set(
+                f"{ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX}{one_time_use_token}",
+                original_auth_token,
+                timeout=10
+            )
+            return jsonify({
+                "token": one_time_use_token
+            })

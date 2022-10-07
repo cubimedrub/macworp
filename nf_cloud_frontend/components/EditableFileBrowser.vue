@@ -21,9 +21,9 @@
                     {{path}}
                 </span>
                 <div class="btn-group">
-                    <a :href="getDownloadUrl(path)" class="btn btn-secondary btn-sm">
+                    <button @click="download(path)" type="button" class="btn btn-secondary btn-sm">
                         <i class="fas fa-download"></i>
-                    </a>
+                    </button>
                     <button @click="deletePath(`${current_directory}/${path}`)" type="button" class="btn btn-danger btn-sm">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -32,9 +32,9 @@
             <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
                 <span>{{ file }}</span>
                 <div class="btn-group">
-                    <a :href="getDownloadUrl(file)" class="btn btn-secondary btn-sm">
+                    <button @click="download(file)" type="button" class="btn btn-secondary btn-sm">
                         <i class="fas fa-download"></i>
-                    </a>
+                    </button>
                     <button @click="deletePath(`${current_directory}/${file}`)" type="button" class="btn btn-danger btn-sm">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -228,9 +228,28 @@ export default {
             var start_of_last_segment = temp_path.lastIndexOf("/")
             return path.slice(start_of_last_segment + 1, path.length)
         },
-        getDownloadUrl(path){
+        /**
+         * Downloads the given path.
+         *
+         * @param {String} path Path to file in relation to the project directory
+         */
+        async download(path){
             let complete_path = `${this.current_directory}${path}`
-            return `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${complete_path}`
+            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/one-time-use-token`, {
+                headers: {
+                    "x-access-token": this.$store.state.login.jwt
+                }
+            }).then(response => {
+                console.error(response.status)
+                if(response.ok) {
+                    console.error(response.status)
+                    return response.json().then(response_data => {
+                        window.location = `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${complete_path}&one-time-use-token=${response_data.token}`
+                    })
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
         }
     },
     computed: {

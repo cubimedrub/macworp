@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 eventlet = ">=0.33, <0.34"
 Flask = ">=1, <2"
+Flask-Caching = ">=2, <3"
 Flask-Cors = ">=3, <4"
 Flask-Login = ">=0.6.1, <0.7.0"
 flask-socketio = ">=5, <6"

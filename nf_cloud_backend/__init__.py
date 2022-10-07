@@ -1,14 +1,13 @@
 # std importd
 import json
-from operator import is_
-import re
 from threading import Thread
 import traceback
-
+from typing import Optional, Tuple
 
 # 3rd party imports
 import eventlet
 from flask import Flask, g as request_store, request, Request
+from flask_caching import Cache
 from flask_cors import CORS
 from flask_login import LoginManager
 from flask_socketio import SocketIO
@@ -18,7 +17,11 @@ from playhouse.flask_utils import FlaskDB
 from werkzeug.exceptions import HTTPException
 
 # internal imports
-from nf_cloud_backend.constants import ACCESS_TOKEN_HEADER
+from nf_cloud_backend.constants import (
+    ACCESS_TOKEN_HEADER, 
+    ONE_TIME_USE_ACCESS_TOKEN_PARAM_NAME,
+    ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX
+)
 from nf_cloud_backend.utility.configuration import Configuration, Environment
 from nf_cloud_backend.utility.headers.cross_origin_resource_sharing import add_allow_cors_headers
 from nf_cloud_backend.utility.matomo import track_request as matomo_track_request
@@ -42,6 +45,16 @@ app.config.update(
     SECRET_KEY = config['secret'],
     PREFERRED_URL_SCHEME = 'https' if config['use_https'] else 'http'
 )
+
+cache = Cache(
+    config={
+        "CACHE_TYPE": "SimpleCache",
+        "CACHE_DEFAULT_TIMEOUT": 60
+    }
+)
+""" Cache for one time use authentication tokens
+"""
+cache.init_app(app)
 
 async_mode = "threading"
 """Mode for SocketIO
@@ -97,7 +110,20 @@ def load_user_from_request(incomming_request: Request):
     User : optional
     """
 
+    # Check if access token is provided in header
     auth_header = incomming_request.headers.get(ACCESS_TOKEN_HEADER, None)
+    # If the JWT token isn't found in the header, try to resolve the JWT token by an one time use token
+    # These are usually used for download URLs via the frontend where it is not possible to
+    # add the access token to the headers and the file is too large fo the usual "Download -> Blob -> Blob download"-Javascript stuff.
+    if auth_header is None:
+        one_time_use_token: Optional[str] = incomming_request.args.get(ONE_TIME_USE_ACCESS_TOKEN_PARAM_NAME, None)
+        one_time_use_token = f"{ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX}{one_time_use_token}"
+        if cache.has(one_time_use_token):
+            auth_header = cache.get(one_time_use_token)
+            # Delete the one time use token from cache
+            cache.delete(one_time_use_token)
+        else:
+            return None
     if auth_header is not None:
         try:
             user, is_unexpired = JWT.decode_auth_token_to_user(

@@ -34,4 +34,4 @@ python_version = "3.9"
 
 [scripts]
 dev = "honcho -e dev.env start"
-"db:migrate" = "python -m nf_cloud_backend database migrate "
+"db:migrate" = "python -m nf_cloud_backend database migrate"

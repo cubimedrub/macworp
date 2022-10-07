@@ -50,7 +50,7 @@ pipenv run dev
 
 | Component | Access | User | Password |
 | --- | --- | --- | --- |
-| Frontend | `http://localhost:5000` | | |
+| Frontend | `http://localhost:5001` | | |
 | API | `http://localhost:3001` | | |
 | Fusionauth | `http://localhost:9011` | `developer@example.com` | `developer` |
 

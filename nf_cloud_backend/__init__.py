@@ -123,7 +123,7 @@ def load_user_from_request(incomming_request: Request):
             # Delete the one time use token from cache
             cache.delete(one_time_use_token)
         else:
-            return None
+            auth_header = None
     if auth_header is not None:
         try:
             user, is_unexpired = JWT.decode_auth_token_to_user(

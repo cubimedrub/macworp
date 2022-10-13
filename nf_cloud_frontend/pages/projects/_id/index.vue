@@ -172,7 +172,7 @@ export default {
             })
         },
         startProject(){
-            if(workflows.include(project.workflow)){
+            if(this.workflows.includes(this.project.workflow)){
                 fetch(
                     `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`, 
                     {

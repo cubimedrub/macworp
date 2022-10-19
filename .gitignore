@@ -1,6 +1,8 @@
 # IDE files
 .vscode
 
+# TEmpfiles for workflows
+/tmp
 # Local development files like database files
 /.db
 local.env

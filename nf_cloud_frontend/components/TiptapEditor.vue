@@ -25,25 +25,19 @@ export default {
     },
     mounted() {
         this.editor = new Editor({
-            content: '\n' +
-                '        <p>\n' +
-                '          That’s a boring paragraph followed by a fenced code block:\n' +
-                '        </p>\n' +
-                '        <pre><code class="language-json">for (var i=1; i <= 20; i++)\n' +
+            content:
+                '<pre><code class="language-json">' +
                 '{\n' +
-                '  if (i % 15 == 0)\n' +
-                '    console.log("FizzBuzz");\n' +
-                '  else if (i % 3 == 0)\n' +
-                '    console.log("Fizz");\n' +
-                '  else if (i % 5 == 0)\n' +
-                '    console.log("Buzz");\n' +
-                '  else\n' +
-                '    console.log(i);\n' +
-                '}</code></pre>\n' +
-                '        <p>\n' +
-                '          Press Command/Ctrl + Enter to leave the fenced code block and continue typing in boring paragraphs.\n' +
-                '        </p>\n' +
-                '      ',
+                '    "type": "doc",\n' +
+                '    "content": [\n' +
+                '        {\n' +
+                '            "type": "paragraph",\n' +
+                '            "content": [\n' +
+                '                {\n' +
+                '                    "type": "text",\n' +
+                '                    "text": "Wow, this editor instance exports its content as JSON."\n' +
+                '                 }\n' +
+                '         }</code></pre>\n',
             extensions: [
                 StarterKit,
                 Document,

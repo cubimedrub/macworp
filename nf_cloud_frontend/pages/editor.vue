@@ -35,6 +35,5 @@ export default {
     background-color: darkgrey;
     border-radius: 0.5rem;
     font-size: 1.5rem;
-    padding: 0.75rem;
 }
 </style>

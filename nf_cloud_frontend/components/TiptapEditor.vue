@@ -35,9 +35,12 @@ export default {
                 '            "content": [\n' +
                 '                {\n' +
                 '                    "type": "text",\n' +
-                '                    "text": "Wow, this editor instance exports its content as JSON."\n' +
+                '                    "text": "This editor instance exports its content as JSON."\n' +
                 '                 }\n' +
-                '         }</code></pre>\n',
+                '             ],\n' +
+                '         }\n' +
+                '     ],\n' +
+                '}</code></pre>\n',
             extensions: [
                 StarterKit,
                 Document,
@@ -65,8 +68,7 @@ export default {
         margin-top: 0.75em;
     }
     pre {
-        background: #0D0D0D;
-        color: #FFF;
+        color: black;
         font-family: 'JetBrainsMono', monospace;
         padding: 0.75rem 1rem;
         border-radius: 0.5rem;
@@ -104,7 +106,7 @@ export default {
         .hljs-string,
         .hljs-symbol,
         .hljs-bullet {
-            color: #B9F18D;
+            color: forestgreen;
         }
         .hljs-title,
         .hljs-section {

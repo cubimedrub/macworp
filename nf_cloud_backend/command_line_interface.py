@@ -4,6 +4,7 @@ import argparse
 # internal imports
 from nf_cloud_backend.server import Server
 from nf_cloud_backend.database import Database
+from nf_cloud_backend.utility.command_line_interface import ComandLineInterface as UtilityCLI
 
 class ComandLineInterface:
     def __init__(self):
@@ -12,6 +13,7 @@ class ComandLineInterface:
         subparsers = self.__parser.add_subparsers()
         Server.add_cli_arguments(subparsers)
         Database.add_cli_arguments(subparsers)
+        UtilityCLI.add_cli_arguments(subparsers)
 
     def start(self):
         args = self.__parser.parse_args()

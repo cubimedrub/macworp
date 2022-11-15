@@ -231,9 +231,7 @@ def handle_exception(e):
         response = add_allow_cors_headers(response)
     return response
 
-# Do not move this the top of the file, cause the modeule imports some values which are set during the initialization.
-from nf_cloud_backend.utility.rabbit_mq import RabbitMQ # pylint: disable=wrong-import-position
-RabbitMQ.prepare_queues()
+
 
 # Import controllers.
 # Do not move this import to the top of the files. Each controller uses 'app' to build the routes.

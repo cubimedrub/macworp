@@ -2,8 +2,7 @@
 The frontend is written with NuxtJS
 
 ## Dependencies
-* NodeJS 14.x
-* yarn
+* [Conda](https://docs.conda.io/en/latest/)
 
 ## Configuration
 The frontend is configured by 3 environment variables:

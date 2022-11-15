@@ -1,13 +1,11 @@
 # Nextflow cloud backend
 ## Dependencies
-* Build tools (Ubuntu: `build-essential`, Arch Linux: `base-devel`)
-* C/C++-header for PostgreSQL (Ubuntu: `libpq-dev`, Arch Linux: `postgresql-libs`)
-* C/C++-headers for libev (Ubuntu: `libev-dev`, Arch Linux: `libev`)
-* Rust Compiler
+Most dependencies will be installed via Conda, however to avoid additional Conda-channels some dependencies will be installed natively in addition to some basic compiler  which should be installable on most platforms:
+* [Conda](https://docs.conda.io/en/latest/)
 * Docker
-* Python 3.x  (have a look into the `Pipfile`)
-* [pyenv](https://github.com/pyenv/pyenv)
-* [pipenv](https://pipenv.pypa.io/en/latest/)
+* Build tools (Ubuntu: `build-essential`, Arch Linux: `base-devel`)
+* C/C++-headers for libev (Ubuntu: `libev-dev`, Arch Linux: `libev`)
+
 
 
 ## Configuration

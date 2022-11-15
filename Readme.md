@@ -26,13 +26,13 @@ are installed.
 ### Prepare development environment
 ```bash
 # Create environment
-pipenv shell
+conda env create -f environment.yaml
+
+# Already creates the environment and need updates???
+conda env update -f environment.yml --prune
 
 # Upgrade pip and setuptools
-pip install --upgrade pip setuptools
-
-# Install dependencies
-pipenv install -d
+conda activate nf_cloud
 
 # Install node requirements
 yarn --cwd ./nf_cloud_frontend install
@@ -44,8 +44,8 @@ yarn --cwd ./nf_cloud_frontend install
 # Shell 1
 docker-compose up
 # Shell 2
-pipenv run db:migrate 'postgresql://postgres:developer@127.0.0.1:5434/nf_cloud'
-pipenv run dev
+pw_migrate migrate --database 'postgresql://postgres:developer@127.0.0.1:5434/nf_cloud' --directory nf_cloud_backend/migrations'
+honcho -e dev.env start
 ```
 
 | Component | Access | User | Password |

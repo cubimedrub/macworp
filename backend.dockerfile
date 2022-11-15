@@ -1,20 +1,18 @@
-FROM python:3.8.8-buster
+FROM continuumio/miniconda3
 
 WORKDIR /app
 
-COPY ./nf_cloud /app/nf_cloud
-COPY ./nf_cloud/entrypoint.sh /app/
-COPY Pipfile /app
-COPY Pipfile.lock /app
+COPY ./nf_cloud_backend /app/nf_cloud_backend
+COPY ./nf_cloud_backend/entrypoint.sh /app/
+COPY environment.yml /app
 COPY config.yaml /app
 COPY config.production.yaml /app
 
-RUN apt-get update -y && apt-get install -y libev-dev \
-    && pip install --upgrade pip \
-    && pip install pipenv \
-    && pipenv install --system --skip-lock \
-    && chmod 755 ./entrypoint.sh
+RUN apt-get update -y && apt-get install -y build-essential libev-dev \
+    && conda update -n base conda -c defaults \
+    && conda env create -f environment.yml \
+    && chmod +x entrypoint.sh
 
-ENV NF_CLOUD_ENV production
+ENV NF_CLOUD_WEB_ENV production
 
-ENTRYPOINT [ "./entrypoint.sh" ]
+ENTRYPOINT [ "bash", "-i", "./entrypoint.sh" ]

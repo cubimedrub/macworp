@@ -3,7 +3,8 @@ import time
 import traceback
 from typing import Tuple
 
-from nf_cloud_backend import app, config
+from nf_cloud_backend import app
+from nf_cloud_backend.utility.configuration import Configuration
 
 class RabbitMQ:
     @staticmethod
@@ -14,12 +15,12 @@ class RabbitMQ:
         while True:
             try:
                 # Establish connection
-                connection = pika.BlockingConnection(pika.URLParameters(config['rabbit_mq']['url'] ))
+                connection = pika.BlockingConnection(pika.URLParameters(Configuration.values()['rabbit_mq']['url'] ))
                 channel = connection.channel()
 
                 # Create main queue
                 channel.queue_declare(
-                    queue=config['rabbit_mq']['project_workflow_queue'], 
+                    queue=Configuration.values()['rabbit_mq']['project_workflow_queue'], 
                     durable=True
                 )
 
@@ -48,12 +49,12 @@ class RabbitMQ:
         """
         try:
             # Establish connection
-            connection = pika.BlockingConnection(pika.URLParameters(config['rabbit_mq']['url'] ))
+            connection = pika.BlockingConnection(pika.URLParameters(Configuration.values()['rabbit_mq']['url'] ))
             channel = connection.channel()
 
             # Get queue statistics
             queue_state = channel.queue_declare(
-                queue=config['rabbit_mq']['project_workflow_queue'], 
+                queue=Configuration.values()['rabbit_mq']['project_workflow_queue'], 
                 durable=True,
                 passive=True
             )

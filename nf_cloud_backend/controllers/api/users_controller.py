@@ -6,11 +6,12 @@ from flask import jsonify, request
 from flask_login import login_required, logout_user
 
 # internal imports
-from nf_cloud_backend import app, config, cache
+from nf_cloud_backend import app, cache
 from nf_cloud_backend.authorization.provider_type import ProviderType
 from nf_cloud_backend.authorization.jwt import JWT
 from nf_cloud_backend.authorization.openid_connect import OpenIdConnect
 from nf_cloud_backend.constants import ACCESS_TOKEN_HEADER, ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX
+from nf_cloud_backend.utility.configuration import Configuration
 
 
 class UsersController:
@@ -31,8 +32,8 @@ class UsersController:
         return jsonify({
             provider_type: {
                 provider: values.get("description", "No desription provided") 
-                    for provider, values in config["login_providers"][provider_type].items()
-            } for provider_type in config["login_providers"]
+                    for provider, values in Configuration.values()["login_providers"][provider_type].items()
+            } for provider_type in Configuration.values()["login_providers"]
         })
 
     @staticmethod

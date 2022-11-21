@@ -2,7 +2,8 @@
 from flask import jsonify
 
 # internal imports
-from nf_cloud_backend import app, config
+from nf_cloud_backend import app
+from nf_cloud_backend.utility.configuration import Configuration
 
 
 class WorkflowControllers:
@@ -21,7 +22,7 @@ class WorkflowControllers:
         return jsonify({
             "workflows": sorted([
                 workflow
-                for workflow in config["workflows"].keys()
+                for workflow in Configuration.values()["workflows"].keys()
             ])
         })
 
@@ -34,5 +35,5 @@ class WorkflowControllers:
         JSON where each key is the name of a workflow argument with value type definition and description.
         """
         return jsonify({
-            "arguments": config["workflows"][workflow]["args"]["dynamic"]
+            "arguments": Configuration.values()["workflows"][workflow]["args"]["dynamic"]
         })

@@ -2,8 +2,8 @@
 from typing import Optional, Any, Dict
 
 # internal imports
-from nf_cloud_backend import config
 from nf_cloud_backend.authorization.provider_type import ProviderType
+from nf_cloud_backend.utility.configuration import Configuration
 
 class Utility:
     """
@@ -26,4 +26,4 @@ class Utility:
         Optional[Dict[str, Any]]
             None if config was not found of a dictionary
         """
-        return config["login_providers"][provider_type.value].get(provider, None)
+        return Configuration.values()["login_providers"][provider_type.value].get(provider, None)

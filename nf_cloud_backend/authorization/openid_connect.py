@@ -9,11 +9,12 @@ from flask_login import login_user
 import requests
 
 # internal imports
-from nf_cloud_backend import openid_clients, config, app
+from nf_cloud_backend import openid_clients, app
 from nf_cloud_backend.authorization.provider_type import ProviderType
 from nf_cloud_backend.authorization.utility import Utility as AuthUtility
 from nf_cloud_backend.authorization.jwt import JWT
 from nf_cloud_backend.models.user import User
+from nf_cloud_backend.utility.configuration import Configuration
 
 
 class OpenIdConnect:
@@ -172,10 +173,10 @@ class OpenIdConnect:
         -------
         Response
         """
-        if config["frontend_host_url"] is None:
+        if Configuration.values()["frontend_host_url"] is None:
             return redirect(f"{request.host_url}login/callback?token={token}")
         else:
-            return redirect(f"{config['frontend_host_url']}/login/callback?token={token}")
+            return redirect(f"{Configuration.values()['frontend_host_url']}/login/callback?token={token}")
 
     # @classmethod
     # def logout(cls, user):

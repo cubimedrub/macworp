@@ -4,7 +4,7 @@
 # Local development files like database files
 /.db
 local.env
-config.local.yaml
+nf_cloud.local.config.yaml
 nextflow
 
 # uploads

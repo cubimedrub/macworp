@@ -71,9 +71,16 @@ Migrations are located in `nf_cloud_backend/migrations/`. For now this needs to 
 
 
 ## Production
-Still work in progress.
-### RabbitMQ
-Set the `consumer_timeout` to a high value. Otherwise scheduled workflows can't be acknowledged after finishing and getting rescheduled.
+
+### External services
+#### RabbitMQ
+Set the `consumer_timeout` to a high value. Otherwise scheduled workflows can't be acknowledged after finishing and getting rescheduled
+
+### Preparation
+The following part contains CLI usage of `nf_cloud_backend`, which assume you use the nativ installation. If you run `nf_cloud_backend` in docker just replace `python -m nf_cloud_backend` with `docker run mpc/nf_cloud_backend`.
+
+#### Create a new configuration file
+`python -m nf_cloud_backend utility config create .` this will create a new config named `nf_cloud.local.config.yaml` in the current directory. You can also print the configuration with `python -m nf_cloud_backend utility config print` (useful for piping the results from a Docker container).
 
 
 ## ToDos

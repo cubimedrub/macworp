@@ -22,14 +22,14 @@ from nf_cloud_backend.constants import (
     ONE_TIME_USE_ACCESS_TOKEN_PARAM_NAME,
     ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX
 )
-from nf_cloud_backend.utility.configuration import Configuration, Environment
+from nf_cloud_backend.utility.configuration import Configuration
 from nf_cloud_backend.utility.headers.cross_origin_resource_sharing import add_allow_cors_headers
 from nf_cloud_backend.utility.matomo import track_request as matomo_track_request
 
 from nf_cloud_backend import models   # Import module only to prevent circular imports
 
 # Load config and environment.
-config, env = Configuration.get_config_and_env()
+Configuration.initialize()
 
 app = Flask('app')
 """Flask app
@@ -40,10 +40,9 @@ CORS(app)
 
 # Default Flask parameter
 app.config.update(
-    ENV = env.name,
-    DEBUG = config['debug'],
-    SECRET_KEY = config['secret'],
-    PREFERRED_URL_SCHEME = 'https' if config['use_https'] else 'http'
+    ENV = "development" if Configuration.values()["debug"] else "production",
+    DEBUG = Configuration.values()['debug'],
+    SECRET_KEY = Configuration.values()['secret']
 )
 
 cache = Cache(
@@ -59,7 +58,7 @@ cache.init_app(app)
 async_mode = "threading"
 """Mode for SocketIO
 """
-if env == Environment.production:
+if not Configuration.values()["debug"]:
     eventlet.monkey_patch()
     async_mode = "eventlet"
 
@@ -69,11 +68,11 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 socketio = SocketIO(
     app,
-    message_queue=config['rabbit_mq']['url'],
+    message_queue=Configuration.values()['rabbit_mq']['url'],
     cors_allowed_origins="*",
     async_mode=async_mode,
-    engineio_logger=app.logger if config['debug'] else False,
-    logger=config['debug'],
+    engineio_logger=app.logger if Configuration.values()['debug'] else False,
+    logger=Configuration.values()['debug'],
     always_connect=True
 )
 """SocketIO for bidirectional communication (events) between server and browser.
@@ -81,12 +80,12 @@ socketio = SocketIO(
 
 db_wrapper = FlaskDB(
     app,
-    config['database']['url']
+    Configuration.values()['database']['url']
 )
 
 openid_clients = {
     provider: WebApplicationClient(provider_data["client_id"])
-    for provider, provider_data in config["login_providers"]["openid"].items()
+    for provider, provider_data in Configuration.values()["login_providers"]["openid"].items()
 }
 
 login_manager = LoginManager()
@@ -140,8 +139,8 @@ def load_user_from_request(incomming_request: Request):
     auth_header = incomming_request.headers.get("Authorization", None)
     if auth_header is not None:
         basic_auth = incomming_request.authorization
-        if basic_auth.username == config["worker_credentials"]["username"] \
-            and basic_auth.password == config["worker_credentials"]["password"]:
+        if basic_auth.username == Configuration.values()["worker_credentials"]["username"] \
+            and basic_auth.password == Configuration.values()["worker_credentials"]["password"]:
             return models.user.User(
                 id=0,
                 provider_type="local",
@@ -155,7 +154,7 @@ def track_request():
     """
     Sends a tracking request to Matomo.
     """
-    if config["matomo"]["enabled"]:
+    if Configuration.values()["matomo"]["enabled"]:
         track_thread = Thread(target=matomo_track_request, args=(
             request.headers.get("User-Agent", ""),
             request.remote_addr,
@@ -165,11 +164,11 @@ def track_request():
             request.full_path,
             request.query_string,
             request.url.startswith("https"),
-            config["matomo"]["url"],
-            config["matomo"]["site_id"],
-            config["matomo"]["auth_token"], 
+            Configuration.values()["matomo"]["url"],
+            Configuration.values()["matomo"]["site_id"],
+            Configuration.values()["matomo"]["auth_token"], 
             app,
-            config["debug"]
+            Configuration.values()["debug"]
         ))
         track_thread.start()
         request_store.track_thread = track_thread 
@@ -226,7 +225,7 @@ def handle_exception(e):
             status=500,
             mimetype='application/json'
         )
-    if config['debug']:
+    if Configuration.values()['debug']:
         app.logger.error(traceback.format_exc()) # pylint: disable=no-member
         response = add_allow_cors_headers(response)
     return response

@@ -14,7 +14,8 @@ from peewee import BigAutoField, \
 from playhouse.postgres_ext import BinaryJSONField
 
 # internal import
-from nf_cloud_backend import config, db_wrapper as db
+from nf_cloud_backend import db_wrapper as db
+from nf_cloud_backend.utility.configuration import Configuration
 
 class Project(db.Model):
     id = BigAutoField(primary_key=True)
@@ -38,7 +39,7 @@ class Project(db.Model):
         return self.__file_directory
 
     def __create_file_directory(self):
-        self.__file_directory = pathlib.Path(config["upload_path"]).joinpath(str(self.id)).absolute()
+        self.__file_directory = pathlib.Path(Configuration.values()["upload_path"]).joinpath(str(self.id)).absolute()
         self.__file_directory.mkdir(parents=True, exist_ok=True)
 
     def __delete_file_directory(self):

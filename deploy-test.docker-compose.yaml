@@ -1,0 +1,69 @@
+# Use in addition to docker-compose.yaml to test the deployment with unicorn and NginX as reverse proxy, see Readme.md
+version: '2.2'
+services:  
+  backend_1: &migrating_backend
+    build:
+      context: .
+      dockerfile: backend.dockerfile
+    volumes:
+      - ./nf_cloud_backend:/home/app/nf_cloud_backend
+      - ./nf_cloud_backend/entrypoint.sh:/home/app/entrypoint.sh
+      # Pass the local config
+      - ./config.docker-compose.yaml:/home/app/nf_cloud.local.config.yaml:ro
+    environment:
+      OAUTHLIB_INSECURE_TRANSPORT: 1
+      NF_HOSTNAME: ${NF_HOSTNAME:-localhost}
+      NF_FUSIONAUTH_PORT: ${NF_FUSIONAUTH_PORT:-9011}
+      RUN_MIGRATION: "true"
+      MIGRATION_DB_HOSTNAME: psql
+      PYTHONUNBUFFERED: "true"
+    command: ["serve"]
+    depends_on:
+      - psql
+      - rabbitmq
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3001", "||", "exit 1" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+  backend_2: &backend
+    <<: *migrating_backend
+    environment:
+      RUN_MIGRATION: "false"
+      OAUTHLIB_INSECURE_TRANSPORT: 1
+      NF_HOSTNAME: ${NF_HOSTNAME:-localhost}
+      NF_FUSIONAUTH_PORT: ${NF_FUSIONAUTH_PORT:-9011}
+      PYTHONUNBUFFERED: "true"
+    depends_on:
+      - backend_1
+  backend_3: *backend
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.dockerfile
+    environment:
+      NF_CLOUD_BACKEND_BASE_URL: https://${NF_HOSTNAME:-localhost}:16160
+      NF_CLOUD_BACKEND_WS_URL: ws://${NF_HOSTNAME:-localhost}:16160
+      NF_CLOUD_FRONTEND_INTERFACE: 0.0.0.0
+  nginx:
+    image: nginx:stable
+    ports:
+      - 16160:16160
+      - 16161:16161
+    environment:
+      NF_HOSTNAME: ${NF_HOSTNAME}
+    volumes:
+      - ./docker/nginx/certificate-creation.sh:/docker-entrypoint.d/99-certificates.sh:ro
+      - ./docker/nginx/high-available.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      - backend_1
+      - backend_2
+      - backend_3
+      - frontend
+      - fusionauth
+    links:
+      - backend_1
+      - backend_2
+      - backend_3
+      - frontend
+      - fusionauth

@@ -26,7 +26,6 @@ class RabbitMQ:
 
                 break
             except pika.exceptions.AMQPConnectionError:
-                pika.exceptions.AMQPConnectionError
                 app.logger.warning("Cannot connect to RabbitMQ for configuration. Try it again in 2 seconds.") # pylint: disable=no-member
                 time.sleep(2)
                 continue

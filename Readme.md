@@ -69,6 +69,13 @@ Migrations are located in `nf_cloud_backend/migrations/`. For now this needs to 
 #### Accessing the database
 `psql postgresql://postgres:developer@127.0.0.1:5434/nf_cloud`
 
+### Testing deployment
+NF-Cloud is designed to run as Gunicorn service behind a NginX reverse proxy. This setup can be tested with the addition of the second docker-compose file:
+```
+env NF_HOSTNAME=$(hostname) docker-compose --env-file deploy-test.env  -f docker-compose.yaml -f deploy-test.docker-compose.yaml up
+```
+The command above will start NginX on port `16160` (NF-cloud frontend & backend) and 16161 (FusionAuth), as domain the environment variable `NF_HOSTNAME` (set to the local hostname in the example) is used. Please be aware, that this also affects the FusionAuth kickoff script, and may need a `docker-compose down` before lunching the first time or when the value of `NF_HOSTNAME` changed.
+
 
 ## Production
 
@@ -78,6 +85,18 @@ Set the `consumer_timeout` to a high value. Otherwise scheduled workflows can't 
 
 ### Preparation
 The following part contains CLI usage of `nf_cloud_backend`, which assume you use the nativ installation. If you run `nf_cloud_backend` in docker just replace `python -m nf_cloud_backend` with `docker run mpc/nf_cloud_backend`.
+
+#### Docker image
+##### Creation
+Create the docker image with 
+```
+docker build mpc/nf-cloud-backend .
+```
+You can use the build arguments (`--build-arg`) `USER_ID` and `GROUP_ID` to change the user and group ID of the container user. Useful for harmonizing the ownership of the uploaded files with a local user.
+
+##### Usage
+The images entrypoint is the `nf_cloud_backend` command line interface, so users can start using command line arguments (e.g. `--help`). If the option `serve --gunicorn` is given, the image will start NF-Cloud as Gunicorn application, unlike the native installation which prints the Gunicorn parameters.    
+NF-Cloud is running in the folder `/home/app`. So please mount a local configuration accordingly when running the images, e.g.: `docke rur -v <some-local-config>:/home/app/nf_cloud.local.config.yaml`. To persist the uploaded files a persistent volume or bind-mount should be used.   
 
 #### Create a new configuration file
 `python -m nf_cloud_backend utility config create .` this will create a new config named `nf_cloud.local.config.yaml` in the current directory. You can also print the configuration with `python -m nf_cloud_backend utility config print` (useful for piping the results from a Docker container).

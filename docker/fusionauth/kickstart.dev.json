@@ -17,7 +17,8 @@
             "name": "nf_cloud",
             "oauthConfiguration": {
               "authorizedRedirectURLs": [
-                "http://localhost:3001/api/users/openid/dev/callback"
+                "http://localhost:3001/api/users/openid/dev/callback",
+                "https://#{ENV.NF_HOSTNAME}:16160/api/users/openid/dev/callback"
               ],
               "clientAuthenticationPolicy": "Required",
               "clientSecret": "8CLrA9gAVmlM7GKKCnMnT9MHNvUMqXNVWog2kWUuC7Y2iBOnFIh9X0rpCqfMcpfQkEZfCBfxMqfz5FYC6cduB20kxqV5Ysq",

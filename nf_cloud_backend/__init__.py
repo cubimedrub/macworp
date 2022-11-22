@@ -14,6 +14,7 @@ from flask_socketio import SocketIO
 import jwt
 from oauthlib.oauth2 import WebApplicationClient
 from playhouse.flask_utils import FlaskDB
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.exceptions import HTTPException
 
 # internal imports
@@ -44,6 +45,15 @@ app.config.update(
     DEBUG = Configuration.values()['debug'],
     SECRET_KEY = Configuration.values()['secret']
 )
+
+if Configuration.values()["use_reverse_proxy"]:
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1,
+        x_proto=1,
+        x_host=1,
+        x_prefix=1
+    )
 
 cache = Cache(
     config={

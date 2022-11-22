@@ -15,6 +15,7 @@ dependencies:
     - Flask-Cors  >=3, <4
     - Flask-Login  >=0.6.1, <0.7.0
     - flask-socketio  >=5, <6
+    - gunicorn @ git+https://github.com/benoitc/gunicorn.git@ff58e0c6da83d5520916bc4cc109a529258d76e1#egg=gunicorn
     - kombu  >=5, <6
     - markupsafe  ==2.0.1      # fix for `ImportError: cannot import name 'soft_unicode'`
     - mergedeep  >=1, <2

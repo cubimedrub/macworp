@@ -1,3 +1,4 @@
+# Contains basic services for development.
 version: '2.2'
 services:
   psql:
@@ -49,50 +50,13 @@ services:
       # FUSIONAUTH_RUNTIME_MODE: development
       FUSIONAUTH_APP_MEMORY: 512M
       FUSIONAUTH_APP_RUNTIME_MODE: development
-      FUSIONAUTH_APP_URL: http://fusionauth:9011
+      FUSIONAUTH_APP_URL: ${NF_FUSIONAUTH_PROTOCOL:-http}://${NF_HOSTNAME:-localhost}:${NF_FUSIONAUTH_PORT:-9011}
       SEARCH_TYPE: database
       FUSIONAUTH_APP_KICKSTART_FILE: /kickstart.json
       FUSIONAUTH_API_KEY: OXp1Y8xCyVRIHqbXO18wdhL1TQujBCm6Mkgwbg
       FUSIONAUTH_ADMIN_PASSWORD: developer
       FUSIONAUTH_APPLICATION_ID: nf_cloud
       DEVELOPER_FUSIONAUTH_API_KEY: OXp1Y8xCyVRIHqbXO18wdhL1TQujBCm6Mkgwbg
+      NF_HOSTNAME: ${NF_HOSTNAME:-localhost}
     volumes:
       - ./docker/fusionauth/kickstart.dev.json:/kickstart.json
-  # backend_1: &backend
-  #   build:
-  #     context: .
-  #     dockerfile: backend.dockerfile
-  #   volumes:
-  #     # Pass the local config
-  #     - ./config.development.yaml:/app/config.development.yaml:ro
-  #     - ./config.local.yaml:/app/config.local.yaml:ro
-  #   # user: "${UID}:${GID}"
-  #   command: ["--environment", "development", "--interface", "0.0.0.0", "--port", "3001"]
-  # backend_2: *backend
-  # backend_3: *backend
-  # frontend:
-  #   build:
-  #     context: .
-  #     dockerfile: frontend.dockerfile
-  #   environment:
-  #     NF_CLOUD_BACKEND_BASE_URL: http://localhost:8080
-  #     NF_CLOUD_FRONTEND_INTERFACE: 0.0.0.0
-  #     NF_CLOUD_FRONTEND_PORT: 3000
-  #   #user: "${UID}:${GID}"
-  #   command: ["--environment", "development"]
-  # nginx:
-  #   image: nginx:stable-alpine
-  #   ports:
-  #     - 8080:8080
-  #   volumes:
-  #     - ./nginx-high-available.conf:/etc/nginx/templates/default.conf.template:ro
-  #   depends_on:
-  #     - backend_1
-  #     - backend_2
-  #     - backend_3
-  #     - frontend
-  #   links:
-  #     - backend_1
-  #     - backend_2
-  #     - backend_3
-  #     - frontend

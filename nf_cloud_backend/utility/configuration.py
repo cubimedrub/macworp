@@ -34,6 +34,8 @@ class Configuration():
 interface: 0.0.0.0
 # Port to use
 port: 3001
+# Set to true if you use a reverse proxy
+use_reverse_proxy: false
 # An arbitrary ascii string to sign sessions etc. Make sure to back it up!
 secret: "development"
 # Debug outputs
@@ -68,6 +70,7 @@ login_providers:    # Will be completely overridden by local config
         client_secret: 8CLrA9gAVmlM7GKKCnMnT9MHNvUMqXNVWog2kWUuC7Y2iBOnFIh9X0rpCqfMcpfQkEZfCBfxMqfz5FYC6cduB20kxqV5Ysq
         discovery_url: http://localhost:9011/.well-known/openid-configuration/04690b25-d20a-158d-5b27-a4202477074b
         scope: "offline_access"
+        verify_ssl: false
     # E.g.
     # google:
     #   description: Login with Google
@@ -211,6 +214,7 @@ workflows:          # Will be completely overridden by local config
             cls._validate_type(config['debug'], bool, 'boolean', 'debug')
             cls._validate_type(config['interface'], str, 'ip string', 'interface')
             cls._validate_type(config['port'], int, 'integer', 'port')
+            cls._validate_type(config['use_reverse_proxy'], bool, 'boolean', 'use_reverse_proxy')
             cls._validate_ascii_string(config['secret'], 'secret')
             cls._validate_psql_url(config['database']['url'], 'database.url')
             cls._validate_type(config['database']['pool_size'], int, 'integer', 'database.pool_size')
@@ -397,3 +401,11 @@ workflows:          # Will be completely overridden by local config
         Prints default config
         """
         cls.print_default_config()
+
+    @staticmethod
+    def print_config_param(key_path: str):
+      keys: List[str] = key_path.split(".")
+      value: Any = Configuration.values()
+      for key in keys:
+        value = value[key]
+      print(value)

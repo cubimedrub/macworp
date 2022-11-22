@@ -48,37 +48,79 @@
                 </ul>
                 
             </div>
-            <h2 class="mb-0">Workflow parameters</h2>
-            <template v-for="(argument_value, argument_name) in project.workflow_arguments">
-                <div :key="argument_name">
-                    <PathSelector 
-                        v-if="argument_value.type == 'path'" 
-                        :label="argument_name" 
-                        :description="argument_value.desc"
-                        :initial_value="project.workflow_arguments[argument_name].value"
-                        :parent_event_bus="local_event_bus"
-                        :value_change_event="argument_changed_event"
-                        :project_id="project.id"
-                        :with_selectable_files="argument_value.selectable_files"
-                        :with_selectable_folders="argument_value.selectable_folders"
-                    ></PathSelector>
-                    <MultiplePathSelector 
-                        v-if="argument_value.type == 'paths'" 
-                        :label="argument_name"
-                        :description="argument_value.desc"
-                        :initial_value="project.workflow_arguments[argument_name].value"
-                        :parent_event_bus="local_event_bus"
-                        :value_change_event="argument_changed_event" 
-                        :available_files="project.files"
-                        :project_id="project.id"
-                        :with_selectable_files="argument_value.selectable_files"
-                        :with_selectable_folders="argument_value.selectable_folders"
-                    ></MultiplePathSelector>
-                    <TextInput v-if="argument_value.type == 'text'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="project.workflow_arguments[argument_name].is_multiline"></TextInput>
-                    <NumberInput v-if="argument_value.type == 'number'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
-                    <FileGlob v-if="argument_value.type == 'file-glob'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
+<!-- Tab start 
+            <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pills-home-tab" data-bs-toggle="pill" data-bs-target="#pills-home" type="button" role="tab" aria-controls="pills-home" aria-selected="true">Parameter</button>
+                </li> 
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pills-profile-tab" data-bs-toggle="pill" data-bs-target="#pills-profile" type="button" role="tab" aria-controls="pills-profile" aria-selected="true">Results</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="pills-contact-tab" data-bs-toggle="pill" data-bs-target="#pills-contact" type="button" role="tab" aria-controls="pills-contact" aria-selected="false">Contact</button>
+                </li>
+            </ul>
+            <div class="tab-content" id="pills-tabContent">
+                <div class="tab-pane fade show active" id="pills-home" role="tabpanel" aria-labelledby="pills-home-tab">-->
+                    <h2 class="mb-0">Workflow parameters</h2>
+                    <template v-for="(argument_value, argument_name) in project.workflow_arguments">
+                        <div :key="argument_name">
+                            <PathSelector 
+                                v-if="argument_value.type == 'path'" 
+                                :label="argument_name" 
+                                :description="argument_value.desc"
+                                :initial_value="project.workflow_arguments[argument_name].value"
+                                :parent_event_bus="local_event_bus"
+                                :value_change_event="argument_changed_event"
+                                :project_id="project.id"
+                                :with_selectable_files="argument_value.selectable_files"
+                                :with_selectable_folders="argument_value.selectable_folders"
+                            ></PathSelector>
+                            <MultiplePathSelector 
+                                v-if="argument_value.type == 'paths'" 
+                                :label="argument_name"
+                                :description="argument_value.desc"
+                                :initial_value="project.workflow_arguments[argument_name].value"
+                                :parent_event_bus="local_event_bus"
+                                :value_change_event="argument_changed_event" 
+                                :available_files="project.files"
+                                :project_id="project.id"
+                                :with_selectable_files="argument_value.selectable_files"
+                                :with_selectable_folders="argument_value.selectable_folders"
+                            ></MultiplePathSelector>
+                            <TextInput v-if="argument_value.type == 'text'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="project.workflow_arguments[argument_name].is_multiline"></TextInput>
+                            <NumberInput v-if="argument_value.type == 'number'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
+                            <FileGlob v-if="argument_value.type == 'file-glob'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
+                        </div>
+                    </template>
+                <!-- </div>
+                <div class="tab-pane fade" id="pills-profile" role="tabpanel" aria-labelledby="pills-profile-tab">
+                    Results:
                 </div>
-            </template>
+                <div class="tab-pane fade" id="pills-contact" role="tabpanel" aria-labelledby="pills-contact-tab">
+                    ...
+                </div> 
+            </div>-->                                     
+<!-- Tab ende -->
+<!--tab test
+<ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="pills-home-tab" data-bs-toggle="pill" data-bs-target="#pills-home" type="button" role="tab" aria-controls="pills-home" aria-selected="true">Home</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="pills-profile-tab" data-bs-toggle="pill" data-bs-target="#pills-profile" type="button" role="tab" aria-controls="pills-profile" aria-selected="false">Profile</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="pills-contact-tab" data-bs-toggle="pill" data-bs-target="#pills-contact" type="button" role="tab" aria-controls="pills-contact" aria-selected="false">Contact</button>
+  </li>
+</ul>
+<div class="tab-content" id="pills-tabContent">
+  <div class="tab-pane fade show active" id="pills-home" role="tabpanel" aria-labelledby="pills-home-tab">1</div>
+  <div class="tab-pane fade" id="pills-profile" role="tabpanel" aria-labelledby="pills-profile-tab">12</div>
+  <div class="tab-pane fade" id="pills-contact" role="tabpanel" aria-labelledby="pills-contact-tab">123</div>
+</div>-->
+
+<!-- tab test ende-->
             <button @click="updateProject" type="button" class="btn btn-primary mb-3">
                 <i class="fas fa-save me-2"></i>
                 save

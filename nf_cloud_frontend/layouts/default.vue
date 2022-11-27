@@ -24,6 +24,12 @@
                                                 <span>Project</span>
                                         </NuxtLink>
                                 </li>
+                            <li class="nav-item">
+                                <NuxtLink to="/workflows" class="nav-link">
+                                    <i class="fas fa-project-diagram"></i>
+                                    <span>Workflows</span>
+                                </NuxtLink>
+                            </li>
                         </ul>
                         <p class="application-menu-label">
                         </p>

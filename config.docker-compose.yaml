@@ -19,4 +19,5 @@ login_providers:
       client_secret: 8CLrA9gAVmlM7GKKCnMnT9MHNvUMqXNVWog2kWUuC7Y2iBOnFIh9X0rpCqfMcpfQkEZfCBfxMqfz5FYC6cduB20kxqV5Ysq
       discovery_url: https://ENV['NF_HOSTNAME']:ENV['NF_FUSIONAUTH_PORT']/.well-known/openid-configuration/04690b25-d20a-158d-5b27-a4202477074b
       scope: "offline_access"
+      verify_ssl: false
 frontend_host_url: ~

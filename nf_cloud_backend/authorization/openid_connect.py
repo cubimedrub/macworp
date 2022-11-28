@@ -37,7 +37,8 @@ class OpenIdConnect:
             Provider config
         """
         return requests.get(
-            provider_client_config["discovery_url"]
+            provider_client_config["discovery_url"],
+            verify=provider_client_config.get("verify_ssl", True)
         ).json()
 
     @classmethod
@@ -117,7 +118,8 @@ class OpenIdConnect:
             auth=(
                 provider_client_config["client_id"],
                 provider_client_config["client_secret"]
-            )
+            ),
+            verify=provider_client_config.get("verify_ssl", True)
         )
 
         auth_token_data = auth_token_response.json()
@@ -136,7 +138,8 @@ class OpenIdConnect:
         userinfo = requests.get(
             uri,
             headers = headers,
-            data = body
+            data = body,
+            verify=provider_client_config.get("verify_ssl", True)
         ).json()
 
         user = User.select().where(
@@ -248,7 +251,8 @@ class OpenIdConnect:
             auth = (
                 provider_client_config["client_id"],
                 provider_client_config["client_secret"]
-            )
+            ),
+            verify=provider_client_config.get("verify_ssl", True)
         ).json()
 
         auth_token = JWT.create_auth_token(

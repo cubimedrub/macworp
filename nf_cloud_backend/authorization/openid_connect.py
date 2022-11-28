@@ -4,7 +4,7 @@ import json
 from typing import Any, Dict
 
 # 3rd party imports
-from flask import Request, jsonify, redirect, Response
+from flask import Request, jsonify, redirect, Response, url_for
 from flask_login import login_user
 import requests
 
@@ -56,11 +56,18 @@ class OpenIdConnect:
         provider_config = cls.get_autodicovery(provider_client_config)
         provider_client = openid_clients[provider]
 
+        redirect_uri: str = url_for(
+            "user_auth_callback",
+            _external = True,
+            provider_type = ProviderType.OPENID_CONNECT.value,
+            provider = provider,
+        )
+        
         # Use library to construct the request for Google login and provide
         # scopes that let you retrieve user's profile from Google
         request_uri = provider_client.prepare_request_uri(
             provider_config["authorization_endpoint"],
-            redirect_uri = request.base_url.replace("/login", "/callback"),
+            redirect_uri = redirect_uri,
             scope = [
                 provider_client_config.get("scope", "openid"),
                 "email"

@@ -61,7 +61,7 @@ class UsersController:
             }), 404
 
     @staticmethod
-    @app.route('/api/users/<string:provider_type>/<string:provider>/callback')
+    @app.route('/api/users/<string:provider_type>/<string:provider>/callback', endpoint="user_auth_callback")
     def callback(provider_type: str, provider: str):
         """
         Callback for openid login

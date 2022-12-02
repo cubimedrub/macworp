@@ -3,7 +3,7 @@
         <div v-if="project && !project_not_found">
             <div class="d-flex justify-content-between align-items-center">
                 <h1>Project "{{ project.name }}"</h1>
-                <button @click="startProject" :disabled="project.is_scheduled || !workflows.includes(project.workflow)" class="btn btn-success btn-sm">
+                <button @click="showStartDialog" :disabled="project.is_scheduled || !workflows.includes(project.workflow)" class="btn btn-success btn-sm">
                     Start project
                     <i class="fas fa-play"></i>
                 </button>
@@ -21,7 +21,7 @@
                 </tbody>
             </table>
             <div class="d-flex justify-content-end">
-                <button @click="deleteProject" type="button" class="btn btn-danger">
+                <button @click="showDeleteDialog" type="button" class="btn btn-danger">
                     <i class="fas fa-trash"></i>
                     delete
                 </button>
@@ -93,6 +93,34 @@
         <div v-if="!project && project_not_found">
             Project not found
         </div>
+        <ConfirmationDialog :local_event_bus="local_event_bus" :on_confirm_func="deleteProject" :identifier="delete_confirmation_dialog_id" confirm_button_class="btn-danger">
+            <template v-slot:header>
+                Delete this project?
+            </template>
+            <template v-slot:body>
+                Are you sure you want to delete this project?
+            </template>
+            <template v-slot:dismiss-button>
+                Dismiss
+            </template>
+            <template v-slot:confirm-button>
+                Delete
+            </template>
+        </ConfirmationDialog>
+        <ConfirmationDialog :local_event_bus="local_event_bus" :on_confirm_func="startProject" :identifier="start_workflow_confirmation_dialog_id" confirm_button_class="btn-success">
+            <template v-slot:header>
+                Start the selected workflow on this project?
+            </template>
+            <template v-slot:body>
+                Are you sure you want to start the workflow?
+            </template>
+            <template v-slot:dismiss-button>
+                Dismiss
+            </template>
+            <template v-slot:confirm-button>
+                Start
+            </template>
+        </ConfirmationDialog>
     </div>
 </template>
 
@@ -100,7 +128,8 @@
 import Vue from "vue"
 
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
-
+const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
+const START_WORKFLOW_CONFIRMATION_DIALOG_ID = "start_workflow_confirmation_dialog"
 /**
  * Event name for argument changes.
  */
@@ -119,7 +148,7 @@ export default {
              * Event bus for communication with child components.
              */
             local_event_bus: new Vue(),
-            logs: []
+            logs: [],
         }
     },
     mounted(){
@@ -172,7 +201,7 @@ export default {
             })
         },
         startProject(){
-            if(workflows.include(project.workflow)){
+            if(this.workflows.includes(this.project.workflow)){
                 fetch(
                     `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`, 
                     {
@@ -296,7 +325,19 @@ export default {
             if(this.project != null) this.$socket.emit("leave_project_updates", {
                 "project_id": this.project.id
             });
-        }
+        },
+        /**
+         * Opens the delete confirmation dialog
+         */
+        showDeleteDialog(){
+            this.local_event_bus.$emit("CONFIRMATION_DIALOG_OPEN", this.delete_confirmation_dialog_id)
+        },
+        /**
+         * Opens the start confirmation dialog
+         */
+        showStartDialog(){
+            this.local_event_bus.$emit("CONFIRMATION_DIALOG_OPEN", this.start_workflow_confirmation_dialog_id)
+        },
     },
     computed: {
         /**
@@ -321,6 +362,20 @@ export default {
          */
         reload_project_files_event(){
             return RELOAD_WORKFLOW_FILES_EVENT
+        },
+        /**
+         * Provide access to DELETE_CONFIRMATION_DIALOG_ID in vue instance.
+         * @return {string}
+         */
+        delete_confirmation_dialog_id() {
+            return DELETE_CONFIRMATION_DIALOG_ID
+        },
+        /**
+         * Provide access to START_WORKFLOW_CONFIRMATION_DIALOG_ID in vue instance.
+         * @return {string}
+         */
+        start_workflow_confirmation_dialog_id() {
+            return START_WORKFLOW_CONFIRMATION_DIALOG_ID
         }
     }
 }

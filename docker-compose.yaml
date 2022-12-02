@@ -1,7 +1,7 @@
 version: '2.2'
 services:
   psql:
-    image: postgres:13
+    image: postgres:14
     ports:
       - 127.0.0.1:5434:5432
     environment:

@@ -30,7 +30,8 @@ export default {
     "~/plugins/event_bus.js",
     "~/plugins/api_error_handling.js",
     "~/plugins/bootstrap_modal_control.client.js",
-    "~/plugins/socket.io.client.js"
+    "~/plugins/socket.io.client.js",
+    "~/plugins/vviewer.client.js"
   ],
 
   // Auto import components: https://go.nuxtjs.dev/config-components

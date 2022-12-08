@@ -19,13 +19,10 @@ services:
       PYTHONUNBUFFERED: "true"
     command: ["serve"]
     depends_on:
-      - psql
-      - rabbitmq
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:3001", "||", "exit 1" ]
-      interval: 1m30s
-      timeout: 30s
-      retries: 5
+      psql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
   backend_2: &backend
     <<: *migrating_backend
     environment:

@@ -2,12 +2,11 @@
 version: '2.2'
 services:  
   backend_1: &migrating_backend
-    build:
-      context: .
-      dockerfile: backend.dockerfile
+    image: nf-cloud/backend:dev
     volumes:
       - ./nf_cloud_backend:/home/app/nf_cloud_backend
       - ./nf_cloud_backend/entrypoint.sh:/home/app/entrypoint.sh
+      - ./deploy_test_uploads:/home/app/uploads
       # Pass the local config
       - ./config.docker-compose.yaml:/home/app/nf_cloud.local.config.yaml:ro
     environment:
@@ -36,9 +35,7 @@ services:
   backend_3: *backend
   backend_4: *backend
   frontend:
-    build:
-      context: .
-      dockerfile: frontend.dockerfile
+    image: nf-cloud/frontend:dev
     environment:
       NF_CLOUD_BACKEND_BASE_URL: https://${NF_HOSTNAME:-localhost}:16160
       NF_CLOUD_BACKEND_WS_URL: https://${NF_HOSTNAME:-localhost}:16160

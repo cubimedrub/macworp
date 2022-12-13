@@ -71,12 +71,9 @@ Migrations are located in `nf_cloud_backend/migrations/`. For now this needs to 
 `psql postgresql://postgres:developer@127.0.0.1:5434/nf_cloud`
 
 ### Testing deployment
-NF-Cloud is designed to run as Gunicorn service behind a NginX reverse proxy. This setup can be tested with the addition of the second docker-compose file:
-```
-env NF_HOSTNAME=$(hostname) docker-compose --env-file deploy-test.env  -f docker-compose.yaml -f deploy-test.docker-compose.yaml up
-```
-The command above will start NginX on port `16160` (NF-cloud frontend & backend) and 16161 (FusionAuth), as domain the environment variable `NF_HOSTNAME` (set to the local hostname in the example) is used. Please be aware, that this also affects the FusionAuth kickoff script, and may need a `docker-compose down` before lunching the first time or when the value of `NF_HOSTNAME` changed.
-
+In production NF-Cloud is designed to run as Gunicorn service behind a NginX reverse proxy. This setup can be tested with `make production-test`   
+This will build and start back- & frontend containers, start multiple instances and put them behind a NginX reverse proxy, running on the port 16160 (NF-Cloud) and 16161 (Fusionauth). Both applications are served under HTTPS with a self signed certificate for testing and the hosts name as domain.   
+A worker can be started with `make production-worker-test`
 
 ## Production
 

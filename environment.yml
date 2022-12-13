@@ -30,7 +30,3 @@ dependencies:
     - redis >=4, <5
     - requests  >=2, <3
     - zipstream-new  >=1, <2
-    # Dev dependencies
-    - honcho
-    - pylint
-    - requests

@@ -1,0 +1,4 @@
+# Dependencies only required for development. Sometimes with long build times.
+# Unnecssary to include them in the environment.yaml and in docker containers
+honcho
+pylint

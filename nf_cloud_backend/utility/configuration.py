@@ -45,7 +45,7 @@ upload_path: "./uploads"
 # Database
 database:
   # Database url: 
-  url: postgresql://postgres:developer@127.0.0.1:5434/nf_clo
+  url: postgresql://postgres:developer@127.0.0.1:5434/nf_cloud
   # Number of connections
   pool_size: 1
 matomo:

@@ -59,6 +59,7 @@ class Server:
             # Add bind from config if not defined in --guncicorn
             if not "-b" in gunicorn_args and not "--bind" in gunicorn_args:
                 gunicorn_args += f" -b {Configuration.values()['interface']}:{Configuration.values()['port']} "
+            gunicorn_args = f"{gunicorn_args} -k eventlet"
             print(
                 f"{gunicorn_args} 'nf_cloud_backend.server:get_app()'"
             )

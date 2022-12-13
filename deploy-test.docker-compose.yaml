@@ -17,7 +17,7 @@ services:
       RUN_MIGRATION: "true"
       MIGRATION_DB_HOSTNAME: psql
       PYTHONUNBUFFERED: "true"
-    command: ["serve"]
+    command: ["serve", "--gunicorn"]
     depends_on:
       psql:
         condition: service_healthy
@@ -34,13 +34,14 @@ services:
     depends_on:
       - backend_1
   backend_3: *backend
+  backend_4: *backend
   frontend:
     build:
       context: .
       dockerfile: frontend.dockerfile
     environment:
       NF_CLOUD_BACKEND_BASE_URL: https://${NF_HOSTNAME:-localhost}:16160
-      NF_CLOUD_BACKEND_WS_URL: ws://${NF_HOSTNAME:-localhost}:16160
+      NF_CLOUD_BACKEND_WS_URL: https://${NF_HOSTNAME:-localhost}:16160
       NF_CLOUD_FRONTEND_INTERFACE: 0.0.0.0
   nginx:
     image: nginx:stable
@@ -56,11 +57,13 @@ services:
       - backend_1
       - backend_2
       - backend_3
+      - backend_4
       - frontend
       - fusionauth
     links:
       - backend_1
       - backend_2
       - backend_3
+      - backend_4
       - frontend
       - fusionauth

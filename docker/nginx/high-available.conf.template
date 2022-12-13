@@ -1,8 +1,12 @@
-
-upstream backend_handler {
+upstream socketio_handler {
+    ip_hash;    # make sure the same the channels are processed by the same proxy
     server backend_1:3001;
     server backend_2:3001;
+}
+
+upstream backend_handler {
     server backend_3:3001;
+    server backend_4:3001;
 }
 
 upstream frontend_handler {
@@ -50,6 +54,18 @@ server {
         proxy_pass http://backend_handler;
     }
 
+    location /socket.io {
+        add_header X-Debug "sock location";
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_redirect off;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_pass http://socketio_handler/socket.io;
+    } 
+
     # Deliver frontend
     location / {
         # Disable buffering of upstream responses.
@@ -57,7 +73,7 @@ server {
         # Set proxy headers for Flask
         proxy_set_header X-Real-IP  $remote_addr;
         proxy_set_header Host $http_host;
-        proxy_set_header X-Forwarded-Proto "https";
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_redirect off;
         proxy_pass http://frontend_handler;

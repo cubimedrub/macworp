@@ -65,3 +65,7 @@ services:
       NF_HOSTNAME: ${NF_HOSTNAME:-localhost}
     volumes:
       - ./docker/fusionauth/kickstart.dev.json:/kickstart.json
+  redis:
+    image: redis:6-alpine
+    ports:
+      - 127.0.0.1:6380:6379

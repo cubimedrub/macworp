@@ -8,6 +8,7 @@ database:
   pool_size: 4 # In development mode, more than one connections are supported
 rabbit_mq:
   url: "amqp://admin:developer@rabbitmq:5672/%2f"
+redis_url: redis://redis:6379/0
 worker_credentials:
   username: "worker"
   password: "developer"

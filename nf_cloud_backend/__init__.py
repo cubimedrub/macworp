@@ -57,7 +57,8 @@ if Configuration.values()["use_reverse_proxy"]:
 
 cache = Cache(
     config={
-        "CACHE_TYPE": "SimpleCache",
+        "CACHE_TYPE": "RedisCache",
+        "CACHE_REDIS_URL": Configuration.values()["redis_url"],
         "CACHE_DEFAULT_TIMEOUT": 60
     }
 )
@@ -71,10 +72,6 @@ async_mode = "threading"
 if not Configuration.values()["debug"]:
     eventlet.monkey_patch()
     async_mode = "eventlet"
-
-# SocketIO for bi-directional 
-socketio = SocketIO(app, cors_allowed_origins="*")
-
 
 socketio = SocketIO(
     app,

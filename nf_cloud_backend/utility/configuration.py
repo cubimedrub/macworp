@@ -58,6 +58,7 @@ rabbit_mq:
   url: "amqp://admin:developer@127.0.0.1:5674/%2f"
   # Queue for scheduled projects
   project_workflow_queue: project_workflow
+redis_url: redis://localhost:6380/0
 # Basic auth for worker
 worker_credentials:
   username: ""

@@ -44,7 +44,8 @@ yarn --cwd ./nf_cloud_frontend install
 # Shell 1
 docker-compose up
 # Shell 2
-pw_migrate migrate --database 'postgresql://postgres:developer@127.0.0.1:5434/nf_cloud' --directory nf_cloud_backend/migrations'
+python -m nf_cloud_backend database migrate
+python -m nf_cloud_backend utility rabbitmq prepare
 honcho -e dev.env start
 ```
 

@@ -97,7 +97,20 @@ You can use the build arguments (`--build-arg`) `USER_ID` and `GROUP_ID` to chan
 
 ##### Usage
 The images entrypoint is the `nf_cloud_backend` command line interface, so users can start using command line arguments (e.g. `--help`). If the option `serve --gunicorn` is given, the image will start NF-Cloud as Gunicorn application, unlike the native installation which prints the Gunicorn parameters.    
-NF-Cloud is running in the folder `/home/app`. So please mount a local configuration accordingly when running the images, e.g.: `docke rur -v <some-local-config>:/home/app/nf_cloud.local.config.yaml`. To persist the uploaded files a persistent volume or bind-mount should be used.   
+NF-Cloud is running in the folder `/home/app`. So please mount a local configuration accordingly when running the images, e.g.: `docke run -v <some-local-config>:/home/app/nf_cloud.local.config.yaml`. To persist the uploaded files a persistent volume or bind-mount should be used. 
+
+**Attention**: The worker needs to be deployed natively to use Docker containers in workflows.
+
+
+#### Native
+Clone the repository and use Conda or Miniconda to create an environment with all necessary dependencies: `conda env create -f environment.yml` (the environment name will be `nf_cloud`)
+
+##### Usage
+Make sure to activate the environment and go into the root folder of the repository before using `nf_cloud_backend` or use `conda run -n nf_cloud python -m nf_cloud_worker`
+
+
+##### Worker
+Run `conda run -n nf_cloud python`
 
 #### Create a new configuration file
 `python -m nf_cloud_backend utility config create .` this will create a new config named `nf_cloud.local.config.yaml` in the current directory. You can also print the configuration with `python -m nf_cloud_backend utility config print` (useful for piping the results from a Docker container).

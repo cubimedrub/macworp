@@ -6,7 +6,7 @@
             <div class="col-sm-10 d-flex flex-column justify-content-center">
                 <input v-model="name" v-on:keyup.enter="createWorkflow" id="workflow-name" class="form-control" type="text">
                 <small v-if="errors.name">
-                    <AttributeErrorList :errors="errors.name"></AttributeErrorList>
+                    <AttributeErrorList :errors="errors.name" class="alert-danger" style="list-style: none"></AttributeErrorList>
                 </small>
             </div>
         </div>

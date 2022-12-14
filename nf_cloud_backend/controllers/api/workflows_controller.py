@@ -53,11 +53,11 @@ class WorkflowsControllers:
         name: Optional[str] = data.get("name", None)
         if name is not None:
             if len(name) < 1:
-                errors["name"].append("too short")
+                errors["name"].append("Input too short")
             if len(name) > 512:
-                errors["name"].append("too long")
+                errors["name"].append("Input too long")
         else:
-            errors["name"].append("missing")
+            errors["name"].append("Input is missing")
 
         if len(errors) > 0:
             return jsonify({

@@ -1,6 +1,6 @@
 <template>
     <node-view-wrapper class="code-block">
-        <pre><code><node-view-content /></code></pre>
+        <code><node-view-content /></code>
     </node-view-wrapper>
 </template>
 
@@ -31,12 +31,5 @@ export default {
 </script>
 
 <style lang="scss">
-.code-block {
-    position: relative;
-    select {
-        position: absolute;
-        top: 0.5rem;
-        right: 0.5rem;
-    }
-}
+
 </style>

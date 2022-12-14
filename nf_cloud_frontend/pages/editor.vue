@@ -31,8 +31,6 @@ export default {
 </script>
 <style>
 .ProseMirror{
-    border-radius: 0.5rem;
-    font-size: 1.5rem;
-    border: 2px solid black;
+
 }
 </style>

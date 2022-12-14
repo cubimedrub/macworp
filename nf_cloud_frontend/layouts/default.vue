@@ -19,7 +19,7 @@
                         </p>
                         <ul class="nav flex-column">
                                 <li class="nav-item">
-                                        <NuxtLink to="/projects" class="nav-link">
+                                        <NuxtLink to="/projects" class="btn btn-outline-primary nav-link">
                                                 <i class="fas fa-random"></i>
                                                 <span>Project</span>
                                         </NuxtLink>

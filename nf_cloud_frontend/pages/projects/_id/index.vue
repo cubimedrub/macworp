@@ -35,25 +35,25 @@
             <h2>Workflow</h2>
             <div class="dropdown mb-3">
                 <button :class="{show: show_workflow_dropdown}" :aria_expanded="show_workflow_dropdown" @click="toggleWorkflowDropdown" class="btn btn-primary" type="button" id="workflows-dropdown" data-bs-toggle="dropdown">
-                    <span v-if="project.workflow">{{project.workflow}}</span>
+                    <span v-if="project.workflow.name">{{project.workflow.name}}</span>
                     <span v-else>Select a project...</span>
                     <i :class="{'fa-caret-down': !show_workflow_dropdown, 'fa-caret-up': show_workflow_dropdown}" class="fas ms-2"></i>
                 </button>
                 <ul :class="{show: show_workflow_dropdown}" class="dropdown-menu" aria-labelledby="workflows-dropdown">
                     <li v-for="nf_project in workflows" :key="nf_project" :value="nf_project">
                         <button @click="setWorkflow(nf_project); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
-                            {{nf_project}}
+                            {{nf_project.name}}
                         </button>
                     </li>
                 </ul>
-                
+
             </div>
             <h2 class="mb-0">Workflow parameters</h2>
             <template v-for="(argument_value, argument_name) in project.workflow_arguments">
                 <div :key="argument_name">
-                    <PathSelector 
-                        v-if="argument_value.type == 'path'" 
-                        :label="argument_name" 
+                    <PathSelector
+                        v-if="argument_value.type == 'path'"
+                        :label="argument_name"
                         :description="argument_value.desc"
                         :initial_value="project.workflow_arguments[argument_name].value"
                         :parent_event_bus="local_event_bus"
@@ -62,13 +62,13 @@
                         :with_selectable_files="argument_value.selectable_files"
                         :with_selectable_folders="argument_value.selectable_folders"
                     ></PathSelector>
-                    <MultiplePathSelector 
-                        v-if="argument_value.type == 'paths'" 
+                    <MultiplePathSelector
+                        v-if="argument_value.type == 'paths'"
                         :label="argument_name"
                         :description="argument_value.desc"
                         :initial_value="project.workflow_arguments[argument_name].value"
                         :parent_event_bus="local_event_bus"
-                        :value_change_event="argument_changed_event" 
+                        :value_change_event="argument_changed_event"
                         :available_files="project.files"
                         :project_id="project.id"
                         :with_selectable_files="argument_value.selectable_files"
@@ -84,7 +84,7 @@
                 save
             </button>
             <h2>Files</h2>
-            <EditableFileBrowser 
+            <EditableFileBrowser
                 :project_id="project.id"
                 :parent_event_bus="local_event_bus"
                 :reload_event="this.reload_project_files_event"
@@ -185,7 +185,7 @@ export default {
         },
         deleteProject(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/delete`, 
+                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/delete`,
                 {
                     method: "POST",
                     headers: {
@@ -203,7 +203,7 @@ export default {
         startProject(){
             if(this.workflows.includes(this.project.workflow)){
                 fetch(
-                    `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`, 
+                    `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`,
                     {
                         method:'POST',
                         headers: {
@@ -223,7 +223,7 @@ export default {
         },
         updateProject(){
             fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/update`, 
+                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/update`,
                 {
                     method:'POST',
                     headers: {
@@ -262,7 +262,7 @@ export default {
         },
         /**
          * Sets a nee value to the workflow argument
-         * 
+         *
          * @param {string} argument_name
          * @param {any} argument_value
          */
@@ -274,7 +274,7 @@ export default {
          */
         bindWorkflowArgumentChangeEvent(){
             this.local_event_bus.$on(
-                this.argument_changed_event, 
+                this.argument_changed_event,
                 (argument_name, new_value) => {this.setWorkflowArgument(argument_name, new_value)}
             )
         },
@@ -342,7 +342,7 @@ export default {
     computed: {
         /**
          * Returns the argument change event so it is usable in the template.
-         * 
+         *
          * @returns {string}
          */
         argument_changed_event(){

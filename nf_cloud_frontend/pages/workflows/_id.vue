@@ -17,6 +17,10 @@
                 <th>Name</th>
                 <td>{{  workflow.name }}</td>
             </tr>
+            <tr>
+                <th>Description</th>
+                <td>{{  workflow.description }}</td>
+            </tr>
             </tbody>
         </table>
         <div class="d-flex justify-content-between">

@@ -70,6 +70,14 @@ const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 const START_WORKFLOW_CONFIRMATION_DIALOG_ID = "start_workflow_confirmation_dialog"
 
+function isJsonString(str) {
+    try {
+        JSON.parse(str);
+    } catch (e) {
+        return false;
+    }
+    return true;
+}
 export default {
     data(){
         return {

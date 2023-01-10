@@ -75,7 +75,8 @@ seeds:
                         "value": "./"
                     }
                 ]
-            }
+            },
+            "results": []
         }
   - model: Workflow
     attributes:
@@ -174,5 +175,6 @@ seeds:
                         "value": "./"
                     }
                 ]
-            }
+            },
+            "results": []
         }

@@ -197,3 +197,11 @@ class WorkflowsControllers:
         if workflow is None:
             return '', 404
         return jsonify(workflow.definition['args']['dynamic'])
+    
+    @staticmethod
+    @app.route("/api/workflows/<int:workflow_id>/result_definition")
+    def result_definition(workflow_id: int):
+        workflow: Workflow = Workflow.get_or_none(Workflow.id == workflow_id)
+        if workflow is None:
+            return '', 404
+        return jsonify(workflow.definition['results'])

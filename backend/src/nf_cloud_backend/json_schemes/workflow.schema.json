@@ -267,12 +267,17 @@
         "dynamic",
         "static"
       ]
+    },
+    "results": {
+      "description": "Result displaying",
+      "type": "array"
     }
   },
   "required": [
     "directory",
     "script",
     "nextflow_parameters",
-    "args"
+    "args",
+    "results"
   ]
 }

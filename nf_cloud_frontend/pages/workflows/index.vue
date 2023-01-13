@@ -27,20 +27,6 @@
                 </div>
             </div>
         </div>
-        <ConfirmationDialog :local_event_bus="local_event_bus" :on_confirm_func="deleteWorkflow" :identifier="delete_confirmation_dialog_id" confirm_button_class="btn-danger">
-            <template v-slot:header>
-                Delete this Workflow?
-            </template>
-            <template v-slot:body>
-                Are you sure you want to delete this Workflow?
-            </template>
-            <template v-slot:dismiss-button>
-                Dismiss
-            </template>
-            <template v-slot:confirm-button>
-                Delete
-            </template>
-        </ConfirmationDialog>
     </div>
 </template>
 
@@ -50,7 +36,6 @@ import Vue from "vue";
 
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
-const START_WORKFLOW_CONFIRMATION_DIALOG_ID = "start_workflow_confirmation_dialog"
 export default {
     data(){
         return {
@@ -79,9 +64,9 @@ export default {
                 }
             })
         },
-        deleteWorkflow(){
+        deleteWorkflow(workflow_id){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}/delete`,
+                `${this.$config.nf_cloud_backend_base_url}/api/workflows/${workflow_id}/delete`,
                 {
                     method: "POST",
                     headers: {
@@ -126,13 +111,6 @@ export default {
         delete_confirmation_dialog_id() {
             return DELETE_CONFIRMATION_DIALOG_ID
         },
-        /**
-         * Provide access to START_WORKFLOW_CONFIRMATION_DIALOG_ID in vue instance.
-         * @return {string}
-         */
-        start_workflow_confirmation_dialog_id() {
-            return START_WORKFLOW_CONFIRMATION_DIALOG_ID
-        }
     }
 }
 </script>

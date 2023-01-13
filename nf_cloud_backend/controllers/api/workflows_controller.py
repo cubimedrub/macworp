@@ -110,3 +110,24 @@ class WorkflowsControllers:
         workflow.save()
 
         return "", 200
+
+    @staticmethod
+    @app.route("/api/workflows/<int:workflow_id>/delete", methods=["POST"], endpoint="workflow_delete")
+    def update(workflow_id: int):
+        """
+        Endpoint for deleteing a workflow.
+        Returns
+        -------
+        Response
+            200 - on success
+            422 - on errors
+        Raises
+        ------
+        RuntimeError
+            Workflow cannot be delete.
+        """
+
+        workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
+        workflow.delete_instance()
+
+        return "", 200

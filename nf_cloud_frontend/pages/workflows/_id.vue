@@ -68,7 +68,6 @@ import Vue from "vue";
 import TiptapEditor from '~/components/TiptapEditor.vue'
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
-const START_WORKFLOW_CONFIRMATION_DIALOG_ID = "start_workflow_confirmation_dialog"
 
 function isJsonString(str) {
     try {
@@ -121,7 +120,7 @@ export default {
                     }
                 }
             ).then(response => {
-                if(response.ok || response.status == 404) {
+                if(response.ok) {
                     this.$router.push({name: "workflows"})
                 } else {
                     this.handleUnknownResponse(response)
@@ -189,13 +188,6 @@ export default {
         delete_confirmation_dialog_id() {
             return DELETE_CONFIRMATION_DIALOG_ID
         },
-        /**
-         * Provide access to START_WORKFLOW_CONFIRMATION_DIALOG_ID in vue instance.
-         * @return {string}
-         */
-        start_workflow_confirmation_dialog_id() {
-            return START_WORKFLOW_CONFIRMATION_DIALOG_ID
-        }
     }
 }
 </script>

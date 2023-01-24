@@ -367,6 +367,33 @@
               "header",
               "description"
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "plotly" 
+              },
+              "path": {
+                "description": "Plotly.json path",
+                "type": "string"
+              },
+              "header": {
+                "description": "Header of the result section",
+                "type": "string"
+              },
+              "description": {
+                "description": "Description",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "path",
+              "header",
+              "description"
+            ]
           }
         ]
       }

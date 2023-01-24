@@ -119,6 +119,12 @@ seeds:
                     "description": "Test SVG",
                     "path": "test_svg.svg",
                     "embed": true
+                },
+                {
+                    "type": "plotly",
+                    "header": "Plotly",
+                    "description": "Plotly plot",
+                    "path": "plotly.json"
                 }
             ]
         }
@@ -263,6 +269,12 @@ seeds:
                     "description": "Test SVG",
                     "path": "test_svg.svg",
                     "embed": true
+                },
+                {
+                    "type": "plotly",
+                    "header": "Plotly",
+                    "description": "Plotly plot",
+                    "path": "plotly.json"
                 }
             ]
         }

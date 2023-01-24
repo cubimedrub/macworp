@@ -32,7 +32,9 @@ export default {
     "~/plugins/api_error_handling.js",
     "~/plugins/bootstrap_modal_control.client.js",
     "~/plugins/socket.io.client.js",
-    "~/plugins/v-viewer.js"
+    "~/plugins/v-viewer.js",
+    "~/plugins/vue_plotly.js",
+    "~/plugins/json_editor_vue.client.js"
   ],
 
   // Auto import components: https://go.nuxtjs.dev/config-components
@@ -49,6 +51,23 @@ export default {
 
   // Build Configuration: https://go.nuxtjs.dev/config-build
   build: {
+    // Vite 4 (Rollup 3) uses ES2020 as compiler target by default
+    // Therefore Vite-4-built outputs should be transpiled in webpack 4
+    transpile: ['json-editor-vue'],
+    extend (config, { isDev, isClient }) {
+
+      config.node= {
+         fs: 'empty',
+         child_process: "empty"
+       }
+
+      // Getting webpack to recognize the `.mjs` file
+      config.module.rules.push({
+        test: /\.mjs$/,
+        include: /node_modules/,
+        type: 'javascript/auto',
+      })
+   }
   },
 
   publicRuntimeConfig: {

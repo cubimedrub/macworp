@@ -123,6 +123,13 @@
                             :path="result.path"
                             :embed="result.embed !== undefined ? result.embed : false"
                         ></SVGViewer>
+                        <PlotlyViewer
+                            v-if="result.type == 'plotly'"
+                            :project_id="project.id"
+                            :header="result.header"
+                            :description="result.description"
+                            :path="result.path"
+                        ></PlotlyViewer>
                     </template>
                 </template>
             </Tab>

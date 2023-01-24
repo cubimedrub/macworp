@@ -110,6 +110,21 @@ process txtFilesToMarkdownCodeBlocks {
 }
 
 /**
+  * Downloads test images for image viewer
+  */  
+process downloadTestImages {
+    publishDir "${params.outDir}", mode:"copy"
+
+    output:
+    path "*.png"
+
+    """
+    curl -o ${params.outDir}/test_image.png  https://upload.wikimedia.org/wikipedia/commons/c/c4/PM5544_with_non-PAL_signals.png
+    curl -o ${params.outDir}/another_test_image.png  https://upload.wikimedia.org/wikipedia/commons/f/f1/SWTestbild.png
+    """
+}
+
+/**
  * Put all things together in one markdown file
  * and append NF-Cloud single- & multline TextInput.
  * The resulting outfile will be added to the workdir.

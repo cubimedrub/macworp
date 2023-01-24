@@ -76,7 +76,32 @@ seeds:
                     }
                 ]
             },
-            "results": []
+            "results": [
+                {
+                    "type": "images",
+                    "header": "Singe image",
+                    "images": [
+                        {
+                            "description": "Test image",
+                            "path": "test_image.png"
+                        }
+                    ]
+                },
+                {
+                    "type": "images",
+                    "header": "Multiple image",
+                    "images": [
+                        {
+                            "description": "Test image",
+                            "path": "test_image.png"
+                        },
+                        {
+                            "description": "Another test image",
+                            "path": "another_test_image.png"
+                        }
+                    ]
+                }
+            ]
         }
   - model: Workflow
     attributes:
@@ -176,5 +201,30 @@ seeds:
                     }
                 ]
             },
-            "results": []
+            "results": [
+                {
+                    "type": "images",
+                    "header": "Singe image",
+                    "images": [
+                        {
+                            "description": "Test image",
+                            "path": "test_image.png"
+                        }
+                    ]
+                },
+                {
+                    "type": "images",
+                    "header": "Multiple image",
+                    "images": [
+                        {
+                            "description": "Test image",
+                            "path": "test_image.png"
+                        },
+                        {
+                            "description": "Another test image",
+                            "path": "another_test_image.png"
+                        }
+                    ]
+                }
+            ]
         }

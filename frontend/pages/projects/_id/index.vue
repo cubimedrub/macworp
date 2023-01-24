@@ -99,6 +99,17 @@
                         save
                     </button>
                 </template>
+
+                <template v-slot:results>
+                    <template v-if="project.results_definition" v-for="(result, result_idx) in project.results_definition">
+                        <ImageViewer
+                            v-if="result.type == 'images'"
+                            :project_id="project.id"
+                            :header="result.header"
+                            :images="result.images"
+                        ></ImageViewer>
+                    </template>
+                </template>
             </Tab>
         </div>
         <div v-if="!project && project_not_found">
@@ -138,7 +149,6 @@
 <script>
 import Vue from "vue"
 import toastr from "toastr"
-import workflows from "../../workflows/index.vue";
 
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
@@ -146,11 +156,11 @@ const START_WORKFLOW_CONFIRMATION_DIALOG_ID = "start_workflow_confirmation_dialo
 /**
  * Keys for tabs
  */
-const TABS = ['files', 'workflow'];
+const TABS = ['files', 'workflow', 'results'];
 /**
  * Labels for tabs
  */
-const TAB_LABELS = ['Files', 'Workflow'];
+const TAB_LABELS = ['Files', 'Workflow', 'Results'];
 /**
  * Event name for argument changes.
  */
@@ -199,9 +209,12 @@ export default {
             ).then(response => {
                 if(response.ok) {
                     response.json().then(response_data => {
-                        this.project = response_data.project
+                        let project = response_data.project
+                        project.results_definition = []
+                        this.project = project
                         this.bindWorkflowArgumentChangeEvent()
                         this.connectToProjectSocketIoRoom()
+                        if(this.project.workflow_id) this.getResultsDefinition()
                     })
                 } else if(response.status == 404) {
                     this.project_not_found = true
@@ -292,6 +305,7 @@ export default {
             if (this.project.is_scheduled) return
             this.project.workflow_id = workflow_id
             this.getDynamicWorkflowArguments()
+            this.getResultsDefinition()
         },
         /**
          * Sets a neww value to the workflow argument
@@ -322,6 +336,21 @@ export default {
                 if(response.ok) {
                     response.json().then(data => {
                         this.project.workflow_arguments = data
+                    })
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
+        },
+        /**
+         * Fetches the result definition
+         */
+        getResultsDefinition(){
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.project.workflow_id}/result_definition`, {
+            }).then(response => {
+                if(response.ok) {
+                    response.json().then(data => {
+                        this.project.results_definition = data
                     })
                 } else {
                     this.handleUnknownResponse(response)
@@ -371,7 +400,7 @@ export default {
          */
         showStartDialog(){
             this.local_event_bus.$emit("CONFIRMATION_DIALOG_OPEN", this.start_workflow_confirmation_dialog_id)
-        },
+        }
     },
     computed: {
         /**

@@ -270,7 +270,52 @@
     },
     "results": {
       "description": "Result displaying",
-      "type": "array"
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "images" 
+              },
+              "header": {
+                "description": "Header of the result section",
+                "type": "string"
+              },
+              "images": {
+                "description": "List of images and descriptions",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "description"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "type",
+              "header",
+              "images"
+            ]
+          }
+        ]
+      }
     }
   },
   "required": [

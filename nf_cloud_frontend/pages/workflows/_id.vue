@@ -39,7 +39,13 @@
             </tr>
             </tbody>
         </table>
-        <tiptap-editor v-model="workflow.definition"/>
+        <form>
+            <tiptap-editor v-model="workflow.definition"/>
+            <button @click.prevent="validateJSON">Validate JSON</button>
+        </form>
+        <p v-if="valid">JSON is valid</p>
+        <p v-else>JSON is invalid. Reason: {{ error }}</p>
+        <textarea v-model="workflow.definition"></textarea>
         <ConfirmationDialog :local_event_bus="local_event_bus" :on_confirm_func="deleteWorkflow" :identifier="delete_confirmation_dialog_id" confirm_button_class="btn-danger">
             <template v-slot:header>
                 Delete this Workflow?
@@ -64,14 +70,6 @@ import TiptapEditor from '~/components/TiptapEditor.vue'
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 
-function isJsonString(str) {
-    try {
-        JSON.parse(str);
-    } catch (e) {
-        return false;
-    }
-    return true;
-}
 export default {
     data(){
         return {
@@ -79,6 +77,8 @@ export default {
             is_updating: false,
             errors: {},
             local_event_bus: new Vue(),
+            valid: true,
+            error: ''
         }
     },
     activated(){
@@ -159,6 +159,16 @@ export default {
          */
         showDeleteDialog(){
             this.local_event_bus.$emit("CONFIRMATION_DIALOG_OPEN", this.delete_confirmation_dialog_id)
+        },
+        validateJSON() {
+            try {
+                JSON.parse(this.workflow.definition)
+                this.valid = true
+                this.error = ''
+            } catch (e) {
+                this.valid = false
+                this.error = e.toString()
+            }
         },
     },
     computed: {

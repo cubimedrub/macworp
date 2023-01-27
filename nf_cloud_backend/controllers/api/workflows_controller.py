@@ -2,7 +2,8 @@
 from ast import List
 from collections import defaultdict
 from typing import Any, Dict, Optional
-from flask import jsonify, request
+from flask import Flask, jsonify, request
+import json
 
 # internal imports
 from nf_cloud_backend import app
@@ -105,6 +106,12 @@ class WorkflowsControllers:
         description: Dict[str, Any] = data.get("description", None)
         app.logger.error(definition)
         # validate definition
+        try:
+            json_obj = json.loads(json_string)
+            print("JSON is valid")
+        except ValueError as e:
+            print("JSON is invalid. Reason:")
+            print(e)
 
         workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
         workflow.definition = definition

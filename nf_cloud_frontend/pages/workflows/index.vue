@@ -11,14 +11,14 @@
             <div v-for="workflow in workflows" :key="workflow.id" class="col-sm-3 mb-3">
                 <div class="card shadow-sm">
                     <div class="card-body">
-                        <h5 class="card-title">{{ workflow.name }}</h5>
-                        <p class="card-text">{{workflow.description}}</p>
                         <div class="d-flex justify-content-between">
+                            <h5 class="card-title">{{ workflow.name }}</h5>
                             <NuxtLink :to="{name: 'workflows-id', params: {'id': workflow.id}}" class="btn btn-outline-primary btn-sm">
                                 <i class="fas fa-edit"></i>
                                 Edit
                             </NuxtLink>
                         </div>
+                        <p class="card-text">{{workflow.description}}</p>
                     </div>
                 </div>
             </div>

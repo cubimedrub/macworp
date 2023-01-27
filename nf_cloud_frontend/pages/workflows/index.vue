@@ -27,10 +27,16 @@
 </template>
 
 <script>
+
+import Vue from "vue";
+
+const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
+const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 export default {
     data(){
         return {
-            workflows: []
+            workflows: [],
+            local_event_bus: new Vue(),
         }
     },
     activated(){
@@ -53,7 +59,54 @@ export default {
                     this.handleUnknownResponse(response)
                 }
             })
-        }
+        },
+        deleteWorkflow(workflow_id){
+            return fetch(
+                `${this.$config.nf_cloud_backend_base_url}/api/workflows/${workflow_id}/delete`,
+                {
+                    method: "POST",
+                    headers: {
+                        "x-access-token": this.$store.state.login.jwt
+                    }
+                }
+            ).then(response => {
+                if(response.ok || response.status == 404) {
+                    this.$router.push({name: "workflows"})
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
+        },
+        /**
+         * Opens the delete confirmation dialog
+         */
+        showDeleteDialog(){
+            this.local_event_bus.$emit("CONFIRMATION_DIALOG_OPEN", this.delete_confirmation_dialog_id)
+        },
+    },
+    computed: {
+        /**
+         * Returns the argument change event so it is usable in the template.
+         *
+         * @returns {string}
+         */
+        argument_changed_event(){
+            return ARGUMENT_CHANGED_EVENT
+        },
+        /**
+         * Provide access to RELOAD_WORKFLOW_FILES_EVENT in vue instance.
+         * @return {string}
+         */
+        reload_project_files_event(){
+            return RELOAD_WORKFLOW_FILES_EVENT
+        },
+        /**
+         * Provide access to DELETE_CONFIRMATION_DIALOG_ID in vue instance.
+         * @return {string}
+         */
+        delete_confirmation_dialog_id() {
+            return DELETE_CONFIRMATION_DIALOG_ID
+        },
     }
 }
 </script>

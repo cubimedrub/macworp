@@ -2,10 +2,22 @@
     <div v-if="workflow != null">
         <div class="d-flex justify-content-between align-items-center">
             <h1>Workflow "{{ workflow.name }}"</h1>
-            <button @click="showDeleteDialog" type="button" class="btn btn-danger">
-                <i class="fas fa-trash-alt"></i>
-                Delete
-            </button>
+            <div>
+                <button @click="updateWorkflow" type="button" class="btn btn-primary">
+                    <i class="fas fa-save me-2"></i>
+                    Save
+                </button>
+                <button @click="showDeleteDialog" type="button" class="btn btn-danger">
+                    <i class="fas fa-trash-alt"></i>
+                    Delete
+                </button>
+                <NuxtLink to="/workflows">
+                    <button type="button" class="btn btn-outline-primary">
+                        <i class="fas fa-project-diagram"></i>
+                        Go Back
+                    </button>
+                </NuxtLink>
+            </div>
         </div>
         <table class="table">
             <tbody>
@@ -19,37 +31,15 @@
             </tr>
             <tr>
                 <th>Description</th>
-                <td>{{  workflow.description }}</td>
+                <td><textarea v-model="workflow.description"></textarea></td>
+            </tr>
+            <tr>
+                <th>Publish</th>
+                <td><input type="checkbox" v-model="workflow.is_published"></td>
             </tr>
             </tbody>
         </table>
-        <div class="d-flex justify-content-between">
-            <div class="d-flex justify-content-start" style="margin-bottom: 0.5em">
-                <button @click="" type="button" class="btn btn-primary" style="margin-right: 0.5em">
-                    <i class="fas fa-file-import me-2"></i>
-                    Import
-                </button>
-                <button @click="" type="button" class="btn btn-primary" style="margin-right: 0.5em">
-                    <i class="fas fa-file-export me-2"></i>
-                    Export
-                </button>
-            </div>
-            <div class="d-flex justify-content-end" style="margin-bottom: 0.5em">
-                <button @click="updateWorkflow" type="button" class="btn btn-primary" style="margin-right: 0.5em">
-                    <i class="fas fa-save me-2"></i>
-                    Save
-                </button>
-                <NuxtLink to="/workflows">
-                    <button type="button" class="btn btn-outline-primary">
-                        <i class="fas fa-project-diagram me-2"></i>
-                        Go Back
-                    </button>
-                </NuxtLink>
-            </div>
-        </div>
-
         <tiptap-editor v-model="workflow.definition"/>
-
     </div>
 </template>
 
@@ -102,6 +92,7 @@ export default {
                     },
                     body: JSON.stringify({
                         definition: this.workflow.definition,
+                        description: this.workflow.description,
                     })
                 }).then(response => {
                     if(response.ok) {

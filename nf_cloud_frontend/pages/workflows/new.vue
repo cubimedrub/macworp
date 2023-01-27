@@ -19,7 +19,7 @@
         </div>
         <div class="d-flex justify-content-end">
             <button @click="createWorkflow" :disable="is_creating" type="button" class="btn btn-primary">
-                submit
+                Create
                 <i class="fas fa-angle-right"></i>
             </button>
         </div>

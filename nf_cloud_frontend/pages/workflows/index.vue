@@ -12,16 +12,12 @@
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <h5 class="card-title">{{ workflow.name }}</h5>
-                        <p class="card-text">Hier können wir vielleicht beschreibung einfügen</p>
+                        <p class="card-text">{{workflow.description}}</p>
                         <div class="d-flex justify-content-between">
                             <NuxtLink :to="{name: 'workflows-id', params: {'id': workflow.id}}" class="btn btn-outline-primary btn-sm">
                                 <i class="fas fa-edit"></i>
                                 Edit
                             </NuxtLink>
-                            <button @click="showDeleteDialog" type="button" class="btn btn-outline-danger btn-sm">
-                                <i class="fas fa-trash-alt"></i>
-                                Delete
-                            </button>
                         </div>
                     </div>
                 </div>

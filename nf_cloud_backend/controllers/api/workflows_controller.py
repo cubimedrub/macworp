@@ -102,11 +102,13 @@ class WorkflowsControllers:
         """
         data: Dict[str, Any] = request.json
         definition: Dict[str, Any] = data.get("definition", None)
+        description: Dict[str, Any] = data.get("description", None)
         app.logger.error(definition)
         # validate definition
 
         workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
         workflow.definition = definition
+        workflow.description = description
         workflow.save()
 
         return "", 200

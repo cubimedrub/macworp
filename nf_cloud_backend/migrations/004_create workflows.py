@@ -40,8 +40,10 @@ def migrate(migrator: Migrator, database, fake=False, **kwargs):
     create table workflows (
         id bigserial primary key,
         name varchar(512) unique not null,
-        description varchar(512) unique not null,
-        definition json
+        description text unique not null,
+        definition json,
+        is_validated boolean not null default false,
+        is_published boolean not null default false
     );
     """)
 

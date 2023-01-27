@@ -64,7 +64,6 @@ export default {
                             this.description = null
                             this.errors = {}
                             this.$router.push({name: "workflows-id", params: {id: response_data.id}})
-                            this.$router.push({description: "workflows-id", params: {id: response_data.id}})
                         })
                     } else if (response.status == 422) {
                         response.json().then(response_data => {

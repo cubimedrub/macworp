@@ -105,17 +105,17 @@ class WorkflowsControllers:
         definition: Dict[str, Any] = data.get("definition", None)
         description: Dict[str, Any] = data.get("description", None)
         app.logger.error(definition)
-        # validate definition
-        try:
-            json_obj = json.loads(json_string)
-            print("JSON is valid")
-        except ValueError as e:
-            print("JSON is invalid. Reason:")
-            print(e)
 
         workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
         workflow.definition = definition
         workflow.description = description
+
+        try:
+                json_obj = json.loads(workflow.definition)
+                print("JSON is valid")
+        except ValueError as e:
+                print("JSON is invalid. Reason:")
+                print(e)
         workflow.save()
 
         return "", 200

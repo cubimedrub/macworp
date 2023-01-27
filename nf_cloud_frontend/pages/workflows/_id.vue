@@ -39,31 +39,6 @@
             </tr>
             </tbody>
         </table>
-        <div class="d-flex justify-content-between">
-            <div class="d-flex justify-content-start" style="margin-bottom: 0.5em">
-                <button @click="" type="button" class="btn btn-primary" style="margin-right: 0.5em">
-                    <i class="fas fa-file-import me-2"></i>
-                    Import
-                </button>
-                <button @click="" type="button" class="btn btn-primary" style="margin-right: 0.5em">
-                    <i class="fas fa-file-export me-2"></i>
-                    Export
-                </button>
-            </div>
-            <div class="d-flex justify-content-end" style="margin-bottom: 0.5em">
-                <button @click="updateWorkflow" type="button" class="btn btn-primary" style="margin-right: 0.5em">
-                    <i class="fas fa-save me-2"></i>
-                    Save
-                </button>
-                <NuxtLink to="/workflows">
-                    <button type="button" class="btn btn-outline-primary">
-                        <i class="fas fa-project-diagram me-2"></i>
-                        Go Back
-                    </button>
-                </NuxtLink>
-            </div>
-        </div>
-
         <tiptap-editor v-model="workflow.definition"/>
         <ConfirmationDialog :local_event_bus="local_event_bus" :on_confirm_func="deleteWorkflow" :identifier="delete_confirmation_dialog_id" confirm_button_class="btn-danger">
             <template v-slot:header>

@@ -31,11 +31,11 @@
             </tr>
             <tr>
                 <th>Description</th>
-                <td><textarea v-model="workflow.description"></textarea></td>
+                <td><textarea class="textarea-style" v-model="workflow.description"></textarea></td>
             </tr>
             <tr>
                 <th>Publish</th>
-                <td><input type="checkbox" v-model="workflow.is_published"></td>
+                <td><input type="checkbox" class="checkbox-style" v-model="workflow.is_published"></td>
             </tr>
             </tbody>
         </table>
@@ -78,7 +78,9 @@ export default {
             errors: {},
             local_event_bus: new Vue(),
             valid: true,
-            error: ''
+            error: '',
+            isChecked: false,
+            is_published: false
         }
     },
     activated(){
@@ -199,9 +201,24 @@ export default {
 </script>
 
 <style>
-.ProseMirror{
-    border-radius: 0.5rem;
-    font-size: 1.5rem;
-    border: 1px solid black;
+.textarea-style {
+    width: 100%;
+    height: 120px;
+    padding: 10px;
+    font-size: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+
+}
+.checkbox-style {
+    width: 20px;
+    height: 20px;
+    background-color: #fff;
+    border: 2px solid #ccc;
+    border-radius: 5px;
+    appearance: none;
+}
+.checkbox-style:checked {
+    background-color: green;
 }
 </style>

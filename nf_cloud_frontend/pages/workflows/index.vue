@@ -112,4 +112,24 @@ export default {
 </script>
 
 <style>
+.card-body{
+    padding: 0.5em;
+}
+.card-text{
+    width: 100%;
+    height: 120px;
+    padding: 7px;
+    font-size: 15px;
+    border: 1px solid #e7e7e7;
+    border-radius: 0.25rem;
+    margin-top: 0.5em;
+    overflow-y: scroll;
+    -ms-overflow-style: none; /* Internet Explorer 10+ */
+    scrollbar-width: none; /* Firefox */
+}
+
+.card-text::-webkit-scrollbar {
+    width: 0;
+    background-color: transparent; /* Safari and Chrome */
+}
 </style>

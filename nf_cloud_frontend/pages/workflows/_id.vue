@@ -35,7 +35,7 @@
             </tr>
             <tr>
                 <th>Publish</th>
-                <td><input type="checkbox" class="checkbox-style" v-model="workflow.is_published"></td>
+                <td style="text-align: right"><input type="checkbox" class="checkbox-style" v-model="workflow.is_published"></td>
             </tr>
             </tbody>
         </table>
@@ -80,7 +80,6 @@ export default {
             valid: true,
             error: '',
             isChecked: false,
-            is_published: false
         }
     },
     activated(){
@@ -137,6 +136,7 @@ export default {
                     body: JSON.stringify({
                         definition: this.workflow.definition,
                         description: this.workflow.description,
+                        is_published: this.workflow.is_published,
                     })
                 }).then(response => {
                     if(response.ok) {
@@ -211,10 +211,10 @@ export default {
 
 }
 .checkbox-style {
-    width: 20px;
-    height: 20px;
-    background-color: #fff;
-    border: 2px solid #ccc;
+    width: 17px;
+    height: 17px;
+    background-color: red;
+    border: 1px solid #ccc;
     border-radius: 5px;
     appearance: none;
 }

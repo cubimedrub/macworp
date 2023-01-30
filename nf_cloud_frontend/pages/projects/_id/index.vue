@@ -242,7 +242,7 @@ export default {
             })
         },
         getWorkflows(){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows`, {
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/published`, {
             }).then(response => {
                 if(response.ok) {
                     response.json().then(data => {

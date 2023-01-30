@@ -33,6 +33,23 @@ class WorkflowsControllers:
         })
 
     @staticmethod
+    @app.route("/api/workflows/published", endpoint="workflow_index_published")
+    def index_published():
+        """
+        Returns
+        -------
+        JSON with key `workflows`, which contains a list of workflow names.
+        """
+        offset = request.args.get("offset", None)
+        limit = request.args.get("limit", None)
+        return jsonify({
+            "workflows": [
+                workflow.to_dict()
+                for workflow in Workflow.select().where(Workflow.is_published == True).offset(offset).limit(limit)
+            ]
+        })
+
+    @staticmethod
     @app.route("/api/workflows/create", methods=["POST"], endpoint="workflow_create")
     def create():
         """
@@ -102,13 +119,15 @@ class WorkflowsControllers:
             Workflow cannot be inserted.
         """
         data: Dict[str, Any] = request.json
-        definition: Dict[str, Any] = data.get("definition", None)
-        description: Dict[str, Any] = data.get("description", None)
+        definition: Optional[str] = data.get("definition", None)
+        description: Optional[str] = data.get("description", None)
+        is_published: Optional[bool] = data.get("is_published", None)
         app.logger.error(definition)
 
         workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
         workflow.definition = definition
         workflow.description = description
+        workflow.is_published = is_published
 
         try:
                 json_obj = json.loads(workflow.definition)
@@ -122,7 +141,7 @@ class WorkflowsControllers:
 
     @staticmethod
     @app.route("/api/workflows/<int:workflow_id>/delete", methods=["POST"], endpoint="workflow_delete")
-    def update(workflow_id: int):
+    def delete(workflow_id: int):
         """
         Endpoint for deleteing a workflow.
         Returns

@@ -35,9 +35,6 @@ export default {
             // HTML
             const isSame = this.editor.getHTML() === value
 
-            // JSON
-            // const isSame = JSON.stringify(this.editor.getJSON()) === JSON.stringify(value)
-
             if (isSame) {
                 return
             }
@@ -45,8 +42,6 @@ export default {
             this.editor.commands.setContent(value, false)
         },
     },
-
-
     mounted() {
         this.editor = new Editor({
             extensions: [
@@ -83,9 +78,9 @@ export default {
 
 .ProseMirror {
     background: none;
-    border-radius: 0.5rem;
+    border-radius: 0.3em;
     font-size: 0.8rem;
-    border: 1px solid black;
+    border: 1px solid #ccc;
     color: inherit;;
     font-family: 'JetBrainsMono', monospace;
     padding: 0;

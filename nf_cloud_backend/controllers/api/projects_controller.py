@@ -140,7 +140,7 @@ class ProjectsController:
         project = Project.get(Project.id == id)
         if project:
             project.workflow_arguments = data["workflow_arguments"]
-            project.workflow = data["workflow"]
+            project.workflow = data["workflow"]     # TODO save id
             project.save()
             return jsonify({}), 200
         else:

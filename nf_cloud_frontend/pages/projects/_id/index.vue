@@ -33,16 +33,17 @@
                 </div>
             </div>
             <h2>Workflow</h2>
+            // TODO select wokflow by id and save id instead of name
             <div class="dropdown mb-3">
                 <button :class="{show: show_workflow_dropdown}" :aria_expanded="show_workflow_dropdown" @click="toggleWorkflowDropdown" class="btn btn-primary" type="button" id="workflows-dropdown" data-bs-toggle="dropdown">
-                    <span v-if="project.workflow.name">{{project.workflow.name}}</span>
+                    <span v-if="project.workflow.id">{{project.workflow.name}}</span>
                     <span v-else>Select a project...</span>
                     <i :class="{'fa-caret-down': !show_workflow_dropdown, 'fa-caret-up': show_workflow_dropdown}" class="fas ms-2"></i>
                 </button>
                 <ul :class="{show: show_workflow_dropdown}" class="dropdown-menu" aria-labelledby="workflows-dropdown">
-                    <li v-for="nf_project in workflows" :key="nf_project" :value="nf_project">
-                        <button @click="setWorkflow(nf_project); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
-                            {{nf_project.name}}
+                    <li v-for="workflow in workflows" :key="workflow" :value="workflow">
+                        <button @click="setWorkflow(workflow); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
+                            {{workflow.name}}
                         </button>
                     </li>
                 </ul>

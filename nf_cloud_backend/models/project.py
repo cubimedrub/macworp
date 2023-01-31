@@ -19,7 +19,7 @@ from nf_cloud_backend import config, db_wrapper as db
 class Project(db.Model):
     id = BigAutoField(primary_key=True)
     name = CharField(max_length=512, null=False)
-    workflow = CharField(max_length=255, null=False, default="")
+    workflow = CharField(max_length=255, null=False, default="")    # TODO: Rename to workflow_id and change to bigint (migration ALTER TABLE projects ADD COLUMN workflow_id bigint; (remove old column))
     workflow_arguments = BinaryJSONField(null=False, default={})
     is_scheduled = BooleanField(null=False, default=False)
     submitted_processes = IntegerField(null=False, default=0)
@@ -215,6 +215,6 @@ class Project(db.Model):
         """
         return json.dumps({
             "id": self.id,
-            "workflow": self.workflow,
+            "workflow": self.workflow,      # TODO: rename to workflow_id
             "workflow_arguments": self.workflow_arguments
         })

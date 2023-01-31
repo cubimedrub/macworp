@@ -6,7 +6,7 @@ from pathlib import Path
 from queue import Empty as EmptyQueueError
 import re
 import subprocess
-from typing import Any, ClassVar, List
+from typing import Any, ClassVar, List, Optional
 
 # 3rd party imports
 import requests
@@ -33,8 +33,6 @@ class WorkflowExecutor(Process):
         Path to folder which contains the separate project folders.
     __project_queue: Queue
         Queue for receiving work.
-    __workflows: dict
-        Defined workflows
     __communication_channel: List[Connection]
         Communication channel with AckHandler for sending delivery tags after work is done.
     __stop_event: Event
@@ -50,7 +48,7 @@ class WorkflowExecutor(Process):
 
     def __init__(self, nf_bin: Path, nf_cloud_url: str, nf_cloud_api_user: str,
         nf_cloud_api_password: str, project_data_path: Path, project_queue: Queue,
-        workflows: dict, communication_channel: Connection, stop_event: Event):
+        communication_channel: Connection, stop_event: Event):
         super().__init__()
         # Nextflow binary
         self.__nf_bin: Path = nf_bin
@@ -61,8 +59,6 @@ class WorkflowExecutor(Process):
         self.__project_data_path: Path = project_data_path
         # Project queue
         self.__project_queue: Queue = project_queue
-        # Defined workflows
-        self.__workflows: dict = workflows
         # Communication channel with AckHandler
         self.__communication_channel: List[Connection] = communication_channel
         # Event for breaking work loop
@@ -245,7 +241,9 @@ class WorkflowExecutor(Process):
             weblog_url: str = f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/workflow-log"
             weblog_url = weblog_url.replace("://", f"://{self.__nf_cloud_api_user}:{self.__nf_cloud_api_password}@")
             # Get workflow settings
-            workflow_settings: dict = self.__workflows[project_params["workflow"]]
+            workflow_settings: Optional[dict] = None
+            with requests.get(f"{self.__nf_cloud_url}/api/workflows/{project_params['workflow']}") as response: # TODO rename workflow to workflow_id
+                workflow_settings = response.json()["defintion"]
 
             nextflow_main_scrip_path = self.__get_workflow_main_script_path(
                 workflow_settings

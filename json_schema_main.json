@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/product.schema.json",
+  "title": "Workflow",
+  "description": "NF-Cloud workflow definition",
+  "properties": {
+    "directory": {
+      "description": "Workflow directory",
+      "type": "string"
+    },
+    "script": {
+      "description": "Nextflow main script",
+      "type": "string"
+    },
+    "args": {
+      "description": "Nextflow arguments",
+      "type": "object",
+      "properties": {
+        "dynamic": {
+          "description": "Nextflow parameters which can be adjusted by the userand will be rendered",
+          "type": "object",
+          "properties": {
+            "inFile": {
+              "description": "Parameter 1",
+              "$ref": "https://example.com/path.json"
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "directory",
+    "script",
+    "args"
+  ]
+}
+
+https://github.com/mpc-bioinformatics/nf-cloud/blob/master/nf_cloud_backend/Readme.md
+https://json-schema.org/learn/getting-started-step-by-step

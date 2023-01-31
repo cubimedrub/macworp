@@ -19,7 +19,7 @@
                 </NuxtLink>
             </div>
         </div>
-        <table class="table">
+        <table class="table mb-0">
             <tbody>
             <tr>
                 <th>ID</th>
@@ -31,21 +31,22 @@
             </tr>
             <tr>
                 <th>Description</th>
-                <td><textarea class="textarea-style" v-model="workflow.description"></textarea></td>
+                <td style="padding: 0em 0.5rem"><textarea class="textarea-style" v-model="workflow.description"></textarea></td>
             </tr>
             <tr>
                 <th>Publish</th>
-                <td style="text-align: right"><input type="checkbox" class="checkbox-style" v-model="workflow.is_published"></td>
+                <td>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="flexSwitchCheckDefault" v-model="workflow.is_published">
+                    </div>
+                </td>
             </tr>
             </tbody>
         </table>
-        <form>
-            <tiptap-editor v-model="workflow.definition"/>
-            <button @click.prevent="validateJSON">Validate JSON</button>
-        </form>
-        <p v-if="valid">JSON is valid</p>
-        <p v-else>JSON is invalid. Reason: {{ error }}</p>
-        <textarea v-model="workflow.definition"></textarea>
+        <tiptap-editor v-model="definition"/>
+        <div v-if="errors.definition" class="alert alert-danger" role="alert">
+            {{ errors.definition }}
+        </div>
         <ConfirmationDialog :local_event_bus="local_event_bus" :on_confirm_func="deleteWorkflow" :identifier="delete_confirmation_dialog_id" confirm_button_class="btn-danger">
             <template v-slot:header>
                 Delete this Workflow?
@@ -70,6 +71,9 @@ import TiptapEditor from '~/components/TiptapEditor.vue'
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 
+const TIPTAP_JSON_CODE_PREFIX = "<pre><code>"
+const TIPTAP_JSON_CODE_SUFFIX = "</code></pre>"
+
 export default {
     data(){
         return {
@@ -77,9 +81,6 @@ export default {
             is_updating: false,
             errors: {},
             local_event_bus: new Vue(),
-            valid: true,
-            error: '',
-            isChecked: false,
         }
     },
     activated(){
@@ -89,6 +90,7 @@ export default {
         TiptapEditor
     },
     methods: {
+
         fetchWorkflow(){
             return fetch(
                 `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}`, {
@@ -162,16 +164,6 @@ export default {
         showDeleteDialog(){
             this.local_event_bus.$emit("CONFIRMATION_DIALOG_OPEN", this.delete_confirmation_dialog_id)
         },
-        validateJSON() {
-            try {
-                JSON.parse(this.workflow.definition)
-                this.valid = true
-                this.error = ''
-            } catch (e) {
-                this.valid = false
-                this.error = e.toString()
-            }
-        },
     },
     computed: {
         /**
@@ -196,6 +188,14 @@ export default {
         delete_confirmation_dialog_id() {
             return DELETE_CONFIRMATION_DIALOG_ID
         },
+        definition: {
+            set: function(val) {
+                this.workflow.definition = val.slice(TIPTAP_JSON_CODE_PREFIX.length, -TIPTAP_JSON_CODE_SUFFIX.length)
+            },
+            get: function() {
+                return `${TIPTAP_JSON_CODE_PREFIX}${this.workflow.definition}${TIPTAP_JSON_CODE_SUFFIX}`
+            }
+        }
     }
 }
 </script>
@@ -203,22 +203,11 @@ export default {
 <style>
 .textarea-style {
     width: 100%;
-    height: 120px;
-    padding: 10px;
+    height: 125px;
+    padding: 5px;
     font-size: 15px;
     border: 1px solid #ccc;
-    border-radius: 5px;
+    border-radius: 2px;
 
-}
-.checkbox-style {
-    width: 17px;
-    height: 17px;
-    background-color: red;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    appearance: none;
-}
-.checkbox-style:checked {
-    background-color: green;
 }
 </style>

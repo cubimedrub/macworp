@@ -1,9 +1,10 @@
-# external imports
-from ast import List
+# std imports
 from collections import defaultdict
-from typing import Any, Dict, Optional
-from flask import Flask, jsonify, request
 import json
+from typing import Any, Dict, Optional, List
+
+#3rd party import
+from flask import jsonify, request
 
 # internal imports
 from nf_cloud_backend import app
@@ -129,12 +130,17 @@ class WorkflowsControllers:
         workflow.description = description
         workflow.is_published = is_published
 
-        try:
+        if workflow.is_published:
+            try:
                 json_obj = json.loads(workflow.definition)
-                print("JSON is valid")
-        except ValueError as e:
-                print("JSON is invalid. Reason:")
-                print(e)
+                # jsonschema.validate(instance=json_obj, schema=workflow_schema)
+            except json.JSONDecodeError as error:
+                return jsonify({
+                    "errors": {
+                        "definition": f"{error}"
+                    }
+                }), 422
+
         workflow.save()
 
         return "", 200

@@ -95,8 +95,6 @@ class Worker:
         Connection to the message broker
     __channel: Optional[Channel]
         Channel to the message brokers queue
-    __workflows: dict
-        Defined workflows
     __number_of_workers: int
         Number of concurrent workers
     __stop_event: Event
@@ -105,7 +103,7 @@ class Worker:
 
     def __init__(self, nf_bin: Path, nf_cloud_url: str, nf_cloud_api_user: str,
         nf_cloud_api_password: str, projects_data_path: Path, rabbit_mq_url: str,
-        project_queue_name: str, workflows: dict, number_of_workers: int, stop_event: Event):
+        project_queue_name: str, number_of_workers: int, stop_event: Event):
         # nextflow binary
         self.__nf_bin: Path = nf_bin
         # nextflow cloud attributes
@@ -118,8 +116,6 @@ class Worker:
         self.__project_queue_name: str = project_queue_name
         self.__connection: Optional[pika.BlockingConnection] = None
         self.__channel: Optional[Channel] = None
-        # defined workflows
-        self.__workflows: dict = workflows
         # number of workers
         self.__number_of_workers: int = number_of_workers
         # control
@@ -149,7 +145,6 @@ class Worker:
                         self.__nf_cloud_api_password,
                         self.__project_data_path,
                         project_queue,
-                        self.__workflows,
                         rw_comm,
                         self.__stop_event
                     )

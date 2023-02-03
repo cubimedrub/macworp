@@ -242,7 +242,7 @@ class WorkflowExecutor(Process):
             weblog_url = weblog_url.replace("://", f"://{self.__nf_cloud_api_user}:{self.__nf_cloud_api_password}@")
             # Get workflow settings
             workflow_settings: Optional[dict] = None
-            with requests.get(f"{self.__nf_cloud_url}/api/workflows/{project_params['workflow']}") as response: # TODO rename workflow to workflow_id
+            with requests.get(f"{self.__nf_cloud_url}/api/workflows/{project_params['workflow_id']}") as response: # TODO rename workflow to workflow_id
                 workflow_settings = response.json()["defintion"]
 
             nextflow_main_scrip_path = self.__get_workflow_main_script_path(

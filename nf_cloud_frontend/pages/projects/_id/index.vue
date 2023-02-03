@@ -3,7 +3,7 @@
         <div v-if="project && !project_not_found">
             <div class="d-flex justify-content-between align-items-center">
                 <h1>Project "{{ project.name }}"</h1>
-                <button @click="showStartDialog" :disabled="project.is_scheduled || !workflows.includes(project.workflow)" class="btn btn-success btn-sm">
+                <button @click="showStartDialog" :disabled="project.is_scheduled || !project.workflow_id in workflows" class="btn btn-success btn-sm">
                     Start project
                     <i class="fas fa-play"></i>
                 </button>
@@ -33,17 +33,16 @@
                 </div>
             </div>
             <h2>Workflow</h2>
-            // TODO select wokflow by id and save id instead of name
             <div class="dropdown mb-3">
                 <button :class="{show: show_workflow_dropdown}" :aria_expanded="show_workflow_dropdown" @click="toggleWorkflowDropdown" class="btn btn-primary" type="button" id="workflows-dropdown" data-bs-toggle="dropdown">
-                    <span v-if="project.workflow.id">{{project.workflow.name}}</span>
+                    <span v-if="project.workflow_id">{{workflows[project.workflow_id]}}</span>
                     <span v-else>Select a project...</span>
                     <i :class="{'fa-caret-down': !show_workflow_dropdown, 'fa-caret-up': show_workflow_dropdown}" class="fas ms-2"></i>
                 </button>
                 <ul :class="{show: show_workflow_dropdown}" class="dropdown-menu" aria-labelledby="workflows-dropdown">
-                    <li v-for="workflow in workflows" :key="workflow" :value="workflow">
-                        <button @click="setWorkflow(workflow); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
-                            {{workflow.name}}
+                    <li v-for="(workflow_name, workflow_idx) in workflows" :key="workflow_idx" :value="workflow_idx">
+                        <button @click="setWorkflow(workflow_idx); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
+                            {{workflow_name}}
                         </button>
                     </li>
                 </ul>
@@ -127,6 +126,7 @@
 
 <script>
 import Vue from "vue"
+import workflows from "../../workflows/index.vue";
 
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
@@ -143,7 +143,7 @@ export default {
             upload_queue: [],
             is_uploading: false,
             project_not_found: false,
-            workflows: [],
+            workflows: {},
             show_workflow_dropdown: false,
             /**
              * Event bus for communication with child components.
@@ -202,7 +202,7 @@ export default {
             })
         },
         startProject(){
-            if(this.workflows.includes(this.project.workflow)){
+            if(this.project.workflow_id in this.workflows){
                 fetch(
                     `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`,
                     {
@@ -257,8 +257,8 @@ export default {
         toggleWorkflowDropdown(){
             this.show_workflow_dropdown = !this.show_workflow_dropdown
         },
-        setWorkflow(workflow){
-            this.project.workflow = workflow
+        setWorkflow(workflow_idx){
+            this.project.workflow_id = workflow_idx
             this.getDynamicWorkflowArguments()
         },
         /**
@@ -284,11 +284,11 @@ export default {
          * and assigns it to the project.
          */
         getDynamicWorkflowArguments(){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.project.workflow}/arguments`, {
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.project.workflow_id}/arguments`, {
             }).then(response => {
                 if(response.ok) {
                     response.json().then(data => {
-                        this.project.workflow_arguments = data.arguments
+                        this.project.workflow_arguments = data
                     })
                 } else {
                     this.handleUnknownResponse(response)

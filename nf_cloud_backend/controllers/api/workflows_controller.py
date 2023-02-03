@@ -44,10 +44,10 @@ class WorkflowsControllers:
         offset = request.args.get("offset", None)
         limit = request.args.get("limit", None)
         return jsonify({
-            "workflows": [
-                workflow.to_dict()
+            "workflows": {
+                workflow.id: workflow.name
                 for workflow in Workflow.select().where(Workflow.is_published == True).offset(offset).limit(limit)
-            ]
+            }
         })
 
     @staticmethod
@@ -123,7 +123,6 @@ class WorkflowsControllers:
         definition: Optional[str] = data.get("definition", None)
         description: Optional[str] = data.get("description", None)
         is_published: Optional[bool] = data.get("is_published", None)
-        app.logger.error(definition)
 
         workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
         workflow.definition = definition
@@ -134,6 +133,7 @@ class WorkflowsControllers:
             try:
                 json_obj = json.loads(workflow.definition)
                 # jsonschema.validate(instance=json_obj, schema=workflow_schema)
+                workflow.is_validated = True
             except json.JSONDecodeError as error:
                 return jsonify({
                     "errors": {
@@ -165,3 +165,24 @@ class WorkflowsControllers:
         workflow.delete_instance()
 
         return "", 200
+
+    @staticmethod
+    @app.route("/api/workflows/<int:workflow_id>/arguments", endpoint="workflow_arguments")
+    def arguments(workflow_id: int):
+        """
+        Endpoint for deleteing a workflow.
+        Returns
+        -------
+        Response
+            200 - on success
+            422 - on errors
+        Raises
+        ------
+        RuntimeError
+            Workflow cannot be delete.
+        """
+
+        workflow: Workflow = Workflow.get_or_none(Workflow.id == workflow_id)
+        if workflow is None:
+           return '', 404
+        return jsonify(json.loads(workflow.definition)['args']['dynamic'])

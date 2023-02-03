@@ -502,11 +502,12 @@ class ProjectsController:
         if project is None:
             return "", 404
         path = unquote(request.args.get('path', "", type=str))
+        is_inline: bool = request.args.get('is-inline', False, type=bool)
         path_to_download = project.get_path(path)
         if not path_to_download.exists():
             return "", 404
         elif path_to_download.is_file():
-            return send_file(path_to_download, as_attachment=True)
+            return send_file(path_to_download, as_attachment=not is_inline)
         else:
             def build_stream():
                     stream = zipstream.ZipFile(mode='w', compression=zipstream.ZIP_DEFLATED)

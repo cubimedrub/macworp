@@ -110,19 +110,36 @@ process txtFilesToMarkdownCodeBlocks {
 }
 
 /**
-  * Downloads test images for image viewer
+  * Downloads test images for image viewer and SVG viewer
   */  
 process downloadTestImages {
     publishDir "${params.outDir}", mode:"copy"
 
     output:
     path "*.png"
+    path "*.svg"
 
     """
     curl -o ${params.outDir}/test_image.png  https://upload.wikimedia.org/wikipedia/commons/c/c4/PM5544_with_non-PAL_signals.png
     curl -o ${params.outDir}/another_test_image.png  https://upload.wikimedia.org/wikipedia/commons/f/f1/SWTestbild.png
+    curl -o ${params.outDir}/test_svg.svg  https://upload.wikimedia.org/wikipedia/commons/0/02/SVG_logo.svg
     """
 }
+
+/**
+  * Downloads test svg for image viewer
+  */  
+process downloadTestPDF {
+    publishDir "${params.outDir}", mode:"copy"
+
+    output:
+    path "*.pdf"
+
+    """
+    curl -L -o ${params.outDir}/test_pdf.pdf  https://raw.githubusercontent.com/pdf-association/pdf20examples/master/Simple%20PDF%202.0%20file.pdf
+    """
+}
+
 
 /**
  * Put all things together in one markdown file

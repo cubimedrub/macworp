@@ -313,6 +313,60 @@
               "header",
               "images"
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "pdf" 
+              },
+              "path": {
+                "description": "PDF path",
+                "type": "string"
+              },
+              "header": {
+                "description": "Header of the result section",
+                "type": "string"
+              },
+              "description": {
+                "description": "Description",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "path",
+              "header",
+              "description"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "svg" 
+              },
+              "path": {
+                "description": "SVG path",
+                "type": "string"
+              },
+              "header": {
+                "description": "Header of the result section",
+                "type": "string"
+              },
+              "description": {
+                "description": "Description",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "path",
+              "header",
+              "description"
+            ]
           }
         ]
       }

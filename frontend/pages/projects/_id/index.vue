@@ -108,6 +108,21 @@
                             :header="result.header"
                             :images="result.images"
                         ></ImageViewer>
+                        <PDFViewer
+                            v-if="result.type == 'pdf'"
+                            :project_id="project.id"
+                            :header="result.header"
+                            :description="result.description"
+                            :path="result.path"
+                        ></PDFViewer>
+                        <SVGViewer
+                            v-if="result.type == 'svg'"
+                            :project_id="project.id"
+                            :header="result.header"
+                            :description="result.description"
+                            :path="result.path"
+                            :embed="result.embed !== undefined ? result.embed : false"
+                        ></SVGViewer>
                     </template>
                 </template>
             </Tab>

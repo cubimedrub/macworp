@@ -132,9 +132,17 @@ class WorkflowsControllers:
         if workflow.is_published:
             try:
                 json_obj = json.loads(workflow.definition)
-                # jsonschema.validate(instance=json_obj, schema=workflow_schema)
+                with open("json_schema_main.json") as json_file:
+                    schema = json.load(json_file)
+                # jsonschema.validate(instance=json_obj, schema=schema)
                 workflow.is_validated = True
             except json.JSONDecodeError as error:
+                return jsonify({
+                    "errors": {
+                        "definition": f"{error}"
+                    }
+                }), 422
+            except jsonschema.exceptions.ValidationError as error:
                 return jsonify({
                     "errors": {
                         "definition": f"{error}"

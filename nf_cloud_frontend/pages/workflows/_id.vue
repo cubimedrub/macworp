@@ -34,7 +34,15 @@
                 <td style="padding: 0em 0.5rem"><textarea class="textarea-style" v-model="workflow.description"></textarea></td>
             </tr>
             <tr>
-                <th>Publish</th>
+                <th>
+                    Publish
+                    <template v-if="workflow.is_published">
+                        <i class="fas fa-circle small" style="color: green; margin-top: 0.8em"></i>
+                    </template>
+                    <template v-else>
+                        <i class="fas fa-circle small" style="color: #dc3545; margin-top: 0.8em"></i>
+                    </template>
+                </th>
                 <td>
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="flexSwitchCheckDefault" v-model="workflow.is_published">

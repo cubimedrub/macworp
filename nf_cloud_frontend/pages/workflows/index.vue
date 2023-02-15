@@ -1,7 +1,7 @@
 <template>
     <div>
         <div class="d-flex justify-content-between align-items-center">
-            <h1>Workflows</h1>
+            <h1>Workflows Dashboard</h1>
             <NuxtLink to="/workflows/new" class="btn btn-primary">
                 <i class="fas fa-plus"></i>
                 Create new workflow
@@ -126,8 +126,6 @@ export default {
     height: 120px;
     padding: 7px;
     font-size: 15px;
-    border: 1px solid #e7e7e7;
-    border-radius: 0.25rem;
     margin-top: 0.5em;
     overflow-y: scroll;
     -ms-overflow-style: none; /* Internet Explorer 10+ */

@@ -77,6 +77,7 @@
                     <TextInput v-if="argument_value.type == 'text'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="project.workflow_arguments[argument_name].is_multiline"></TextInput>
                     <NumberInput v-if="argument_value.type == 'number'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
                     <FileGlob v-if="argument_value.type == 'file-glob'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
+                    <ValueSelect v-if="argument_value.type == 'value-select'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :options="argument_value.options" :is_multiselect="argument_value.is_multiselect"></ValueSelect>
                 </div>
             </template>
             <button @click="updateProject" type="button" class="btn btn-primary mb-3">

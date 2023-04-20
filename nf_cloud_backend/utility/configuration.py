@@ -166,6 +166,19 @@ workflows:          # Will be completely overridden by local config
           type: text
           desc: Multiline text
           is_multiline: true
+        valueSingleSelect:
+          type: value-select
+          options:
+            - value: foo
+              label: bar
+        valueMultiSelect:
+          type: value-select
+          options:
+            - value: foo
+              label: bar
+            - value: foo2
+              label: bar2
+          is_multiselect: true
       static:
         outDir:
           type: text

@@ -57,5 +57,11 @@ Each argument is defined by a name and a type.
 * Wildcard:
     Text field to define a wildcard path, e.g. `/*.txt`
     * type: `file-glob`
+* Select:
+    Select 
+    * type: `value-select` 
+    * options: List of dictionaries with keys `value` & `label` 
+    * additional attributes:
+        * `is_multiselect`: boolean; default: false; if true, multiple options can be selected
 If a default value is provided, just add a additional key `value` with the actual value.
 

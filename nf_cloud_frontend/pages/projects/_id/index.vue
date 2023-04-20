@@ -32,64 +32,69 @@
                     <div class="progress-bar bg-success" role="progressbar" :style="progress_bar_style"></div>
                 </div>
             </div>
-            <h2>Workflow</h2>
-            <div class="dropdown mb-3">
-                <button :class="{show: show_workflow_dropdown}" :aria_expanded="show_workflow_dropdown" @click="toggleWorkflowDropdown" class="btn btn-primary" type="button" id="workflows-dropdown" data-bs-toggle="dropdown">
-                    <span v-if="project.workflow">{{project.workflow}}</span>
-                    <span v-else>Select a project...</span>
-                    <i :class="{'fa-caret-down': !show_workflow_dropdown, 'fa-caret-up': show_workflow_dropdown}" class="fas ms-2"></i>
-                </button>
-                <ul :class="{show: show_workflow_dropdown}" class="dropdown-menu" aria-labelledby="workflows-dropdown">
-                    <li v-for="nf_project in workflows" :key="nf_project" :value="nf_project">
-                        <button @click="setWorkflow(nf_project); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
-                            {{nf_project}}
+            <Tab :tabs="tabs" :tab_labels="tab_labels" :preselected_tab="selected_tab" :parent_event_bus="local_event_bus">
+                <template v-slot:files>
+                    <EditableFileBrowser 
+                        :project_id="project.id"
+                        :parent_event_bus="local_event_bus"
+                        :reload_event="reload_project_files_event"
+                    ></EditableFileBrowser>
+                </template>
+
+                <template v-slot:workflow>
+                    <div class="dropdown mb-3">
+                        <button :class="{show: show_workflow_dropdown}" :aria_expanded="show_workflow_dropdown" @click="toggleWorkflowDropdown" class="btn btn-primary" type="button" id="workflows-dropdown" data-bs-toggle="dropdown">
+                            <span v-if="project.workflow">{{project.workflow}}</span>
+                            <span v-else>Select a project...</span>
+                            <i :class="{'fa-caret-down': !show_workflow_dropdown, 'fa-caret-up': show_workflow_dropdown}" class="fas ms-2"></i>
                         </button>
-                    </li>
-                </ul>
-                
-            </div>
-            <h2 class="mb-0">Workflow parameters</h2>
-            <template v-for="(argument_value, argument_name) in project.workflow_arguments">
-                <div :key="argument_name">
-                    <PathSelector 
-                        v-if="argument_value.type == 'path'" 
-                        :label="argument_name" 
-                        :description="argument_value.desc"
-                        :initial_value="project.workflow_arguments[argument_name].value"
-                        :parent_event_bus="local_event_bus"
-                        :value_change_event="argument_changed_event"
-                        :project_id="project.id"
-                        :with_selectable_files="argument_value.selectable_files"
-                        :with_selectable_folders="argument_value.selectable_folders"
-                    ></PathSelector>
-                    <MultiplePathSelector 
-                        v-if="argument_value.type == 'paths'" 
-                        :label="argument_name"
-                        :description="argument_value.desc"
-                        :initial_value="project.workflow_arguments[argument_name].value"
-                        :parent_event_bus="local_event_bus"
-                        :value_change_event="argument_changed_event" 
-                        :available_files="project.files"
-                        :project_id="project.id"
-                        :with_selectable_files="argument_value.selectable_files"
-                        :with_selectable_folders="argument_value.selectable_folders"
-                    ></MultiplePathSelector>
-                    <TextInput v-if="argument_value.type == 'text'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="project.workflow_arguments[argument_name].is_multiline"></TextInput>
-                    <NumberInput v-if="argument_value.type == 'number'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
-                    <FileGlob v-if="argument_value.type == 'file-glob'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
-                    <ValueSelect v-if="argument_value.type == 'value-select'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :options="argument_value.options" :is_multiselect="argument_value.is_multiselect"></ValueSelect>
-                </div>
-            </template>
-            <button @click="updateProject" type="button" class="btn btn-primary mb-3">
-                <i class="fas fa-save me-2"></i>
-                save
-            </button>
-            <h2>Files</h2>
-            <EditableFileBrowser 
-                :project_id="project.id"
-                :parent_event_bus="local_event_bus"
-                :reload_event="this.reload_project_files_event"
-            ></EditableFileBrowser>
+                        <ul :class="{show: show_workflow_dropdown}" class="dropdown-menu" aria-labelledby="workflows-dropdown">
+                            <li v-for="nf_project in workflows" :key="nf_project" :value="nf_project">
+                                <button @click="setWorkflow(nf_project); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
+                                    {{nf_project}}
+                                </button>
+                            </li>
+                        </ul>
+                        
+                    </div>
+                    <h2 class="mb-0">Workflow parameters</h2>
+                    <template v-for="(argument_value, argument_name) in project.workflow_arguments">
+                        <div :key="argument_name">
+                            <PathSelector 
+                                v-if="argument_value.type == 'path'" 
+                                :label="argument_name" 
+                                :description="argument_value.desc"
+                                :initial_value="project.workflow_arguments[argument_name].value"
+                                :parent_event_bus="local_event_bus"
+                                :value_change_event="argument_changed_event"
+                                :project_id="project.id"
+                                :with_selectable_files="argument_value.selectable_files"
+                                :with_selectable_folders="argument_value.selectable_folders"
+                            ></PathSelector>
+                            <MultiplePathSelector 
+                                v-if="argument_value.type == 'paths'" 
+                                :label="argument_name"
+                                :description="argument_value.desc"
+                                :initial_value="project.workflow_arguments[argument_name].value"
+                                :parent_event_bus="local_event_bus"
+                                :value_change_event="argument_changed_event" 
+                                :available_files="project.files"
+                                :project_id="project.id"
+                                :with_selectable_files="argument_value.selectable_files"
+                                :with_selectable_folders="argument_value.selectable_folders"
+                            ></MultiplePathSelector>
+                            <TextInput v-if="argument_value.type == 'text'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="project.workflow_arguments[argument_name].is_multiline"></TextInput>
+                            <NumberInput v-if="argument_value.type == 'number'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
+                            <FileGlob v-if="argument_value.type == 'file-glob'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
+                            <ValueSelect v-if="argument_value.type == 'value-select'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :options="argument_value.options" :is_multiselect="argument_value.is_multiselect"></ValueSelect>
+                        </div>
+                    </template>
+                    <button @click="updateProject" type="button" class="btn btn-primary mb-3">
+                        <i class="fas fa-save me-2"></i>
+                        save
+                    </button>
+                </template>
+            </Tab>
         </div>
         <div v-if="!project && project_not_found">
             Project not found
@@ -132,6 +137,14 @@ const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 const START_WORKFLOW_CONFIRMATION_DIALOG_ID = "start_workflow_confirmation_dialog"
 /**
+ * Keys for tabs
+ */
+const TABS = ['files', 'workflow'];
+/**
+ * Labels for tabs
+ */
+const TAB_LABELS = ['Files', 'Workflow'];
+/**
  * Event name for argument changes.
  */
 const ARGUMENT_CHANGED_EVENT = "ARGUMENT_CHANGED"
@@ -150,12 +163,18 @@ export default {
              */
             local_event_bus: new Vue(),
             logs: [],
+            selected_tab: TABS.indexOf(this.$route.query.tab) || 0,
         }
     },
     mounted(){
         this.loadProject()
         this.getWorkflows()
         this.bindWorkflowArgumentChangeEvent()
+        // Set selected tab and bind event for tab changes
+        this.local_event_bus.$on("TAB_CHANGED", (tab_idx) => {
+            console.error("tab change", tab_idx)
+            this.selected_tab = tab_idx
+        })
     },
     deactivated(){
         this.disconnectFromProjectSocketIoRoom()
@@ -377,6 +396,38 @@ export default {
          */
         start_workflow_confirmation_dialog_id() {
             return START_WORKFLOW_CONFIRMATION_DIALOG_ID
+        },
+        /**
+         * Returns tabs
+         * 
+         * @returns {string}
+         */
+        tabs(){
+            return TABS
+        },
+        /**
+         * Returns tab labels
+         * 
+         * @returns {string}
+         */
+        tab_labels(){
+            return TAB_LABELS   
+        }
+    },
+    watch: {
+        /**
+         * Watch for changes in the project id and reload the project.
+         */
+        selected_tab(){
+            this.$router.replace({
+                name: "projects-id", 
+                params: {
+                    id: this.$route.params.id
+                },  
+                query: {
+                    tab: this.tabs[this.selected_tab]
+                }
+            })
         }
     }
 }

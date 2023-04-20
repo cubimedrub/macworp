@@ -59,7 +59,7 @@
                     </div>
                     <h2 class="mb-0">Workflow parameters</h2>
                     <template v-for="(argument_value, argument_name) in project.workflow_arguments">
-                        <div :key="argument_name">
+                        <div>
                             <PathSelector 
                                 v-if="argument_value.type == 'path'" 
                                 :label="argument_name" 

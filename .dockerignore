@@ -11,6 +11,7 @@ Readme.md
 Procfile
 yarn-error.log
 .nuxt/
+uploads/
 
 # node modules
 node_modules/

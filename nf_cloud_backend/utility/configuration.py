@@ -25,7 +25,6 @@ class Configuration():
     """
 
     KEY_PATHS_TO_OVERRIDE: ClassVar[Tuple[str, ...]] = (
-        "workflows",
         "login_providers"
     )
 
@@ -82,107 +81,6 @@ login_providers:    # Will be completely overridden by local config
     #   scope: ~
 # Redirect after successful login. Can be null (~) when frontend and backend using the same domain and port
 frontend_host_url: http://localhost:5001
-workflows:          # Will be completely overridden by local config
-  "Hello World (Locally)":
-    directory: ./test_workflows/hello_world
-    script: "main.nf"
-    args:
-      dynamic:
-        inFile:
-          type: path
-          desc: Single file
-          selectable_files: true
-          selectable_folders: false
-        inFolder:
-          type: path
-          desc: Single folder
-          selectable_files: false
-          selectable_folders: true
-        inFiles:
-          type: paths
-          desc: Multiple files
-          selectable_files: true
-          selectable_folders: false
-        inFolders:
-          type: paths
-          desc: Multiple folder
-          selectable_files: false
-          selectable_folders: true
-        txtFiles:
-          type: file-glob
-          desc: File "regex", e.g. *.txt
-        numberOfNewlines:
-          type: number
-          desc: Number input 
-        singleLineText:
-          type: text
-          desc: Single line text
-        multilineText:
-          type: text
-          desc: Multiline text
-          is_multiline: true
-      static:
-        outDir:
-          type: text
-          value: ./
-  "Hello World (Docker)":
-    directory: ./test_workflows/hello_world
-    script: "main.nf"
-    nextflow_parameters:
-      - "-with-docker"
-      - "nfcore/base"
-    args:
-      dynamic:
-        inFile:
-          type: path
-          desc: Single file
-          selectable_files: true
-          selectable_folders: false
-        inFolder:
-          type: path
-          desc: Single folder
-          selectable_files: false
-          selectable_folders: true
-        inFiles:
-          type: paths
-          desc: Multiple files
-          selectable_files: true
-          selectable_folders: false
-        inFolders:
-          type: paths
-          desc: Multiple folder
-          selectable_files: false
-          selectable_folders: true
-        txtFiles:
-          type: file-glob
-          desc: File "regex", e.g. *.txt
-        numberOfNewlines:
-          type: number
-          desc: Number input 
-        singleLineText:
-          type: text
-          desc: Single line text
-        multilineText:
-          type: text
-          desc: Multiline text
-          is_multiline: true
-        valueSingleSelect:
-          type: value-select
-          options:
-            - value: foo
-              label: bar
-        valueMultiSelect:
-          type: value-select
-          options:
-            - value: foo
-              label: bar
-            - value: foo2
-              label: bar2
-          is_multiselect: true
-      static:
-        outDir:
-          type: text
-          value: ./
 """
     """Default configuration.
     """

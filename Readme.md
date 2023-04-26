@@ -78,6 +78,9 @@ In production NF-Cloud is designed to run as Gunicorn service behind a NginX rev
 This will build and start back- & frontend containers, start multiple instances and put them behind a NginX reverse proxy, running on the port 16160 (NF-Cloud) and 16161 (Fusionauth). Both applications are served under HTTPS with a self signed certificate for testing and the hosts name as domain.   
 A worker can be started with `make production-worker-test`
 
+### Test data
+Use `python -m nf_cloud_backend database seed --drop` to insert some test records (e.g. workflows) into the database.
+
 ## Production
 
 ### External services

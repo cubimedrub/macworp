@@ -1,4 +1,6 @@
 name: nf_cloud
+channels:
+  - defaults
 dependencies:
   - libpq
   - nodejs=14.*

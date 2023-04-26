@@ -13,8 +13,8 @@ then
     python -m nf_cloud_backend utility rabbitmq prepare
 fi
 
-# If max-decoy web serve is called with option gunicorn build params and pass it to gunicorn
-# otherwise pass parameter to max-decoy.
+# If nf_cloud web serve is called with option gunicorn build params and pass it to gunicorn
+# otherwise pass parameter to nf_cloud.
 if [[ "$1" == *"serve"* ]] && [[ "$@" == *"--gunicorn"* ]]
 then
     gunicorn_args="$(python -m nf_cloud_backend "$@")"

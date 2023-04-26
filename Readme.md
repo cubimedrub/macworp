@@ -91,12 +91,17 @@ Set the `consumer_timeout` to a high value. Otherwise scheduled workflows can't 
 The following part contains CLI usage of `nf_cloud_backend`, which assume you use the nativ installation. If you run `nf_cloud_backend` in docker just replace `python -m nf_cloud_backend` with `docker run mpc/nf_cloud_backend`.
 
 #### Docker image
-##### Creation
+##### Creation (backend)
 Create the docker image with 
 ```
-docker build mpc/nf-cloud-backend .
+docker build -t mpc/nf-cloud-backend:latest -f docker/backend.dockerfile .
 ```
-You can use the build arguments (`--build-arg`) `USER_ID` and `GROUP_ID` to change the user and group ID of the container user. Useful for harmonizing the ownership of the uploaded files with a local user.
+You can use the build arguments (`--build-arg`) `NEW_MAMBA_USER_ID` and `NEW_MAMBA_USER_GID` to change the user and group ID of the container user. Useful for harmonizing the ownership of the uploaded files with a local user.
+
+##### Creation (frontend)
+```
+docker build -t mpc/nf-cloud-frontend:latest -f frontend.dockerfile .
+```
 
 ##### Usage
 The images entrypoint is the `nf_cloud_backend` command line interface, so users can start using command line arguments (e.g. `--help`). If the option `serve --gunicorn` is given, the image will start NF-Cloud as Gunicorn application, unlike the native installation which prints the Gunicorn parameters.    

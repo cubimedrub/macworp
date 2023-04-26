@@ -27,16 +27,6 @@ def main():
 
     cli: CLI = CLI()
 
-    workflows: dict = {}
-    for workflow_config_path_option in cli.arguments.workflows:
-        workflow_config_path = Path(workflow_config_path_option)
-        if workflow_config_path.is_file():
-            with workflow_config_path.open("r", encoding="utf-8") as workflow_file:
-                merge(
-                    workflows,
-                    yaml.load(workflow_file, Loader=yaml.CLoader).get("workflows", {})
-                )
-
     worker = Worker(
         Path(cli.arguments.nf_bin).absolute(),
         cli.arguments.nf_cloud_url,
@@ -45,7 +35,6 @@ def main():
         Path(cli.arguments.projects_data_path).absolute(),
         cli.arguments.rabbitmq_url,
         cli.arguments.project_queue_name,
-        workflows,
         cli.arguments.number_of_workers,
         stop_event
     )

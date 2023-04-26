@@ -17,4 +17,4 @@ class ComandLineInterface:
 
     def start(self):
         args = self.__parser.parse_args()
-        args.func(args)
+        args.func(args) # TODO: What happens here: https://docs.python.org/3/library/argparse.html

@@ -124,12 +124,12 @@ class ProjectsController:
         errors = defaultdict(list)
         data = request.json
 
-        for key in ["workflow", "workflow_arguments"]:
+        for key in ["workflow_id", "workflow_arguments"]:
             if not key in data:
                 errors[key].append("can not be empty")
         
-        if not isinstance(data["workflow"], str):
-                errors["workflow"].append("must be string")
+        if not isinstance(data["workflow_id"], str):
+                errors["workflow_id"].append("must be string")
 
         if not isinstance(data["workflow_arguments"], dict):
             errors["workflow_arguments"].append("must be a dictionary")
@@ -141,7 +141,7 @@ class ProjectsController:
         project = Project.get(Project.id == id)
         if project:
             project.workflow_arguments = data["workflow_arguments"]
-            project.workflow = data["workflow"]
+            project.workflow_id = data["workflow_id"]     # TODO save id
             project.save()
             return jsonify({}), 200
         else:

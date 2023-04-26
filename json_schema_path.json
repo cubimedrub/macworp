@@ -1,0 +1,27 @@
+{
+  "$id": "https://example.com/path.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "inFile",
+  "description": "Path to file or folder"
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string"
+    },
+    "desc": {
+      "type": "string"
+    },
+    "selectable_files": {
+      "type": "boolean"
+    },
+    "selectable_folders": {
+      "type": "boolean"
+    }
+  },
+  "required": [ 
+    "type",
+    "desc",
+    "selectable_files",
+    "selectable_folders"
+  ]
+}

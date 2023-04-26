@@ -10,7 +10,8 @@ from typing import Union
 from peewee import BigAutoField, \
     CharField, \
     BooleanField, \
-    IntegerField
+    IntegerField, \
+    BigIntegerField
 from playhouse.postgres_ext import BinaryJSONField
 
 # internal import
@@ -20,7 +21,7 @@ from nf_cloud_backend.utility.configuration import Configuration
 class Project(db.Model):
     id = BigAutoField(primary_key=True)
     name = CharField(max_length=512, null=False)
-    workflow = CharField(max_length=255, null=False, default="")
+    workflow_id = BigIntegerField(null=False, default=0)    # TODO: Rename to workflow_id and change to bigint (migration ALTER TABLE projects ADD COLUMN workflow_id bigint; (remove old column))
     workflow_arguments = BinaryJSONField(null=False, default={})
     is_scheduled = BooleanField(null=False, default=False)
     submitted_processes = IntegerField(null=False, default=0)
@@ -73,7 +74,7 @@ class Project(db.Model):
             "id": self.id,
             "name": self.name,
             "workflow_arguments": self.workflow_arguments,
-            "workflow": self.workflow,
+            "workflow_id": self.workflow_id,
             "submitted_processes": self.submitted_processes,
             "completed_processes": self.completed_processes,
             "is_scheduled": self.is_scheduled
@@ -216,6 +217,6 @@ class Project(db.Model):
         """
         return json.dumps({
             "id": self.id,
-            "workflow": self.workflow,
+            "workflow_id": self.workflow_id,      # TODO: rename to workflow_id
             "workflow_arguments": self.workflow_arguments
         })

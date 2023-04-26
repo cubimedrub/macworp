@@ -19,17 +19,23 @@
                         </p>
                         <ul class="nav flex-column">
                                 <li class="nav-item">
-                                        <NuxtLink to="/projects" class="nav-link">
+                                        <NuxtLink to="/projects" class="btn btn-outline-primary nav-link mb-1">
                                                 <i class="fas fa-random"></i>
                                                 <span>Project</span>
                                         </NuxtLink>
                                 </li>
+                            <li class="nav-item">
+                                <NuxtLink to="/workflows" class="btn btn-outline-primary nav-link">
+                                    <i class="fas fa-project-diagram"></i>
+                                    <span>Workflows</span>
+                                </NuxtLink>
+                            </li>
                         </ul>
                         <p class="application-menu-label">
                         </p>
                         <ul class="nav flex-column">
                             <li class="nav-item">
-                                <NuxtLink to="/docs" class="nav-link">
+                                <NuxtLink to="/docs" class="btn btn-outline-primary nav-link mt-1">
                                     <i class="fas fa-file-code"></i>
                                     <span>Documentation</span>
                                 </NuxtLink>

@@ -1,5 +1,6 @@
 # IDE files
 .vscode
+.idea
 
 # TEmpfiles for workflows
 /tmp

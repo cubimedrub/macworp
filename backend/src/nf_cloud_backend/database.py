@@ -19,7 +19,7 @@ class Database:
     Class to maintain database.
     """
 
-    SEED_DATA_PATH: ClassVar[Path] = Path(__file__).parent.joinpath("db_seed.yaml")
+    SEED_DATA_PATH: ClassVar[Path] = Path(__file__).parent.parent.parent.joinpath("db_seed.yaml")
 
     @classmethod
     def run_migrations(cls, database_url: Optional[str]):

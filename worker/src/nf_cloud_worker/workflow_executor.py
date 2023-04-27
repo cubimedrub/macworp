@@ -6,14 +6,13 @@ from pathlib import Path
 from queue import Empty as EmptyQueueError
 import re
 import subprocess
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List
 
 # 3rd party imports
-import requests
-from requests.auth import HTTPBasicAuth
-
-# external imports
 from mergedeep import merge
+
+# internal imports
+from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
 
 class WorkflowExecutor(Process):
     """
@@ -23,12 +22,8 @@ class WorkflowExecutor(Process):
     ----------
     __nf_bin: Path
         Path to Nextflow binary
-    __nf_cloud_url: str
-        Base URL for NF-Cloud
-    __nf_cloud_api_user: str
-        NF-Cloud API user name
-    __nf_cloud_api_password: str
-        NF-Cloud API user password
+    __nf_cloud_web_api_client: NFCloudWebApiClient
+        Client for communicating with the NFCloud API
     __project_data_path: Path
         Path to folder which contains the separate project folders.
     __project_queue: Queue
@@ -46,16 +41,13 @@ class WorkflowExecutor(Process):
     SANITZE_REGEX: ClassVar[re.Pattern] = re.compile(r"[^\w\d\ ]+")
     WHITESPACE_REGEX: ClassVar[re.Pattern] = re.compile(r"\s+")
 
-    def __init__(self, nf_bin: Path, nf_cloud_url: str, nf_cloud_api_user: str,
-        nf_cloud_api_password: str, project_data_path: Path, project_queue: Queue,
+    def __init__(self, nf_bin: Path, nf_cloud_web_api_client: NFCloudWebApiClient, project_data_path: Path, project_queue: Queue,
         communication_channel: Connection, stop_event: Event):
         super().__init__()
         # Nextflow binary
         self.__nf_bin: Path = nf_bin
         # NF-cloud attributes
-        self.__nf_cloud_url: str = nf_cloud_url
-        self.__nf_cloud_api_user: str = nf_cloud_api_user
-        self.__nf_cloud_api_password: str = nf_cloud_api_password
+        self.__nf_cloud_web_api_client = nf_cloud_web_api_client
         self.__project_data_path: Path = project_data_path
         # Project queue
         self.__project_queue: Queue = project_queue
@@ -242,22 +234,15 @@ class WorkflowExecutor(Process):
             project_params: dict = json.loads(body)
             # Project work dir
             project_dir: Path = self.__project_data_path.joinpath(f"{project_params['id']}/")
-            # Create weblog url with basic authentication params
-            weblog_url: str = f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/workflow-log"
-            weblog_url = weblog_url.replace("://", f"://{self.__nf_cloud_api_user}:{self.__nf_cloud_api_password}@")
             # Get workflow settings
-            workflow: Optional[dict] = None
-            with requests.get(f"{self.__nf_cloud_url}/api/workflows/{project_params['workflow_id']}") as response: # TODO rename workflow to workflow_id
-                workflow = response.json()
-
-            workflow_definition: dict = json.loads(workflow["definition"])
+            workflow: Dict[str, Any] = self.__nf_cloud_web_api_client.get_workflow(project_params["workflow_id"])
 
             nextflow_main_scrip_path = self.__get_workflow_main_script_path(
-                workflow_definition
+                workflow["definition"]
             )
 
             fix_nextflow_paramters = self.__get_fix_nextflow_parameters(
-                workflow_definition
+                workflow["definition"]
             )
 
             dynamic_nextflow_arguments = {
@@ -266,7 +251,7 @@ class WorkflowExecutor(Process):
             }
 
             static_workflow_arguments = self.__get_workflow_static_arguments(
-                workflow_definition
+                workflow["definition"]
             )
 
             # Create temporary work dir for Nextflow intermediate files.
@@ -280,7 +265,7 @@ class WorkflowExecutor(Process):
                 self._nextflow_command(
                     project_dir,
                     work_dir,
-                    weblog_url,
+                    self.__nf_cloud_web_api_client.get_weblog_url(project_params["id"]),
                     fix_nextflow_paramters,
                     dynamic_nextflow_arguments,
                     static_workflow_arguments,
@@ -297,14 +282,7 @@ class WorkflowExecutor(Process):
             self.__communication_channel.send(delivery_tag)
 
             # Report project as finished
-            requests.post(
-                f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/finished",
-                auth=HTTPBasicAuth(
-                    self.__nf_cloud_api_user,
-                    self.__nf_cloud_api_password
-                ),
-                timeout=60
-            )
+            self.__nf_cloud_web_api_client.post_finish(project_params["id"])
 
     def __get_workflow_main_script_path(self, workflow_settings: dict) -> Path:
         return Path(workflow_settings["directory"]) \

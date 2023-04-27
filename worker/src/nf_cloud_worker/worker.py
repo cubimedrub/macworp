@@ -13,6 +13,7 @@ import pika
 from pika.channel import Channel
 
 # internal imports
+from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
 from nf_cloud_worker.workflow_executor import WorkflowExecutor
 
 class AckHandler(Thread):
@@ -79,12 +80,8 @@ class Worker:
     ----------
     __nf_bin: Path
         Path to Nextflow binary
-    __nf_cloud_url: str
-        Base URL for NF-Cloud
-    __nf_cloud_api_user: str
-        NF-Cloud API user name
-    __nf_cloud_api_password: str
-        NF-Cloud API user password
+    __nf_cloud_api_client: NFCloudAPIClient
+        Client for communicating with the NFCloud API
     __project_data_path: Path
         Path to folder which contains the separate project folders.
     __rabbit_mq_url: str
@@ -101,15 +98,12 @@ class Worker:
         Event for stopping worker processes and threads reliable.
     """
 
-    def __init__(self, nf_bin: Path, nf_cloud_url: str, nf_cloud_api_user: str,
-        nf_cloud_api_password: str, projects_data_path: Path, rabbit_mq_url: str,
+    def __init__(self, nf_bin: Path, nf_cloud_api_client: NFCloudWebApiClient, projects_data_path: Path, rabbit_mq_url: str,
         project_queue_name: str, number_of_workers: int, stop_event: Event):
         # nextflow binary
         self.__nf_bin: Path = nf_bin
         # nextflow cloud attributes
-        self.__nf_cloud_url: str = nf_cloud_url
-        self.__nf_cloud_api_user: str = nf_cloud_api_user
-        self.__nf_cloud_api_password: str = nf_cloud_api_password
+        self.__nf_cloud_api_client = nf_cloud_api_client
         self.__project_data_path: Path = projects_data_path
         # message broker attributes
         self.__rabbit_mq_url: str = rabbit_mq_url
@@ -140,9 +134,7 @@ class Worker:
                     ro_comm, rw_comm = Pipe(duplex=False)
                     executor = WorkflowExecutor(
                         self.__nf_bin,
-                        self.__nf_cloud_url,
-                        self.__nf_cloud_api_user,
-                        self.__nf_cloud_api_password,
+                        self.__nf_cloud_api_client,
                         self.__project_data_path,
                         project_queue,
                         rw_comm,

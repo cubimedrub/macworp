@@ -5,60 +5,76 @@ seeds:
       description: "Simple test workflow"
       definition: |
         {
-            "Hello World (Locally)": {
-                "directory": "./test_workflows/hello_world",
-                "script": "main.nf",
-                "args": {
-                    "dynamic": {
-                        "inFile": {
-                            "type": "path",
-                            "desc": "Single file",
-                            "selectable_files": true,
-                            "selectable_folders": false
-                        },
-                        "inFolder": {
-                            "type": "path",
-                            "desc": "Single folder",
-                            "selectable_files": false,
-                            "selectable_folders": true
-                        },
-                        "inFiles": {
-                            "type": "paths",
-                            "desc": "Multiple files",
-                            "selectable_files": true,
-                            "selectable_folders": false
-                        },
-                        "inFolders": {
-                            "type": "paths",
-                            "desc": "Multiple folder",
-                            "selectable_files": false,
-                            "selectable_folders": true
-                        },
-                        "txtFiles": {
-                            "type": "file-glob",
-                            "desc": "File \"regex\", e.g. *.txt"
-                        },
-                        "numberOfNewlines": {
-                            "type": "number",
-                            "desc": "Number input"
-                        },
-                        "singleLineText": {
-                            "type": "text",
-                            "desc": "Single line text"
-                        },
-                        "multilineText": {
-                            "type": "text",
-                            "desc": "Multiline text",
-                            "is_multiline": true
-                        }
+            "directory": "./test_workflows/hello_world",
+            "script": "main.nf",
+            "nextflow_parameters": [
+            ],
+            "args": {
+                "dynamic": [
+                    {
+                        "type": "path",
+                        "name": "inFile",
+                        "label": "Input file",
+                        "desc": "Single file",
+                        "selectable_files": true,
+                        "selectable_folders": false
                     },
-                    "static": {
-                        "outDir": {
-                            "type": "text",
-                            "value": "./"
-                        }
+                    {
+                        "type": "path",
+                        "name": "inFolder",
+                        "label": "Input folder",
+                        "desc": "Single folder",
+                        "selectable_files": false,
+                        "selectable_folders": true
+                    },
+                    {
+                        "type": "paths",
+                        "name": "inFiles",
+                        "label": "Multiple input files",
+                        "desc": "Multiple files",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "paths",
+                        "name": "inFolders",
+                        "label": "Multiple input folders",
+                        "desc": "Multiple folder",
+                        "selectable_files": false,
+                        "selectable_folders": true
+                    },
+                    {
+                        "type": "file-glob",
+                        "name": "txtFiles",
+                        "label": "Text files",
+                        "desc": "File \"regex\", e.g. *.txt"
+                    },
+                    {
+                        "type": "number",
+                        "name": "numberOfNewlines",
+                        "label": "Number of newlines",
+                        "desc": "Number input"
+                    },
+                    {
+                        "type": "text",
+                        "name": "singleLineText",
+                        "label": "Single line text",
+                        "desc": "Single line text"
+                    },
+                    {
+                        "type": "text",
+                        "name": "multilineText",
+                        "label": "Multiple line text",
+                        "desc": "Multiline text",
+                        "is_multiline": true
                     }
-                }
+                ],
+                "static": [
+                    {
+                        "type": "outDir",
+                        "value": "./"
+                    }
+                ]
             }
         }
   - model: Workflow
@@ -67,63 +83,79 @@ seeds:
       description: "Simple test workflow which runs in a Docker container"
       definition: |
         {
-            "Hello World (Locally)": {
-                "directory": "./test_workflows/hello_world",
-                "script": "main.nf",
-                "nextflow_parameters": [
-                    "-with-docker",
-                    "nfcore/base"
-                ],
-                "args": {
-                    "dynamic": {
-                        "inFile": {
-                            "type": "path",
-                            "desc": "Single file",
-                            "selectable_files": true,
-                            "selectable_folders": false
-                        },
-                        "inFolder": {
-                            "type": "path",
-                            "desc": "Single folder",
-                            "selectable_files": false,
-                            "selectable_folders": true
-                        },
-                        "inFiles": {
-                            "type": "paths",
-                            "desc": "Multiple files",
-                            "selectable_files": true,
-                            "selectable_folders": false
-                        },
-                        "inFolders": {
-                            "type": "paths",
-                            "desc": "Multiple folder",
-                            "selectable_files": false,
-                            "selectable_folders": true
-                        },
-                        "txtFiles": {
-                            "type": "file-glob",
-                            "desc": "File \"regex\", e.g. *.txt"
-                        },
-                        "numberOfNewlines": {
-                            "type": "number",
-                            "desc": "Number input"
-                        },
-                        "singleLineText": {
-                            "type": "text",
-                            "desc": "Single line text"
-                        },
-                        "multilineText": {
-                            "type": "text",
-                            "desc": "Multiline text",
-                            "is_multiline": true
-                        }
-                    },
-                    "static": {
-                        "outDir": {
-                            "type": "text",
-                            "value": "./"
-                        }
-                    }
+            "directory": "./test_workflows/hello_world",
+            "script": "main.nf",
+            "nextflow_parameters": [
+                {
+                    "name": "-with-docker",
+                    "value": "nfcore/base"
                 }
+            ],
+            "args": {
+                "dynamic": [
+                    {
+                        "type": "path",
+                        "name": "inFile",
+                        "label": "Input file",
+                        "desc": "Single file",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "path",
+                        "name": "inFolder",
+                        "label": "Input folder",
+                        "desc": "Single folder",
+                        "selectable_files": false,
+                        "selectable_folders": true
+                    },
+                    {
+                        "type": "paths",
+                        "name": "inFiles",
+                        "label": "Multiple input files",
+                        "desc": "Multiple files",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "paths",
+                        "name": "inFolders",
+                        "label": "Multiple input folders",
+                        "desc": "Multiple folder",
+                        "selectable_files": false,
+                        "selectable_folders": true
+                    },
+                    {
+                        "type": "file-glob",
+                        "name": "txtFiles",
+                        "label": "Text files",
+                        "desc": "File \"regex\", e.g. *.txt"
+                    },
+                    {
+                        "type": "number",
+                        "name": "numberOfNewlines",
+                        "label": "Number of newlines",
+                        "desc": "Number input"
+                    },
+                    {
+                        "type": "text",
+                        "name": "singleLineText",
+                        "label": "Single line text",
+                        "desc": "Single line text"
+                    },
+                    {
+                        "type": "text",
+                        "name": "multilineText",
+                        "label": "Multiple line text",
+                        "desc": "Multiline text",
+                        "is_multiline": true
+                    }
+                ],
+                "static": [
+                    {
+                        "type": "outDir",
+                        "value": "./"
+                    }
+                ]
             }
         }

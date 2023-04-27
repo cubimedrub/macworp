@@ -1,10 +1,12 @@
 # std imports
 from collections import defaultdict
 import json
+from pathlib import Path
 from typing import Any, Dict, Optional, List
 
 #3rd party import
 from flask import jsonify, request
+import jsonschema
 
 # internal imports
 from nf_cloud_backend import app
@@ -15,6 +17,8 @@ class WorkflowsControllers:
     """
     Handles requests regarding the defined nextflow workflows
     """
+
+    WORKFLOW_SCHEMA_PATH = Path(__file__).parent.parent.parent.joinpath("json_schemes/workflow.schema.json")
 
     @staticmethod
     @app.route("/api/workflows", endpoint="workflow_index")
@@ -132,9 +136,10 @@ class WorkflowsControllers:
         if workflow.is_published:
             try:
                 json_obj = json.loads(workflow.definition)
-                with open("json_schema_main.json") as json_file:
-                    schema = json.load(json_file)
-                # jsonschema.validate(instance=json_obj, schema=schema)
+                schema: Dict[Any, Any] = {}
+                with WorkflowsControllers.WORKFLOW_SCHEMA_PATH.open("r", encoding="utf-8") as schema_file:
+                    schema = json.loads(schema_file.read())
+                jsonschema.validate(instance=json_obj, schema=schema)
                 workflow.is_validated = True
             except json.JSONDecodeError as error:
                 return jsonify({

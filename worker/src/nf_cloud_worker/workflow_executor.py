@@ -6,7 +6,7 @@ from pathlib import Path
 from queue import Empty as EmptyQueueError
 import re
 import subprocess
-from typing import Any, ClassVar, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 # 3rd party imports
 import requests
@@ -101,8 +101,8 @@ class WorkflowExecutor(Process):
         """
         return []
 
-    def _nextflow_command(self, project_dir: Path, work_dir: Path, nextflow_weblog_url: str, fix_nextflow_paramters: Any,
-        dynamic_nextflow_arguments: dict, static_workflow_arguments: dict, nextflow_main_scrip_path: Path) -> List[str]:
+    def _nextflow_command(self, project_dir: Path, work_dir: Path, nextflow_weblog_url: str, fix_nextflow_paramters: List[str],
+        dynamic_nextflow_arguments: dict, static_workflow_arguments: Dict[str, Any], nextflow_main_scrip_path: Path) -> List[str]:
         """
         Nextflow command, inclusive nextflow run parameters and script.
 
@@ -114,7 +114,7 @@ class WorkflowExecutor(Process):
             Path to 
         nextflow_weblog_url : str
             _description_
-        fix_nextflow_paramters : Any
+        fix_nextflow_paramters : List[str]
             _description_
         dynamic_nextflow_arguments : dict
             _description_
@@ -184,23 +184,28 @@ class WorkflowExecutor(Process):
         )
         for arg_name, arg_definition in merged_arguments.items():
             arg_value = arg_definition["value"]
-            # Special argument type handling
-            if arg_definition["type"] == "number":
+            # Convert argument if necessary
+            if "type" in arg_definition:
+                # Special argument type handling
+                if arg_definition["type"] == "number":
+                    arg_value = str(arg_value)
+                elif arg_definition["type"] == "paths":
+                    arg_value = ",".join([
+                        str(project_dir.joinpath(
+                            self.__class__.remove_preceding_slash(file))
+                        ) for file in arg_value
+                    ])
+                elif arg_definition["type"] == "path":
+                    arg_value = str(project_dir.joinpath(
+                        self.__class__.remove_preceding_slash(arg_value)
+                    ))
+                elif arg_definition["type"] == "file-glob":
+                    # Path.joinpath removes wildcards. So we need to append
+                    # the value manually to the path.
+                    arg_value = f"{project_dir}/{self.__class__.remove_preceding_slash(arg_value)}"
+            else:
+                # Convert everything else to string for subprocess.Popen
                 arg_value = str(arg_value)
-            elif arg_definition["type"] == "paths":
-                arg_value = ",".join([
-                    str(project_dir.joinpath(
-                        self.__class__.remove_preceding_slash(file))
-                    ) for file in arg_value
-                ])
-            elif arg_definition["type"] == "path":
-                arg_value = str(project_dir.joinpath(
-                    self.__class__.remove_preceding_slash(arg_value)
-                ))
-            elif arg_definition["type"] == "file-glob":
-                # Path.joinpath removes wildcards. So we need to append
-                # the value manually to the path.
-                arg_value = f"{project_dir}/{self.__class__.remove_preceding_slash(arg_value)}"
             workflow_arguments.append(f"--{arg_name}")
             workflow_arguments.append(arg_value)
 
@@ -241,27 +246,32 @@ class WorkflowExecutor(Process):
             weblog_url: str = f"{self.__nf_cloud_url}/api/projects/{project_params['id']}/workflow-log"
             weblog_url = weblog_url.replace("://", f"://{self.__nf_cloud_api_user}:{self.__nf_cloud_api_password}@")
             # Get workflow settings
-            workflow_settings: Optional[dict] = None
+            workflow: Optional[dict] = None
             with requests.get(f"{self.__nf_cloud_url}/api/workflows/{project_params['workflow_id']}") as response: # TODO rename workflow to workflow_id
-                workflow_settings = response.json()["defintion"]
+                workflow = response.json()
+
+            workflow_definition: dict = json.loads(workflow["definition"])
 
             nextflow_main_scrip_path = self.__get_workflow_main_script_path(
-                workflow_settings
+                workflow_definition
             )
 
             fix_nextflow_paramters = self.__get_fix_nextflow_parameters(
-                workflow_settings
+                workflow_definition
             )
 
-            dynamic_nextflow_arguments = project_params["workflow_arguments"]
+            dynamic_nextflow_arguments = {
+                argument["name"]: argument
+                for argument in project_params["workflow_arguments"]
+            }
 
             static_workflow_arguments = self.__get_workflow_static_arguments(
-                workflow_settings
+                workflow_definition
             )
 
             # Create temporary work dir for Nextflow intermediate files.
             work_dir: Path = project_dir.joinpath(
-                self.sanitize_workflow_name(project_params["workflow"])
+                self.sanitize_workflow_name(workflow["name"])
             )
             if not work_dir.is_dir():
                 work_dir.mkdir(parents=True, exist_ok=True)
@@ -301,12 +311,42 @@ class WorkflowExecutor(Process):
             .absolute() \
             .joinpath(workflow_settings["script"])
 
-    def __get_workflow_static_arguments(self, workflow_settings: dict) -> dict:
-        if "static" in workflow_settings["args"]:
-            return workflow_settings["args"]["static"]
-        return {}
+    def __get_workflow_static_arguments(self, workflow_settings: dict) -> Dict[str, Any]:
+        """
+        Returns the static arguments as dict `{param_name1: param1, param_name2: param2, ...}`
+        So it can be merged with the dynamic arguments.
 
-    def __get_fix_nextflow_parameters(self, workflow_settings: dict) -> list:
-        if "nextflow_parameters" in workflow_settings:
-            return workflow_settings["nextflow_parameters"]
-        return []
+        Parameters
+        ----------
+        workflow_settings : Dict[str, Any]
+            Workflow settings
+
+        Returns
+        -------
+        Dict[str, Any]
+            Static arguments
+        """
+        return {
+            param["name"]: param
+            for param in workflow_settings["args"]["static"]
+        }
+
+    def __get_fix_nextflow_parameters(self, workflow_settings: dict) -> List[str]:
+        """
+        Returns the nextflow run parameters  as list `[param_name1, param_value1, param_name2, param_value2, ...]`
+        as required by the subprocess.Popen() function.
+
+        Parameters
+        ----------
+        workflow_settings : dict
+            Workflow settings
+        
+        Returns
+        -------
+        List[str]
+        """
+        parameters: List[str] = []
+        for param in workflow_settings["nextflow_parameters"]:
+            parameters.append(f"-{param['name']}")
+            parameters.append(f"-{param['value']}")
+        return parameters

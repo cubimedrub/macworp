@@ -44,13 +44,13 @@
                 <template v-slot:workflow>
                     <div class="dropdown mb-3">
                         <button :class="{show: show_workflow_dropdown}" :aria_expanded="show_workflow_dropdown" @click="toggleWorkflowDropdown" class="btn btn-primary" type="button" id="workflows-dropdown" data-bs-toggle="dropdown">
-                            <span v-if="project.workflow">{{project.workflow}}</span>
+                            <span v-if="project.workflow_id">{{ workflows[project.workflow_id] }}</span>
                             <span v-else>Select a project...</span>
                             <i :class="{'fa-caret-down': !show_workflow_dropdown, 'fa-caret-up': show_workflow_dropdown}" class="fas ms-2"></i>
                         </button>
                         <ul :class="{show: show_workflow_dropdown}" class="dropdown-menu" aria-labelledby="workflows-dropdown">
-                            <li v-for="(workflow_name, workflow_idx) in workflows" :key="workflow_idx" :value="workflow_idx">
-                                <button @click="setWorkflow(workflow_idx); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
+                            <li v-for="(workflow_name, workflow_id) in workflows" :key="workflow_id">
+                                <button @click="setWorkflow(workflow_id); toggleWorkflowDropdown();" type="button" class="btn btn-link text-decoration-none text-body">
                                     {{workflow_name}}
                                 </button>
                             </li>
@@ -58,35 +58,37 @@
                         
                     </div>
                     <h2 class="mb-0">Workflow parameters</h2>
-                    <template v-for="(argument_value, argument_name) in project.workflow_arguments">
+                    <template v-for="(argument, argument_idx) in project.workflow_arguments">
                         <div>
                             <PathSelector 
-                                v-if="argument_value.type == 'path'" 
-                                :label="argument_name" 
-                                :description="argument_value.desc"
-                                :initial_value="project.workflow_arguments[argument_name].value"
+                                v-if="argument.type == 'path'" 
+                                :name="argument.name"
+                                :label="argument.label" 
+                                :description="argument.desc"
+                                :initial_value="project.workflow_arguments[argument_idx].value"
                                 :parent_event_bus="local_event_bus"
                                 :value_change_event="argument_changed_event"
                                 :project_id="project.id"
-                                :with_selectable_files="argument_value.selectable_files"
-                                :with_selectable_folders="argument_value.selectable_folders"
+                                :with_selectable_files="argument.selectable_files"
+                                :with_selectable_folders="argument.selectable_folders"
                             ></PathSelector>
                             <MultiplePathSelector 
-                                v-if="argument_value.type == 'paths'" 
-                                :label="argument_name"
-                                :description="argument_value.desc"
-                                :initial_value="project.workflow_arguments[argument_name].value"
+                                v-if="argument.type == 'paths'"
+                                :name="argument.name" 
+                                :label="argument.label"
+                                :description="argument.desc"
+                                :initial_value="project.workflow_arguments[argument_idx].value"
                                 :parent_event_bus="local_event_bus"
                                 :value_change_event="argument_changed_event" 
                                 :available_files="project.files"
                                 :project_id="project.id"
-                                :with_selectable_files="argument_value.selectable_files"
-                                :with_selectable_folders="argument_value.selectable_folders"
+                                :with_selectable_files="argument.selectable_files"
+                                :with_selectable_folders="argument.selectable_folders"
                             ></MultiplePathSelector>
-                            <TextInput v-if="argument_value.type == 'text'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="project.workflow_arguments[argument_name].is_multiline"></TextInput>
-                            <NumberInput v-if="argument_value.type == 'number'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
-                            <FileGlob v-if="argument_value.type == 'file-glob'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
-                            <ValueSelect v-if="argument_value.type == 'value-select'" :label="argument_name" :description="argument_value.desc" :initial_value="project.workflow_arguments[argument_name].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :options="argument_value.options" :is_multiselect="argument_value.is_multiselect"></ValueSelect>
+                            <TextInput v-if="argument.type == 'text'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :is_multiline="argument.is_multiline"></TextInput>
+                            <NumberInput v-if="argument.type == 'number'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></NumberInput>
+                            <FileGlob v-if="argument.type == 'file-glob'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event"></FileGlob>
+                            <ValueSelect v-if="argument.type == 'value-select'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :options="argument.options" :is_multiselect="argument.is_multiselect"></ValueSelect>
                         </div>
                     </template>
                     <button @click="updateProject" type="button" class="btn btn-primary mb-3">
@@ -173,7 +175,6 @@ export default {
         this.bindWorkflowArgumentChangeEvent()
         // Set selected tab and bind event for tab changes
         this.local_event_bus.$on("TAB_CHANGED", (tab_idx) => {
-            console.error("tab change", tab_idx)
             this.selected_tab = tab_idx
         })
     },
@@ -253,7 +254,7 @@ export default {
                     },
                     body: JSON.stringify({
                         workflow_arguments: this.project.workflow_arguments,
-                        workflow: this.project.workflow,
+                        workflow_id: this.project.workflow_id,
                     })
                 }
             ).then(response => {
@@ -277,18 +278,19 @@ export default {
         toggleWorkflowDropdown(){
             this.show_workflow_dropdown = !this.show_workflow_dropdown
         },
-        setWorkflow(workflow_idx){
-            this.project.workflow_id = workflow_idx
+        setWorkflow(workflow_id){
+            this.project.workflow_id = workflow_id
             this.getDynamicWorkflowArguments()
         },
         /**
-         * Sets a nee value to the workflow argument
+         * Sets a neww value to the workflow argument
          *
-         * @param {string} argument_name
+         * @param {number} argument_name
          * @param {any} argument_value
          */
         setWorkflowArgument(argument_name, argument_value){
-            this.project.workflow_arguments[argument_name].value = argument_value
+            let argument_index = this.project.workflow_arguments.findIndex(argument => argument.name == argument_name)
+            this.project.workflow_arguments[argument_index].value = argument_value
         },
         /**
          * Binds the argument change event to the local event bus.

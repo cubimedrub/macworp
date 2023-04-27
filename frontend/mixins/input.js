@@ -9,6 +9,13 @@ export default {
         /**
          * Argument name
          */
+        name: {
+            type: String,
+            required: true
+        },
+        /**
+         * Argument name
+         */
         label: {
             type: String,
             required: true
@@ -89,7 +96,7 @@ export default {
          * @param {any} new_value
          */
         sendValueChangeEvent(new_value){
-            this.parent_event_bus.$emit(this.value_change_event, this.label, new_value)
+            this.parent_event_bus.$emit(this.value_change_event, this.name, new_value)
         } 
     },
     computed: {

@@ -128,8 +128,8 @@ class ProjectsController:
             if not key in data:
                 errors[key].append("can not be empty")
         
-        if not isinstance(data["workflow_id"], str):
-                errors["workflow_id"].append("must be string")
+        if not isinstance(data["workflow_id"], int):
+                errors["workflow_id"].append("must be integer")
 
         if not isinstance(data["workflow_arguments"], dict):
             errors["workflow_arguments"].append("must be a dictionary")
@@ -373,9 +373,9 @@ class ProjectsController:
         if project is None:
             return "", 404
         if project and not project.is_scheduled:
-            for arg_name, arg_definition in project.workflow_arguments.items():
-                if not "value" in arg_definition or "value" in arg_definition and arg_definition["value"] is None:
-                    errors[arg_name].append("cannot be empty")
+            for arguments in project.workflow_arguments:
+                if not "value" in arguments or "value" in arguments and arguments["value"] is None:
+                    errors[arguments["name"]].append("cannot be empty")
             if len(errors) > 0:
                 return jsonify({
                     "errors": errors

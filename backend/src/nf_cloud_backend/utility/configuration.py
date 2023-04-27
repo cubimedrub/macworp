@@ -60,8 +60,8 @@ rabbit_mq:
 redis_url: redis://localhost:6380/0
 # Basic auth for worker
 worker_credentials:
-  username: ""
-  password: ""
+  username: "worker"
+  password: "developer"
 login_providers:    # Will be completely overridden by local config
   openid:
     dev:

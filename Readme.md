@@ -100,7 +100,7 @@ You can use the build arguments (`--build-arg`) `NEW_MAMBA_USER_ID` and `NEW_MAM
 
 ##### Creation (frontend)
 ```
-docker build -t mpc/nf-cloud-frontend:latest -f frontend.dockerfile .
+docker build -t mpc/nf-cloud-frontend:latest -f docker/frontend.dockerfile .
 ```
 
 ##### Usage

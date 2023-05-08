@@ -1,8 +1,10 @@
 # std imports
 import json
-from typing import Any, Dict, Union
+from pathlib import Path
+from typing import Any, ClassVar, Dict, Union, DefaultDict, List
 
 # 3rd party imports
+import jsonschema
 from peewee import (
     BigAutoField,
     CharField,
@@ -15,6 +17,8 @@ from playhouse.postgres_ext import JSONField
 from nf_cloud_backend import db_wrapper as db
 
 class Workflow(db.Model):
+    WORKFLOW_SCHEMA_PATH: ClassVar = Path(__file__).parent.parent.joinpath("json_schemes/workflow.schema.json")
+
     id = BigAutoField(primary_key=True)
     name = CharField(max_length=512, null=False)
     description = TextField(null=False)
@@ -77,3 +81,117 @@ class Workflow(db.Model):
             "is_published": self.is_published,
             "is_validated": self.is_validated
         }
+    
+    @classmethod
+    def validate_name(
+        cls, name: Any, errors: DefaultDict[str, List[str]]
+    ) -> DefaultDict[str, List[str]]:
+        """
+        Validates workflow name
+
+        Parameters
+        ----------
+        name : str
+            Workflow name
+        errors : DefaultDict[str, List[str]]
+            Dictionary to add errors
+
+        Returns
+        -------
+        DefaultDict[str, List[str]]
+            Dictionaries with errors (errors are stored under the key `name`)
+        """
+        if not isinstance(name, str):
+            errors["name"].append("is not a string")
+            return errors
+        if name is None:
+            errors["name"].append("is missing")
+            return errors
+        if len(name) < 1:
+            errors["name"].append("too short")
+        if len(name) > 512:
+            errors["name"].append("too long")
+        return errors
+
+    @classmethod
+    def validate_description(
+        cls, description: Any, errors: DefaultDict[str, List[str]]
+    ) -> DefaultDict[str, List[str]]:
+        """
+        Validates workflow description
+
+        Parameters
+        ----------
+        name : str
+            Workflow name
+        errors : DefaultDict[str, List[str]]
+            Dictionary to add errors
+
+        Returns
+        -------
+        DefaultDict[str, List[str]]
+            Dictionaries with errors (errors are stored under the key `description`)
+        """
+        if not isinstance(description, str):
+            errors["description"].append("is not a string")
+            return errors
+        if len(description) < 1:
+            errors["description"].append("cannot be empty")
+
+        return errors
+    
+    @classmethod
+    def validate_is_published(
+        cls, is_published: Any, errors: DefaultDict[str, List[str]]
+    ) -> DefaultDict[str, List[str]]:
+        """
+        Validates workflow description
+
+        Parameters
+        ----------
+        name : str
+            Workflow name
+        errors : DefaultDict[str, List[str]]
+            Dictionary to add errors
+
+        Returns
+        -------
+        DefaultDict[str, List[str]]
+            Dictionaries with errors (errors are stored under the key `description`)
+        """
+        if not isinstance(is_published, bool):
+            errors["is_published"].append("is not a boolean")
+            return errors
+        return errors
+
+    @classmethod
+    def validate_definition(
+        cls, definition: Any, errors: DefaultDict[str, List[str]]
+    ) -> DefaultDict[str, List[str]]:
+        """
+        Validates workflow description
+
+        Parameters
+        ----------
+        name : str
+            Workflow name
+        errors : DefaultDict[str, List[str]]
+            Dictionary to add errors
+
+        Returns
+        -------
+        DefaultDict[str, List[str]]
+            Dictionaries with errors (errors are stored under the key `definition`)
+        """
+        if not isinstance(definition, dict):
+            errors["definition"].append("is not a dictionary")
+            return errors
+        try:
+            schema: Dict[Any, Any] = {}
+            with cls.WORKFLOW_SCHEMA_PATH.open("r", encoding="utf-8") as schema_file:
+                schema = json.loads(schema_file.read())
+            jsonschema.validate(instance=definition, schema=schema)
+        except jsonschema.exceptions.ValidationError as error:
+            errors["definition"].append(error.message)
+
+        return errors

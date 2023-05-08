@@ -18,8 +18,6 @@ class WorkflowsControllers:
     Handles requests regarding the defined nextflow workflows
     """
 
-    WORKFLOW_SCHEMA_PATH = Path(__file__).parent.parent.parent.joinpath("json_schemes/workflow.schema.json")
-
     @staticmethod
     @app.route("/api/workflows", endpoint="workflow_index")
     def index():
@@ -74,13 +72,10 @@ class WorkflowsControllers:
 
         data: Dict[str, Any] = request.json
         name: Optional[str] = data.get("name", None)
-        if name is not None:
-            if len(name) < 1:
-                errors["name"].append("Input too short")
-            if len(name) > 512:
-                errors["name"].append("Input too long")
-        else:
-            errors["name"].append("Input is missing")
+        description: Optional[str] = data.get("description", None)
+
+        errors = Workflow.validate_name(name, errors)
+        errors = Workflow.validate_description(description, errors)
 
         if len(errors) > 0:
             return jsonify({
@@ -126,35 +121,36 @@ class WorkflowsControllers:
         RuntimeError
             Workflow cannot be inserted.
         """
+        errors = defaultdict(list)
+
         data: Dict[str, Any] = request.json
         definition: Optional[str] = data.get("definition", None)
         description: Optional[str] = data.get("description", None)
         is_published: Optional[bool] = data.get("is_published", None)
 
+        errors = Workflow.validate_description(description, errors)
+        errors = Workflow.validate_is_published(is_published, errors)
+
         workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
-        workflow.definition = definition
         workflow.description = description
         workflow.is_published = is_published
 
+        try:
+            workflow.definition = definition
+        except json.JSONDecodeError as error:
+            errors["definition"].append(f"{error}")
+
         if workflow.is_published:
-            try:
-                schema: Dict[Any, Any] = {}
-                with WorkflowsControllers.WORKFLOW_SCHEMA_PATH.open("r", encoding="utf-8") as schema_file:
-                    schema = json.loads(schema_file.read())
-                jsonschema.validate(instance=workflow.definition, schema=schema)
+            errors = Workflow.validate_definition(workflow.definition, errors)
+            if "definition" not in errors:
                 workflow.is_validated = True
-            except json.JSONDecodeError as error:
-                return jsonify({
-                    "errors": {
-                        "definition": f"{error}"
-                    }
-                }), 422
-            except jsonschema.exceptions.ValidationError as error:
-                return jsonify({
-                    "errors": {
-                        "definition": f"{error}"
-                    }
-                }), 422
+            else:
+                workflow.is_validated = False
+
+        if len(errors) > 0:
+            return jsonify({
+                "errors": errors
+            }), 422
 
         workflow.save()
 

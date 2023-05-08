@@ -31,7 +31,9 @@
             </tr>
             <tr>
                 <th>Description</th>
-                <td><textarea class="form-control" v-model="workflow.description"></textarea></td>
+                <td>
+                    <textarea class="form-control" v-model="workflow.description"></textarea>
+                </td>
             </tr>
             <tr>
                 <th>
@@ -59,9 +61,9 @@
                 lang="json"
                 :options="{minHeight: editor_min_height, maxLines: Infinity, autoScrollEditorIntoView: true}"
             />
-        </div>
-        <div v-if="errors.definition" class="alert alert-danger" role="alert">
-            {{ errors.definition }}
+            <small v-if="errors.definition">
+                <AttributeErrorList :errors="errors.definition" class="alert-danger" style="list-style: none"></AttributeErrorList>
+            </small>
         </div>
         <ConfirmationDialog :local_event_bus="local_event_bus" :on_confirm_func="deleteWorkflow" :identifier="delete_confirmation_dialog_id" confirm_button_class="btn-danger">
             <template v-slot:header>
@@ -83,6 +85,7 @@
 
 <script>
 import Vue from "vue";
+import toastr from "toastr";
 
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
@@ -160,20 +163,25 @@ export default {
                     })
                 }).then(response => {
                     if(response.ok) {
-                        response.json().then(response_data => {
-                            this.errors = {}
-                        })
+                        toastr.success(
+                            "Successfully saved workflow",
+                            "Saved"
+                        )
                     } else if (response.status == 422) {
                         response.json().then(response_data => {
                             this.errors = response_data.errors
                         })
+                        toastr.error(
+                            "Errors occurred",
+                            "error"
+                        )
                     } else {
                         this.handleUnknownResponse(response)
                     }
                 })
-                    .finally(() => {
-                        this.is_updating = false
-                    })
+                .finally(() => {
+                    this.is_updating = false
+                })
             }
         },
         /**

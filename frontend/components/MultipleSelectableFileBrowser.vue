@@ -9,19 +9,19 @@
                     <i class="fas fa-folder"></i>
                     {{folder}}
                 </span>
-                <button v-if="with_selectable_folders && isPathSelected(getFullPath(folder))" @click="unselectPath(getFullPath(folder))" type="button" class="btn btn-outline-primary btn-sm">
+                <button v-if="with_selectable_folders && isPathSelected(getFullPath(folder))" @click="unselectPath(getFullPath(folder))" :disabled="!enabled" type="button" class="btn btn-outline-primary btn-sm">
                     <i class="far fa-check-square"></i>
                 </button>
-                <button v-if="with_selectable_folders && !isPathSelected(getFullPath(folder))" @click="selectPath(getFullPath(folder))" type="button" class="btn btn-outline-primary btn-sm">
+                <button v-if="with_selectable_folders && !isPathSelected(getFullPath(folder))" @click="selectPath(getFullPath(folder))" :disabled="!enabled" type="button" class="btn btn-outline-primary btn-sm">
                     <i class="far fa-square"></i>
                 </button>
             </li>
             <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
                 <span>{{ file }}</span>
-                <button v-if="with_selectable_files && isPathSelected(getFullPath(file))" @click="unselectPath(getFullPath(file))" type="button" class="btn btn-outline-primary btn-sm">
+                <button v-if="with_selectable_files && isPathSelected(getFullPath(file))" @click="unselectPath(getFullPath(file))" :disabled="!enabled" type="button" class="btn btn-outline-primary btn-sm">
                     <i class="far fa-check-square"></i>
                 </button>
-                <button v-if="with_selectable_files && !isPathSelected(getFullPath(file))" @click="selectPath(getFullPath(file))" type="button" class="btn btn-outline-primary btn-sm">
+                <button v-if="with_selectable_files && !isPathSelected(getFullPath(file))" @click="selectPath(getFullPath(file))" :disabled="!enabled" type="button" class="btn btn-outline-primary btn-sm">
                     <i class="far fa-square"></i>
                 </button>
             </li>
@@ -89,6 +89,7 @@ export default {
              * 
              * @param  {String} path    File or folder path.
              */
+            if(!this.enabled) return
             this.parent_event_bus.$emit(this.select_event, path)
         },
         unselectPath(path){
@@ -97,6 +98,7 @@ export default {
              * 
              * @param  {String} path    File or folder path.
              */
+            if(!this.enabled) return
             this.parent_event_bus.$emit(this.unselect_event, path)
         },
         isPathSelected(path){

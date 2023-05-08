@@ -3,8 +3,8 @@
         <label for="lower-mass-tolerance" class="col-sm-2 col-form-label">{{ label }}</label>
         <div class="col-sm-10 d-flex flex-column justify-content-center">
             <div class="input-group">
-                <input v-model="current_value" v-on:keyup.enter="createNewFolder" readonly type="text" class="form-control">
-                <button @click="openModal(modal_ref); reloadFolderContent();" class="btn btn-primary" type="button">
+                <input v-model="current_value" v-on:keyup.enter="createNewFolder" :disabled="!enabled" readonly type="text" class="form-control">
+                <button @click="openModal(modal_ref); reloadFolderContent();" :disabled="!enabled" class="btn btn-primary" type="button">
                     <i class="fas fa-folder"></i>
                 </button>
                 <button @click="emptyPathSelection" class="btn btn-danger" type="button">
@@ -23,7 +23,7 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
-                        <MultipleSelectableFileBrowser 
+                        <MultipleSelectableFileBrowser
                             :selected_paths="current_value"
                             :project_id="project_id"
                             :parent_event_bus="local_event_bus"
@@ -108,6 +108,7 @@ export default {
          * @param [String] path
          */
         addPath(path){
+            if (!this.enabled) return
             this.current_value.push(path)
         },
         /**
@@ -116,9 +117,11 @@ export default {
          * @param [String] path_to_remove
          */
         removePath(path_to_remove){
+            if (!this.enabled) return
             this.current_value = this.current_value.filter(path => path != path_to_remove);
         },
         emptyPathSelection(){
+            if (!this.enabled) return
             this.current_value = []
         },
         reloadFolderContent(){

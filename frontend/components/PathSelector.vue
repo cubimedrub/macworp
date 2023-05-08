@@ -3,11 +3,11 @@
         <label for="lower-mass-tolerance" class="col-sm-2 col-form-label">{{ label }}</label>
         <div class="col-sm-10 d-flex flex-column justify-content-center">
             <div class="input-group">
-                <input v-model="current_value" v-on:keyup.enter="createNewFolder" type="text" class="form-control">
-                <button @click="openModal(modal_ref); reloadFolderContent();" class="btn btn-primary" type="button">
+                <input v-model="current_value" v-on:keyup.enter="createNewFolder" :disabled="!enabled" type="text" class="form-control">
+                <button @click="openModal(modal_ref); reloadFolderContent();" :disabled="!enabled" class="btn btn-primary" type="button">
                     <i class="fas fa-folder"></i>
                 </button>
-                <button @click="removeFileSelection" class="btn btn-danger" type="button">
+                <button @click="removeFileSelection" :disabled="!enabled" class="btn btn-danger" type="button">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -30,6 +30,7 @@
                             :with_selectable_files="with_selectable_files"
                             :with_selectable_folders="with_selectable_folders"
                             :reload_event="reload_folder_content_event"
+                            :enabled="enabled"
                         ></SelectableFileBrowser>
                     </div>
                     <div class="modal-footer">
@@ -97,10 +98,12 @@ export default {
     },
     methods: {
         setNewValueAndCloseModal(new_value){
+            if (!this.enabled) return
             this.current_value = new_value
             this.closeModal(this.modal_ref)
         },
         removeFileSelection(){
+            if (!this.enabled) return
             this.current_value = null
         },
         reloadFolderContent(){

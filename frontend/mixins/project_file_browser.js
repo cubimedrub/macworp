@@ -23,7 +23,14 @@ export default {
             type: String,
             required: false,
             default: "RELOAD"
-        }
+        },
+        /**
+         * Active status, if false some inputs are disabled
+         */
+        enabled: {
+            type: Boolean,
+            required: true
+        },
     },
     data(){
         return {

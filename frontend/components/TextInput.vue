@@ -3,8 +3,8 @@
         <label for="lower-mass-tolerance" class="col-sm-2 col-form-label">{{ label }}</label>
         <div class="col-sm-10 d-flex flex-column justify-content-center">
             <div class="input-group">
-                <input v-if="!is_multiline" v-model="current_value" type="text" class="form-control">
-                <textarea v-if="is_multiline" v-model="current_value" :rows="textarea_rows" class="form-control"></textarea>
+                <input v-if="!is_multiline" v-model="current_value" :disabled="!enabled" type="text" class="form-control">
+                <textarea v-if="is_multiline" v-model="current_value" :rows="textarea_rows" :disabled="!enabled" class="form-control"></textarea>
             </div>
             <small v-if="description != null" class="ms-2">{{description}}</small>
         </div>

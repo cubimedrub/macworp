@@ -9,13 +9,13 @@
                     <i class="fas fa-folder"></i>
                     {{folder}}
                 </span>
-                <button v-if="with_selectable_folders" @click="selectPath(getFullPath(folder))" type="button" class="btn btn-outline-primary btn-sm">
+                <button v-if="with_selectable_folders" @click="selectPath(getFullPath(folder))" :disabled="!enabled" type="button" class="btn btn-outline-primary btn-sm">
                     <i class="fas fa-angle-right"></i>
                 </button>
             </li>
             <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
                 <span>{{ file }}</span>
-                <button v-if="with_selectable_files" @click="selectPath(getFullPath(file))" type="button" class="btn btn-outline-primary btn-sm">
+                <button v-if="with_selectable_files" @click="selectPath(getFullPath(file))" :disabled="!enabled" type="button" class="btn btn-outline-primary btn-sm">
                     <i class="fas fa-angle-right"></i>
                 </button>
             </li>
@@ -69,6 +69,7 @@ export default {
              * 
              * @param  {String} path    File or folder path.
              */
+            if (!this.enabled) return
             this.parent_event_bus.$emit(this.select_event, path)
         },
     }

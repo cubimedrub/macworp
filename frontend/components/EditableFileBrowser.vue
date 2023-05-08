@@ -24,7 +24,7 @@
                     <button @click="download(path)" type="button" class="btn btn-secondary btn-sm">
                         <i class="fas fa-download"></i>
                     </button>
-                    <button @click="deletePath(`${current_directory}/${path}`)" type="button" class="btn btn-danger btn-sm">
+                    <button @click="deletePath(`${current_directory}/${path}`)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -35,7 +35,7 @@
                     <button @click="download(file)" type="button" class="btn btn-secondary btn-sm">
                         <i class="fas fa-download"></i>
                     </button>
-                    <button @click="deletePath(`${current_directory}/${file}`)" type="button" class="btn btn-danger btn-sm">
+                    <button @click="deletePath(`${current_directory}/${file}`)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -148,6 +148,7 @@ export default {
          * @param {String} path
          */
         deletePath(path){
+            if(!this.enabled) return
             fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/delete-path`, {
                 method:'POST',
                 headers: {

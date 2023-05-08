@@ -48,13 +48,21 @@ export default {
             type: String,
             required: true
         },
+        /**
+         * Active status, if false the input is disabled
+         */
+        enabled: {
+            type: Boolean,
+            required: true
+        },
     },
     data(){
         return {
             /**
              * Current value, e.g. text, selected files and so on.
              */
-            current_value: undefined
+            current_value: undefined,
+            enabled: true
         }
     },
     beforeMount(){

@@ -3,7 +3,7 @@
         <label for="lower-mass-tolerance" class="col-sm-2 col-form-label">{{ label }}</label>
         <div class="col-sm-10 d-flex flex-column justify-content-center">
             <div class="input-group">
-                <select v-model="current_value" :multiple="is_multiselect" class="form-select">
+                <select v-model="current_value" :multiple="is_multiselect" :disabled="!enabled" class="form-select">
                     <option 
                         v-if="current_value === null || current_value === undefined" 
                         :value="null"

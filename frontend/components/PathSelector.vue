@@ -112,6 +112,12 @@ export default {
          * @override 
          */
         value_type(){
+            return null
+        },
+        /** 
+         * @override 
+         */
+        value_type(){
             return String
         },
         /**

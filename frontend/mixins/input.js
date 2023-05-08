@@ -80,6 +80,8 @@ export default {
                  * Special behavior for numbers are needed
                  */
                 this.current_value = !Number.isNaN(this.initial_value) ? this.initial_value : this.default_value
+            } else if(this.value == undefined) {
+                this.current_value = this.initial_value
             } else {
                 this.current_value = this.initial_value instanceof this.value_type ? this.initial_value : this.default_value
             }
@@ -118,7 +120,7 @@ export default {
          * @return  {null}
          */
         default_value(){
-            return null
+            return undefined
         },
         /**
          * Returns the expected type for current_value and inital_value
@@ -126,7 +128,7 @@ export default {
          * Can be overriden in components.
          */
         value_type(){
-            return Object
+            return undefined
         }
     }
 }

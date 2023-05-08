@@ -19,6 +19,10 @@ export default {
     ],
     computed: {
         /** @override */
+        default_value(){
+            return null
+        },
+        /** @override */
         value_type(){
             return String
         }

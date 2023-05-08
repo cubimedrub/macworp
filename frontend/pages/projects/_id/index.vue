@@ -77,7 +77,7 @@
                                 :name="argument.name" 
                                 :label="argument.label"
                                 :description="argument.desc"
-                                :initial_value="project.workflow_arguments[argument_idx].value"
+                                :initial_value="project.workflow_arguments[argument_idx].value || []"
                                 :parent_event_bus="local_event_bus"
                                 :value_change_event="argument_changed_event" 
                                 :available_files="project.files"

@@ -21,6 +21,12 @@ export default {
         /**
          * @override
          */
+        default_value(){
+            return null
+        },
+        /**
+         * @override
+         */
         value_type(){
             return Number
         }

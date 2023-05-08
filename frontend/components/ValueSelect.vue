@@ -40,6 +40,12 @@ export default {
         },
     },
     computed: {
+        /** 
+         * @override 
+         */
+        default_value(){
+            return {}
+        },
         /**
          * @override
          */

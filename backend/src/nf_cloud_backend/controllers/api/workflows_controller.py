@@ -106,7 +106,10 @@ class WorkflowsControllers:
             Workflow cannot be inserted.
         """
         workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
-        return jsonify(workflow.to_dict())
+        workflow_dict = workflow.to_dict()
+        if request.args.get("definition_as_text", 0, type=int) > 0:
+            workflow_dict["definition"] = json.dumps(workflow.definition, indent=4)
+        return jsonify(workflow_dict)
 
     @staticmethod
     @app.route("/api/workflows/<int:workflow_id>/update", methods=["POST"], endpoint="workflow_update")
@@ -135,11 +138,10 @@ class WorkflowsControllers:
 
         if workflow.is_published:
             try:
-                json_obj = json.loads(workflow.definition)
                 schema: Dict[Any, Any] = {}
                 with WorkflowsControllers.WORKFLOW_SCHEMA_PATH.open("r", encoding="utf-8") as schema_file:
                     schema = json.loads(schema_file.read())
-                jsonschema.validate(instance=json_obj, schema=schema)
+                jsonschema.validate(instance=workflow.definition, schema=schema)
                 workflow.is_validated = True
             except json.JSONDecodeError as error:
                 return jsonify({
@@ -198,4 +200,4 @@ class WorkflowsControllers:
         workflow: Workflow = Workflow.get_or_none(Workflow.id == workflow_id)
         if workflow is None:
             return '', 404
-        return jsonify(json.loads(workflow.definition)['args']['dynamic'])
+        return jsonify(workflow.definition['args']['dynamic'])

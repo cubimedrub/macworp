@@ -67,7 +67,6 @@ class NFCloudWebApiClient:
                 raise ValueError(f"Error posting finish: {response.text}")
             
             workflow = response.json()
-            workflow["definition"] = json.loads(workflow["definition"])
 
             return workflow
 

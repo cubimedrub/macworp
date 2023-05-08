@@ -101,7 +101,7 @@ export default {
 
         fetchWorkflow(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}`, {
+                `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}?definition_as_text=1`, {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
                     },

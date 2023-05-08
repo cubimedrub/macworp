@@ -51,7 +51,13 @@
             </tr>
             </tbody>
         </table>
-        <tiptap-editor v-model="definition"/>
+        <v-ace-editor
+            v-model="workflow.definition"
+            @init="initEditor"
+            theme="solarized_dark"
+            lang="json"
+            :options="{minHeight: editor_min_height, maxLines: Infinity, autoScrollEditorIntoView: true}"
+        />
         <div v-if="errors.definition" class="alert alert-danger" role="alert">
             {{ errors.definition }}
         </div>
@@ -75,12 +81,11 @@
 
 <script>
 import Vue from "vue";
-import TiptapEditor from '~/components/TiptapEditor.vue'
+
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 
-const TIPTAP_JSON_CODE_PREFIX = "<pre><code>"
-const TIPTAP_JSON_CODE_SUFFIX = "</code></pre>"
+const EDITOR_MIN_HEIGHT = "200"
 
 export default {
     data(){
@@ -88,17 +93,19 @@ export default {
             workflow: null,
             is_updating: false,
             errors: {},
-            local_event_bus: new Vue(),
+            local_event_bus: new Vue()
         }
     },
     activated(){
         this.fetchWorkflow()
     },
-    components: {
-        TiptapEditor
-    },
     methods: {
-
+        initEditor(editor){
+            require('brace/ext/language_tools') //language extension prerequsite...
+            require('brace/mode/json')
+            require('brace/theme/solarized_dark')
+            editor.setShowPrintMargin(false);
+        },
         fetchWorkflow(){
             return fetch(
                 `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}?definition_as_text=1`, {
@@ -197,13 +204,12 @@ export default {
         delete_confirmation_dialog_id() {
             return DELETE_CONFIRMATION_DIALOG_ID
         },
-        definition: {
-            set: function(val) {
-                this.workflow.definition = val.slice(TIPTAP_JSON_CODE_PREFIX.length, -TIPTAP_JSON_CODE_SUFFIX.length)
-            },
-            get: function() {
-                return `${TIPTAP_JSON_CODE_PREFIX}${this.workflow.definition}${TIPTAP_JSON_CODE_SUFFIX}`
-            }
+        /**
+         * Provide access to EDITOR_MIN_HEIGHT in vue instance.
+         * @return {Number}
+         */
+        editor_min_height() {
+            return EDITOR_MIN_HEIGHT
         }
     }
 }

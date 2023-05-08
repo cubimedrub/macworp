@@ -12,12 +12,6 @@
     "@fortawesome/fontawesome-free": "^5.15.3",
     "@nuxt/content": "^1.14.0",
     "@popperjs/core": "^2.9.2",
-    "@tiptap/extension-code-block-lowlight": "^2.0.0-beta.202",
-    "@tiptap/extension-document": "^2.0.0-beta.202",
-    "@tiptap/extension-paragraph": "^2.0.0-beta.202",
-    "@tiptap/extension-text": "^2.0.0-beta.202",
-    "@tiptap/starter-kit": "^2.0.0-beta.202",
-    "@tiptap/vue-2": "^2.0.0-beta.202",
     "bootstrap": "^5.0.1",
     "core-js": "^3.9.1",
     "highlight.js": "^11.6.0",
@@ -25,7 +19,8 @@
     "lowlight": "^2.7.0",
     "nuxt": "^2.15.6",
     "socket.io-client": "4.4.0",
-    "toastr": "^2.1.4"
+    "toastr": "^2.1.4",
+    "vue2-ace-editor": "^0.0.15"
   },
   "devDependencies": {
     "fibers": "^5.0.0",

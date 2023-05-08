@@ -27,6 +27,7 @@ export default {
 
   // Plugins to run before rendering page: https://go.nuxtjs.dev/config-plugins
   plugins: [
+    "~/plugins/ace_editor.js",
     "~/plugins/event_bus.js",
     "~/plugins/api_error_handling.js",
     "~/plugins/bootstrap_modal_control.client.js",

@@ -134,6 +134,7 @@
 
 <script>
 import Vue from "vue"
+import toastr from "toastr"
 import workflows from "../../workflows/index.vue";
 
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
@@ -237,6 +238,7 @@ export default {
                     if(response.ok) {
                         return response.json().then(response_data => {
                             this.project.is_scheduled = response_data.is_scheduled
+                            toastr.success("Workflow is scheduled for execution")
                         })
                     } else {
                         this.handleUnknownResponse(response)
@@ -259,7 +261,9 @@ export default {
                     })
                 }
             ).then(response => {
-                if(!response.ok) {
+                if(response.ok) {
+                    toastr.success("Project updated")
+                } else {
                     this.handleUnknownResponse(response)
                 }
             })

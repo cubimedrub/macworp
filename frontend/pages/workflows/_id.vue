@@ -31,7 +31,7 @@
             </tr>
             <tr>
                 <th>Description</th>
-                <td style="padding: 0em 0.5rem"><textarea class="textarea-style" v-model="workflow.description"></textarea></td>
+                <td><textarea class="form-control" v-model="workflow.description"></textarea></td>
             </tr>
             <tr>
                 <th>
@@ -51,13 +51,15 @@
             </tr>
             </tbody>
         </table>
-        <v-ace-editor
-            v-model="workflow.definition"
-            @init="initEditor"
-            theme="solarized_dark"
-            lang="json"
-            :options="{minHeight: editor_min_height, maxLines: Infinity, autoScrollEditorIntoView: true}"
-        />
+        <div class="row mb-3">
+            <v-ace-editor
+                v-model="workflow.definition"
+                @init="initEditor"
+                theme="solarized_dark"
+                lang="json"
+                :options="{minHeight: editor_min_height, maxLines: Infinity, autoScrollEditorIntoView: true}"
+            />
+        </div>
         <div v-if="errors.definition" class="alert alert-danger" role="alert">
             {{ errors.definition }}
         </div>
@@ -214,15 +216,3 @@ export default {
     }
 }
 </script>
-
-<style>
-.textarea-style {
-    width: 100%;
-    height: 125px;
-    padding: 5px;
-    font-size: 15px;
-    border: 1px solid #ccc;
-    border-radius: 2px;
-
-}
-</style>

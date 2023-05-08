@@ -9,6 +9,8 @@
                     <AttributeErrorList :errors="errors.name" class="alert-danger" style="list-style: none"></AttributeErrorList>
                 </small>
             </div>
+        </div>
+        <div class="row mb-3">
             <label for="workflow-description" class="col-sm-2 col-form-label">Description</label>
             <div class="col-sm-10 d-flex flex-column justify-content-center">
                 <input v-model="description" v-on:keyup.enter="createWorkflow" id="workflow-description" class="form-control" type="text">
@@ -17,11 +19,13 @@
                 </small>
             </div>
         </div>
-        <div class="d-flex justify-content-end">
-            <button @click="createWorkflow" :disable="is_creating" type="button" class="btn btn-primary">
-                Create
-                <i class="fas fa-angle-right"></i>
-            </button>
+        <div class="row mb-3">
+            <div class="d-flex justify-content-end">
+                <button @click="createWorkflow" :disable="is_creating" type="button" class="btn btn-primary">
+                    Create
+                    <i class="fas fa-angle-right"></i>
+                </button>
+            </div>
         </div>
     </div>
 </template>

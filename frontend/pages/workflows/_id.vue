@@ -136,6 +136,7 @@ export default {
         updateWorkflow(){
             if(!this.is_updating){
                 this.is_updating = true
+                this.errors = {}
                 return fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}/update`, {
                     method: "POST",
                     cache: "no-cache",

@@ -149,6 +149,23 @@ seeds:
                         "label": "Multiple line text",
                         "desc": "Multiline text",
                         "is_multiline": true
+                    },
+                    {
+                        "type": "value-select",
+                        "name": "method",
+                        "label": "Creation method of decoys",
+                        "desc": "Possible values `reverse`& `suffix`",
+                        "options": [
+                            {
+                                "label": "reverse",
+                                "value": "reverse"
+                            },
+                            {
+                                "label": "suffix",
+                                "value": "suffix"
+                            }
+                        ],
+                        "value": "reverse"
                     }
                 ],
                 "static": [

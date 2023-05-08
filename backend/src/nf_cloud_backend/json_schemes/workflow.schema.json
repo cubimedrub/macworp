@@ -190,6 +190,53 @@
                   "label",
                   "desc"
                 ]
+              },
+              {
+                "description": "Value select",
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "value-select" 
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "description": "Human readable label",
+                    "type": "string"
+                  },
+                  "desc": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string"
+                            },
+                            "value": {}
+                          },
+                          "required": [
+                            "label",
+                            "value"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "name",
+                  "label",
+                  "desc",
+                  "options"
+                ]
               }
             ]
           },

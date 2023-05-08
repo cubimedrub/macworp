@@ -5,12 +5,12 @@
             <div class="input-group">
                 <select v-model="current_value" :multiple="is_multiselect" class="form-select">
                     <option 
-                        v-if="current_value === null && current_value === undefined && initial_value != undefined && initial_value != null" 
-                        :value="initial_value"
+                        v-if="current_value === null || current_value === undefined" 
+                        :value="null"
                         selected 
                         disabled
                     >Select ...</option>
-                    <option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option>
+                    <option v-for="option in options" :key="option.value" :value="option.value" :selected="option.value == current_value">{{ option.label }}</option>
                 </select>
             </div>
             <small v-if="description != null" class="ms-2">{{description}}</small>

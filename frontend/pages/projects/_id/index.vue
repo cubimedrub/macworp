@@ -166,7 +166,7 @@ export default {
              */
             local_event_bus: new Vue(),
             logs: [],
-            selected_tab: TABS.indexOf(this.$route.query.tab) || 0,
+            selected_tab: 0,
         }
     },
     mounted(){
@@ -174,6 +174,7 @@ export default {
         this.getWorkflows()
         this.bindWorkflowArgumentChangeEvent()
         // Set selected tab and bind event for tab changes
+        this.selected_tab = this.$route.query.tab ? TABS.indexOf(this.$route.query.tab) : 0
         this.local_event_bus.$on("TAB_CHANGED", (tab_idx) => {
             this.selected_tab = tab_idx
         })

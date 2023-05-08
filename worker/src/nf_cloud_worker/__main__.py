@@ -39,7 +39,8 @@ def main():
         cli.arguments.rabbitmq_url,
         cli.arguments.project_queue_name,
         cli.arguments.number_of_workers,
-        stop_event
+        stop_event,
+        cli.arguments.verbose
     )
     worker.start()
 

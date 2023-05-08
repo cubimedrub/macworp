@@ -1,5 +1,6 @@
 # std imports
 import json
+import logging
 from multiprocessing import Process, Event, Queue
 from multiprocessing.connection import Connection
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any, ClassVar, Dict, List
 from mergedeep import merge
 
 # internal imports
+from nf_cloud_worker.logging.logger import Logger
 from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
 
 class WorkflowExecutor(Process):
@@ -32,6 +34,8 @@ class WorkflowExecutor(Process):
         Communication channel with AckHandler for sending delivery tags after work is done.
     __stop_event: Event
         Event for stopping worker processes and threads reliable.
+    __logger: Logger
+        Logger for logging messages.
     """
 
     PRECEDING_SLASH_REGEX: ClassVar[re.Pattern] = re.compile(r"^/+")
@@ -42,7 +46,7 @@ class WorkflowExecutor(Process):
     WHITESPACE_REGEX: ClassVar[re.Pattern] = re.compile(r"\s+")
 
     def __init__(self, nf_bin: Path, nf_cloud_web_api_client: NFCloudWebApiClient, project_data_path: Path, project_queue: Queue,
-        communication_channel: Connection, stop_event: Event):
+        communication_channel: Connection, stop_event: Event, is_verbose: bool):
         super().__init__()
         # Nextflow binary
         self.__nf_bin: Path = nf_bin
@@ -55,6 +59,11 @@ class WorkflowExecutor(Process):
         self.__communication_channel: List[Connection] = communication_channel
         # Event for breaking work loop
         self.__stop_event: Event = stop_event
+
+        self.__logger = Logger.get_logger(
+            "NF_CLOUD_WORKER",
+            logging.DEBUG if is_verbose else logging.INFO
+        )
 
     def _pre_workflow_arguments(self) -> List[str]:
         """
@@ -232,6 +241,7 @@ class WorkflowExecutor(Process):
 
             # Parse project parameters from message broker
             project_params: dict = json.loads(body)
+            self.__logger.info(f"Processing project: {project_params['id']}")
             # Project work dir
             project_dir: Path = self.__project_data_path.joinpath(f"{project_params['id']}/")
             # Get workflow settings
@@ -261,16 +271,20 @@ class WorkflowExecutor(Process):
             if not work_dir.is_dir():
                 work_dir.mkdir(parents=True, exist_ok=True)
 
+            nextflow_command: List[str] = self._nextflow_command(
+                project_dir,
+                work_dir,
+                self.__nf_cloud_web_api_client.get_weblog_url(project_params["id"]),
+                fix_nextflow_paramters,
+                dynamic_nextflow_arguments,
+                static_workflow_arguments,
+                nextflow_main_scrip_path
+            )
+
+            self.__logger.debug(f"Nextflow command: {' '.join(nextflow_command)}")
+
             nf_proc = subprocess.Popen(
-                self._nextflow_command(
-                    project_dir,
-                    work_dir,
-                    self.__nf_cloud_web_api_client.get_weblog_url(project_params["id"]),
-                    fix_nextflow_paramters,
-                    dynamic_nextflow_arguments,
-                    static_workflow_arguments,
-                    nextflow_main_scrip_path
-                ),
+                nextflow_command,
                 cwd=project_dir,
                 text = True,
                 stdout=subprocess.PIPE,
@@ -283,6 +297,8 @@ class WorkflowExecutor(Process):
 
             # Report project as finished
             self.__nf_cloud_web_api_client.post_finish(project_params["id"])
+
+            self.__logger.info(f"Finished project: {project_params['id']}")
 
     def __get_workflow_main_script_path(self, workflow_settings: dict) -> Path:
         return Path(workflow_settings["directory"]) \

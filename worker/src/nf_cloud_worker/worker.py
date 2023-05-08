@@ -99,7 +99,7 @@ class Worker:
     """
 
     def __init__(self, nf_bin: Path, nf_cloud_api_client: NFCloudWebApiClient, projects_data_path: Path, rabbit_mq_url: str,
-        project_queue_name: str, number_of_workers: int, stop_event: Event):
+        project_queue_name: str, number_of_workers: int, stop_event: Event, is_verbose: bool):
         # nextflow binary
         self.__nf_bin: Path = nf_bin
         # nextflow cloud attributes
@@ -114,6 +114,7 @@ class Worker:
         self.__number_of_workers: int = number_of_workers
         # control
         self.__stop_event: Event = stop_event
+        self.__is_verbose = is_verbose
         
 
     def start(self):
@@ -138,7 +139,8 @@ class Worker:
                         self.__project_data_path,
                         project_queue,
                         rw_comm,
-                        self.__stop_event
+                        self.__stop_event,
+                        self.__is_verbose
                     )
                     executor.start()
                     comm_channels.append(ro_comm)

@@ -32,7 +32,7 @@ export default {
     "~/plugins/api_error_handling.js",
     "~/plugins/bootstrap_modal_control.client.js",
     "~/plugins/socket.io.client.js",
-    "~/plugins/v-viewer.client.js"
+    "~/plugins/v-viewer.js"
   ],
 
   // Auto import components: https://go.nuxtjs.dev/config-components
@@ -53,7 +53,7 @@ export default {
 
   publicRuntimeConfig: {
     nf_cloud_backend_base_url: process.env.NF_CLOUD_BACKEND_BASE_URL || 'http://localhost:3001',
-    nf_cloud_backend_ws_url: process.env.NF_CLOUD_BACKEND_WS_URL || 'ws://localhost:3001'
+    nf_cloud_backend_ws_url: process.env.NF_CLOUD_BACKEND_WS_URL || 'http://localhost:3001'
   },
 
   server: {

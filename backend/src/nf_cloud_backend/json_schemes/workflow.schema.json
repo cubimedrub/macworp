@@ -239,27 +239,27 @@
                 ]
               }
             ]
-          },
-          "static": {
-            "description": "Nextflow parameters which are defined by the server.",
-            "type": "array",
-            "items": {
-              "type": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "value": {}
+          }
+        },
+        "static": {
+          "description": "Nextflow parameters which are defined by the server.",
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
                   },
-                  "required": [
-                    "name",
-                    "value"
-                  ]
-                }
-              ]
-            }
+                  "value": {}
+                },
+                "required": [
+                  "name",
+                  "value"
+                ]
+              }
+            ]
           }
         }
       },

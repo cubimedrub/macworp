@@ -71,7 +71,7 @@ seeds:
                 ],
                 "static": [
                     {
-                        "type": "outDir",
+                        "name": "outDir",
                         "value": "./"
                     }
                 ]
@@ -196,7 +196,7 @@ seeds:
                 ],
                 "static": [
                     {
-                        "type": "outDir",
+                        "name": "outDir",
                         "value": "./"
                     }
                 ]

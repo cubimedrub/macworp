@@ -27,6 +27,7 @@
                             :selected_paths="current_value"
                             :project_id="project_id"
                             :parent_event_bus="local_event_bus"
+                            :enabled="enabled"
                             :select_event="selected_path_event"
                             :unselect_event="unselected_path_event"
                             :with_selectable_files="with_selectable_files" 

@@ -61,8 +61,7 @@ export default {
             /**
              * Current value, e.g. text, selected files and so on.
              */
-            current_value: undefined,
-            enabled: true
+            current_value: undefined
         }
     },
     beforeMount(){

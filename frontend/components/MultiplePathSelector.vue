@@ -7,7 +7,7 @@
                 <button @click="openModal(modal_ref); reloadFolderContent();" :disabled="!enabled" class="btn btn-primary" type="button">
                     <i class="fas fa-folder"></i>
                 </button>
-                <button @click="emptyPathSelection" class="btn btn-danger" type="button">
+                <button @click="emptyPathSelection" :disabled="!enabled" class="btn btn-danger" type="button">
                     <i class="fas fa-times"></i>
                 </button>
             </div>

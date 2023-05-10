@@ -321,7 +321,7 @@ class WorkflowExecutor(Process):
             Static arguments
         """
         return {
-            param["name"]: param
+            param["type"]: param
             for param in workflow_settings["args"]["static"]
         }
 

@@ -33,7 +33,6 @@ export default {
     "~/plugins/bootstrap_modal_control.client.js",
     "~/plugins/socket.io.client.js",
     "~/plugins/v-viewer.js",
-    "~/plugins/vue_plotly.js",
     "~/plugins/json_editor_vue.client.js"
   ],
 

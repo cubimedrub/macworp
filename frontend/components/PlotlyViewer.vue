@@ -1,7 +1,7 @@
 <template>
-    <div>
+    <div v-resize:debounce.100="onResize">
         <h2> {{ header }} </h2>
-        <v-plotly v-if="plot_data" :data="plot_data" :layout="plot_layout" :displayModeBar="true"></v-plotly>
+        <div ref="plot-container"></div>
         <div class="row">
             <div class="col col-md-11 d-flex justify-content-center">
                 <p>  {{ description }} </p>
@@ -46,11 +46,23 @@
 
 <script>
 import ResultMixin from '../mixins/result'
+import Plotly from 'plotly.js-dist-min'
+
+const PLOTLY_CONFIG = {
+    responsive: false
+}
+
+const directives = {};
+if (typeof window !== "undefined") {
+    directives.resize = require("vue-resize-directive");
+}
+
 
 export default {
     mixins: [
         ResultMixin
     ],
+    directives,
     props: {
         header: {
             type: String,
@@ -82,8 +94,20 @@ export default {
             }).then(data => {
                 this.plot_data = data.data
                 this.plot_layout = data.layout
+                return Promise.resolve()
             })
+        }).then(() => {
+            Plotly.newPlot(
+                this.$refs['plot-container'],
+                this.plot_data,
+                this.plot_layout,
+                PLOTLY_CONFIG
+            )
         })
+    },
+    beforeDestroy() {
+        //events.forEach(event => this.$el.removeAllListeners(event.completeName));
+        Plotly.purge(this.$refs['plot-container']);
     },
     methods: {
         /**
@@ -97,6 +121,31 @@ export default {
          */
         dismiss(){
             this.closeModal(this.modal_identifier)
+        },
+        /**
+         * Updates the plot once the data was changed
+         */
+        updatePlot(){
+            Plotly.newPlot(
+                this.$refs['plot-container'],
+                this.plot_data,
+                this.plot_layout,
+                PLOTLY_CONFIG
+            )
+        },
+        /**
+         * Resize the plot.
+         */
+        onResize() {
+            Plotly.Plots.resize(this.$refs['plot-container']);
+        }
+    },
+    watch: {
+        plot_data(){
+            this.updatePlot()
+        },
+        plot_layout(){
+            this.updatePlot()
         }
     }
 }

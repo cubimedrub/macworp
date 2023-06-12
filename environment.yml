@@ -3,7 +3,7 @@ channels:
   - defaults
 dependencies:
   - libpq
-  - nodejs=14.*
+  - nodejs=16.*
   - yarn
   - python=3.10
   - pip

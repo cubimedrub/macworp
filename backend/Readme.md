@@ -63,5 +63,10 @@ Each argument is defined by a name and a type.
     * options: List of dictionaries with keys `value` & `label` 
     * additional attributes:
         * `is_multiselect`: boolean; default: false; if true, multiple options can be selected
+* Separator  
+  Draws a horizontal line with a label in the middle.
+  * type: `separator`
+  * label: `a string`
+
 If a default value is provided, just add a additional key `value` with the actual value.
 

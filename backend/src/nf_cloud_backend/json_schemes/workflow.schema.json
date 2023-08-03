@@ -237,6 +237,24 @@
                   "desc",
                   "options"
                 ]
+              },
+              {
+                "description": "Separator",
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "separator" 
+                  },
+                  "label": {
+                    "description": "Human readable label",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "label"
+                ]
               }
             ]
           }

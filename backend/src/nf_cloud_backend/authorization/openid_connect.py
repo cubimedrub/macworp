@@ -1,7 +1,7 @@
 # std imports
 import datetime
 import json
-from typing import Any, Dict
+from typing import Any, ClassVar, Dict
 
 # 3rd party imports
 from flask import Request, jsonify, redirect, Response, url_for
@@ -11,16 +11,18 @@ import requests
 # internal imports
 from nf_cloud_backend import openid_clients, app
 from nf_cloud_backend.authorization.provider_type import ProviderType
-from nf_cloud_backend.authorization.utility import Utility as AuthUtility
 from nf_cloud_backend.authorization.jwt import JWT
 from nf_cloud_backend.models.user import User
-from nf_cloud_backend.utility.configuration import Configuration
+from nf_cloud_backend.authorization.abstract_authentication import AbstractAuthentication
 
 
-class OpenIdConnect:
+class OpenIdConnect(AbstractAuthentication):
     """
     Tools to manage OpenID authentications
     """
+
+    PROVIDER_TYPE: ClassVar[ProviderType] = ProviderType.OPENID_CONNECT
+
     @classmethod
     def get_autodicovery(cls, provider_client_config: Dict[str, Any]) -> Dict[Any, Any]:
         """
@@ -42,9 +44,8 @@ class OpenIdConnect:
         ).json()
 
     @classmethod
-    def login(cls, request: Request, provider: str):
-        provider_client_config = AuthUtility.get_provider_client_config(
-            ProviderType.OPENID_CONNECT,
+    def login(cls, request: Request, provider: str) -> Response:
+        provider_client_config = cls.get_provider_client_config(
             provider
         )
         if provider_client_config is None:
@@ -77,9 +78,23 @@ class OpenIdConnect:
         return redirect(request_uri)
 
     @classmethod
-    def callback(cls, request: Request, provider: str):
-        provider_client_config = AuthUtility.get_provider_client_config(
-            ProviderType.OPENID_CONNECT,
+    def callback(cls, request: Request, provider: str) -> Response:
+        """
+        Handles the callback from the provider.
+
+        Parameters
+        ----------
+        request : Request
+            Provider callback request
+        provider : str
+            Provider name
+
+        Returns
+        -------
+        Response
+            Redirect to frontend root URL with JWT token as query parameter
+        """
+        provider_client_config = cls.get_provider_client_config(
             provider
         )
         if provider_client_config is None:
@@ -168,65 +183,34 @@ class OpenIdConnect:
         return cls.redirect_to_frontend_callback(request, token)
 
     @classmethod
-    def redirect_to_frontend_callback(cls, request: Request, token: str) -> Response:
+    def logout(cls, user: User) -> Response:
+        return jsonify({
+            "errors": {
+                "general": "Logout is currently not supported for OpenID Connect."
+            }
+        }), 501
+
+    @classmethod
+    def refresh_token(cls, request: Request, user: User) -> Response:
         """
-        Redirects to frontend callback with given token.
+        Refreshes the JWT token.
 
         Parameters
         ----------
         request : Request
             Request
-        token : str
-            JWT token
+        user : User
+            User to refresh
 
         Returns
         -------
         Response
-        """
-        if Configuration.values()["frontend_host_url"] is None:
-            return redirect(f"{request.host_url}login/callback?token={token}")
-        else:
-            return redirect(f"{Configuration.values()['frontend_host_url']}/login/callback?token={token}")
-
-    # @classmethod
-    # def logout(cls, user):
-    #     provider_client_config = AuthUtility.get_provider_client_config(
-    #         ProviderType.OPENID_CONNECT,
-    #         user.provider
-    #     )
-    #     if provider_client_config is None:
-    #         return jsonify({
-    #             "errors": {
-    #                 "general": "Provider not supported."
-    #             }
-    #         }), 400
-
-    #     provider_config = cls.get_autodicovery(provider_client_config)
-    #     provider_client = openid_clients[user.provider]
-
-
-    #     end_session_endpoint
-
-    @classmethod
-    def refresh_token(cls, request: Request, user: User) -> Response:
-        """
-        Refreshs the auth token if a refresh token is given. 
-
-        Parameters
-        ----------
-        user : User
-            User to refrehs
-
-        Returns
-        -------
-        str
-            New jwt token with refreshed auth token from provider.
+            Redirect to frontend root URL with JWT token as query parameter
         """
         if not "refresh_token" in user.provider_data:
             return KeyError("no refresh token found")
 
-        provider_client_config = AuthUtility.get_provider_client_config(
-            ProviderType.OPENID_CONNECT,
+        provider_client_config = cls.get_provider_client_config(
             user.provider
         )
         if provider_client_config is None:
@@ -265,4 +249,3 @@ class OpenIdConnect:
         user.save()
 
         return cls.redirect_to_frontend_callback(request, auth_token)
-

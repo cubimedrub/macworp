@@ -16,7 +16,7 @@ from nf_cloud_backend.models.user import User
 from nf_cloud_backend.authorization.abstract_authentication import AbstractAuthentication
 
 
-class OpenIdConnect(AbstractAuthentication):
+class OpenIdConnectAuthentication(AbstractAuthentication):
     """
     Tools to manage OpenID authentications
     """

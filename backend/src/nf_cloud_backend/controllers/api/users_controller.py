@@ -9,7 +9,7 @@ from flask_login import login_required, logout_user
 from nf_cloud_backend import app, cache
 from nf_cloud_backend.authorization.provider_type import ProviderType
 from nf_cloud_backend.authorization.jwt import JWT
-from nf_cloud_backend.authorization.openid_connect import OpenIdConnect
+from nf_cloud_backend.authorization.openid_connect_authentication import OpenIdConnectAuthentication
 from nf_cloud_backend.constants import ACCESS_TOKEN_HEADER, ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX
 from nf_cloud_backend.utility.configuration import Configuration
 
@@ -72,7 +72,7 @@ class UsersController:
             Name of provider as indicated in config
         """
         if provider_type == ProviderType.OPENID_CONNECT.value:
-            return OpenIdConnect.callback(request, provider)
+            return OpenIdConnectAuthentication.callback(request, provider)
         else:
             return jsonify({
                 "errors": {

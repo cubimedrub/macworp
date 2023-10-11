@@ -1,5 +1,6 @@
 # std importd
 import json
+from pathlib import Path
 from threading import Thread
 import traceback
 from typing import Optional, Tuple
@@ -14,10 +15,12 @@ from flask_socketio import SocketIO
 import jwt
 from oauthlib.oauth2 import WebApplicationClient
 from playhouse.flask_utils import FlaskDB
+import yaml
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.exceptions import HTTPException
 
 # internal imports
+from nf_cloud_backend.authorization.provider_type import ProviderType
 from nf_cloud_backend.constants import (
     ACCESS_TOKEN_HEADER, 
     ONE_TIME_USE_ACCESS_TOKEN_PARAM_NAME,
@@ -26,7 +29,6 @@ from nf_cloud_backend.constants import (
 from nf_cloud_backend.utility.configuration import Configuration
 from nf_cloud_backend.utility.headers.cross_origin_resource_sharing import add_allow_cors_headers
 from nf_cloud_backend.utility.matomo import track_request as matomo_track_request
-
 from nf_cloud_backend import models   # Import module only to prevent circular imports
 
 # Load config and environment.
@@ -94,6 +96,16 @@ openid_clients = {
     provider: WebApplicationClient(provider_data["client_id"])
     for provider, provider_data in Configuration.values()["login_providers"]["openid"].items()
 }
+
+# Load all file based authentication 'databases'
+file_auth_databases = {
+    provider: yaml.load(
+        Path(provider_data['file']).read_text(encoding="utf-8"),
+        Loader=yaml.FullLoader
+    )
+    for provider, provider_data in Configuration.values()["login_providers"].get(ProviderType.FILE.value, {}).items()
+}
+
 
 login_manager = LoginManager()
 login_manager.init_app(app)

@@ -10,6 +10,7 @@ from nf_cloud_backend import app, cache
 from nf_cloud_backend.authorization.provider_type import ProviderType
 from nf_cloud_backend.authorization.jwt import JWT
 from nf_cloud_backend.authorization.openid_connect_authentication import OpenIdConnectAuthentication
+from nf_cloud_backend.authorization.file_based_authentication import FileBasedAuthentication
 from nf_cloud_backend.constants import ACCESS_TOKEN_HEADER, ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX
 from nf_cloud_backend.utility.configuration import Configuration
 
@@ -52,7 +53,9 @@ class UsersController:
         Respnse
         """
         if provider_type == ProviderType.OPENID_CONNECT.value:
-            return OpenIdConnect.login(request, provider)
+            return OpenIdConnectAuthentication.login(request, provider)
+        if provider_type == ProviderType.FILE.value:
+            return FileBasedAuthentication.login(request, provider)
         else:
             return jsonify({
                 "errors": {
@@ -61,7 +64,7 @@ class UsersController:
             }), 404
 
     @staticmethod
-    @app.route('/api/users/<string:provider_type>/<string:provider>/callback', endpoint="user_auth_callback")
+    @app.route('/api/users/<string:provider_type>/<string:provider>/callback', methods = ['POST', 'GET'], endpoint="user_auth_callback")
     def callback(provider_type: str, provider: str):
         """
         Callback for openid login
@@ -73,6 +76,8 @@ class UsersController:
         """
         if provider_type == ProviderType.OPENID_CONNECT.value:
             return OpenIdConnectAuthentication.callback(request, provider)
+        if provider_type == ProviderType.FILE.value:
+            return FileBasedAuthentication.callback(request, provider)
         else:
             return jsonify({
                 "errors": {
@@ -126,7 +131,7 @@ class UsersController:
                 if not is_unexpired:
                     try:
                         if user.provider == ProviderType.OPENID_CONNECT.value:
-                            return OpenIdConnect.refresh_token(request, user)
+                            return OpenIdConnectAuthentication.refresh_token(request, user)
                     except KeyError:
                         pass
         return jsonify({"errors": {

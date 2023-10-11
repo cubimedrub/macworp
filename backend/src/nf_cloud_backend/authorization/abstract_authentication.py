@@ -54,7 +54,7 @@ class AbstractAuthentication:
         Returns
         -------
         Response
-            Redirect to frontend root URL with JWT token as query parameter
+            The response will contain the JWT token, where it is stored: body, header, ..., depends on the provider type.
         """
         raise NotImplementedError("Not implemented.")
 

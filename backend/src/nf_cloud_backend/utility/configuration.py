@@ -79,6 +79,11 @@ login_providers:    # Will be completely overridden by local config
     #   client_discovery_url: https://...
     #   # Optional, may be given by provider
     #   scope: ~
+  file:
+    dev:
+      description: Login with local file
+      file: ./dev_auth.yaml
+      expires_in: 4294967296
 # Redirect after successful login. Can be null (~) when frontend and backend using the same domain and port
 frontend_host_url: http://localhost:5001
 """

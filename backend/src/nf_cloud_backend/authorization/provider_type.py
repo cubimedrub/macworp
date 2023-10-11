@@ -6,5 +6,5 @@ class ProviderType(Enum):
     """
     Login provider types
     """
-    LOCAL = "local"
+    FILE = "file"
     OPENID_CONNECT = "openid"

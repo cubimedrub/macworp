@@ -92,7 +92,7 @@ class OpenIdConnectAuthentication(AbstractAuthentication):
         Returns
         -------
         Response
-            Redirect to frontend root URL with JWT token as query parameter
+            Redirect to frontend root URL with JWT token as query parameter in the location url (header `Location`)
         """
         provider_client_config = cls.get_provider_client_config(
             provider

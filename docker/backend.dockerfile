@@ -20,6 +20,9 @@ RUN usermod "--login=mambauser" "--home=/home/mambauser" \
     echo "mambauser" > "/etc/arg_mamba_user" && \
     :
 
+RUN apt-get update -y \
+    && apt-get install -y postgresql-client-14
+
 WORKDIR /home/mambauser
 # Copy backend and environment.yml
 COPY --chown=mambauser:mambauser backend/ ./backend/

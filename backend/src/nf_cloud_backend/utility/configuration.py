@@ -3,6 +3,7 @@
 # std imports
 from __future__ import annotations
 from copy import deepcopy
+from io import StringIO
 import os
 from pathlib import Path
 import re
@@ -105,8 +106,8 @@ frontend_host_url: http://localhost:5001
         config_path: Path = Path(f"./{cls.LOCAL_CONFIG_NAME}")
         if config_path.is_file():
             with config_path.open("r", encoding="utf-8") as config_file:
-                local_config: str = cls.env_resolver(config_file.read())
-                new_config = yaml_load(local_config, Loader=YamlLoader)
+                local_config_io: StringIO = StringIO(cls.env_resolver(config_file.read()))
+                new_config = yaml_load(local_config_io, Loader=YamlLoader)
                 config = cls._merge_dicts_recursively(config, new_config)
         cls._validate_config(config)
 

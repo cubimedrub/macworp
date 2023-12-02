@@ -439,6 +439,33 @@
               "header",
               "description"
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "table" 
+              },
+              "path": {
+                "description": "Path of the table file",
+                "type": "string"
+              },
+              "header": {
+                "description": "Header of the result section",
+                "type": "string"
+              },
+              "description": {
+                "description": "Description",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "path",
+              "header",
+              "description"
+            ]
           }
         ]
       }

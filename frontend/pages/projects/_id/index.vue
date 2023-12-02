@@ -138,6 +138,13 @@
                             :description="result.description"
                             :path="result.path"
                         ></MultiResultView>
+                        <TableView
+                            v-if="result.type == 'table'"
+                            :project_id="project.id"
+                            :header="result.header"
+                            :description="result.description"
+                            :path="result.path"
+                        ></TableView>
                     </template>
                 </template>
             </Tab>

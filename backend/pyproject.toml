@@ -19,6 +19,7 @@ dependencies = [
     "markupsafe  ==2.0.1",      # fix for `ImportError: cannot import name 'soft_unicode'
     "mergedeep  >=1, <2",
     "oauthlib  >=3, <4",
+    "pandas ~=2.0",
     "peewee  >=3, <4",
     "peewee-migrate  >=1.1.6",
     "pika  >=1, <2",

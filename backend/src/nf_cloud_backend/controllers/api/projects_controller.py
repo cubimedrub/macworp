@@ -1,9 +1,11 @@
 # std imports
 from collections import defaultdict
 import json
+from typing import Optional
 from urllib.parse import unquote
 
 # 3rd party imports
+import pandas as pd
 from flask import request, jsonify, send_file, Response
 from flask_login import login_required
 import pika
@@ -520,4 +522,47 @@ class ProjectsController:
             response.headers["Content-Disposition"] = f"attachment; filename={project.name}--{path.replace('/', '+')}.zip"
             return response
 
+    @staticmethod
+    @app.route("/api/projects/<int:w_id>/table")
+    @login_required
+    def download_table(w_id: int):
+        """
+        Reads the table at the given path and returns it as json
+        ```json
+        {
+            "columns": ["col1", "col2", ...],
+            "data": [
+                ["row1col1", "row1col2", ...],
+                ["row2col1", "row2col2", ...],
+                ...
+            ]
+        }
+        ```
+
+        Parameters
+        ----------
+        w_id : int
+            Project ID
+        path : str
+            Path to folder or file.
+        """
+        project = Project.get(Project.id == w_id)
+        if project is None:
+            return "", 404
+        path = unquote(request.args.get('path', "", type=str))
+        path_to_download = project.get_path(path)
+        if not path_to_download.is_file():
+            return "", 404
+        dataframe: Optional[pd.Dataframe] = None
+        if path_to_download.suffix == ".csv":
+            dataframe = pd.read_csv(path_to_download)
+        elif path_to_download.suffix == ".tsv":
+            dataframe = pd.read_csv(path_to_download, sep="\t")
+        elif path_to_download.suffix == ".xlsx":
+            dataframe = pd.read_excel(path_to_download)
+        
+        return Response(
+            dataframe.to_json(orient="split", index=False),
+            mimetype="application/json"
+        )
 

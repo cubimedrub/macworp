@@ -108,7 +108,7 @@ frontend_host_url: http://localhost:5001
             with config_path.open("r", encoding="utf-8") as config_file:
                 local_config_io: StringIO = StringIO(cls.env_resolver(config_file.read()))
                 new_config = yaml_load(local_config_io, Loader=YamlLoader)
-                config = cls._merge_dicts_recursively(config, new_config)
+                config = cls._merge_dicts_recursively(new_config, config)
         cls._validate_config(config)
 
         cls.__values = config

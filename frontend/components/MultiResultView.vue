@@ -71,6 +71,9 @@ export default {
                 if(response.ok) {
                     return response.json().then(data => {
                         this.plotly_jsons = data.files.filter(path => path.endsWith(".json"))
+                        if(this.plotly_jsons.length > 0) {
+                            this.selectJson(this.plotly_jsons[0])
+                        }
                     })
                 } else {
                     this.handleUnknownResponse(response)

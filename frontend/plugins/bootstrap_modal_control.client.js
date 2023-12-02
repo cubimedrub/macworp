@@ -1,3 +1,4 @@
+import BootstrapDropdown from "bootstrap/js/dist/dropdown"
 import BootstrapModal from "bootstrap/js/dist/modal"
 import Vue from 'vue'
 
@@ -25,6 +26,9 @@ Vue.mixin({
             if (modal != null) {
                 modal.hide()
             }
+        },
+        initDropdown(dropdown_ref){
+            new BootstrapDropdown(dropdown_ref)
         }
     }
 })

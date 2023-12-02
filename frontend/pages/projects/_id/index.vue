@@ -131,6 +131,13 @@
                             :description="result.description"
                             :path="result.path"
                         ></PlotlyViewer>
+                        <MultiResultView
+                            v-if="result.type == 'multi-result-view'"
+                            :project_id="project.id"
+                            :header="result.header"
+                            :description="result.description"
+                            :path="result.path"
+                        ></MultiResultView>
                     </template>
                 </template>
             </Tab>

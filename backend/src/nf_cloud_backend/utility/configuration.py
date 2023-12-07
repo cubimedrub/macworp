@@ -42,6 +42,8 @@ secret: "development"
 debug: true
 # Path to put working directories
 upload_path: "./uploads"
+# Set this in production to the base url of NF Cloud. E.g. https://nf-cloud.mpc.rub.de
+# frontend_host_url
 # Database
 database:
   # Database url: 

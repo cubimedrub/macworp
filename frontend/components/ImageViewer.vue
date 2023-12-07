@@ -1,7 +1,7 @@
 <template>
   <div class="image-viewer">
     <h2>{{ header }}</h2>
-    <div class="d-flex flex-column align-items-center mt-2">
+    <div v-if="result_file_found" class="d-flex flex-column align-items-center mt-2">
       <v-viewer 
         :images="authenticated_urls"
       >
@@ -17,6 +17,11 @@
       </v-viewer>
       <p v-if="images.length == 1">
         {{ images[0].description }}
+      </p>
+    </div>
+    <div v-if="result_file_not_found">
+      <p>
+        {{ result_file_not_found_message }}
       </p>
     </div>
   </div>

@@ -1,10 +1,17 @@
 <template>
     <div class="svg-viewer">
-        <h2>{{ header }}</h2> 
-        <div v-if="authorized_url" class="d-flex flex-column align-items-center">
-            <img v-if="!embed" :src="authorized_url" :alt="description" width="50%" />
-            <div v-else v-html="svg" class="embedded-svg"></div>
-            <p>{{ description }}</p>
+        <h2>{{ header }}</h2>
+        <div v-if="result_file_found">
+            <div v-if="authorized_url" class="d-flex flex-column align-items-center">
+                <img v-if="!embed" :src="authorized_url" :alt="description" width="50%" />
+                <div v-else v-html="svg" class="embedded-svg"></div>
+                <p>{{ description }}</p>
+            </div>
+        </div>
+        <div v-if="result_file_not_found">
+            <p>
+                {{ result_file_not_found_message }}
+            </p>
         </div>
     </div>
 </template>

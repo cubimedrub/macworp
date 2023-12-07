@@ -2,7 +2,7 @@
     <div class="pdf-viewer">
         <h2>{{ header }}</h2> 
         <div v-if="authorized_url" class="d-flex flex-column align-items-center">
-            <object type="application/pdf" :data="authorized_url"></object>
+            <object type="application/pdf" :data="authorized_url">{{ result_file_not_found }}</object>
             <p>{{ description }}</p>
         </div>
     </div>

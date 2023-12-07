@@ -2,34 +2,41 @@
     <!-- for now only to use with Plotly plots -->
     <div>
         <h2>{{ header }}</h2> 
-        <div class="d-flex justfy-content-between">
-            <div class="dropdown">
-                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" ref="paths-dropdown">
-                    <template v-if="selected_json">
-                        {{ selected_json }}
-                    </template>
-                    <template v-else>
-                        Select a plot
-                    </template>
-                </button>
-                <ul class="dropdown-menu">
-                    <li v-for="path in plotly_jsons" @click="selectJson(path)">
-                        <div class="dropdown-item">{{ path }}</div>
-                    </li>
-                </ul>
+        <div v-if="!loading_file_list && plotly_jsons.length > 0">
+            <div class="d-flex justfy-content-between">
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" ref="paths-dropdown">
+                        <template v-if="selected_json">
+                            {{ selected_json }}
+                        </template>
+                        <template v-else>
+                            Select a plot
+                        </template>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li v-for="path in plotly_jsons" @click="selectJson(path)">
+                            <div class="dropdown-item">{{ path }}</div>
+                        </li>
+                    </ul>
+                </div>
             </div>
+            <div>
+                <div v-if="selected_json">
+                    <PlotlyViewer
+                        :project_id="project_id"
+                        :header="''"
+                        :description="''"
+                        :path="`${path}/${selected_json}`"
+                    ></PlotlyViewer>
+                </div> 
+            </div>
+            <p>{{ description }}</p>
         </div>
-        <div>
-            <div v-if="selected_json">
-                <PlotlyViewer
-                    :project_id="project_id"
-                    :header="''"
-                    :description="''"
-                    :path="`${path}/${selected_json}`"
-                ></PlotlyViewer>
-            </div> 
+        <div v-if="!loading_file_list && plotly_jsons.length == 0">
+            <p>
+                Files not ready yet.
+            </p>
         </div>
-        <p>{{ description }}</p>
     </div>
 </template>
 
@@ -58,7 +65,8 @@ export default {
     data(){
         return {
             plotly_jsons: [],
-            selected_json: null
+            selected_json: null,
+            loading_file_list: true
         }
     },
     mounted() {
@@ -68,19 +76,21 @@ export default {
                 "x-access-token": this.$store.state.login.jwt
             }
         }).then(response => {
-                if(response.ok) {
-                    return response.json().then(data => {
-                        this.plotly_jsons = data.files.filter(path => path.endsWith(".json"))
-                        if(this.plotly_jsons.length > 0) {
-                            this.selectJson(this.plotly_jsons[0])
-                        }
-                    })
-                } else {
-                    this.handleUnknownResponse(response)
-                }
-            })
-        // init the dropdown
-        this.initDropdown(this.$refs["paths-dropdown"])
+            if(response.ok) {
+                return response.json().then(data => {
+                    this.plotly_jsons = data.files.filter(path => path.endsWith(".json"))
+                    if(this.plotly_jsons.length > 0) {
+                        this.selectJson(this.plotly_jsons[0])
+                    }
+                })
+            } else if (response.status == 404) {
+                return Promise.resolve(null)
+            } else {
+                return this.handleUnknownResponse(response)
+            }
+        }).finally(() => {
+            this.loading_file_list = false
+        })
     },
     methods: {
         /**
@@ -93,6 +103,19 @@ export default {
             this.$nextTick(() => {
                 this.selected_json = json
             })
+        }
+    },
+    watch: {
+        /**
+         * If the selected json changes, we need to rerender the plotly view
+         */
+        loading_file_list(new_val){
+            if (new_val && this.plotly_jsons.length > 0) {
+                this.$nextTick(() => {
+                    // init the dropdown
+                    this.initDropdown(this.$refs["paths-dropdown"])
+                })
+            }
         }
     }
 }

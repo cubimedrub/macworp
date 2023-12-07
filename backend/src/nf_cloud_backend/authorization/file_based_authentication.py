@@ -33,6 +33,7 @@ class FileBasedAuthentication(AbstractAuthentication):
         callback_url: str = url_for(
             "user_auth_callback",
             _external = True,
+            _scheme = request.scheme,
             provider_type = cls.PROVIDER_TYPE.value,
             provider = provider,
         )

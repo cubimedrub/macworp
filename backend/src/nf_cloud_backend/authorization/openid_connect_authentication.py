@@ -61,6 +61,7 @@ class OpenIdConnectAuthentication(AbstractAuthentication):
         redirect_uri: str = url_for(
             "user_auth_callback",
             _external = True,
+            _scheme=request.scheme,
             provider_type = ProviderType.OPENID_CONNECT.value,
             provider = provider,
         )

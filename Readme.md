@@ -34,11 +34,8 @@ conda env update -f environment.yml --prune
 # Upgrade pip and setuptools
 conda activate nf_cloud
 
-# Install modules for development
-pip install -r requirements.dev.txt
-
 # Install node requirements
-yarn --cwd ./nf_cloud_frontend install
+yarn --cwd ./frontend install
 ```
 
 

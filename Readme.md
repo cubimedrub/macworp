@@ -26,7 +26,7 @@ are installed.
 ### Prepare development environment
 ```bash
 # Create environment
-conda env create -f environment.yaml
+conda env create -f environment.yml
 
 # Already creates the environment and need updates???
 conda env update -f environment.yml --prune

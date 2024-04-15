@@ -1,7 +1,7 @@
 <template>
     <div class="table-view">
         <h2>{{ header }}</h2>
-        <div v-if="result_file_not_found">
+        <div v-if="!result_file_not_found">
             <p v-if="description">{{ description }}</p>
             <div class="table-container">
                 <table class="table table-sm table-striped">

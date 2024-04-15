@@ -3,13 +3,6 @@
         <h2>{{ header }}</h2>
         <div v-if="result_file_not_found">
             <p v-if="description">{{ description }}</p>
-            <Pagination
-                v-if="data.length > items_per_page"
-                :parent_event_bus="local_event_bus"
-                :total_items="data.length"
-                :page_change_event="page_change_event"
-                :items_per_page="items_per_page"
-            ></Pagination>
             <div class="table-container">
                 <table class="table table-sm">
                     <thead>
@@ -42,6 +35,13 @@
                     </tbody>
                 </table>
             </div>
+            <Pagination
+                v-if="data.length > items_per_page"
+                :parent_event_bus="local_event_bus"
+                :total_items="data.length"
+                :page_change_event="page_change_event"
+                :items_per_page="items_per_page"
+            ></Pagination>
         </div>
         <div v-if="result_file_not_found">
             <p>

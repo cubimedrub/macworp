@@ -101,8 +101,8 @@
                     </button>
                 </template>
 
-                <template v-slot:results>
-                    <template v-if="project.results_definition" v-for="(result, result_idx) in project.results_definition">
+                <template v-slot:results v-if="project.results_definition">
+                    <template v-for="(result, result_idx) in project.results_definition">
                         <ImageViewer
                             v-if="result.type == 'images'"
                             :project_id="project.id"

@@ -34,7 +34,7 @@
             </div>
             <Tab :tabs="tabs" :tab_labels="tab_labels" :preselected_tab="selected_tab" :parent_event_bus="local_event_bus">
                 <template v-slot:files>
-                    <EditableFileBrowser 
+                    <EditableFileBrowser
                         :project_id="project.id"
                         :parent_event_bus="local_event_bus"
                         :reload_event="reload_project_files_event"
@@ -46,7 +46,7 @@
                     <div class="dropdown mb-3">
                         <button :class="{show: show_workflow_dropdown}" :aria_expanded="show_workflow_dropdown" @click="toggleWorkflowDropdown" :disabled="project.is_scheduled" class="btn btn-primary" type="button" id="workflows-dropdown" data-bs-toggle="dropdown">
                             <span v-if="project.workflow_id">{{ workflows[project.workflow_id] }}</span>
-                            <span v-else>Select a project...</span>
+                            <span v-else>Select a workflow...</span>
                             <i :class="{'fa-caret-down': !show_workflow_dropdown, 'fa-caret-up': show_workflow_dropdown}" class="fas ms-2"></i>
                         </button>
                         <ul :class="{show: show_workflow_dropdown}" class="dropdown-menu" aria-labelledby="workflows-dropdown">
@@ -56,15 +56,15 @@
                                 </button>
                             </li>
                         </ul>
-                        
+
                     </div>
                     <h2 class="mb-0">Workflow parameters</h2>
                     <template v-for="(argument, argument_idx) in project.workflow_arguments">
                         <div>
-                            <PathSelector 
-                                v-if="argument.type == 'path'" 
+                            <PathSelector
+                                v-if="argument.type == 'path'"
                                 :name="argument.name"
-                                :label="argument.label" 
+                                :label="argument.label"
                                 :description="argument.desc"
                                 :initial_value="project.workflow_arguments[argument_idx].value"
                                 :parent_event_bus="local_event_bus"
@@ -74,9 +74,9 @@
                                 :with_selectable_files="argument.selectable_files"
                                 :with_selectable_folders="argument.selectable_folders"
                             ></PathSelector>
-                            <MultiplePathSelector 
+                            <MultiplePathSelector
                                 v-if="argument.type == 'paths'"
-                                :name="argument.name" 
+                                :name="argument.name"
                                 :label="argument.label"
                                 :description="argument.desc"
                                 :initial_value="project.workflow_arguments[argument_idx].value || []"
@@ -479,7 +479,7 @@ export default {
         },
         /**
          * Returns tabs
-         * 
+         *
          * @returns {string}
          */
         tabs(){
@@ -487,11 +487,11 @@ export default {
         },
         /**
          * Returns tab labels
-         * 
+         *
          * @returns {string}
          */
         tab_labels(){
-            return TAB_LABELS   
+            return TAB_LABELS
         }
     },
     watch: {
@@ -500,10 +500,10 @@ export default {
          */
         selected_tab(){
             this.$router.replace({
-                name: "projects-id", 
+                name: "projects-id",
                 params: {
                     id: this.$route.params.id
-                },  
+                },
                 query: {
                     tab: this.tabs[this.selected_tab]
                 }

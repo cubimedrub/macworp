@@ -17,9 +17,9 @@ A worker witten in python which runs the scheduled workflows.
 ## Developing
 Make sure the dependencies in
 
-* [Frontend](nf_cloud_frontend/Readme.md)
-* [Backend](nf_cloud_backend/Readme.md)
-* [Worker](nf_cloud_backend/Readme.md)
+* [Frontend](frontend/Readme.md)
+* [Backend](backend/Readme.md)
+* [Worker](worker/Readme.md)
 
 are installed.
 

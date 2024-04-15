@@ -4,7 +4,7 @@
         <div v-if="result_file_not_found">
             <p v-if="description">{{ description }}</p>
             <div class="table-container">
-                <table class="table table-sm">
+                <table class="table table-sm table-striped">
                     <thead>
                         <tr>
                             <th @click="sort(colname)" v-for="colname in columns" :key="colname">

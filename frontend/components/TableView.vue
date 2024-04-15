@@ -125,7 +125,7 @@ export default {
                     this.sort_by = new_sort_by
                     var sort_column = this.header.indexOf(this.sort_by)
                     // Sort array ascending
-                    this.rows = this.rows.sort((elem_x, elem_y) => {
+                    this.data = this.data.sort((elem_x, elem_y) => {
                         if(elem_x[sort_column] < elem_y[sort_column]){
                             return -1
                         } else if(elem_x[sort_column] > elem_y[sort_column]) {

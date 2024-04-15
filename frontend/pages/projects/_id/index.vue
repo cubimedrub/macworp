@@ -108,6 +108,7 @@
                             :project_id="project.id"
                             :header="result.header"
                             :images="result.images"
+                            :key="result_idx"
                         ></ImageViewer>
                         <PDFViewer
                             v-if="result.type == 'pdf'"
@@ -115,6 +116,7 @@
                             :header="result.header"
                             :description="result.description"
                             :path="result.path"
+                            :key="result_idx"
                         ></PDFViewer>
                         <SVGViewer
                             v-if="result.type == 'svg'"
@@ -123,6 +125,7 @@
                             :description="result.description"
                             :path="result.path"
                             :embed="result.embed !== undefined ? result.embed : false"
+                            :key="result_idx"
                         ></SVGViewer>
                         <PlotlyViewer
                             v-if="result.type == 'plotly'"
@@ -130,6 +133,7 @@
                             :header="result.header"
                             :description="result.description"
                             :path="result.path"
+                            :key="result_idx"
                         ></PlotlyViewer>
                         <MultiResultView
                             v-if="result.type == 'multi-result-view'"
@@ -137,6 +141,7 @@
                             :header="result.header"
                             :description="result.description"
                             :path="result.path"
+                            :key="result_idx"
                         ></MultiResultView>
                         <TableView
                             v-if="result.type == 'table'"
@@ -144,6 +149,7 @@
                             :header="result.header"
                             :description="result.description"
                             :path="result.path"
+                            :key="result_idx"
                         ></TableView>
                     </template>
                 </template>

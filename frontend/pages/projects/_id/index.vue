@@ -102,56 +102,58 @@
                 </template>
 
                 <template v-slot:results v-if="project.results_definition">
-                    <template v-for="(result, result_idx) in project.results_definition">
-                        <ImageViewer
-                            v-if="result.type == 'images'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :images="result.images"
-                            :key="result_idx"
-                        ></ImageViewer>
-                        <PDFViewer
-                            v-if="result.type == 'pdf'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                            :key="result_idx"
-                        ></PDFViewer>
-                        <SVGViewer
-                            v-if="result.type == 'svg'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                            :embed="result.embed !== undefined ? result.embed : false"
-                            :key="result_idx"
-                        ></SVGViewer>
-                        <PlotlyViewer
-                            v-if="result.type == 'plotly'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                            :key="result_idx"
-                        ></PlotlyViewer>
-                        <MultiResultView
-                            v-if="result.type == 'multi-result-view'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                            :key="result_idx"
-                        ></MultiResultView>
-                        <TableView
-                            v-if="result.type == 'table'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                            :key="result_idx"
-                        ></TableView>
-                    </template>
+                    <div class="results-container">
+                        <template v-for="(result, result_idx) in project.results_definition">
+                            <ImageViewer
+                                v-if="result.type == 'images'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :images="result.images"
+                                :key="result_idx"
+                            ></ImageViewer>
+                            <PDFViewer
+                                v-if="result.type == 'pdf'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :key="result_idx"
+                            ></PDFViewer>
+                            <SVGViewer
+                                v-if="result.type == 'svg'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :embed="result.embed !== undefined ? result.embed : false"
+                                :key="result_idx"
+                            ></SVGViewer>
+                            <PlotlyViewer
+                                v-if="result.type == 'plotly'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :key="result_idx"
+                            ></PlotlyViewer>
+                            <MultiResultView
+                                v-if="result.type == 'multi-result-view'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :key="result_idx"
+                            ></MultiResultView>
+                            <TableView
+                                v-if="result.type == 'table'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :key="result_idx"
+                            ></TableView>
+                        </template>
+                    </div>
                 </template>
             </Tab>
         </div>

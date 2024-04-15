@@ -14,7 +14,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(row, row_idx) in displayed_rows" :key="`col${row_idx}`">
+                        <tr v-for="(row, row_idx) in displayed_data" :key="`col${row_idx}`">
                             <td v-for="(content, col_idx) in row" :key="`col${col_idx}`">
                                 <NuxtLink v-if="col_idx == spectrum_col_idx && search_id != null" :to="{name: 'searches-id-spectra-sanitized_id', params: {id: search_id, sanitized_id: content}}">
                                     {{content}}
@@ -79,7 +79,7 @@ export default {
         return {
             columns: [],                             // Table header
             data: [],                               // Table rows
-            displayed_rows: [],                     // Rows to be displayed
+            displayed_data: [],                     // Rows to be displayed
             local_event_bus: new Vue(),
             items_per_page: 50,
             page: 1,
@@ -99,7 +99,7 @@ export default {
                     this.columns = table.columns
                     this.data = table.data
                     // initial display
-                    this.update_displayed_rows()
+                    this.update_displayed_data()
                 })
             } else if(response.status == 404) {
                 this.internal_result_file_not_found = true
@@ -141,16 +141,16 @@ export default {
                     this.sort_asc = !this.sort_asc
                     this.data = this.data.reverse()
                 }
-                this.update_displayed_rows()
+                this.update_displayed_data()
                 this.is_sorting = false
             }
         },
         /**
          * Updates the displayed rows according the selected page.
          */
-        update_displayed_rows(){
+        update_displayed_data(){
             let start = (this.page - 1) * this.items_per_page
-            this.displayed_rows = this.data.slice(
+            this.displayed_data = this.data.slice(
                 start,
                 start + this.items_per_page
             )
@@ -163,7 +163,7 @@ export default {
     },
     watch: {
         page(){
-            this.update_displayed_rows()
+            this.update_displayed_data()
         }
     }
 }

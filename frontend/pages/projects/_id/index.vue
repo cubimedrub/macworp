@@ -34,7 +34,7 @@
             </div>
             <Tab :tabs="tabs" :tab_labels="tab_labels" :preselected_tab="selected_tab" :parent_event_bus="local_event_bus">
                 <template v-slot:files>
-                    <EditableFileBrowser 
+                    <EditableFileBrowser
                         :project_id="project.id"
                         :parent_event_bus="local_event_bus"
                         :reload_event="reload_project_files_event"
@@ -46,7 +46,7 @@
                     <div class="dropdown mb-3">
                         <button :class="{show: show_workflow_dropdown}" :aria_expanded="show_workflow_dropdown" @click="toggleWorkflowDropdown" :disabled="project.is_scheduled" class="btn btn-primary" type="button" id="workflows-dropdown" data-bs-toggle="dropdown">
                             <span v-if="project.workflow_id">{{ workflows[project.workflow_id] }}</span>
-                            <span v-else>Select a project...</span>
+                            <span v-else>Select a workflow...</span>
                             <i :class="{'fa-caret-down': !show_workflow_dropdown, 'fa-caret-up': show_workflow_dropdown}" class="fas ms-2"></i>
                         </button>
                         <ul :class="{show: show_workflow_dropdown}" class="dropdown-menu" aria-labelledby="workflows-dropdown">
@@ -56,44 +56,46 @@
                                 </button>
                             </li>
                         </ul>
-                        
+
                     </div>
                     <h2 class="mb-0">Workflow parameters</h2>
                     <template v-for="(argument, argument_idx) in project.workflow_arguments">
-                        <PathSelector 
-                            v-if="argument.type == 'path'" 
-                            :name="argument.name"
-                            :label="argument.label" 
-                            :description="argument.desc"
-                            :initial_value="project.workflow_arguments[argument_idx].value"
-                            :parent_event_bus="local_event_bus"
-                            :value_change_event="argument_changed_event"
-                            :enabled="!project.is_scheduled"
-                            :project_id="project.id"
-                            :with_selectable_files="argument.selectable_files"
-                            :with_selectable_folders="argument.selectable_folders"
-                            :key="argument_idx"
-                        ></PathSelector>
-                        <MultiplePathSelector 
-                            v-if="argument.type == 'paths'"
-                            :name="argument.name" 
-                            :label="argument.label"
-                            :description="argument.desc"
-                            :initial_value="project.workflow_arguments[argument_idx].value || []"
-                            :parent_event_bus="local_event_bus"
-                            :value_change_event="argument_changed_event"
-                            :enabled="!project.is_scheduled"
-                            :available_files="project.files"
-                            :project_id="project.id"
-                            :with_selectable_files="argument.selectable_files"
-                            :with_selectable_folders="argument.selectable_folders"
-                            :key="argument_idx"
-                        ></MultiplePathSelector>
-                        <TextInput v-if="argument.type == 'text'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :is_multiline="argument.is_multiline" :key="argument_idx"></TextInput>
-                        <NumberInput v-if="argument.type == 'number'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :key="argument_idx"></NumberInput>
-                        <FileGlob v-if="argument.type == 'file-glob'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :key="argument_idx"></FileGlob>
-                        <ValueSelect v-if="argument.type == 'value-select'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :options="argument.options" :is_multiselect="argument.is_multiselect" :key="argument_idx"></ValueSelect>
-                        <Separator v-if="argument.type == 'separator'" :label="argument.label" :key="argument_idx"></Separator>
+                        <div>
+                            <PathSelector
+                                v-if="argument.type == 'path'"
+                                :name="argument.name"
+                                :label="argument.label"
+                                :description="argument.desc"
+                                :initial_value="project.workflow_arguments[argument_idx].value"
+                                :parent_event_bus="local_event_bus"
+                                :value_change_event="argument_changed_event"
+                                :enabled="!project.is_scheduled"
+                                :project_id="project.id"
+                                :with_selectable_files="argument.selectable_files"
+                                :with_selectable_folders="argument.selectable_folders"
+                                :key="argument_idx"
+                            ></PathSelector>
+                            <MultiplePathSelector
+                                v-if="argument.type == 'paths'"
+                                :name="argument.name"
+                                :label="argument.label"
+                                :description="argument.desc"
+                                :initial_value="project.workflow_arguments[argument_idx].value || []"
+                                :parent_event_bus="local_event_bus"
+                                :value_change_event="argument_changed_event"
+                                :enabled="!project.is_scheduled"
+                                :available_files="project.files"
+                                :project_id="project.id"
+                                :with_selectable_files="argument.selectable_files"
+                                :with_selectable_folders="argument.selectable_folders"
+                                :key="argument_idx"
+                            ></MultiplePathSelector>
+                            <TextInput v-if="argument.type == 'text'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :is_multiline="argument.is_multiline" :key="argument_idx"></TextInput>
+                            <NumberInput v-if="argument.type == 'number'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :key="argument_idx"></NumberInput>
+                            <FileGlob v-if="argument.type == 'file-glob'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :key="argument_idx"></FileGlob>
+                            <ValueSelect v-if="argument.type == 'value-select'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :options="argument.options" :is_multiselect="argument.is_multiselect" :key="argument_idx"></ValueSelect>
+                            <Separator v-if="argument.type == 'separator'" :label="argument.label" :key="argument_idx"></Separator>
+                        </div>
                     </template>
                     <button @click="updateProject" :disabled="project.is_scheduled" type="button" class="btn btn-primary mb-3">
                         <i class="fas fa-save me-2"></i>
@@ -487,7 +489,7 @@ export default {
         },
         /**
          * Returns tabs
-         * 
+         *
          * @returns {string}
          */
         tabs(){
@@ -495,11 +497,11 @@ export default {
         },
         /**
          * Returns tab labels
-         * 
+         *
          * @returns {string}
          */
         tab_labels(){
-            return TAB_LABELS   
+            return TAB_LABELS
         }
     },
     watch: {
@@ -508,10 +510,10 @@ export default {
          */
         selected_tab(){
             this.$router.replace({
-                name: "projects-id", 
+                name: "projects-id",
                 params: {
                     id: this.$route.params.id
-                },  
+                },
                 query: {
                     tab: this.tabs[this.selected_tab]
                 }

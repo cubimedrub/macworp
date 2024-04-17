@@ -73,6 +73,7 @@
                                 :project_id="project.id"
                                 :with_selectable_files="argument.selectable_files"
                                 :with_selectable_folders="argument.selectable_folders"
+                                :key="argument_idx"
                             ></PathSelector>
                             <MultiplePathSelector
                                 v-if="argument.type == 'paths'"
@@ -87,12 +88,13 @@
                                 :project_id="project.id"
                                 :with_selectable_files="argument.selectable_files"
                                 :with_selectable_folders="argument.selectable_folders"
+                                :key="argument_idx"
                             ></MultiplePathSelector>
-                            <TextInput v-if="argument.type == 'text'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :is_multiline="argument.is_multiline"></TextInput>
-                            <NumberInput v-if="argument.type == 'number'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled"></NumberInput>
-                            <FileGlob v-if="argument.type == 'file-glob'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled"></FileGlob>
-                            <ValueSelect v-if="argument.type == 'value-select'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :options="argument.options" :is_multiselect="argument.is_multiselect"></ValueSelect>
-                            <Separator v-if="argument.type == 'separator'" :label="argument.label"></Separator>
+                            <TextInput v-if="argument.type == 'text'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :is_multiline="argument.is_multiline" :key="argument_idx"></TextInput>
+                            <NumberInput v-if="argument.type == 'number'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :key="argument_idx"></NumberInput>
+                            <FileGlob v-if="argument.type == 'file-glob'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :key="argument_idx"></FileGlob>
+                            <ValueSelect v-if="argument.type == 'value-select'" :name="argument.name" :label="argument.label" :description="argument.desc" :initial_value="project.workflow_arguments[argument_idx].value" :parent_event_bus="local_event_bus" :value_change_event="argument_changed_event" :enabled="!project.is_scheduled" :options="argument.options" :is_multiselect="argument.is_multiselect" :key="argument_idx"></ValueSelect>
+                            <Separator v-if="argument.type == 'separator'" :label="argument.label" :key="argument_idx"></Separator>
                         </div>
                     </template>
                     <button @click="updateProject" :disabled="project.is_scheduled" type="button" class="btn btn-primary mb-3">
@@ -101,51 +103,59 @@
                     </button>
                 </template>
 
-                <template v-slot:results>
-                    <template v-if="project.results_definition" v-for="(result, result_idx) in project.results_definition">
-                        <ImageViewer
-                            v-if="result.type == 'images'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :images="result.images"
-                        ></ImageViewer>
-                        <PDFViewer
-                            v-if="result.type == 'pdf'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                        ></PDFViewer>
-                        <SVGViewer
-                            v-if="result.type == 'svg'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                            :embed="result.embed !== undefined ? result.embed : false"
-                        ></SVGViewer>
-                        <PlotlyViewer
-                            v-if="result.type == 'plotly'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                        ></PlotlyViewer>
-                        <MultiResultView
-                            v-if="result.type == 'multi-result-view'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                        ></MultiResultView>
-                        <TableView
-                            v-if="result.type == 'table'"
-                            :project_id="project.id"
-                            :header="result.header"
-                            :description="result.description"
-                            :path="result.path"
-                        ></TableView>
-                    </template>
+                <template v-slot:results v-if="project.results_definition">
+                    <div class="results-container">
+                        <template v-for="(result, result_idx) in project.results_definition">
+                            <ImageViewer
+                                v-if="result.type == 'images'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :images="result.images"
+                                :key="result_idx"
+                            ></ImageViewer>
+                            <PDFViewer
+                                v-if="result.type == 'pdf'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :key="result_idx"
+                            ></PDFViewer>
+                            <SVGViewer
+                                v-if="result.type == 'svg'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :embed="result.embed !== undefined ? result.embed : false"
+                                :key="result_idx"
+                            ></SVGViewer>
+                            <PlotlyViewer
+                                v-if="result.type == 'plotly'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :key="result_idx"
+                            ></PlotlyViewer>
+                            <MultiResultView
+                                v-if="result.type == 'multi-result-view'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :key="result_idx"
+                            ></MultiResultView>
+                            <TableView
+                                v-if="result.type == 'table'"
+                                :project_id="project.id"
+                                :header="result.header"
+                                :description="result.description"
+                                :path="result.path"
+                                :key="result_idx"
+                            ></TableView>
+                        </template>
+                    </div>
                 </template>
             </Tab>
         </div>

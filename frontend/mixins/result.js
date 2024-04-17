@@ -60,7 +60,7 @@ export default {
          * Indicates the download is finished but the result file is not found.
          */
         result_file_not_found() {
-            return !this.result_file_loading && !this.internal_result_file_not_found
+            return !this.result_file_loading && this.internal_result_file_not_found
         }
     }
 }

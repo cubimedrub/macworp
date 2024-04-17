@@ -1,17 +1,10 @@
 <template>
     <div class="table-view">
         <h2>{{ header }}</h2>
-        <div v-if="result_file_not_found">
+        <div v-if="!result_file_not_found">
             <p v-if="description">{{ description }}</p>
-            <Pagination
-                v-if="data.length > items_per_page"
-                :parent_event_bus="local_event_bus"
-                :total_items="data.length"
-                :page_change_event="page_change_event"
-                :items_per_page="items_per_page"
-            ></Pagination>
             <div class="table-container">
-                <table class="table table-sm">
+                <table class="table table-sm table-striped">
                     <thead>
                         <tr>
                             <th @click="sort(colname)" v-for="colname in columns" :key="colname">
@@ -21,27 +14,21 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(row, row_idx) in displayed_rows" :key="`col${row_idx}`">
+                        <tr v-for="(row, row_idx) in displayed_data" :key="`col${row_idx}`">
                             <td v-for="(content, col_idx) in row" :key="`col${col_idx}`">
-                                <NuxtLink v-if="col_idx == spectrum_col_idx && search_id != null" :to="{name: 'searches-id-spectra-sanitized_id', params: {id: search_id, sanitized_id: content}}">
-                                    {{content}}
-                                </NuxtLink>
-                                <span v-else-if="col_idx == is_target_col_idx">
-                                    <i v-if="content" class="fas fa-check"></i>
-                                    <i v-else class="fas fa-times"></i>
-                                </span>
-                                <a v-else-if="col_idx == peptide_col_idx && row[is_target_col_idx]" :href="get_macpepdb_peptide_url(content)" target="_blank">
-                                    {{content}}
-                                    <i class="fas fa-external-link-alt ms-2"></i>
-                                </a>
-                                <span v-else>
-                                    {{content}}
-                                </span>
+                                {{content}}
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+            <Pagination
+                v-if="data.length > items_per_page"
+                :parent_event_bus="local_event_bus"
+                :total_items="data.length"
+                :page_change_event="page_change_event"
+                :items_per_page="items_per_page"
+            ></Pagination>
         </div>
         <div v-if="result_file_not_found">
             <p>
@@ -79,7 +66,7 @@ export default {
         return {
             columns: [],                             // Table header
             data: [],                               // Table rows
-            displayed_rows: [],                     // Rows to be displayed
+            displayed_data: [],                     // Rows to be displayed
             local_event_bus: new Vue(),
             items_per_page: 50,
             page: 1,
@@ -99,7 +86,7 @@ export default {
                     this.columns = table.columns
                     this.data = table.data
                     // initial display
-                    this.update_displayed_rows()
+                    this.update_displayed_data()
                 })
             } else if(response.status == 404) {
                 this.internal_result_file_not_found = true
@@ -125,7 +112,7 @@ export default {
                     this.sort_by = new_sort_by
                     var sort_column = this.header.indexOf(this.sort_by)
                     // Sort array ascending
-                    this.rows = this.rows.sort((elem_x, elem_y) => {
+                    this.data = this.data.sort((elem_x, elem_y) => {
                         if(elem_x[sort_column] < elem_y[sort_column]){
                             return -1
                         } else if(elem_x[sort_column] > elem_y[sort_column]) {
@@ -141,16 +128,16 @@ export default {
                     this.sort_asc = !this.sort_asc
                     this.data = this.data.reverse()
                 }
-                this.update_displayed_rows()
+                this.update_displayed_data()
                 this.is_sorting = false
             }
         },
         /**
          * Updates the displayed rows according the selected page.
          */
-        update_displayed_rows(){
+        update_displayed_data(){
             let start = (this.page - 1) * this.items_per_page
-            this.displayed_rows = this.data.slice(
+            this.displayed_data = this.data.slice(
                 start,
                 start + this.items_per_page
             )
@@ -163,7 +150,7 @@ export default {
     },
     watch: {
         page(){
-            this.update_displayed_rows()
+            this.update_displayed_data()
         }
     }
 }

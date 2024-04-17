@@ -342,5 +342,5 @@ class WorkflowExecutor(Process):
         parameters: List[str] = []
         for param in workflow_settings["nextflow_parameters"]:
             parameters.append(f"-{param['name']}")
-            parameters.append(f"-{param['value']}")
+            parameters.append(f"{param['value']}")
         return parameters

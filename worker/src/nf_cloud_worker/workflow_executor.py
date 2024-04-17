@@ -139,12 +139,12 @@ class WorkflowExecutor(Process):
                 nextflow_weblog_url,
                 fix_nextflow_paramters
             ) \
+            + [str(nextflow_main_scrip_path)] \
             + self.__get_arguments_as_list(
                 project_dir,
                 dynamic_nextflow_arguments,
                 static_workflow_arguments
             ) \
-            + [str(nextflow_main_scrip_path)] \
             + self._post_workflow_arguments()
 
     @classmethod

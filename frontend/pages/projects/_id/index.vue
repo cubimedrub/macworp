@@ -26,7 +26,7 @@
                     delete
                 </button>
             </div>
-            <div v-if="project.is_scheduled">
+            <div v-if="project.is_scheduled" class="mb-3">
                 <h2>Progress</h2>
                 <div class="progress">
                     <div class="progress-bar bg-success" role="progressbar" :style="progress_bar_style"></div>

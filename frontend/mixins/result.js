@@ -27,6 +27,13 @@ export default {
         }
     },
     methods: {
+        /**
+         * Returns the download URL with a one-time-use token for downloading the file.
+         * Necessary for downloads that require authentication as the we can not send the JWT token in the body of a GET request.
+         * 
+         * @param {String} path Path to file in project directory
+         * @returns 
+         */
         async authenticateFileDownload(path) {
             return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/one-time-use-token`, {
                 headers: {

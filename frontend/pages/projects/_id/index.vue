@@ -31,6 +31,9 @@
                 <div class="progress">
                     <div class="progress-bar bg-success" role="progressbar" :style="progress_bar_style"></div>
                 </div>
+                <small>
+                    <b>Attention:</b> The progress might decrease during the run as number of processes is initially unknown.
+                </small>
             </div>
             <Tab :tabs="tabs" :tab_labels="tab_labels" :preselected_tab="selected_tab" :parent_event_bus="local_event_bus">
                 <template v-slot:files>

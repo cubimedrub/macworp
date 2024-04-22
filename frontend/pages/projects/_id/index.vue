@@ -62,6 +62,9 @@
 
                     </div>
                     <h2 class="mb-0">Workflow parameters</h2>
+                    <p v-if="project.workflow_id == 0">
+                        No workflow selected. Please select a workflow from the dropdown above.
+                    </p>
                     <template v-for="(argument, argument_idx) in project.workflow_arguments">
                         <PathSelector
                             v-if="argument.type == 'path'"

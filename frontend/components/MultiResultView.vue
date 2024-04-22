@@ -14,7 +14,7 @@
                         </template>
                     </button>
                     <ul class="dropdown-menu">
-                        <li v-for="path in plotly_jsons" @click="selectJson(path)">
+                        <li v-for="path in plotly_jsons" :key="path" @click="selectJson(path)">
                             <div class="dropdown-item">{{ path }}</div>
                         </li>
                     </ul>

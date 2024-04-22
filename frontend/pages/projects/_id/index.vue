@@ -283,7 +283,7 @@ export default {
                     }
                 }
             ).then(response => {
-                if(response.ok || response.status == 404) {
+                if(response.ok || response.status == 404) {
                     this.$router.push({name: "projects"})
                 } else {
                     this.handleUnknownResponse(response)

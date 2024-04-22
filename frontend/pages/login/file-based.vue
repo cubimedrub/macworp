@@ -3,7 +3,7 @@
         <div class="card" style="width: 18rem;">
             <div class="card-body">
                 <div v-if="'general' in errors" class="alert alert-danger" role="alert">
-                    {{ errors.general }}
+                    {{ errors.general }}
                 </div>
                 <label for="login_id" class="form-label">Login ID</label>
                 <input v-on:keyup.enter="login" v-model="login_id" type="text" class="form-control" id="login_id">

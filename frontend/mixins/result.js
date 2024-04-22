@@ -32,7 +32,7 @@ export default {
          * Necessary for downloads that require authentication as the we can not send the JWT token in the body of a GET request.
          * 
          * @param {String} path Path to file in project directory
-         * @returns 
+         * @returns Preauthenticated download URL (can be used in a GET request to download the file)
          */
         async authenticateFileDownload(path) {
             return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/one-time-use-token`, {

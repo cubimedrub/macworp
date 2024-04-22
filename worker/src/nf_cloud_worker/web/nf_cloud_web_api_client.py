@@ -86,7 +86,7 @@ class NFCloudWebApiClient:
             Web log url
         """
         weblog_url: str = f"{self.__nf_cloud_base_url}/api/projects/{project_id}/workflow-log"
-        return weblog_url.replace("://", f"://{self.__nf_cloud_base_url}:{self.__nf_cloud_api_pwd}@")
+        return weblog_url.replace("://", f"://{self.__nf_cloud_api_usr}:{self.__nf_cloud_api_pwd}@")
 
     def post_finish(self, project_id: int):
         """

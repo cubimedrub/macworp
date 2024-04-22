@@ -53,7 +53,7 @@
 </template>
 
 <script>
-import ResultMixin from '../mixins/result'
+import ResultMixin from '../mixins/result_file_download'
 import Plotly from 'plotly.js-dist-min'
 
 const PLOTLY_CONFIG = {

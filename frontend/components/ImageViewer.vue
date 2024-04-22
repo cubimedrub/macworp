@@ -30,9 +30,10 @@
   </div>
 </template>
 <script>
-import 'viewerjs/dist/viewer.css'
-import ResultMixin from '../mixins/result.js'
 
+
+import 'viewerjs/dist/viewer.css'
+import ResultMixin from '../mixins/result_file_download'
 
 /**
  * Renders the given images in a gallery with tools like zoom, rotate, etc.

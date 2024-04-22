@@ -43,7 +43,7 @@
 
 <script>
 import Vue from 'vue'
-import ResultMixin from '../mixins/result.js'
+import ResultMixin from '../mixins/result_file_download.js'
 
 const PAGE_CHANGE_EVENT = "PAGE_CHANGED"
 

@@ -1,5 +1,3 @@
-import Vue from "vue"
-
 const FILE_NOT_FOUND_MESSAGE = "Result file not ready yet."
 
 /**
@@ -12,7 +10,7 @@ const RESULT_FILE_DOWNLOAD_STATUS_MAP = {
 }
 
 /**
- * Mixin for components that will render results.
+ * Mixin for components that will render or downlaod results.
  */
 export default {
     props: {
@@ -32,7 +30,7 @@ export default {
          * Necessary for downloads that require authentication as the we can not send the JWT token in the body of a GET request.
          * 
          * @param {String} path Path to file in project directory
-         * @returns Preauthenticated download URL (can be used in a GET request to download the file)
+         * @returns {Promise} Preauthenticated download URL (can be used in a GET request to download the file)
          */
         async authenticateFileDownload(path) {
             return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/one-time-use-token`, {
@@ -83,7 +81,7 @@ export default {
             return FILE_NOT_FOUND_MESSAGE
         },
         /**
-         * Retunrs the result_file_download_status_map
+         * Returns the result_file_download_status_map
          */
         result_file_download_status_map() {
             return RESULT_FILE_DOWNLOAD_STATUS_MAP

@@ -20,7 +20,7 @@
 </template>
 
 <script>
-import ResultMixin from '../mixins/result.js'
+import ResultMixin from '../mixins/result_file_download'
 
 /**
  * Component to display SVG files.

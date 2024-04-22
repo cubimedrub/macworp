@@ -1,5 +1,5 @@
 <template>
-    <div class="broder border-dark">
+    <div class="border border-dark">
         <ul class="list-group mb-3">
             <li v-if="current_directory != ''" @click="moveFolderUp()" class="list-group-item">
                 <i class="fas fa-angle-double-left clickable"></i>

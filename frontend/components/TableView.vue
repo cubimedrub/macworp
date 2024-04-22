@@ -1,7 +1,7 @@
 <template>
     <div class="table-view">
         <h2>{{ header }}</h2>
-        <div v-if="!result_file_not_found">
+        <div v-if="result_file_download_status == result_file_download_status_map.FINISHED">
             <p v-if="description">{{ description }}</p>
             <div class="table-container">
                 <table class="table table-sm table-striped">
@@ -30,7 +30,10 @@
                 :items_per_page="items_per_page"
             ></Pagination>
         </div>
-        <div v-if="result_file_not_found">
+        <div v-if="result_file_download_status == result_file_download_status_map.FETCHING" class="d-flex justify-content-center">
+            <Spinner></Spinner>
+        </div>
+        <div v-if="result_file_download_status == result_file_download_status_map.NOT_FOUND">
             <p>
                 {{ result_file_not_found_message }}
             </p>
@@ -85,11 +88,12 @@ export default {
                 return response.json().then(table => {
                     this.columns = table.columns
                     this.data = table.data
+                    this.result_file_download_status = this.result_file_download_status_map.FINISHED
                     // initial display
                     this.update_displayed_data()
                 })
             } else if(response.status == 404) {
-                this.internal_result_file_not_found = true
+                this.result_file_download_status = this.result_file_download_status_map.NOT_FOUND
                 return Promise.resolve(null)
             } else {
                 return this.handleUnknownResponse(response)

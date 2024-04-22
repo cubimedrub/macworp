@@ -1,7 +1,7 @@
 <template>
     <div v-resize:debounce.100="onResize">
         <h2> {{ header }} </h2>
-        <div v-if="result_file_found">
+        <div v-if="result_file_download_status == result_file_download_status_map.FINISHED">
             <div ref="plot-container"></div>
             <div class="row">
                 <div class="col col-md-11 d-flex justify-content-center">
@@ -41,7 +41,10 @@
                 </div>
             </div>
         </div>
-        <div v-if="result_file_not_found">
+        <div v-if="result_file_download_status == result_file_download_status_map.FETCHING" class="d-flex justify-content-center">
+            <Spinner></Spinner>
+        </div>
+        <div v-if="result_file_download_status == result_file_download_status_map.NOT_FOUND">
             <p>
                 {{ result_file_not_found_message }}
             </p>

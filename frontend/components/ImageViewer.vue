@@ -1,7 +1,7 @@
 <template>
   <div class="image-viewer">
     <h2>{{ header }}</h2>
-    <div v-if="result_file_found" class="d-flex flex-column align-items-center mt-2">
+    <div v-if="esult_file_download_status == result_file_download_status_map.FINISHED" class="d-flex flex-column align-items-center mt-2">
       <v-viewer 
         :images="authenticated_urls"
       >
@@ -19,10 +19,13 @@
         {{ images[0].description }}
       </p>
     </div>
-    <div v-if="result_file_not_found">
-      <p>
-        {{ result_file_not_found_message }}
-      </p>
+    <div v-if="result_file_download_status == result_file_download_status_map.FETCHING" class="d-flex justify-content-center">
+        <Spinner></Spinner>
+    </div>
+    <div v-if="result_file_download_status == result_file_download_status_map.NOT_FOUND">
+        <p>
+            {{ result_file_not_found_message }}
+        </p>
     </div>
   </div>
 </template>

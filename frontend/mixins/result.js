@@ -3,6 +3,15 @@ import Vue from "vue"
 const FILE_NOT_FOUND_MESSAGE = "Result file not ready yet."
 
 /**
+ * Status of the result file download.
+ */
+const RESULT_FILE_DOWNLOAD_STATUS_MAP = {
+    FETCHING: "fetching",
+    NOT_FOUND: "not_found",
+    FINISHED: "finished"
+}
+
+/**
  * Mixin for components that will render results.
  */
 export default {
@@ -14,10 +23,7 @@ export default {
     },
     data() {
         return {
-            // Indicates whether the result file is loading.
-            result_file_loading: true,
-            // Indicates whether the result file is not found.
-            internal_result_file_not_found: false,
+            result_file_download_status: RESULT_FILE_DOWNLOAD_STATUS_MAP.FETCHING,
         }
     },
     methods: {
@@ -32,13 +38,13 @@ export default {
                         return `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
                     })
                 } else if (response.status == 404) {
-                    this.internal_result_file_not_found = true
+                    this.result_file_download_status = RESULT_FILE_DOWNLOAD_STATUS_MAP.NOT_FOUND
                     return Promise.resolve(null)
                 } else {
                     return this.handleUnknownResponse(response)
                 }
             }).finally(() => {
-                this.result_file_loading = false
+                this.result_file_download_status = RESULT_FILE_DOWNLOAD_STATUS_MAP.FINISHED
             })
         }
     },
@@ -50,17 +56,10 @@ export default {
             return FILE_NOT_FOUND_MESSAGE
         },
         /**
-         * Indicates the download is finished and the result file is found.
-         * 
+         * Retunrs the result_file_download_status_map
          */
-        result_file_found() {
-            return !this.result_file_loading && !this.internal_result_file_not_found
-        },
-        /**
-         * Indicates the download is finished but the result file is not found.
-         */
-        result_file_not_found() {
-            return !this.result_file_loading && this.internal_result_file_not_found
+        result_file_download_status_map() {
+            return RESULT_FILE_DOWNLOAD_STATUS_MAP
         }
     }
 }

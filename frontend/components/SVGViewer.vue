@@ -67,16 +67,19 @@ export default {
         }
     },
     beforeMount(){
-        // Authorize and set download url and download the SVG if embed is true.
-        this.authenticateFileDownload(this.path).then(url => {
-            this.authorized_url = url
-        }).then(() => {
-            if(this.embed){
-                fetch(this.authorized_url).then(response => response.text()).then(svg => {
+        if (this.embed) {
+            this.downloadFile(this.path).then(response => {
+                response.text().then(svg => {
                     this.svg = svg
                 })
-            }
-        })
+            })
+        } else {
+            this.authenticateFileDownload(this.path).then(url => {
+                // needs to be set manually as the SVG is downloaded by the browser not the mixin
+                this.result_file_download_status = this.result_file_download_status_map.FINISHED
+                this.authorized_url = url
+            })
+        }
     }
 }
 </script>

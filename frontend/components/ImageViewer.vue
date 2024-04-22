@@ -1,7 +1,7 @@
 <template>
   <div class="image-viewer">
     <h2>{{ header }}</h2>
-    <div v-if="esult_file_download_status == result_file_download_status_map.FINISHED" class="d-flex flex-column align-items-center mt-2">
+    <div v-if="result_file_download_status == result_file_download_status_map.FINISHED" class="d-flex flex-column align-items-center mt-2">
       <v-viewer 
         :images="authenticated_urls"
       >
@@ -72,6 +72,8 @@ export default {
       return this.authenticateFileDownload(image.path)
     })).then(urls => {
       this.authenticated_urls = urls
+      // needs to be set manually as the images are downloaded by the browser not the mixin
+      this.result_file_download_status = this.result_file_download_status_map.FINISHED
     })
   },
   methods: {

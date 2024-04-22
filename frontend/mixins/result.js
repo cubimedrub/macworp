@@ -48,6 +48,31 @@ export default {
                     return this.handleUnknownResponse(response)
                 }
             })
+        },
+        /**
+         * Downloads the file from the server.
+         * 
+         * @param {String} path Path to file in project directory
+         * @param {Boolean} is_inline Whether to download the file inline or as an attachment
+         * @returns {Promise} Promise returning the response
+         */
+        async downloadFile(path, is_inline) {
+            return this.authenticateFileDownload(path).then(download_url => {
+                if(is_inline) {
+                    download_url += "&inline=true"
+                }
+                return fetch(download_url).then(response => {
+                    if(response.ok) {
+                        this.result_file_download_status = RESULT_FILE_DOWNLOAD_STATUS_MAP.FINISHED
+                        return response
+                    } else if (response.status == 404) {
+                        this.result_file_download_status = RESULT_FILE_DOWNLOAD_STATUS_MAP.NOT_FOUND
+                        return Promise.reject()
+                    } else {
+                        return this.handleUnknownResponse(response)
+                    }
+                })
+            })
         }
     },
     computed: {

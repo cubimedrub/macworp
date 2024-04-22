@@ -96,10 +96,8 @@ export default {
         this.modal_identifier = `${this.header}-modal-${this._uid}`
     },
     mounted(){
-        this.authenticateFileDownload(this.path).then(url => {
-            return fetch(`${url}&is-inline=1`).then(response => {
-                return response.json()
-            }).then(data => {
+        this.downloadFile(this.path, true).then(response => {
+            return response.json().then(data => {
                 this.plot_data = data.data
                 this.plot_layout = data.layout
                 return Promise.resolve()

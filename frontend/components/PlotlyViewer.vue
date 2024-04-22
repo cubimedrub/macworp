@@ -145,7 +145,8 @@ export default {
          * Resize the plot.
          */
         onResize() {
-            Plotly.Plots.resize(this.$refs['plot-container']);
+            if (this.$refs['plot-container'])
+                Plotly.Plots.resize(this.$refs['plot-container']);
         }
     },
     watch: {

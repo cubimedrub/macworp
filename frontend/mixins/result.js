@@ -44,14 +44,9 @@ export default {
                     return response.json().then(response_data => {
                         return `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
                     })
-                } else if (response.status == 404) {
-                    this.result_file_download_status = RESULT_FILE_DOWNLOAD_STATUS_MAP.NOT_FOUND
-                    return Promise.resolve(null)
                 } else {
                     return this.handleUnknownResponse(response)
                 }
-            }).finally(() => {
-                this.result_file_download_status = RESULT_FILE_DOWNLOAD_STATUS_MAP.FINISHED
             })
         }
     },

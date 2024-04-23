@@ -37,7 +37,7 @@ class ProjectsController:
         return jsonify({
             "projects": [
                 project.to_dict() 
-                for project in Project.select().offset(offset).limit(limit)
+                for project in Project.select().order_by(Project.id.desc()).offset(offset).limit(limit)
             ]
         })
 

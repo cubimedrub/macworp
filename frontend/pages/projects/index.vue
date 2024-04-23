@@ -32,8 +32,13 @@ export default {
             total_project_count: 0,
         }
     },
-    created(){
+    mounted(){
         this.local_event_bus.$on("PAGE_CHANGED", page => this.goToPage(page))
+        this.loadTotalProjectCount().then(() => {
+            this.loadProjects()
+        })
+    },
+    activated(){
         this.loadTotalProjectCount().then(() => {
             this.loadProjects()
         })

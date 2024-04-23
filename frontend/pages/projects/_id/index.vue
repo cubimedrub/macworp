@@ -32,7 +32,25 @@
                     <div class="progress-bar bg-success" role="progressbar" :style="progress_bar_style"></div>
                 </div>
                 <small>
-                    <b>Attention:</b> The progress might decrease during the run as number of processes is initially unknown.
+                    <b>Hint:</b> The progress might decrease during the run as number of processes is initially unknown.
+                </small>
+            </div>
+            <div v-if="project.is_scheduled || logs.length > 0" class="mb-3">
+                <h2>Logs</h2>
+                <div class="mb-1">
+                    <textarea v-model="logs_text" ref="logs" class="form-control" id="logs" rows="3" disabled readonly></textarea>
+                </div>
+                <small>
+                    <b>Hint:</b> Logs are not persisted yet. Only the logs received since the page was accessed are displayed.
+                </small>
+            </div>
+            <div v-if="error_report" class="mb-3">
+                <h2>Error report</h2>
+                <div class="alert alert-danger" role="alert">
+                    <pre>{{ error_report }}</pre>
+                </div>
+                <small>
+                    <b>Hint:</b> The error report is not persisted yet. Save it and show it to your trusty developer.
                 </small>
             </div>
             <Tab :tabs="tabs" :tab_labels="tab_labels" :preselected_tab="selected_tab" :parent_event_bus="local_event_bus">
@@ -231,6 +249,7 @@ export default {
              */
             local_event_bus: new Vue(),
             logs: [],
+            error_report: null,
             selected_tab: 0,
         }
     },
@@ -416,9 +435,8 @@ export default {
                 "project_id": this.project.id,
                 "access_token": this.$store.state.login.jwt
             })
-            this.$socket.on("new-workflow-log", (new_log) => {
-                this.project.workflow_log = new_log
-                this.logs.push(new_log)
+            this.$socket.on("error", data => {
+                this.error_report = data.error_report
             })
             this.$socket.on("finished-project", () => {
                 this.project.is_scheduled = false
@@ -430,6 +448,10 @@ export default {
                 console.error(data)
                 this.project.submitted_processes = data.submitted_processes
                 this.project.completed_processes = data.completed_processes
+                this.logs.push(data.details)
+                this.$nextTick(() => {
+                    this.$refs.logs.scrollTop = this.$refs.logs.scrollHeight
+                })
             })
         },
         /**
@@ -506,6 +528,14 @@ export default {
          */
         tab_labels(){
             return TAB_LABELS
+        },
+        /**
+         * Returns the logs as text 
+         *
+         * @returns {string}
+         */
+        logs_text(){
+            return this.logs.join("\n")
         }
     },
     watch: {

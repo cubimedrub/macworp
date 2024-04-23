@@ -461,27 +461,40 @@ class ProjectsController:
             return jsonify({
                 "errors": errors
             }), 422
-
-        if "event" in workflow_log and "trace" in workflow_log:
-            project = Project.get(Project.id == id)
-            if project is None:
-                return jsonify({
-                    "errors": {
-                        "general": "project not found"
-                    }
-                }),  404
-            if workflow_log["event"] == "process_submitted":
-                project.submitted_processes += 1
-            if workflow_log["event"] == "process_completed":
-                project.completed_processes += 1
+        project = Project.get(Project.id == id)
+        if project is None:
+            return jsonify({
+                "errors": {
+                    "general": "project not found"
+                }
+            }),  404
+        # Handle process traces
+        if "trace" in workflow_log and "event" in workflow_log:
+            match workflow_log["event"]:
+                case "process_submitted":
+                    project.submitted_processes += 1
+                case "process_completed":
+                    project.completed_processes += 1
             project.save()
             socketio.emit(
                 "new-progress", 
                 {
                     "submitted_processes": project.submitted_processes,
-                    "completed_processes": project.completed_processes
+                    "completed_processes": project.completed_processes,
+                    "details": f"Task {workflow_log['trace']['task_id']}: {workflow_log['trace']['name']} - {workflow_log['trace']['status']}"
                 }, 
                 to=f"project{project.id}"
+            )
+        # Handle workflow traces
+        elif "metadata" in workflow_log and "event" in workflow_log:
+            error_report: Optional[str] = workflow_log['metadata']['workflow'].get('errorReport', None)
+            if error_report is not None:
+                socketio.emit(
+                    "error", 
+                    {
+                        "error_report": error_report
+                    }, 
+                    to=f"project{project.id}"
             )
         return "", 200
 

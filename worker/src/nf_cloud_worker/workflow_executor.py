@@ -36,6 +36,8 @@ class WorkflowExecutor(Process):
         Event for stopping worker processes and threads reliable.
     __logger: Logger
         Logger for logging messages.
+    __weblog_proxy_port: int
+        Port for the weblog proxy
     """
 
     PRECEDING_SLASH_REGEX: ClassVar[re.Pattern] = re.compile(r"^/+")
@@ -46,7 +48,7 @@ class WorkflowExecutor(Process):
     WHITESPACE_REGEX: ClassVar[re.Pattern] = re.compile(r"\s+")
 
     def __init__(self, nf_bin: Path, nf_cloud_web_api_client: NFCloudWebApiClient, project_data_path: Path, project_queue: Queue,
-        communication_channel: Connection, stop_event: Event, is_verbose: bool):
+        communication_channel: Connection, stop_event: Event, is_verbose: bool, weblog_proxy_port: int):
         super().__init__()
         # Nextflow binary
         self.__nf_bin: Path = nf_bin
@@ -64,6 +66,7 @@ class WorkflowExecutor(Process):
             "NF_CLOUD_WORKER",
             logging.DEBUG if is_verbose else logging.INFO
         )
+        self.__weblog_proxy_port = weblog_proxy_port
 
     def _pre_workflow_arguments(self) -> List[str]:
         """
@@ -274,7 +277,7 @@ class WorkflowExecutor(Process):
             nextflow_command: List[str] = self._nextflow_command(
                 project_dir,
                 work_dir,
-                self.__nf_cloud_web_api_client.get_weblog_url(project_params["id"]),
+                f"http://127.0.0.1:{self.__weblog_proxy_port}/projects/{project_params['id']}",
                 fix_nextflow_paramters,
                 dynamic_nextflow_arguments,
                 static_workflow_arguments,

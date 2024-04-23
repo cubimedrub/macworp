@@ -14,6 +14,7 @@ from pika.channel import Channel
 
 # internal imports
 from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
+from nf_cloud_worker.web.weblog_proxy import WeblogProxy
 from nf_cloud_worker.workflow_executor import WorkflowExecutor
 
 class AckHandler(Thread):
@@ -96,6 +97,8 @@ class Worker:
         Number of concurrent workers
     __stop_event: Event
         Event for stopping worker processes and threads reliable.
+    __weblog_proxy: WeblogProxy
+        Proxy for sending weblog requests to the NFCloud API using credentials.
     """
 
     def __init__(self, nf_bin: Path, nf_cloud_api_client: NFCloudWebApiClient, projects_data_path: Path, rabbit_mq_url: str,
@@ -115,7 +118,8 @@ class Worker:
         # control
         self.__stop_event: Event = stop_event
         self.__is_verbose = is_verbose
-        
+        self.__weblog_proxy = WeblogProxy(nf_cloud_api_client)
+
 
     def start(self):
         """
@@ -140,7 +144,8 @@ class Worker:
                         project_queue,
                         rw_comm,
                         self.__stop_event,
-                        self.__is_verbose
+                        self.__is_verbose,
+                        self.__weblog_proxy.port
                     )
                     executor.start()
                     comm_channels.append(ro_comm)

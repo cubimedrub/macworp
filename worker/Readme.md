@@ -3,9 +3,12 @@ Simple python module, which fetches the scheduled nextflow workflows from Rabbit
 
 ## Dependencies
 * Python 3.x
-* [pyenv](https://github.com/pyenv/pyenv)
-* [pipenv](https://pipenv.pypa.io/en/latest/)
-* [nextflow](https://www.nextflow.io/) - A [special version of Nextflow](https://github.com/di-hardt/nextflow/commit/3ef40cc139c81e535ac18b0ab7a6099c61af2591) is required which supports weblogs with basic authentication. A [feature request](https://github.com/nextflow-io/nextflow/issues/3198) is already issued to merge it into the main repo.
+* Conda--derivate (conda, micromamba, ...)
+* Java (version depends on Nextflow)
+* [Nextflow](https://www.nextflow.io/)
+
+## Install
+
 
 ## Configuration
 Configuration is done by a command line interface, see: `python -m nf_cloud_worker --help`

@@ -70,24 +70,6 @@ class NFCloudWebApiClient:
 
             return workflow
 
-
-    def get_weblog_url(self, project_id: int) -> str:
-        """
-        Returns the web log url for a given project id.
-
-        Parameters
-        ----------
-        project_id : int
-            Project ID
-
-        Returns
-        -------
-        str
-            Web log url
-        """
-        weblog_url: str = f"{self.__nf_cloud_base_url}/api/projects/{project_id}/workflow-log"
-        return weblog_url.replace("://", f"://{self.__nf_cloud_api_usr}:{self.__nf_cloud_api_pwd}@")
-
     def post_finish(self, project_id: int):
         """
         Marks a project run as finished.
@@ -113,4 +95,35 @@ class NFCloudWebApiClient:
         ) as response:
             if not response.ok:
                 raise ValueError(f"Error posting finish: {response.text}")
+            
+    def post_weblog(self, project_id: int, log: bytes):
+        """
+        Posts a web log entry.
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+        log : Dict[str, str]
+            Log entry
+
+        Raises
+        ------
+        ValueError
+            If the request was not successful.
+        """
+        headers = self.__class__.HEADERS.copy()
+        headers["Content-Type"] = "application/json"
+        with requests.post(
+            f"{self.__nf_cloud_base_url}/api/projects/{project_id}/workflow-log",
+            auth=HTTPBasicAuth(
+                self.__nf_cloud_api_usr,
+                self.__nf_cloud_api_pwd
+            ),
+            headers = headers,
+            timeout=self.__class__.TIMEOUT,
+            data=log,
+        ) as response:
+            if not response.ok:
+                raise ValueError(f"Error posting weblog: {response.text}")
 

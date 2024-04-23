@@ -5,6 +5,7 @@ import signal
 
 # internal imports
 from nf_cloud_worker.comand_line_interface import ComandLineInterface as CLI
+from nf_cloud_worker.logging import verbosity_to_log_level
 from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
 from nf_cloud_worker.worker import Worker
 
@@ -24,6 +25,8 @@ def main():
 
     cli: CLI = CLI()
 
+    log_level = verbosity_to_log_level(cli.arguments.verbose)
+
     worker = Worker(
         Path(cli.arguments.nf_bin).absolute(),
         NFCloudWebApiClient(
@@ -36,7 +39,7 @@ def main():
         cli.arguments.project_queue_name,
         cli.arguments.number_of_workers,
         stop_event,
-        cli.arguments.verbose
+        log_level
     )
     worker.start()
 

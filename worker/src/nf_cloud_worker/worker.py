@@ -1,5 +1,6 @@
 # std imports
 import functools
+import logging
 from multiprocessing import Event, Pipe, Queue
 from multiprocessing.connection import Connection, wait
 from pathlib import Path
@@ -9,6 +10,7 @@ from threading import Thread
 from typing import Any, List, Optional
 
 # external imports
+from nf_cloud_worker.logging import get_logger
 import pika
 from pika.channel import Channel
 
@@ -102,7 +104,7 @@ class Worker:
     """
 
     def __init__(self, nf_bin: Path, nf_cloud_api_client: NFCloudWebApiClient, projects_data_path: Path, rabbit_mq_url: str,
-        project_queue_name: str, number_of_workers: int, stop_event: Event, is_verbose: bool):
+        project_queue_name: str, number_of_workers: int, stop_event: Event, log_level: int):
         # nextflow binary
         self.__nf_bin: Path = nf_bin
         # nextflow cloud attributes
@@ -117,14 +119,17 @@ class Worker:
         self.__number_of_workers: int = number_of_workers
         # control
         self.__stop_event: Event = stop_event
-        self.__is_verbose = is_verbose
-        self.__weblog_proxy = WeblogProxy(nf_cloud_api_client)
+        self.__log_level: int = log_level
+        self.__weblog_proxy = WeblogProxy(nf_cloud_api_client, log_level)
 
 
     def start(self):
         """
         Starts the worker
         """
+        logger = get_logger("worker", self.__log_level)
+        logger.info("Starting worker with %i executors.", self.__number_of_workers)
+
         project_queue: Queue = Queue()
         comm_channels: List[Connection] = []
         wf_executors: List[WorkflowExecutor] = []
@@ -144,7 +149,7 @@ class Worker:
                         project_queue,
                         rw_comm,
                         self.__stop_event,
-                        self.__is_verbose,
+                        self.__log_level,
                         self.__weblog_proxy.port
                     )
                     executor.start()
@@ -160,11 +165,13 @@ class Worker:
                 )
                 ack_handler.start()
 
+                logger.info("Executor and AckHandler startet, listening for jobs...")
                 # Second return value 'properties' is unnecessary. After 0.5 second it consume will return '(None, None, None)' if no message was send.
                 # This will give us time for maintenance, e.g. stop if a stop signal was received
                 for method_frame, _, body in self.__channel.consume(self.__project_queue_name, inactivity_timeout=.5, auto_ack=False):
                     if method_frame and body:
                         try:
+                            logger.info("Received job, add it to local queue.")
                             project_queue.put((
                                 body,
                                 method_frame.delivery_tag
@@ -175,22 +182,24 @@ class Worker:
                         break
 
             except pika.exceptions.ConnectionWrongStateError as error:
-                self.__handle_rabbitmq_connection_error(error)
+                self.__handle_rabbitmq_connection_error(logger, error)
             except pika.exceptions.ConnectionClosed as error:
-                self.__handle_rabbitmq_connection_error(error)
+                self.__handle_rabbitmq_connection_error(logger, error)
             except pika.exceptions.ChannelWrongStateError as error:
-                self.__handle_rabbitmq_connection_error(error)
+                self.__handle_rabbitmq_connection_error(logger, error)
             except pika.exceptions.ChannelClosed as error:
-                self.__handle_rabbitmq_connection_error(error)
+                self.__handle_rabbitmq_connection_error(logger, error)
 
         # cancel queued messages
         self.__channel.cancel()
         self.__channel.close()
         self.__connection.close()
 
-    def __handle_rabbitmq_connection_error(self, error: BaseException):
-        print(
-            "RabbitMQ connetion was closed unexpectedly. Will try to reconnect in a few seconds. Error was:",
-            error
+    def __handle_rabbitmq_connection_error(self, logger: logging.Logger, error: BaseException):
+        logger.error(
+            (
+                "RabbitMQ connetion was closed unexpectedly. "
+                f"Will try to reconnect in a few seconds. Error was: {error}"
+            )
         )
         time.sleep(5)

@@ -24,7 +24,7 @@ class ComandLineInterface:
         self.__arg_parser.add_argument("--number-of-workers", "-t", type=int, default=1, required=False, help="Number of concurrent workers.")
         self.__arg_parser.add_argument("--api-user", "-u", type=str, help="API user.")
         self.__arg_parser.add_argument("--api-password", "-p", type=str, help="API password.")
-        self.__arg_parser.add_argument("--verbose", default=False, action="store_true", help="Verbose")
+        self.__arg_parser.add_argument("--verbose", "-v", default=0, action="count", help="Verbose")
 
         self.__arguments = self.__arg_parser.parse_args()
 

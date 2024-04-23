@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings ~=2.2 ",
     "pika  >=1, <2",
     "requests  >=2, <3",
+    "uvicorn  ~=0.29",
 
 ]
 

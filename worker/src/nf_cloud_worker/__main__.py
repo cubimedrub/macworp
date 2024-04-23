@@ -3,10 +3,6 @@ from pathlib import Path
 from multiprocessing import Event
 import signal
 
-# 3rd party imports
-import yaml
-from mergedeep import merge
-
 # internal imports
 from nf_cloud_worker.comand_line_interface import ComandLineInterface as CLI
 from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient

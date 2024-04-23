@@ -7,6 +7,7 @@ name = "nf_cloud_backend"
 requires-python = ">=3.9"
 version = "1.0.0"
 dependencies = [
+    "dnspython ~=2.5",  # Once flask and eventlet is upgraded or we migrated to FastAPI this can be removed.
     "eventlet  >=0.33, <0.34",
     "Flask  >=2, <3",
     "Flask-Caching  >=2, <3",

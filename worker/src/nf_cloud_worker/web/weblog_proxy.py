@@ -77,4 +77,4 @@ class WeblogProxy:
             """
             log = await request.body()
             settings.client.post_weblog(project_id, log)
-        uvicorn.run(app, host="127.0.0.1", port=port)
+        uvicorn.run(app, host="127.0.0.1", port=port, use_colors=False, reload=False, log_level=logging.ERROR, access_log=False)

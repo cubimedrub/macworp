@@ -26,10 +26,11 @@ class WeblogProxy:
         settings = WeblogProxySettings(
             client=client
         )
-        # Get a free port 
-        self.__socket = socket.socket()
-        self.__socket.bind(('', 0))
-        self.__port = self.__socket.getsockname()[1]
+        # Get a free port
+        self.__port = 0
+        with socket.socket() as sock:
+            sock.bind(('', 0))
+            self.__port = sock.getsockname()[1]
 
         # Start the FastAPI server in a separate process
         self.__process = Process(target=self.__class__.server_process, args=(settings, self.__port, log_level))

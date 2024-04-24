@@ -1,0 +1,16 @@
+# Contains basic services for development.
+version: '2.2'
+services:
+  psql:
+    image: postgres:14
+    ports:
+      - 127.0.0.1:5434:5432
+    environment:
+      POSTGRES_PASSWORD: developer
+    volumes:
+      - ./docker/postgresql/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

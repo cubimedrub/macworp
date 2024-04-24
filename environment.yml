@@ -7,5 +7,6 @@ dependencies:
   - setuptools
   - cython
   - yaml
+  - psycopg2
   - pip:
     - -e ./backend[dev]

@@ -7,11 +7,13 @@ name = "nf_cloud_backend"
 version = "2.0.0"
 dependencies = [
 	"fastapi >= 0.110.2",
+	"psycopg2 >= 2.9.9",
+	"sqlmodel >= 0.0.16",
 	"uvicorn >= 0.29.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "honcho",
-    "pylint"
+    "pylint",
 ]

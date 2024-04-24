@@ -1,0 +1,1 @@
+backend: uvicorn nf_cloud_backend.main:app --app-dir backend --reload

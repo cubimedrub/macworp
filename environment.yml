@@ -1,0 +1,11 @@
+name: nf_cloud_v2
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - setuptools
+  - cython
+  - yaml
+  - pip:
+    - -e ./backend[dev]

@@ -1,5 +1,5 @@
 import enum
-from sqlmodel import Enum, Field, SQLModel
+from sqlmodel import Enum, Field, Relationship, SQLModel
 
 class UserRole(str, enum.Enum):
 	default = "default"
@@ -11,3 +11,5 @@ class User(SQLModel, table=True):
 	role: UserRole = Enum(UserRole)
 	provider_type: str
 	provider_name: str
+
+	# shared_workflows: list["Workflow"] = Relationship(back_populates="shared_with", link_model="WorkflowShare")

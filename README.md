@@ -32,3 +32,11 @@ honcho -e dev.env start
 ```sh
 psql postgresql://postgres:developer@127.0.0.1:5434/nf_cloud
 ```
+
+We haven't set up a migration system yet, but I think until we have an actual prototype going that's just gonna be a waste of time.
+Until then, whenever the schema gets changed, we can wipe the DB:
+
+```sh
+# Removes the NF cloud container
+docker rm $(docker ps -f "name=nf-cloud" -q)
+```

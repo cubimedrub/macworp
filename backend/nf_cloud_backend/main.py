@@ -8,7 +8,7 @@ from fastapi import FastAPI
      
 app = FastAPI()
 
-engine = create_engine("postgresql://postgres:developer@127.0.0.1:5434/nf_cloud", echo=True)
+engine = create_engine("postgresql+psycopg://postgres:developer@127.0.0.1:5434/nf_cloud", echo=True)
 
 SQLModel.metadata.create_all(engine)
 

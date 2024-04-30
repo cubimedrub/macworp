@@ -5,7 +5,7 @@ from .models.user import User, UserRole
 from .models.workflow_share import WorkflowShare
 
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import Oauth2PasswordBearer, Oauth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
      
 app = FastAPI()
 
@@ -27,3 +27,7 @@ def read_root():
 @app.get("/items/{item_id}")
 def read_item(item_id: int, q: Union[str, None] = None):
     return {"item_id": item_id, "q": q}
+
+@app.get("/auth_test/")
+async def auth_test():
+    return {"auth": "test"}

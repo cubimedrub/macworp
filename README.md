@@ -40,3 +40,8 @@ Until then, whenever the schema gets changed, we can wipe the DB:
 # Removes the NF cloud container
 docker rm $(docker ps -f "name=nf-cloud" -q)
 ```
+### Test Backend
+
+```sh
+uvicorn nf_cloud_backend.main:app --app-dir backend --reload
+```

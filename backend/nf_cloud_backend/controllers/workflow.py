@@ -20,6 +20,7 @@ Endpoints
 from fastapi import APIRouter, Body, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlmodel import SQLModel
 
 from ..models.workflow import Workflow
 
@@ -33,19 +34,19 @@ router = APIRouter(
 
 @router.get("/")
 async def list(session: DbSession) -> list[Workflow]:
-    print(session.exec(select(Workflow)).all())
-    return session.exec(select(Workflow)).all()
+    return [i[0] for i in session.exec(select(Workflow)).all()]
 
 
 class WorkflowCreateParams(BaseModel):
     name: str
-    description: str = "",
+    description: str = ""
     definition: dict = Field(default_factory=dict)
     is_published: bool = False
 
 @router.post("/new")
 async def new(session: DbSession, params: WorkflowCreateParams):
     workflow = Workflow(name=params.name, description=params.description, definition=params.definition, is_published=params.is_published)
+    print(workflow.description)
     session.add(workflow)
     session.commit()
     return workflow.id
@@ -79,6 +80,6 @@ async def edit(id: int, params: Workflow, session: DbSession):
 async def delete(id: int, session: DbSession):
     workflow: Workflow | None = session.get(Workflow, id)
     if workflow is None:
-        raise HTTPException(detail="workflow not found")
+        raise HTTPException(status_code=404, detail="workflow not found")
     session.delete(workflow)
 

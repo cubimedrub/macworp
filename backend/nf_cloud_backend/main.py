@@ -1,22 +1,12 @@
 from sqlmodel import Field, SQLModel, Session, create_engine
 from typing import Union
-from .models.workflow import Workflow
-from .models.user import User, UserRole
-from .models.workflow_share import WorkflowShare
+from .controllers import workflow
 
 from fastapi import FastAPI
      
 app = FastAPI()
+app.include_router(workflow.router)
 
-engine = create_engine("postgresql+psycopg://postgres:developer@127.0.0.1:5434/nf_cloud", echo=True)
-
-SQLModel.metadata.create_all(engine)
-
-# quick test
-with Session(engine) as session:
-    session.add(User(role=UserRole.default, provider_type="file", provider_name="dev"))
-    session.add(User(role=UserRole.admin, provider_type="openid_connect", provider_name="dev"))
-    session.commit()
 
 @app.get("/")
 def read_root():

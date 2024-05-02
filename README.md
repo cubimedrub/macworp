@@ -38,5 +38,5 @@ Until then, whenever the schema gets changed, we can wipe the DB:
 
 ```sh
 # Removes the NF cloud container
-docker rm $(docker ps -f "name=nf-cloud" -q)
+sudo docker rm $(sudo docker ps -f "name=nf-cloud" -qa)
 ```

@@ -1,5 +1,11 @@
+from typing import TYPE_CHECKING
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, Relationship, SQLModel
+from .workflow_share import WorkflowShare
+
+if TYPE_CHECKING:
+	from .user import User
+
 
 class Workflow(SQLModel, table=True):
 	id: int | None = Field(default=None, primary_key=True)
@@ -23,4 +29,4 @@ class Workflow(SQLModel, table=True):
 	"""
 	is_published: bool = False
 
-	# shared_with: list["User"] = Relationship(back_populates="user", link_model="WorkflowShare")
+	shared_with: list["User"] = Relationship(back_populates="shared_workflows", link_model=WorkflowShare)

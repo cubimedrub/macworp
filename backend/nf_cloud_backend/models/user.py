@@ -1,6 +1,14 @@
 import enum
 from sqlmodel import Enum, Field, Relationship, SQLModel
 
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
+from pydantic import BaseModel
+from datetime import timedelta, datetime
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+
 class UserRole(str, enum.Enum):
 	default = "default"
 	admin = "admin"
@@ -11,5 +19,8 @@ class User(SQLModel, table=True):
 	role: UserRole = Enum(UserRole)
 	provider_type: str
 	provider_name: str
+	email: str or None = None
+	hashed_password: str or None = None
+	disabled: bool or None = None
 
 	# shared_workflows: list["Workflow"] = Relationship(back_populates="shared_with", link_model="WorkflowShare")

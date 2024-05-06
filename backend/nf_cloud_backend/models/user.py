@@ -1,10 +1,9 @@
 import enum
 from typing import TYPE_CHECKING
 from sqlmodel import Enum, Field, Relationship, SQLModel
-from .workflow_share import WorkflowShare
 
 if TYPE_CHECKING:
-	from .workflow import Workflow
+	from .workflow_share import WorkflowShare
 
 
 class UserRole(str, enum.Enum):
@@ -18,4 +17,4 @@ class User(SQLModel, table=True):
 	provider_type: str
 	provider_name: str
 
-	shared_workflows: list["Workflow"] = Relationship(back_populates="shared_with", link_model=WorkflowShare)
+	workflow_shares: list["WorkflowShare"] = Relationship(back_populates="user")

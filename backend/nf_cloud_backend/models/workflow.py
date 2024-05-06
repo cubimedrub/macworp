@@ -1,10 +1,9 @@
 from typing import TYPE_CHECKING
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, Relationship, SQLModel
-from .workflow_share import WorkflowShare
 
 if TYPE_CHECKING:
-	from .user import User
+	from .workflow_share import WorkflowShare
 
 
 class Workflow(SQLModel, table=True):
@@ -29,4 +28,4 @@ class Workflow(SQLModel, table=True):
 	"""
 	is_published: bool = False
 
-	shared_with: list["User"] = Relationship(back_populates="shared_workflows", link_model=WorkflowShare)
+	shares: list["WorkflowShare"] = Relationship(back_populates="workflow")

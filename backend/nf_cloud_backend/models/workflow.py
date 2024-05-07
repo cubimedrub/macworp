@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING
 from sqlalchemy import JSON, Column
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship, SQLModel, Session, select
+
+from backend.nf_cloud_backend.models.user import User, UserRole
 
 if TYPE_CHECKING:
 	from .workflow_share import WorkflowShare

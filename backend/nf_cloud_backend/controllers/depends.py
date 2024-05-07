@@ -23,3 +23,18 @@ async def get_user(user_id: int, session: DbSession) -> User:
     return user
 
 ExistingUser = Annotated[Workflow, Depends(get_user)]
+
+
+async def get_optionally_authenticated_user(session: DbSession) -> User | None:
+    # TODO put actual authentication here
+    return session.get(User, 1)
+
+OptionallyAuthenticated = Annotated[User | None, Depends(get_optionally_authenticated_user)]
+
+
+async def get_authenticated_user(session: DbSession, maybe_auth: OptionallyAuthenticated) -> User:
+    if maybe_auth is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    return maybe_auth
+
+Authenticated = Annotated[User, Depends(get_authenticated_user)]

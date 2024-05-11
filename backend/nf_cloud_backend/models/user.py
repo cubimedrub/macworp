@@ -16,11 +16,12 @@ class UserRole(str, enum.Enum):
 # Note: "user" has special meaning in Postgres so when using psql it needs to be double-quoted!
 class User(SQLModel, table=True):
 	id: int | None = Field(default=None, primary_key=True)
+	login_id: str
 	role: UserRole = Enum(UserRole)
 	provider_type: str
 	provider_name: str
-	email: str or None = None
-	hashed_password: str or None = None
-	disabled: bool or None = None
+	email: str | None = None
+	hashed_password: str | None = None
+	disabled: bool | None = None
 
 	# shared_workflows: list["Workflow"] = Relationship(back_populates="shared_with", link_model="WorkflowShare")

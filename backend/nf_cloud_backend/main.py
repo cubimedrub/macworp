@@ -1,19 +1,20 @@
 from sqlmodel import Field, SQLModel, Session, create_engine
+from sqlalchemy.sql import text
 from typing import Union
+
 from .models.workflow import Workflow
 from .models.user import User, UserRole
 from .models.workflow_share import WorkflowShare
-from .models.token_data import TokenData
-from .models.token import Token
-#from .models.userInDB import UserInDB
+
+from .auth.auth_handler import *
+from .models.schemas import *
+from .crud import *
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-
 from pydantic import BaseModel
 from datetime import timedelta, datetime
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from typing_extensions import Annotated
 
 ALGORITHM = "HS256"
@@ -25,115 +26,131 @@ engine = create_engine("postgresql+psycopg://postgres:developer@127.0.0.1:5434/n
 SQLModel.metadata.create_all(engine)
 
 # Inserting into DB Test
-#with Session(engine) as session:
-#    session.add(User(role=UserRole.default, provider_type="file", provider_name="dev"))
-#    session.add(User(role=UserRole.admin, provider_type="openid_connect", provider_name="dev"))
-#    session.commit()
+with Session(engine) as session:
+    session.add(User(role=UserRole.default, provider_type="file", provider_name="dev", login_id="user_1"))
+    session.add(User(role=UserRole.admin, provider_type="openid_connect", provider_name="dev", login_id="user_2"))
+    statement = text('SELECT * FROM user')
+    users_db = session.execute(statement)
+    session.commit()
 
-#class Token(BaseModel):
-#    access_token : str 
-#    token_type : str 
+def get_db():
+    with Session(engine) as session:
+        yield session
 
-#class TokenData():
-#    username: str or none = none
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app = FastAPI()
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
 
+@app.get("/users", tags=["user"])
+def get_all_users(token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+    return crud.get_all_users(db)
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-
-def get_user(db, username: str):
-    if username in db:
-        user_dict = db[username]
-        return UserInDB(**user_dict)
-
-
-def authenticate_user(fake_db, username: str, password: str):
-    user = get_user(fake_db, username)
-    if not user:
-        return False
-    if not verify_password(password, user.hashed_password):
-        return False
-    return user
-
-
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+@app.get("/user_by_mail", tags=["user"])
+def get_user_by_mail(email: EmailStr, token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+    db_user = crud.get_user_by_mail(db, email)
+    if db_user:
+        return db_user
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+        raise HTTPException(
+        status_code=404,
+        detail="No User found with {} email".format(email),
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
-    credentials_exception = HTTPException(
+@app.post("/register", tags=["user"])
+def register_user(user: UserRegisterSchema, db = Depends(get_db)):
+    if not is_email_already_registered(db, user.email):
+        db_user =  register_new_user(db, user)
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        token = create_access_token(data={"email": db_user.email}, expires_delta=access_token_expires)
+        return {"access_token": token, "token_type": "bearer"}
+    else:
+        raise HTTPException(
+        status_code=404,
+        detail="Email is already in registered!",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+@app.post("/login", tags=["user"])
+def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db = Depends(get_db)):
+    authenticated = crud.authenticate_user(db, form_data.username, form_data.password)
+    if authenticated:
+        db_user = crud.get_user_by_mail(db, form_data.username)
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        token = create_access_token(data={"email": db_user.email}, expires_delta=access_token_expires)
+        return {"access_token": token, "token_type": "bearer"}
+    else:
+        raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    user = get_user(fake_users_db, username=token_data.username)
-    if user is None:
-        raise credentials_exception
-    return user
 
+@app.put("/user/change_email", tags=["user"])
+def update_email(new_email: EmailStr, token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+    # Get mail from token:
+    current_mail = extract_email_from_token(token)
+    # Get User from db with current_mail
+    db_user = crud.get_user_by_mail(db, current_mail)
+    if db_user:
+        # return a new access token, because the email was updated!
+        new_db_user = crud.update_email(db, db_user, new_email)
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        token = create_access_token(data={"email": new_db_user.email}, expires_delta=access_token_expires)
+        return {"access_token": token, "token_type": "bearer"}
+    else:
+        raise HTTPException(
+        status_code=404,
+        detail="User does not exist",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
-async def get_current_active_user(
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
-
-
-@app.post("/token")
-async def login_for_access_token(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-) -> Token:
-    user = authenticate_user(fake_users_db, form_data.username, form_data.password)
-    if not user:
+@app.put("/user/change_pwd", tags=["user"])
+def update_password(new_password: str, old_password:str, token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+    # Get mail from token:
+    current_mail = extract_email_from_token(token)
+    authenticated = crud.authenticate_user(db, current_mail, old_password)
+    if authenticated:
+        # Get User from db with current_mail
+        db_user = crud.get_user_by_mail(db, current_mail)
+        if db_user:
+            return crud.update_password(db, db_user, new_password)
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="User does not exist",
+                headers={"WWW-Authenticate": "Bearer"})
+    else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return Token(access_token=access_token, token_type="bearer")
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"})
 
-
-@app.get("/users/me/", response_model=User)
-async def read_users_me(
-    current_user: Annotated[User, Depends(get_current_active_user)],
-):
-    return current_user
-
-
-@app.get("/users/me/items/")
-async def read_own_items(
-    current_user: Annotated[User, Depends(get_current_active_user)],
-):
-    return [{"item_id": "Foo", "owner": current_user.username}]
-
-#SQL Table to Pydatic?
-#https://pypi.org/project/psql-to-models/0.1.2/
+@app.delete("/user", tags=["user"])
+def delete_current_user(password: str, token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+    # Get mail from token:
+    mail = extract_email_from_token(token)
+    authenticated = crud.authenticate_user(db, mail, password)
+    if authenticated:
+        db_user = crud.get_user_by_mail(db, mail)
+        if db_user:
+            if crud.remove_current_user(db, db_user):
+                return {"message": "User with mail {} removed".format(mail)}
+            else:
+                raise HTTPException(
+                            status_code=404,
+                            detail="Could not remove current user, please contact admin",
+                            headers={"WWW-Authenticate": "Bearer"})
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="Could not remove current user, please contact admin",
+                headers={"WWW-Authenticate": "Bearer"})
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"})

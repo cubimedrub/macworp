@@ -2,9 +2,10 @@ from typing import TYPE_CHECKING
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, Relationship, SQLModel, Session, select
 
-from backend.nf_cloud_backend.models.user import User, UserRole
+from .user import User
 
 if TYPE_CHECKING:
+	from .project import Project
 	from .workflow_share import WorkflowShare
 
 
@@ -15,6 +16,7 @@ class Workflow(SQLModel, table=True):
 	A value of None means this workflow is "orphaned", i. e. the owner got deleted. 
 	"""
 	owner_id: int | None = Field(default=None, foreign_key="user.id", nullable=True)
+	owner: User | None = Relationship(back_populates="owned_workflows")
 
 	name: str = Field(max_length=512)
 
@@ -31,3 +33,5 @@ class Workflow(SQLModel, table=True):
 	is_published: bool = False
 
 	shares: list["WorkflowShare"] = Relationship(back_populates="workflow")
+
+	dependent_projects: list["Project"] = Relationship(back_populates="workflow")

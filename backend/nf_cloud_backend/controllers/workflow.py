@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlmodel import SQLModel, Session
 
-from .depends import Authenticated, AuthenticatedUser, ExistingUser, ExistingWorkflow
+from .depends import Authenticated, ExistingUser, ExistingWorkflow
 
 from ..models.user import User, UserRole
 from ..models.workflow import Workflow
@@ -37,34 +37,58 @@ router = APIRouter(
 )
 
 
-def get_workflow_share(user: User, workflow: Workflow, session: Session) -> WorkflowShare | None:
-    return session.exec(
+def get_workflow_share(user: User, workflow: Workflow) -> WorkflowShare | None:
+    return Session.object_session(user).exec(
         select(WorkflowShare).where(WorkflowShare.user_id == user.id, WorkflowShare.workflow_id == workflow.id)
     ).one_or_none()[0]
 
 
-def can_access_workflow(user: User, workflow: Workflow, session: Session, for_writing: bool = False) -> bool:
+def can_access_workflow(user: User, workflow: Workflow, for_writing: bool) -> bool:
     match user.role:
         case UserRole.admin:
             return True
         case UserRole.default:
             if workflow.owner_id == user.id:
                 return True
-            share = get_workflow_share(user, workflow, session)
+            share = get_workflow_share(user, workflow)
             return share is not None and (not for_writing or share.write)
+
+
+def ensure_read_access(user: User, workflow: Workflow) -> None:
+    if not can_access_workflow(user, workflow, for_writing=False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User not permitted read access to this workflow"
+        )
+
+
+def ensure_write_access(user: User, workflow: Workflow) -> None:
+    if not can_access_workflow(user, workflow, for_writing=True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User not permitted write access to this workflow"
+        )
+
+
+def ensure_owner(user: User, workflow: Workflow) -> None:
+    if user.role != UserRole.admin and workflow.owner_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User must be admin or owner of this workflow to perform operation"
+        )
 
 
 @router.get("/",
             summary="List Workflows")
-async def list(session: DbSession, auth: Authenticated) -> list[int]:
+async def list(auth: Authenticated) -> list[int]:
     """
     Lists the IDs of all workflows visible to this user.
     """
     
     return [
-        i[0]
-        for i in session.exec(select(Workflow)).all()
-        if can_access_workflow(auth, i[0], session)
+        i[0].id
+        for i in Session.object_session(auth).exec(select(Workflow)).all()
+        if can_access_workflow(auth, i[0], for_writing=False)
     ]
 
 
@@ -76,7 +100,7 @@ class WorkflowCreateParams(BaseModel):
 
 @router.post("/new",
              summary="Create Workflow")
-async def new(params: WorkflowCreateParams, session: DbSession, auth: Authenticated) -> int:
+async def new(params: WorkflowCreateParams, auth: Authenticated) -> int:
     """
     Creates a new workflow with the provided parameters.
     """
@@ -88,31 +112,31 @@ async def new(params: WorkflowCreateParams, session: DbSession, auth: Authentica
         definition=params.definition,
         is_published=params.is_published
     )
-    session.add(workflow)
-    session.commit()
+    Session.object_session(auth).add(workflow)
+    Session.object_session(auth).commit()
     # response.status_code = status.HTTP_201_CREATED
     return workflow.id
 
 
 class WorkflowShown(BaseModel):
     name: str
-    owner: User | None
+    owner_id: int | None
     description: str
     definition: dict
     is_published: bool
 
 @router.get("/{workflow_id}",
             summary="Show Single Workflow")
-async def show(workflow: ExistingWorkflow, auth: Authenticated, session: DbSession) -> WorkflowShown:
+async def show(workflow: ExistingWorkflow, auth: Authenticated) -> WorkflowShown:
     """
     Displays information for a single workflow.
     """
 
-    if not can_access_workflow(auth, workflow, session):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-    
+    ensure_read_access(auth, workflow)
+
     return WorkflowShown(
         name=workflow.name,
+        owner_id=workflow.owner_id,
         description=workflow.description,
         definition=workflow.definition,
         is_published=workflow.is_published
@@ -127,13 +151,12 @@ class WorkflowUpdateParams(BaseModel):
 
 @router.post("/{workflow_id}/edit",
              summary="Edit Workflow")
-async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: Authenticated, session: DbSession) -> None:
+async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: Authenticated) -> None:
     """
     Edits the attributes of a workflow.
     """
 
-    if not can_access_workflow(auth, workflow, session, for_writing=True):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    ensure_write_access(auth, workflow)
 
     if params.name is not None:
         workflow.name = params.name
@@ -145,33 +168,43 @@ async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: A
         workflow.is_published = params.is_published
 
 
+@router.post("/{workflow_id}/transfer_ownership",
+             summary="Transfer Ownership")
+async def transfer_ownership(workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated) -> None:
+    ensure_owner(auth, workflow)
+
+    # Give write access to the former owner
+    if workflow.owner is not None:
+        await add_share(True, workflow, workflow.owner, auth)
+
+    workflow.owner = user
+
+
 @router.post("/{workflow_id}/delete",
              summary="Delete Workflow")
-async def delete(workflow: ExistingWorkflow, auth: Authenticated, session: DbSession) -> None:
+async def delete(workflow: ExistingWorkflow, auth: Authenticated) -> None:
     """
     Deletes a workflow.
     """
 
-    if not can_access_workflow(auth, workflow, session, for_writing=True):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    ensure_owner(auth, workflow)
 
-    session.delete(workflow)
+    Session.object_session(workflow).delete(workflow)
 
 
 @router.post("/{workflow_id}/share/add",
              summary="Share Workflow")
-async def add_share(write: bool, workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
+async def add_share(write: bool, workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated) -> None:
     """
     Gives read/write rights to a user, or changes the user's current rights.
     """
 
-    if not can_access_workflow(auth, workflow, session, for_writing=True):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    ensure_write_access(auth, workflow)
 
-    share = get_workflow_share(user, workflow, session)
+    share = get_workflow_share(user, workflow)
 
     if share is None:
-        workflow.shares.append(WorkflowShare(
+        Session.object_session(auth).add(WorkflowShare(
             user_id=user.id,
             workflow_id=workflow.id,
             write=write
@@ -182,15 +215,14 @@ async def add_share(write: bool, workflow: ExistingWorkflow, user: ExistingUser,
 
 @router.post("/{workflow_id}/share/remove",
              summary="Un-Share Workflow")
-async def remove_share(workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
+async def remove_share(workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated) -> None:
     """
     Revokes the right of a user to read from / write to this workflow.
     """
 
-    if not can_access_workflow(auth, workflow, session, for_writing=True):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    ensure_write_access(auth, workflow)
     
-    share = get_workflow_share(user, workflow, session)
+    share = get_workflow_share(user, workflow)
 
     if share is not None:
-        session.delete(share)
+        Session.object_session(share).delete(share)

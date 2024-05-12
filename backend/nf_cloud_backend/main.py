@@ -26,12 +26,12 @@ engine = create_engine("postgresql+psycopg://postgres:developer@127.0.0.1:5434/n
 SQLModel.metadata.create_all(engine)
 
 # Inserting into DB Test
-with Session(engine) as session:
-    session.add(User(role=UserRole.default, provider_type="file", provider_name="dev", login_id="user_1"))
-    session.add(User(role=UserRole.admin, provider_type="openid_connect", provider_name="dev", login_id="user_2"))
-    statement = text('SELECT * FROM user')
-    users_db = session.execute(statement)
-    session.commit()
+#with Session(engine) as session:
+#    session.add(User(role=UserRole.default, provider_type="file", provider_name="dev", login_id="user_1"))
+#    session.add(User(role=UserRole.admin, provider_type="openid_connect", provider_name="dev", login_id="user_2"))
+#    statement = text('SELECT * FROM user')
+#    users_db = session.execute(statement)
+#    session.commit()
 
 def get_db():
     with Session(engine) as session:
@@ -48,8 +48,8 @@ def get_all_users(token: str = Depends(oauth2_scheme), db = Depends(get_db)):
     return crud.get_all_users(db)
 
 @app.get("/user_by_mail", tags=["user"])
-def get_user_by_mail(email: EmailStr, token: str = Depends(oauth2_scheme), db = Depends(get_db)):
-    db_user = crud.get_user_by_mail(db, email)
+def get_user(email: EmailStr, token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+    db_user = get_user_by_mail(db, email)
     if db_user:
         return db_user
     else:
@@ -76,9 +76,9 @@ def register_user(user: UserRegisterSchema, db = Depends(get_db)):
 
 @app.post("/login", tags=["user"])
 def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db = Depends(get_db)):
-    authenticated = crud.authenticate_user(db, form_data.username, form_data.password)
+    authenticated = authenticate_user(db, form_data.username, form_data.password)
     if authenticated:
-        db_user = crud.get_user_by_mail(db, form_data.username)
+        db_user = get_user_by_mail(db, form_data.username)
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         token = create_access_token(data={"email": db_user.email}, expires_delta=access_token_expires)
         return {"access_token": token, "token_type": "bearer"}
@@ -94,10 +94,10 @@ def update_email(new_email: EmailStr, token: str = Depends(oauth2_scheme), db = 
     # Get mail from token:
     current_mail = extract_email_from_token(token)
     # Get User from db with current_mail
-    db_user = crud.get_user_by_mail(db, current_mail)
+    db_user = get_user_by_mail(db, current_mail)
     if db_user:
         # return a new access token, because the email was updated!
-        new_db_user = crud.update_email(db, db_user, new_email)
+        new_db_user = update_email(db, db_user, new_email)
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         token = create_access_token(data={"email": new_db_user.email}, expires_delta=access_token_expires)
         return {"access_token": token, "token_type": "bearer"}

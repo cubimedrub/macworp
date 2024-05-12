@@ -18,7 +18,11 @@ def register_new_user(db: Session, new_user: UserRegisterSchema):
     hashed_password = get_password_hash(new_user.password)
     db_user = User(
         email=(new_user.email).lower(),
-        hashed_password=hashed_password)
+        hashed_password=hashed_password,
+        login_id=new_user.login_id,
+        provider_type=new_user.provider_type,
+        provider_name=new_user.provider_name,
+        role=new_user.role)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

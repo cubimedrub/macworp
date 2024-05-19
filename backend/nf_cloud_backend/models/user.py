@@ -16,7 +16,7 @@ class UserRole(str, enum.Enum):
 	default = "default"
 	admin = "admin"
 
-# Note: "user" has special meaning in Postgres so when using psql it needs to be double-quoted!
+
 class User(SQLModel, table=True):
 	__tablename__ = "user"
 

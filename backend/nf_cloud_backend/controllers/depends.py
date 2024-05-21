@@ -1,3 +1,6 @@
+"""
+This module contains FastAPI dependencies used by multiple controllers.
+"""
 
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
@@ -15,6 +18,9 @@ async def get_workflow(workflow_id: int, session: DbSession) -> Workflow:
     return workflow
 
 ExistingWorkflow = Annotated[Workflow, Depends(get_workflow)]
+"""
+Retrieves a workflow via the `workflow_id` URL parameter. Throws an HTTPException if the workflow doesn't exist.
+"""
 
 
 async def get_project(project_id: int, session: DbSession) -> Project:
@@ -24,6 +30,9 @@ async def get_project(project_id: int, session: DbSession) -> Project:
     return project
 
 ExistingProject = Annotated[Project, Depends(get_project)]
+"""
+Retrieves a project via the `project_id` URL parameter. Throws an HTTPException if the project doesn't exist.
+"""
 
 
 async def get_user(user_id: int, session: DbSession) -> User:
@@ -33,13 +42,19 @@ async def get_user(user_id: int, session: DbSession) -> User:
     return user
 
 ExistingUser = Annotated[User, Depends(get_user)]
-
+"""
+Retrieves a user via the `user_id` URL parameter. Throws an HTTPException if the user doesn't exist.
+"""
 
 async def get_optionally_authenticated_user(session: DbSession) -> User | None:
     # TODO put actual authentication here
     return session.get(User, 1)
 
 OptionallyAuthenticated = Annotated[User | None, Depends(get_optionally_authenticated_user)]
+"""
+Returns the authenticated user, or None if no authentication is present.
+Throws an HTTPException if authentication was attempted, but failed.
+"""
 
 
 async def get_authenticated_user(session: DbSession, maybe_auth: OptionallyAuthenticated) -> User:
@@ -48,3 +63,6 @@ async def get_authenticated_user(session: DbSession, maybe_auth: OptionallyAuthe
     return maybe_auth
 
 Authenticated = Annotated[User, Depends(get_authenticated_user)]
+"""
+Returns the authenticated user. Throws an HTTPException if no or incorrect authentication was provided.
+"""

@@ -1,23 +1,8 @@
 """
-Endpoints
-
-    /new - Creates a new empty workflow with name, description
-    /:id/delete
-        Only owner
-    /:id/edit - Edit a existing workflow, possible attributes name, description, definition, is_published)
-        Owner and others with write access
-        All admins
-    / - list all workflows
-        Only published, shared and owned
-            Except admin role => sees everything
-    /:id - Show
-        Owner and others with read or write access
-        All admins
-    /:id/share/add - shares workflows with user (read [default] or wrtite access)
-    /:id/share/remove - remove share with a user
+API Endpoints with the prefix `/project`.
 """
 
-
+from typing import Literal
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Field, Session, select
@@ -27,6 +12,14 @@ from .depends import Authenticated, ExistingProject, ExistingUser
 from ..models.project import Project
 from ..models.project_share import ProjectShare
 from ..models.user import User, UserRole
+from ..models.workflow import Workflow
+
+from workflow import ensure_read_access as ensure_workflow_read_access
+
+
+# ---------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------
 
 
 router = APIRouter(
@@ -35,12 +28,21 @@ router = APIRouter(
 
 
 def get_project_share(user: User, project: Project) -> ProjectShare | None:
+    """
+    Gets the ProjectShare identified by the provided `user` and `project`,
+    or None if this project is not shared with the user.
+    """
+
     return Session.object_session(user).exec(
         select(ProjectShare).where(ProjectShare.user_id == user.id, ProjectShare.project_id == project.id)
     ).one_or_none()[0]
 
 
 def can_access_project(user: User, project: Project, for_writing: bool) -> bool:
+    """
+    Helper method for common logic between `ensure_read_access` and `ensure_write_access`.
+    """
+    
     match user.role:
         case UserRole.admin:
             return True
@@ -52,6 +54,10 @@ def can_access_project(user: User, project: Project, for_writing: bool) -> bool:
 
 
 def ensure_read_access(user: User, project: Project) -> None:
+    """
+    Throws a `HTTPException` if `user` doesn't have the right to read from `project`.
+    """
+
     if not can_access_project(user, project, for_writing=False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -60,6 +66,10 @@ def ensure_read_access(user: User, project: Project) -> None:
 
 
 def ensure_write_access(user: User, project: Project) -> None:
+    """
+    Throws a `HTTPException` if `user` doesn't have the right to write to `project`.
+    """
+    
     if not can_access_project(user, project, for_writing=True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -68,6 +78,10 @@ def ensure_write_access(user: User, project: Project) -> None:
 
 
 def ensure_owner(user: User, project: Project) -> None:
+    """
+    Throws a `HTTPException` if `user` doesn't have the right to delete or transfer ownership of `project`.
+    """
+
     if user.role != UserRole.admin and project.owner_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -75,11 +89,16 @@ def ensure_owner(user: User, project: Project) -> None:
         )
 
 
+# ---------------------------------------------------------
+# ENDPOINTS
+# ---------------------------------------------------------
+
+
 @router.get("/",
             summary="List Projects")
 async def list(auth: Authenticated) -> list[int]:
 	"""
-    Lists the IDs of all projects visible to this user.
+    Lists the IDs of all projects visible to this user. Requires authentication.
     """
 
 	return [
@@ -100,7 +119,8 @@ class ProjectCreateParams(BaseModel):
              summary="Create Project")
 async def new(params: ProjectCreateParams, auth: Authenticated) -> int:
     """
-    Creates a new project with the provided parameters.
+    Creates a new project with the provided parameters. Requires authentication.
+    The authenticated user will be made the project's owner.
     """
 
     project = Project(
@@ -119,6 +139,7 @@ async def new(params: ProjectCreateParams, auth: Authenticated) -> int:
 
 class ProjectShown(BaseModel):
     name: str
+    owner_id: int | None
     workflow_id: int | None
     workflow_arguments: dict
     description: str
@@ -128,13 +149,14 @@ class ProjectShown(BaseModel):
             summary="Show Single Project")
 async def show(project: ExistingProject, auth: Authenticated) -> ProjectShown:
     """
-    Displays information for a single project.
+    Displays information for a single project. Requires read access.
     """
 
     ensure_read_access(auth, project)
 
     return ProjectShown(
         name=project.name,
+        owner_id=project.owner_id,
 		workflow_id=project.workflow_id,
 		workflow_arguments=project.workflow_arguments,
 		description=project.description,
@@ -144,8 +166,7 @@ async def show(project: ExistingProject, auth: Authenticated) -> ProjectShown:
 
 class ProjectUpdateParams(BaseModel):
     name: str | None = None
-    # Potential issue here -- no way to unset the workflow like this. I hate python.
-    workflow_id: int | None = None
+    workflow_id: int | Literal["unset"] | None = None
     workflow_arguments: dict | None = None
     description: str | None = None
     is_published: bool | None = None
@@ -154,7 +175,10 @@ class ProjectUpdateParams(BaseModel):
              summary="Edit Project")
 async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Authenticated) -> None:
     """
-    Edits the attributes of a project.
+    Edits the attributes of a project. Requires write access.
+
+    If setting the workflow used, this additionally requires read access to the workflow.
+    Unset the workflow by passing the literal string "unset" instead of an ID.
     """
 
     ensure_write_access(auth, project)
@@ -162,6 +186,15 @@ async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Auth
     if params.name is not None:
         project.name = params.name
     if params.workflow_id is not None:
+        if params.workflow_id == "unset":
+            project.workflow_id = None
+        workflow = Session.object_session(auth).get(Workflow, params.workflow_id)
+        if workflow is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Trying to link workflow that doesn't exist"
+            )
+        ensure_workflow_read_access(auth, workflow)
         project.workflow_id = params.workflow_id
     if params.workflow_arguments is not None:
         project.workflow_arguments = params.workflow_arguments
@@ -174,9 +207,13 @@ async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Auth
 @router.post("/{project_id}/transfer_ownership",
              summary="Transfer Ownership")
 async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth: Authenticated) -> None:
+    """
+    Makes another user the project owner. Requires ownership or admin rights.
+    The former owner will be given write access.
+    """
+
     ensure_owner(auth, project)
 
-    # Give write access to the former owner
     if project.owner is not None:
         await add_share(True, project, project.owner, auth)
 
@@ -187,7 +224,7 @@ async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth:
              summary="Delete Project")
 async def delete(project: ExistingProject, auth: Authenticated) -> None:
     """
-    Deletes a project.
+    Deletes a project. Requires ownership or admin rights.
     """
 
     ensure_owner(auth, project)
@@ -199,7 +236,7 @@ async def delete(project: ExistingProject, auth: Authenticated) -> None:
              summary="Share Project")
 async def add_share(write: bool, project: ExistingProject, user: ExistingUser, auth: Authenticated) -> None:
     """
-    Gives read/write rights to a user, or changes the user's current rights.
+    Gives read/write rights to a user, or changes the user's current rights. Requires write access.
     """
 
     ensure_write_access(auth, project)
@@ -220,11 +257,13 @@ async def add_share(write: bool, project: ExistingProject, user: ExistingUser, a
              summary="Un-Share Project")
 async def remove_share(project: ExistingProject, user: ExistingUser, auth: Authenticated) -> None:
     """
-    Revokes the right of a user to read from / write to this project.
+    Revokes the right of a user to read from / write to this project. Requires write access.
+
+    Note that ownership and admin rights override shared rights.
     """
 
     ensure_write_access(auth, project)
-    
+
     share = get_project_share(user, project)
 
     if share is not None:

@@ -1,20 +1,5 @@
 """
-Endpoints
-
-    /new - Creates a new empty workflow with name, description
-    /:id/delete
-        Only owner
-    /:id/edit - Edit a existing workflow, possible attributes name, description, definition, is_published)
-        Owner and others with write access
-        All admins
-    / - list all workflows
-        Only published, shared and owned
-            Except admin role => sees everything
-    /:id - Show
-        Owner and others with read or write access
-        All admins
-    /:id/share/add - shares workflows with user (read [default] or wrtite access)
-    /:id/share/remove - remove share with a user
+API Endpoints with the prefix `/workflow`.
 """
 
 from typing import Annotated
@@ -32,18 +17,32 @@ from ..models.workflow_share import WorkflowShare
 from ..database import DbSession
 
 
+# ---------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------
+
+
 router = APIRouter(
     prefix="/workflow"
 )
 
 
 def get_workflow_share(user: User, workflow: Workflow) -> WorkflowShare | None:
+    """
+    Gets the WorkflowShare identified by the provided `user` and `workflow`,
+    or None if this workflow is not shared with the user.
+    """
+    
     return Session.object_session(user).exec(
         select(WorkflowShare).where(WorkflowShare.user_id == user.id, WorkflowShare.workflow_id == workflow.id)
     ).one_or_none()[0]
 
 
 def can_access_workflow(user: User, workflow: Workflow, for_writing: bool) -> bool:
+    """
+    Helper method for common logic between `ensure_read_access` and `ensure_write_access`.
+    """
+    
     match user.role:
         case UserRole.admin:
             return True
@@ -55,6 +54,10 @@ def can_access_workflow(user: User, workflow: Workflow, for_writing: bool) -> bo
 
 
 def ensure_read_access(user: User, workflow: Workflow) -> None:
+    """
+    Throws a `HTTPException` if `user` doesn't have the right to read from `workflow`.
+    """
+    
     if not can_access_workflow(user, workflow, for_writing=False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -63,6 +66,10 @@ def ensure_read_access(user: User, workflow: Workflow) -> None:
 
 
 def ensure_write_access(user: User, workflow: Workflow) -> None:
+    """
+    Throws a `HTTPException` if `user` doesn't have the right to write to `workflow`.
+    """
+
     if not can_access_workflow(user, workflow, for_writing=True):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -71,6 +78,10 @@ def ensure_write_access(user: User, workflow: Workflow) -> None:
 
 
 def ensure_owner(user: User, workflow: Workflow) -> None:
+    """
+    Throws a `HTTPException` if `user` doesn't have the right to delete or transfer ownership of `workflow`.
+    """
+
     if user.role != UserRole.admin and workflow.owner_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -82,7 +93,7 @@ def ensure_owner(user: User, workflow: Workflow) -> None:
             summary="List Workflows")
 async def list(auth: Authenticated) -> list[int]:
     """
-    Lists the IDs of all workflows visible to this user.
+    Lists the IDs of all workflows visible to this user. Requires authentication.
     """
     
     return [
@@ -102,7 +113,8 @@ class WorkflowCreateParams(BaseModel):
              summary="Create Workflow")
 async def new(params: WorkflowCreateParams, auth: Authenticated) -> int:
     """
-    Creates a new workflow with the provided parameters.
+    Creates a new workflow with the provided parameters. Requires authentication.
+    The authenticated user will be made the workflow's owner.
     """
 
     workflow = Workflow(
@@ -129,7 +141,7 @@ class WorkflowShown(BaseModel):
             summary="Show Single Workflow")
 async def show(workflow: ExistingWorkflow, auth: Authenticated) -> WorkflowShown:
     """
-    Displays information for a single workflow.
+    Displays information for a single workflow. Requires read access.
     """
 
     ensure_read_access(auth, workflow)
@@ -153,7 +165,7 @@ class WorkflowUpdateParams(BaseModel):
              summary="Edit Workflow")
 async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: Authenticated) -> None:
     """
-    Edits the attributes of a workflow.
+    Edits the attributes of a workflow. Requires write access.
     """
 
     ensure_write_access(auth, workflow)
@@ -171,9 +183,13 @@ async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: A
 @router.post("/{workflow_id}/transfer_ownership",
              summary="Transfer Ownership")
 async def transfer_ownership(workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated) -> None:
+    """
+    Makes another user the workflow owner. Requires ownership or admin rights.
+    The former owner will be given write access.
+    """
+
     ensure_owner(auth, workflow)
 
-    # Give write access to the former owner
     if workflow.owner is not None:
         await add_share(True, workflow, workflow.owner, auth)
 
@@ -184,7 +200,7 @@ async def transfer_ownership(workflow: ExistingWorkflow, user: ExistingUser, aut
              summary="Delete Workflow")
 async def delete(workflow: ExistingWorkflow, auth: Authenticated) -> None:
     """
-    Deletes a workflow.
+    Deletes a workflow. Requires ownership or admin rights.
     """
 
     ensure_owner(auth, workflow)
@@ -196,7 +212,7 @@ async def delete(workflow: ExistingWorkflow, auth: Authenticated) -> None:
              summary="Share Workflow")
 async def add_share(write: bool, workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated) -> None:
     """
-    Gives read/write rights to a user, or changes the user's current rights.
+    Gives read/write rights to a user, or changes the user's current rights. Requires write access.
     """
 
     ensure_write_access(auth, workflow)
@@ -217,11 +233,13 @@ async def add_share(write: bool, workflow: ExistingWorkflow, user: ExistingUser,
              summary="Un-Share Workflow")
 async def remove_share(workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated) -> None:
     """
-    Revokes the right of a user to read from / write to this workflow.
+    Revokes the right of a user to read from / write to this workflow. Requires write access.
+
+    Note that ownership and admin rights override shared rights.
     """
 
     ensure_write_access(auth, workflow)
-    
+
     share = get_workflow_share(user, workflow)
 
     if share is not None:

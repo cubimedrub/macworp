@@ -14,7 +14,7 @@ from ..models.project_share import ProjectShare
 from ..models.user import User, UserRole
 from ..models.workflow import Workflow
 
-from workflow import ensure_read_access as ensure_workflow_read_access
+from .workflow import ensure_read_access as ensure_workflow_read_access
 
 
 # ---------------------------------------------------------

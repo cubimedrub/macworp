@@ -2,10 +2,10 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from sqlalchemy import or_, and_
 
-from .models.user import User
-from .utils import create_timestamp
-from .models.schemas import UserRegisterSchema
-from .auth.password_handler import verify_password, get_password_hash
+from ..models.user import User
+from ..utils import create_timestamp
+from ..models.schemas import UserRegisterSchema
+from ..auth.password_handler import verify_password, get_password_hash
 
 
 def get_all_users(db: Session, limit: int = 100):
@@ -40,4 +40,3 @@ def authenticate_user(db: Session, login_id: str, password:str):
     if not db_user:
         return False
     return verify_password(password, db_user.hashed_password)
-

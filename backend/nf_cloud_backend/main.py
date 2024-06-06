@@ -1,10 +1,12 @@
 from sqlmodel import Field, SQLModel, Session, create_engine
 from typing import Union
+from .controllers import project
 from .controllers import workflow
 
 from fastapi import FastAPI
      
 app = FastAPI()
+app.include_router(project.router)
 app.include_router(workflow.router)
 
 

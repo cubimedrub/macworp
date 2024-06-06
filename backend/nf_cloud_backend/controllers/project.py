@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Field, Session, select
 
+from ..database import session_for
+
 from .depends import Authenticated, ExistingProject, ExistingUser
 
 from ..models.project import Project
@@ -33,9 +35,9 @@ def get_project_share(user: User, project: Project) -> ProjectShare | None:
     or None if this project is not shared with the user.
     """
 
-    return Session.object_session(user).exec(
+    return session_for(user).exec(
         select(ProjectShare).where(ProjectShare.user_id == user.id, ProjectShare.project_id == project.id)
-    ).one_or_none()[0]
+    ).one_or_none() # [0]
 
 
 def can_access_project(user: User, project: Project, for_writing: bool) -> bool:
@@ -51,6 +53,7 @@ def can_access_project(user: User, project: Project, for_writing: bool) -> bool:
                 return True
             share = get_project_share(user, project)
             return share is not None and (not for_writing or share.write)
+    return False
 
 
 def ensure_read_access(user: User, project: Project) -> None:
@@ -102,9 +105,9 @@ async def list(auth: Authenticated) -> list[int]:
     """
 
 	return [
-        i[0].id
-        for i in Session.object_session(auth).exec(select(Project)).all()
-        if can_access_project(auth, i[0], for_writing=False)
+        i.id
+        for i in session_for(auth).exec(select(Project)).all()
+        if i.id is not None and can_access_project(auth, i, for_writing=False)
     ]
 
 
@@ -131,9 +134,13 @@ async def new(params: ProjectCreateParams, auth: Authenticated) -> int:
         description=params.description,
         is_published=params.is_published
     )
-    Session.object_session(auth).add(project)
-    Session.object_session(auth).commit()
+    session_for(auth).add(project)
+    session_for(auth).commit()
     # response.status_code = status.HTTP_201_CREATED
+
+    # Can't be None since commit will make the DB assign an ID
+    assert project.id is not None
+
     return project.id
 
 
@@ -188,14 +195,15 @@ async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Auth
     if params.workflow_id is not None:
         if params.workflow_id == "unset":
             project.workflow_id = None
-        workflow = Session.object_session(auth).get(Workflow, params.workflow_id)
-        if workflow is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Trying to link workflow that doesn't exist"
-            )
-        ensure_workflow_read_access(auth, workflow)
-        project.workflow_id = params.workflow_id
+        else:
+            workflow = session_for(auth).get(Workflow, params.workflow_id)
+            if workflow is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Trying to link workflow that doesn't exist"
+                )
+            ensure_workflow_read_access(auth, workflow)
+            project.workflow_id = params.workflow_id
     if params.workflow_arguments is not None:
         project.workflow_arguments = params.workflow_arguments
     if params.description is not None:
@@ -229,7 +237,7 @@ async def delete(project: ExistingProject, auth: Authenticated) -> None:
 
     ensure_owner(auth, project)
 
-    Session.object_session(project).delete(project)
+    session_for(project).delete(project)
 
 
 @router.post("/{project_id}/share/add",
@@ -244,7 +252,7 @@ async def add_share(write: bool, project: ExistingProject, user: ExistingUser, a
     share = get_project_share(user, project)
 
     if share is None:
-        Session.object_session(auth).add(ProjectShare(
+        session_for(auth).add(ProjectShare(
             user_id=user.id,
             project_id=project.id,
             write=write
@@ -267,4 +275,4 @@ async def remove_share(project: ExistingProject, user: ExistingUser, auth: Authe
     share = get_project_share(user, project)
 
     if share is not None:
-        Session.object_session(share).delete(share)
+        session_for(share).delete(share)

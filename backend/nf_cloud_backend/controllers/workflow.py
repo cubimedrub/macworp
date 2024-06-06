@@ -5,8 +5,7 @@ API Endpoints with the prefix `/workflow`.
 from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlmodel import SQLModel, Session
+from sqlmodel import SQLModel, Session, select
 
 from .depends import Authenticated, ExistingUser, ExistingWorkflow
 
@@ -14,7 +13,7 @@ from ..models.user import User, UserRole
 from ..models.workflow import Workflow
 from ..models.workflow_share import WorkflowShare
 
-from ..database import DbSession
+from ..database import DbSession, session_for
 
 
 # ---------------------------------------------------------
@@ -33,9 +32,9 @@ def get_workflow_share(user: User, workflow: Workflow) -> WorkflowShare | None:
     or None if this workflow is not shared with the user.
     """
     
-    return Session.object_session(user).exec(
+    return session_for(user).exec(
         select(WorkflowShare).where(WorkflowShare.user_id == user.id, WorkflowShare.workflow_id == workflow.id)
-    ).one_or_none()[0]
+    ).one_or_none()
 
 
 def can_access_workflow(user: User, workflow: Workflow, for_writing: bool) -> bool:
@@ -51,6 +50,7 @@ def can_access_workflow(user: User, workflow: Workflow, for_writing: bool) -> bo
                 return True
             share = get_workflow_share(user, workflow)
             return share is not None and (not for_writing or share.write)
+    return False
 
 
 def ensure_read_access(user: User, workflow: Workflow) -> None:
@@ -97,9 +97,9 @@ async def list(auth: Authenticated) -> list[int]:
     """
     
     return [
-        i[0].id
-        for i in Session.object_session(auth).exec(select(Workflow)).all()
-        if can_access_workflow(auth, i[0], for_writing=False)
+        i.id
+        for i in session_for(auth).exec(select(Workflow)).all()
+        if i.id is not None and can_access_workflow(auth, i, for_writing=False)
     ]
 
 
@@ -124,9 +124,13 @@ async def new(params: WorkflowCreateParams, auth: Authenticated) -> int:
         definition=params.definition,
         is_published=params.is_published
     )
-    Session.object_session(auth).add(workflow)
-    Session.object_session(auth).commit()
+    session_for(auth).add(workflow)
+    session_for(auth).commit()
     # response.status_code = status.HTTP_201_CREATED
+    
+    # Can't be None since commit will make the DB assign an ID
+    assert workflow.id is not None
+    
     return workflow.id
 
 
@@ -205,7 +209,7 @@ async def delete(workflow: ExistingWorkflow, auth: Authenticated) -> None:
 
     ensure_owner(auth, workflow)
 
-    Session.object_session(workflow).delete(workflow)
+    session_for(workflow).delete(workflow)
 
 
 @router.post("/{workflow_id}/share/add",
@@ -220,7 +224,7 @@ async def add_share(write: bool, workflow: ExistingWorkflow, user: ExistingUser,
     share = get_workflow_share(user, workflow)
 
     if share is None:
-        Session.object_session(auth).add(WorkflowShare(
+        session_for(auth).add(WorkflowShare(
             user_id=user.id,
             workflow_id=workflow.id,
             write=write
@@ -243,4 +247,4 @@ async def remove_share(workflow: ExistingWorkflow, user: ExistingUser, auth: Aut
     share = get_workflow_share(user, workflow)
 
     if share is not None:
-        Session.object_session(share).delete(share)
+        session_for(share).delete(share)

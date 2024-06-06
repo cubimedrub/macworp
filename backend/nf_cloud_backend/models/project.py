@@ -1,6 +1,6 @@
 
 from typing import TYPE_CHECKING
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, ForeignKey, Integer
 from sqlmodel import Field, Relationship, SQLModel
 
 from .user import User
@@ -16,7 +16,10 @@ class Project(SQLModel, table=True):
     """
     A value of None means this project is "orphaned", i. e. the owner got deleted. 
     """
-    owner_id: int | None = Field(default=None, foreign_key="user.id", nullable=True)
+    owner_id: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    )
     owner: User | None = Relationship(back_populates="owned_projects")
 
     name: str = Field(max_length=512)

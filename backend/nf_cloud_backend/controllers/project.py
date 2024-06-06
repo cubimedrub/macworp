@@ -49,7 +49,7 @@ def can_access_project(user: User, project: Project, for_writing: bool) -> bool:
         case UserRole.admin:
             return True
         case UserRole.default:
-            if project.owner_id == user.id:
+            if project.owner_id == user.id or (not for_writing and project.is_published):
                 return True
             share = get_project_share(user, project)
             return share is not None and (not for_writing or share.write)

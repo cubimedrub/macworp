@@ -46,7 +46,7 @@ def can_access_workflow(user: User, workflow: Workflow, for_writing: bool) -> bo
         case UserRole.admin:
             return True
         case UserRole.default:
-            if workflow.owner_id == user.id:
+            if workflow.owner_id == user.id or (not for_writing and workflow.is_published):
                 return True
             share = get_workflow_share(user, workflow)
             return share is not None and (not for_writing or share.write)

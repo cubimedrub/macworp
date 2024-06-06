@@ -24,9 +24,6 @@ def get_session():
 DbSession = Annotated[Session, Depends(get_session)]
 
 
-SEED_DATA_PATH: Path = Path(__file__).parent.parent.joinpath("db_seed.yaml")
-
-
 def session_for(object: SQLModel) -> Session:
     session = Session.object_session(object)
     if not isinstance(session, Session):

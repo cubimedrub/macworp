@@ -1,279 +1,52 @@
+- model: User
+  attributes:
+    id: 1
+    role: "default"
+    provider_type: "foo"
+    provider_name: "bar"
+- model: User
+  attributes:
+    id: 2
+    role: "admin"
+    provider_type: "baz"
+    provider_name: "quux"
 - model: Workflow
   attributes:
-    name: "Test Workflow"
-    description: "Simple test workflow"
-    definition: |
-      {
-          "directory": "./test_workflows/hello_world",
-          "script": "main.nf",
-          "nextflow_parameters": [
-          ],
-          "args": {
-              "dynamic": [
-                  {
-                      "type": "path",
-                      "name": "inFile",
-                      "label": "Input file",
-                      "desc": "Single file",
-                      "selectable_files": true,
-                      "selectable_folders": false
-                  },
-                  {
-                      "type": "path",
-                      "name": "inFolder",
-                      "label": "Input folder",
-                      "desc": "Single folder",
-                      "selectable_files": false,
-                      "selectable_folders": true
-                  },
-                  {
-                      "type": "paths",
-                      "name": "inFiles",
-                      "label": "Multiple input files",
-                      "desc": "Multiple files",
-                      "selectable_files": true,
-                      "selectable_folders": false
-                  },
-                  {
-                      "type": "paths",
-                      "name": "inFolders",
-                      "label": "Multiple input folders",
-                      "desc": "Multiple folder",
-                      "selectable_files": false,
-                      "selectable_folders": true
-                  },
-                  {
-                      "type": "file-glob",
-                      "name": "txtFiles",
-                      "label": "Text files",
-                      "desc": "File \"regex\", e.g. *.txt"
-                  },
-                  {
-                      "type": "number",
-                      "name": "numberOfNewlines",
-                      "label": "Number of newlines",
-                      "desc": "Number input"
-                  },
-                  {
-                      "type": "text",
-                      "name": "singleLineText",
-                      "label": "Single line text",
-                      "desc": "Single line text"
-                  },
-                  {
-                      "type": "text",
-                      "name": "multilineText",
-                      "label": "Multiple line text",
-                      "desc": "Multiline text",
-                      "is_multiline": true
-                  }
-              ],
-              "static": [
-                  {
-                      "name": "outDir",
-                      "value": "./"
-                  }
-              ]
-          },
-          "results": [
-              {
-                  "type": "images",
-                  "header": "Singe image",
-                  "images": [
-                      {
-                          "description": "Test image",
-                          "path": "test_image.png"
-                      }
-                  ]
-              },
-              {
-                  "type": "images",
-                  "header": "Multiple image",
-                  "images": [
-                      {
-                          "description": "Test image",
-                          "path": "test_image.png"
-                      },
-                      {
-                          "description": "Another test image",
-                          "path": "another_test_image.png"
-                      }
-                  ]
-              },
-              {
-                  "type": "pdf",
-                  "header": "PDF",
-                  "description": "Test PDF",
-                  "path": "test_pdf.pdf"
-              },
-              {
-                  "type": "svg",
-                  "header": "SVG",
-                  "description": "Test SVG",
-                  "path": "test_svg.svg"
-              },
-              {
-                  "type": "svg",
-                  "header": "SVG (embedded)",
-                  "description": "Test SVG",
-                  "path": "test_svg.svg",
-                  "embed": true
-              },
-              {
-                  "type": "plotly",
-                  "header": "Plotly",
-                  "description": "Plotly plot",
-                  "path": "plotly.json"
-              }
-          ]
-      }
+    id: 1
+    name: "Detlef's Workflow"
+    owner_id: 1
+    is_published: false
 - model: Workflow
   attributes:
-    name: "Test Workflow using Docker"
-    description: "Simple test workflow which runs in a Docker container"
-    definition: |
-      {
-          "directory": "./test_workflows/hello_world",
-          "script": "main.nf",
-          "nextflow_parameters": [
-              {
-                  "name": "-with-docker",
-                  "value": "nfcore/base"
-              }
-          ],
-          "args": {
-              "dynamic": [
-                  {
-                      "type": "path",
-                      "name": "inFile",
-                      "label": "Input file",
-                      "desc": "Single file",
-                      "selectable_files": true,
-                      "selectable_folders": false
-                  },
-                  {
-                      "type": "path",
-                      "name": "inFolder",
-                      "label": "Input folder",
-                      "desc": "Single folder",
-                      "selectable_files": false,
-                      "selectable_folders": true
-                  },
-                  {
-                      "type": "paths",
-                      "name": "inFiles",
-                      "label": "Multiple input files",
-                      "desc": "Multiple files",
-                      "selectable_files": true,
-                      "selectable_folders": false
-                  },
-                  {
-                      "type": "paths",
-                      "name": "inFolders",
-                      "label": "Multiple input folders",
-                      "desc": "Multiple folder",
-                      "selectable_files": false,
-                      "selectable_folders": true
-                  },
-                  {
-                      "type": "file-glob",
-                      "name": "txtFiles",
-                      "label": "Text files",
-                      "desc": "File \"regex\", e.g. *.txt"
-                  },
-                  {
-                      "type": "number",
-                      "name": "numberOfNewlines",
-                      "label": "Number of newlines",
-                      "desc": "Number input"
-                  },
-                  {
-                      "type": "text",
-                      "name": "singleLineText",
-                      "label": "Single line text",
-                      "desc": "Single line text"
-                  },
-                  {
-                      "type": "text",
-                      "name": "multilineText",
-                      "label": "Multiple line text",
-                      "desc": "Multiline text",
-                      "is_multiline": true
-                  },
-                  {
-                      "type": "value-select",
-                      "name": "method",
-                      "label": "Creation method of decoys",
-                      "desc": "Possible values `reverse`& `suffix`",
-                      "options": [
-                          {
-                              "label": "reverse",
-                              "value": "reverse"
-                          },
-                          {
-                              "label": "suffix",
-                              "value": "suffix"
-                          }
-                      ],
-                      "value": "reverse"
-                  }
-              ],
-              "static": [
-                  {
-                      "name": "outDir",
-                      "value": "./"
-                  }
-              ]
-          },
-          "results": [
-              {
-                  "type": "images",
-                  "header": "Singe image",
-                  "images": [
-                      {
-                          "description": "Test image",
-                          "path": "test_image.png"
-                      }
-                  ]
-              },
-              {
-                  "type": "images",
-                  "header": "Multiple image",
-                  "images": [
-                      {
-                          "description": "Test image",
-                          "path": "test_image.png"
-                      },
-                      {
-                          "description": "Another test image",
-                          "path": "another_test_image.png"
-                      }
-                  ]
-              },
-              {
-                  "type": "pdf",
-                  "header": "PDF",
-                  "description": "Test PDF",
-                  "path": "test_pdf.pdf"
-              },
-              {
-                  "type": "svg",
-                  "header": "SVG",
-                  "description": "Test SVG",
-                  "path": "test_svg.svg"
-              },
-              {
-                  "type": "svg",
-                  "header": "SVG (embedded)",
-                  "description": "Test SVG",
-                  "path": "test_svg.svg",
-                  "embed": true
-              },
-              {
-                  "type": "plotly",
-                  "header": "Plotly",
-                  "description": "Plotly plot",
-                  "path": "plotly.json"
-              }
-          ]
-      }
+    id: 2
+    name: "Adrianne's Private Workflow"
+    owner_id: 2
+    is_published: false
+- model: Workflow
+  attributes:
+    id: 3
+    name: "Adrianne's Read-Shared Workflow"
+    owner_id: 2
+    is_published: false
+- model: Workflow
+  attributes:
+    id: 4
+    name: "Adrianne's Write-Shared Workflow"
+    owner_id: 2
+    is_published: false
+- model: Workflow
+  attributes:
+    id: 5
+    name: "Adrianne's Published Workflow"
+    owner_id: 2
+    is_published: true
+- model: WorkflowShare
+  attributes:
+    user_id: 1
+    workflow_id: 3
+    write: false
+- model: WorkflowShare
+  attributes:
+    user_id: 1
+    workflow_id: 4
+    write: true

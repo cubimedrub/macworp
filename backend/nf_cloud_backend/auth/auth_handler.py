@@ -11,7 +11,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 ## data={"email": user_email} , expires_delta=access_token_expires)
-def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
+def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None) -> jwt:
     to_encode = data.copy()
     
     if expires_delta:
@@ -25,7 +25,7 @@ def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None
     return encoded_jwt
 
 ## Method is using Dependency Injection
-def is_token_valid(token: str = Depends(oauth2_scheme)):
+def is_token_valid(token: str = Depends(oauth2_scheme)) -> bool:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         expire: str = payload.get("exp")
@@ -41,7 +41,7 @@ def is_token_valid(token: str = Depends(oauth2_scheme)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-## Method is using Dependency Injection
+## Needed?
 def extract_email_from_token(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])

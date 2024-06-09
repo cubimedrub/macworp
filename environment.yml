@@ -10,3 +10,8 @@ dependencies:
   - libpq
   - pip:
     - -e ./backend[dev]
+    - fastapi
+    - uvicorn[standard]
+    - python-multipart
+    - python-jose[cryptography]
+    - passlib[bcrypt]

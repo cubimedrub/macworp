@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Field, Session, select
 
-from ..database import session_for
+from ..database import DbSession, session_for
 
 from .depends import Authenticated, ExistingProject, ExistingUser
 
@@ -99,14 +99,14 @@ def ensure_owner(user: User, project: Project) -> None:
 
 @router.get("/",
             summary="List Projects")
-async def list(auth: Authenticated) -> list[int]:
+async def list(auth: Authenticated, session: DbSession) -> list[int]:
 	"""
     Lists the IDs of all projects visible to this user. Requires authentication.
     """
 
 	return [
         i.id
-        for i in session_for(auth).exec(select(Project)).all()
+        for i in session.exec(select(Project)).all()
         if i.id is not None and can_access_project(auth, i, for_writing=False)
     ]
 

@@ -2,14 +2,14 @@
 API Endpoints with the prefix `/project`.
 """
 
-from typing import Literal
+from typing import List, Literal
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Field, Session, select
 
 from ..database import DbSession
 
-from .depends import Authenticated, ExistingProject, ExistingUser
+from .depends import Authenticated, ExistingProject, ExistingUser, ExistingUsers
 
 from ..models.project import Project
 from ..models.project_share import ProjectShare
@@ -151,6 +151,8 @@ class ProjectShown(BaseModel):
     workflow_arguments: dict
     description: str
     is_published: bool
+    read_shared: List[int]
+    write_shared: List[int]
 
 @router.get("/{project_id}",
             summary="Show Single Project")
@@ -167,7 +169,9 @@ async def show(project: ExistingProject, auth: Authenticated, session: DbSession
 		workflow_id=project.workflow_id,
 		workflow_arguments=project.workflow_arguments,
 		description=project.description,
-		is_published=project.is_published
+		is_published=project.is_published,
+        read_shared=[share.user_id for share in project.shares if share.user_id is not None and not share.write],
+        write_shared=[share.user_id for share in project.shares if share.user_id is not None and share.write]
     )
 
 
@@ -223,7 +227,7 @@ async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth:
     ensure_owner(auth, project)
 
     if project.owner is not None:
-        await add_share(True, project, project.owner, auth, session)
+        await add_share(True, project, [project.owner], auth, session)
 
     project.owner = user
 
@@ -242,37 +246,39 @@ async def delete(project: ExistingProject, auth: Authenticated, session: DbSessi
 
 @router.post("/{project_id}/share/add",
              summary="Share Project")
-async def add_share(write: bool, project: ExistingProject, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
+async def add_share(write: bool, project: ExistingProject, users: ExistingUsers, auth: Authenticated, session: DbSession) -> None:
     """
-    Gives read/write rights to a user, or changes the user's current rights. Requires write access.
+    Gives read/write rights to some users, or changes the users' current rights. Requires write access.
     """
 
     ensure_write_access(auth, project, session)
 
-    share = get_project_share(user, project, session)
+    for user in users:
+        share = get_project_share(user, project, session)
 
-    if share is None:
-        session.add(ProjectShare(
-            user_id=user.id,
-            project_id=project.id,
-            write=write
-        ))
-    else:
-        share.write = write
+        if share is None:
+            session.add(ProjectShare(
+                user_id=user.id,
+                project_id=project.id,
+                write=write
+            ))
+        else:
+            share.write = write
 
 
 @router.post("/{project_id}/share/remove",
              summary="Un-Share Project")
-async def remove_share(project: ExistingProject, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
+async def remove_share(project: ExistingProject, users: ExistingUsers, auth: Authenticated, session: DbSession) -> None:
     """
-    Revokes the right of a user to read from / write to this project. Requires write access.
+    Revokes the right of selected users to read from / write to this project. Requires write access.
 
     Note that ownership and admin rights override shared rights.
     """
 
     ensure_write_access(auth, project, session)
 
-    share = get_project_share(user, project, session)
+    for user in users:
+        share = get_project_share(user, project, session)
 
-    if share is not None:
-        session.delete(share)
+        if share is not None:
+            session.delete(share)

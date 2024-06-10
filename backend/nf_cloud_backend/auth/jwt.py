@@ -70,7 +70,7 @@ class JWT:
         )
 
     @classmethod
-    def decode_auth_token_to_user(cls, secret_key: str, auth_token: str) -> Tuple[User, bool]:
+    def decode_auth_token_to_user(cls, secret_key: str, auth_token: str, session: Session) -> Tuple[User, bool]:
         """
         Decoded the given JWT token from the given authentication header. 
 
@@ -90,11 +90,13 @@ class JWT:
             secret_key,
             auth_token
         )
-        with Session(engine) as session:
-            user = session.exec(select(User.id == data["user_id"])).one_or_none()
-            if user is None:
-                raise ValueError("User not found")
-            return (
-                user,
-                data["expires_at"] > int(datetime.datetime.utcnow().timestamp())
-            )
+
+        print(session.exec(select(User.id == data["user_id"])))
+
+        user = session.exec(select(User.id == data["user_id"])).one_or_none()
+        if user is None:
+            raise ValueError("User not found")
+        return (
+            user,
+            data["expires_at"] > int(datetime.datetime.utcnow().timestamp())
+        )

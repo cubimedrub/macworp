@@ -3,8 +3,10 @@ This module contains FastAPI dependencies used by multiple controllers.
 """
 
 from typing import Annotated
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 
+from ..auth.jwt import JWT
+from ..configuration import SECRET_KEY
 from ..database import DbSession
 from ..models.project import Project
 from ..models.user import User
@@ -46,9 +48,23 @@ ExistingUser = Annotated[User, Depends(get_user)]
 Retrieves a user via the `user_id` URL parameter. Throws an HTTPException if the user doesn't exist.
 """
 
-async def get_optionally_authenticated_user(session: DbSession) -> User | None:
+
+async def get_optionally_authenticated_user(session: DbSession, x_token: Annotated[str | None, Header()]) -> User | None:
+    if x_token is None:
+        return None
+
     # TODO put actual authentication here
-    return session.get(User, 1)
+    try:
+        user, expired = JWT.decode_auth_token_to_user(SECRET_KEY, x_token, session)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Token invalid")
+    
+    if expired:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Token expired")
+    
+    return user
 
 OptionallyAuthenticated = Annotated[User | None, Depends(get_optionally_authenticated_user)]
 """

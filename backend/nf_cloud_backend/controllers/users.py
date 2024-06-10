@@ -5,6 +5,7 @@ from ..auth.file_based_authorization import FileBasedAuthorization
 from ..auth.jwt import JWT
 from ..auth.provider_type import ProviderType
 from ..configuration import SECRET_KEY
+from ..controllers.depends import DbSession
 
 from fastapi import HTTPException, status, APIRouter
 
@@ -42,7 +43,7 @@ class LoginResponse(BaseModel):
 #         raise HTTPException(status_code=404, detail="Provider Type not found")
 
 @router.post("/login/{provider_type}/{provider}")
-def login_user(provider_type: str, provider: str, login_request: LoginRequest):
+def login_user(provider_type: str, provider: str, login_request: LoginRequest, session: DbSession):
     try:
         provider_type = ProviderType.from_str(provider_type)
     except ValueError as exc:
@@ -65,7 +66,7 @@ def login_user(provider_type: str, provider: str, login_request: LoginRequest):
         #         headers={"WWW-Authenticate": "Bearer"},
         #     )
         case ProviderType.FILE:
-            user = FileBasedAuthorization.login(provider, login_request)
+            user = FileBasedAuthorization.login(provider, login_request, session)
 
     if user is None:
         raise HTTPException(

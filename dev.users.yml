@@ -1,0 +1,10 @@
+provider: dev
+users:
+  devadmin:
+    password: developer
+    role: admin
+    email: devadmin@example.com
+  devuser:
+    password: developer
+    role: default
+    email: devuser@example.com

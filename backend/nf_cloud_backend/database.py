@@ -1,14 +1,11 @@
 from pathlib import Path
-from typing import Annotated, Any, Dict, Set, cast
+from typing import Annotated, Any, Set
 from typing_extensions import Annotated
 
 
 from fastapi import Depends
-from sqlalchemy import create_engine, delete
-from sqlalchemy.sql import text
-from sqlmodel import Field, SQLModel, Session, create_engine
-from sqlmodel import SQLModel, Session, select
-import yaml
+from sqlmodel import SQLModel, Session, create_engine, delete
+import yaml 
 
 from .models.project import Project
 from .models.project_share import ProjectShare
@@ -17,8 +14,6 @@ from .models.workflow import Workflow
 from .models.workflow_share import WorkflowShare
 
 engine = create_engine("postgresql+psycopg://postgres:developer@127.0.0.1:5434/nf_cloud", echo=True)
-
-SQLModel.metadata.create_all(engine)
 
 def get_session():
     with Session(engine) as session:

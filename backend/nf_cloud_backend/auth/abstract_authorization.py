@@ -1,11 +1,7 @@
-from sqlalchemy.orm import Session
-from fastapi import HTTPException
-from sqlalchemy import or_, and_
-
+from .login_request import LoginRequest
 from ..models.user import User
-from ..utils import create_timestamp
-from ..models.schemas import UserRegisterSchema
-from ..auth.password_handler import verify_password, get_password_hash
 
 class AbstractAuthorization:
-    pass
+    @classmethod
+    def login(cls, provider_name: str, login_request: LoginRequest) -> User:
+        raise NotImplementedError("method should be implemented in subclass")

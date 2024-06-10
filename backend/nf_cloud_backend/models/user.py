@@ -1,15 +1,6 @@
 import enum
 from typing import TYPE_CHECKING
-
-from datetime import timedelta, datetime
-from jose import JWTError, jwt
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from passlib.context import CryptContext
-from pydantic import BaseModel
-from sqlalchemy import Date, Time, Column, ForeignKey, Integer, String, Enum, Numeric, Boolean
-from sqlalchemy.orm import relationship
-from sqlmodel import Enum, Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from .workflow import Workflow
@@ -22,10 +13,38 @@ class UserRole(str, enum.Enum):
     admin = "admin"
 
 
+    @classmethod
+    def from_str(cls, role: str):
+        """
+        Converts a string to a UserRole enum.
+
+        Parameters
+        ----------
+        role : str
+            The role as a string
+
+        Returns
+        -------
+        UserRole
+
+        Raises
+        ------
+        ValueError
+            If the role is invalid
+        """
+
+        match role:
+            case "default":
+                return cls.default
+            case "admin":
+                return cls.admin
+            case _:
+                raise ValueError(f"Invalid role: {role}")
+
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     login_id: str | None = None
-    role: UserRole = Enum(UserRole)
+    role: UserRole
     provider_type: str
     provider_name: str
     email: str 

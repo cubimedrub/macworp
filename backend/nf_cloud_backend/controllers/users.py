@@ -45,12 +45,12 @@ class LoginResponse(BaseModel):
 @router.post("/login/{provider_type}/{provider}")
 def login_user(provider_type: str, provider: str, login_request: LoginRequest, session: DbSession):
     try:
-        provider_type = ProviderType.from_str(provider_type)
+        type = ProviderType.from_str(provider_type)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Provider Type not found.") from exc
 
     user = None
-    match provider_type:
+    match type:
         # case ProviderType.OPENID_CONNECT:
         #     authenticated = Authorization.authenticate_user(db, form_data.username, form_data.password)
         #     if authenticated:

@@ -23,13 +23,6 @@ def get_session():
 DbSession = Annotated[Session, Depends(get_session)]
 
 
-def session_for(object: SQLModel) -> Session:
-    session = Session.object_session(object)
-    if not isinstance(session, Session):
-        raise RuntimeError("Session.object_session returned unexpected object")
-    return session
-
-
 def seed(session: Session, path: Path, drop_existing_data: bool):
     # Load seed data
     seeds: list[Any] = yaml.load(

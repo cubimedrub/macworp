@@ -4,12 +4,16 @@
     role: "default"
     provider_type: "foo"
     provider_name: "bar"
+    email: "detlef@example.com"
+    hashed_password: "password"
 - model: User
   attributes:
     id: 2
     role: "admin"
     provider_type: "baz"
     provider_name: "quux"
+    email: "adrianne@example.com"
+    hashed_password: "password"
 - model: Workflow
   attributes:
     id: 1

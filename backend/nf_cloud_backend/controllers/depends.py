@@ -73,7 +73,7 @@ Throws an HTTPException if authentication was attempted, but failed.
 """
 
 
-async def get_authenticated_user(session: DbSession, maybe_auth: OptionallyAuthenticated) -> User:
+async def get_authenticated_user(maybe_auth: OptionallyAuthenticated) -> User:
     if maybe_auth is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     return maybe_auth

@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Field, Session, select
 
-from ..database import DbSession, session_for
+from ..database import DbSession
 
 from .depends import Authenticated, ExistingProject, ExistingUser
 
@@ -29,18 +29,18 @@ router = APIRouter(
 )
 
 
-def get_project_share(user: User, project: Project) -> ProjectShare | None:
+def get_project_share(user: User, project: Project, session: Session) -> ProjectShare | None:
     """
     Gets the ProjectShare identified by the provided `user` and `project`,
     or None if this project is not shared with the user.
     """
 
-    return session_for(user).exec(
+    return session.exec(
         select(ProjectShare).where(ProjectShare.user_id == user.id, ProjectShare.project_id == project.id)
     ).one_or_none() # [0]
 
 
-def can_access_project(user: User, project: Project, for_writing: bool) -> bool:
+def can_access_project(user: User, project: Project, for_writing: bool, session: Session) -> bool:
     """
     Helper method for common logic between `ensure_read_access` and `ensure_write_access`.
     """
@@ -51,29 +51,29 @@ def can_access_project(user: User, project: Project, for_writing: bool) -> bool:
         case UserRole.default:
             if project.owner_id == user.id or (not for_writing and project.is_published):
                 return True
-            share = get_project_share(user, project)
+            share = get_project_share(user, project, session)
             return share is not None and (not for_writing or share.write)
     return False
 
 
-def ensure_read_access(user: User, project: Project) -> None:
+def ensure_read_access(user: User, project: Project, session: Session) -> None:
     """
     Throws a `HTTPException` if `user` doesn't have the right to read from `project`.
     """
 
-    if not can_access_project(user, project, for_writing=False):
+    if not can_access_project(user, project, False, session):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User not permitted read access to this project"
         )
 
 
-def ensure_write_access(user: User, project: Project) -> None:
+def ensure_write_access(user: User, project: Project, session: Session) -> None:
     """
     Throws a `HTTPException` if `user` doesn't have the right to write to `project`.
     """
     
-    if not can_access_project(user, project, for_writing=True):
+    if not can_access_project(user, project, True, session):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User not permitted write access to this project"
@@ -107,7 +107,7 @@ async def list(auth: Authenticated, session: DbSession) -> list[int]:
 	return [
         i.id
         for i in session.exec(select(Project)).all()
-        if i.id is not None and can_access_project(auth, i, for_writing=False)
+        if i.id is not None and can_access_project(auth, i, False, session)
     ]
 
 
@@ -120,7 +120,7 @@ class ProjectCreateParams(BaseModel):
 
 @router.post("/new",
              summary="Create Project")
-async def new(params: ProjectCreateParams, auth: Authenticated) -> int:
+async def new(params: ProjectCreateParams, auth: Authenticated, session: DbSession) -> int:
     """
     Creates a new project with the provided parameters. Requires authentication.
     The authenticated user will be made the project's owner.
@@ -134,8 +134,8 @@ async def new(params: ProjectCreateParams, auth: Authenticated) -> int:
         description=params.description,
         is_published=params.is_published
     )
-    session_for(auth).add(project)
-    session_for(auth).commit()
+    session.add(project)
+    session.commit()
     # response.status_code = status.HTTP_201_CREATED
 
     # Can't be None since commit will make the DB assign an ID
@@ -154,12 +154,12 @@ class ProjectShown(BaseModel):
 
 @router.get("/{project_id}",
             summary="Show Single Project")
-async def show(project: ExistingProject, auth: Authenticated) -> ProjectShown:
+async def show(project: ExistingProject, auth: Authenticated, session: DbSession) -> ProjectShown:
     """
     Displays information for a single project. Requires read access.
     """
 
-    ensure_read_access(auth, project)
+    ensure_read_access(auth, project, session)
 
     return ProjectShown(
         name=project.name,
@@ -180,7 +180,7 @@ class ProjectUpdateParams(BaseModel):
 
 @router.post("/{project_id}/edit",
              summary="Edit Project")
-async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Authenticated) -> None:
+async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Authenticated, session: DbSession) -> None:
     """
     Edits the attributes of a project. Requires write access.
 
@@ -188,7 +188,7 @@ async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Auth
     Unset the workflow by passing the literal string "unset" instead of an ID.
     """
 
-    ensure_write_access(auth, project)
+    ensure_write_access(auth, project, session)
 
     if params.name is not None:
         project.name = params.name
@@ -196,13 +196,13 @@ async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Auth
         if params.workflow_id == "unset":
             project.workflow_id = None
         else:
-            workflow = session_for(auth).get(Workflow, params.workflow_id)
+            workflow = session.get(Workflow, params.workflow_id)
             if workflow is None:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail="Trying to link workflow that doesn't exist"
                 )
-            ensure_workflow_read_access(auth, workflow)
+            ensure_workflow_read_access(auth, workflow, session)
             project.workflow_id = params.workflow_id
     if params.workflow_arguments is not None:
         project.workflow_arguments = params.workflow_arguments
@@ -214,7 +214,7 @@ async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Auth
 
 @router.post("/{project_id}/transfer_ownership",
              summary="Transfer Ownership")
-async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth: Authenticated) -> None:
+async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
     """
     Makes another user the project owner. Requires ownership or admin rights.
     The former owner will be given write access.
@@ -223,36 +223,36 @@ async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth:
     ensure_owner(auth, project)
 
     if project.owner is not None:
-        await add_share(True, project, project.owner, auth)
+        await add_share(True, project, project.owner, auth, session)
 
     project.owner = user
 
 
 @router.post("/{project_id}/delete",
              summary="Delete Project")
-async def delete(project: ExistingProject, auth: Authenticated) -> None:
+async def delete(project: ExistingProject, auth: Authenticated, session: DbSession) -> None:
     """
     Deletes a project. Requires ownership or admin rights.
     """
 
     ensure_owner(auth, project)
 
-    session_for(project).delete(project)
+    session.delete(project)
 
 
 @router.post("/{project_id}/share/add",
              summary="Share Project")
-async def add_share(write: bool, project: ExistingProject, user: ExistingUser, auth: Authenticated) -> None:
+async def add_share(write: bool, project: ExistingProject, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
     """
     Gives read/write rights to a user, or changes the user's current rights. Requires write access.
     """
 
-    ensure_write_access(auth, project)
+    ensure_write_access(auth, project, session)
 
-    share = get_project_share(user, project)
+    share = get_project_share(user, project, session)
 
     if share is None:
-        session_for(auth).add(ProjectShare(
+        session.add(ProjectShare(
             user_id=user.id,
             project_id=project.id,
             write=write
@@ -263,16 +263,16 @@ async def add_share(write: bool, project: ExistingProject, user: ExistingUser, a
 
 @router.post("/{project_id}/share/remove",
              summary="Un-Share Project")
-async def remove_share(project: ExistingProject, user: ExistingUser, auth: Authenticated) -> None:
+async def remove_share(project: ExistingProject, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
     """
     Revokes the right of a user to read from / write to this project. Requires write access.
 
     Note that ownership and admin rights override shared rights.
     """
 
-    ensure_write_access(auth, project)
+    ensure_write_access(auth, project, session)
 
-    share = get_project_share(user, project)
+    share = get_project_share(user, project, session)
 
     if share is not None:
-        session_for(share).delete(share)
+        session.delete(share)

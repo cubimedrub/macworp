@@ -49,6 +49,17 @@ Retrieves a user via the `user_id` URL parameter. Throws an HTTPException if the
 """
 
 
+async def get_users(user_ids: list[int], session: DbSession) -> list[User]:
+    result = []
+    for user_id in user_ids:
+        result.append(await get_user(user_id, session))
+    return result
+
+ExistingUsers = Annotated[list[User], Depends(get_users)]
+"""
+Retrieves multiple users via the `user_ids` URL parameter. Throws an HTTPException if any of those users doesn't exist.
+"""
+
 async def get_optionally_authenticated_user(session: DbSession, x_token: Annotated[str | None, Header()]) -> User | None:
     if x_token is None:
         return None

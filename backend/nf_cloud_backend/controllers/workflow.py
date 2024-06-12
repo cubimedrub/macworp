@@ -2,12 +2,12 @@
 API Endpoints with the prefix `/workflow`.
 """
 
-from typing import Annotated
+from typing import Annotated, List
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Response, status
 from pydantic import BaseModel, Field
 from sqlmodel import SQLModel, Session, select
 
-from .depends import Authenticated, ExistingUser, ExistingWorkflow
+from .depends import Authenticated, ExistingUser, ExistingUsers, ExistingWorkflow
 
 from ..models.user import User, UserRole
 from ..models.workflow import Workflow
@@ -140,6 +140,8 @@ class WorkflowShown(BaseModel):
     description: str
     definition: dict
     is_published: bool
+    read_shared: List[int]
+    write_shared: List[int]
 
 @router.get("/{workflow_id}",
             summary="Show Single Workflow")
@@ -155,7 +157,9 @@ async def show(workflow: ExistingWorkflow, auth: Authenticated, session: DbSessi
         owner_id=workflow.owner_id,
         description=workflow.description,
         definition=workflow.definition,
-        is_published=workflow.is_published
+        is_published=workflow.is_published,
+        read_shared=[share.user_id for share in workflow.shares if share.user_id is not None and not share.write],
+        write_shared=[share.user_id for share in workflow.shares if share.user_id is not None and share.write]
     )
 
 
@@ -195,7 +199,7 @@ async def transfer_ownership(workflow: ExistingWorkflow, user: ExistingUser, aut
     ensure_owner(auth, workflow)
 
     if workflow.owner is not None:
-        await add_share(True, workflow, workflow.owner, auth, session)
+        await add_share(True, workflow, [workflow.owner], auth, session)
 
     workflow.owner = user
 
@@ -214,28 +218,29 @@ async def delete(workflow: ExistingWorkflow, auth: Authenticated, session: DbSes
 
 @router.post("/{workflow_id}/share/add",
              summary="Share Workflow")
-async def add_share(write: bool, workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
+async def add_share(write: bool, workflow: ExistingWorkflow, users: ExistingUsers, auth: Authenticated, session: DbSession) -> None:
     """
     Gives read/write rights to a user, or changes the user's current rights. Requires write access.
     """
 
     ensure_write_access(auth, workflow, session)
 
-    share = get_workflow_share(user, workflow, session)
+    for user in users:
+        share = get_workflow_share(user, workflow, session)
 
-    if share is None:
-        session.add(WorkflowShare(
-            user_id=user.id,
-            workflow_id=workflow.id,
-            write=write
-        ))
-    else:
-        share.write = write
+        if share is None:
+            session.add(WorkflowShare(
+                user_id=user.id,
+                workflow_id=workflow.id,
+                write=write
+            ))
+        else:
+            share.write = write
 
 
 @router.post("/{workflow_id}/share/remove",
              summary="Un-Share Workflow")
-async def remove_share(workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
+async def remove_share(workflow: ExistingWorkflow, users: ExistingUsers, auth: Authenticated, session: DbSession) -> None:
     """
     Revokes the right of a user to read from / write to this workflow. Requires write access.
 
@@ -244,7 +249,8 @@ async def remove_share(workflow: ExistingWorkflow, user: ExistingUser, auth: Aut
 
     ensure_write_access(auth, workflow, session)
 
-    share = get_workflow_share(user, workflow, session)
+    for user in users:
+        share = get_workflow_share(user, workflow, session)
 
-    if share is not None:
-        session.delete(share)
+        if share is not None:
+            session.delete(share)

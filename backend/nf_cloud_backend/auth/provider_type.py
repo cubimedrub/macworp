@@ -33,6 +33,8 @@ class ProviderType(Enum):
         match provider_type:
             case cls.FILE.value:
                 return cls.FILE
+            case cls.DATABASE.value:
+                return cls.DATABASE
             case cls.OPENID_CONNECT.value:
                 return cls.OPENID_CONNECT
             case _:

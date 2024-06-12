@@ -23,6 +23,6 @@ def read_root():
     return {"Hello": "World"}
 
 
-DbSession.add(User(id=1, login_id="testperson", role=UserRole.admin, provider_type="database", provider_name="dev", email="testperson@gmail.com", 
-                   hashed_password=get_password_hash("testperson", )))
-DbSession.commit()
+#DbSession.add(User(id=1, login_id="testperson", role=UserRole.admin, provider_type="database", provider_name="dev", email="testperson@gmail.com", 
+#                   hashed_password=get_password_hash("testperson", )))
+#DbSession.commit()

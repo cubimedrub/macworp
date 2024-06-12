@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from ..auth.login_request import LoginRequest
 
 from ..auth.file_based_authorization import FileBasedAuthorization
+from ..auth.database_authorization import DatabaseAuthorization
 from ..auth.jwt import JWT
 from ..auth.provider_type import ProviderType
 from ..configuration import SECRET_KEY
@@ -67,6 +68,9 @@ def login_user(provider_type: str, provider: str, login_request: LoginRequest, s
         #     )
         case ProviderType.FILE:
             user = FileBasedAuthorization.login(provider, login_request, session)
+
+        case ProviderType.DATABASE:
+            user = DatabaseAuthorization.login(provider, login_request, session)
 
     if user is None:
         raise HTTPException(

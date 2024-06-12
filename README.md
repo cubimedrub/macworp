@@ -45,3 +45,9 @@ docker rm $(docker ps -f "name=nf-cloud" -qa)
 ```sh
 uvicorn nf_cloud_backend.main:app --app-dir backend --reload
 ```
+
+
+### Seed DB
+```
+python -m nf_cloud_backend seed ./backend/db_seed.yaml
+```

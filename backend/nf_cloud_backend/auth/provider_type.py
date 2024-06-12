@@ -8,6 +8,7 @@ class ProviderType(Enum):
     """
     FILE = "file"
     OPENID_CONNECT = "openid"
+    DATABASE = "database";
 
     @classmethod
     def from_str(cls, provider_type: str):

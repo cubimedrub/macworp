@@ -4,7 +4,7 @@
     login_id: "testperson"
     role: "default"
     provider_type: "database"
-    provider_name: "bar"
+    provider_name: "local"
     email: "detlef@example.com"
     hashed_password: "$2b$12$LcH4o3cwqH5XoVOqhnyneOMq.9PBCYlii8HynJ3/P1.bOVrq5mXLC"
     #Hash of "password"

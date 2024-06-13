@@ -19,6 +19,9 @@ class DatabaseAuthorization(AbstractAuthorization):
         if db_user.provider_type != ProviderType.DATABASE.value:
             raise ValueError(f"Provider Type not Database")
         
+        if provider_name != "local" or db_user.provider_name != "local":
+            raise ValueError(f"Not local")
+        
         if not Hasher.verify_password(login_request.password, db_user.hashed_password):
             raise ValueError("Invalid password")
         

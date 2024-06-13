@@ -7,11 +7,7 @@ from fastapi import Depends
 from sqlmodel import SQLModel, Session, create_engine, delete
 import yaml 
 
-from .models.project import Project
-from .models.project_share import ProjectShare
-from .models.user import User
-from .models.workflow import Workflow
-from .models.workflow_share import WorkflowShare
+from .models.prelude import *
 
 engine = create_engine("postgresql+psycopg://postgres:developer@127.0.0.1:5434/nf_cloud", echo=True)
 

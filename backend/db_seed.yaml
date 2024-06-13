@@ -1,26 +1,36 @@
 - model: User
   attributes:
     id: 1
-    login_id: "testperson"
-    role: "default"
-    provider_type: "database"
-    provider_name: "bar"
-    email: "detlef@example.com"
-    hashed_password: "$2b$12$LcH4o3cwqH5XoVOqhnyneOMq.9PBCYlii8HynJ3/P1.bOVrq5mXLC"
+    login_id: testperson
+    role: default
+    provider_type: database
+    provider_name: bar
+    email: testperson@example.com
+    hashed_password: $2b$12$LcH4o3cwqH5XoVOqhnyneOMq.9PBCYlii8HynJ3/P1.bOVrq5mXLC
     #Hash of "password"
 - model: User
   attributes:
     id: 2
-    role: "admin"
-    provider_type: "baz"
-    provider_name: "quux"
-    email: "adrianne@example.com"
-    hashed_password: "password"
+    login_id: devadmin
+    role: admin
+    provider_type: file
+    provider_name: dev
+    email: devadmin@example.com
+    hashed_password: ""
+- model: User
+  attributes:
+    id: 3
+    login_id: devuser
+    role: default
+    provider_type: file
+    provider_name: dev
+    email: devuser@example.com
+    hashed_password: ""
 - model: Workflow
   attributes:
     id: 1
     name: "Detlef's Workflow"
-    owner_id: 1
+    owner_id: 3
     is_published: false
 - model: Workflow
   attributes:
@@ -48,11 +58,11 @@
     is_published: true
 - model: WorkflowShare
   attributes:
-    user_id: 1
+    user_id: 3
     workflow_id: 3
     write: false
 - model: WorkflowShare
   attributes:
-    user_id: 1
+    user_id: 3
     workflow_id: 4
     write: true

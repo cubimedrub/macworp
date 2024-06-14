@@ -1,0 +1,6 @@
+Name,Description,Test Status,Call Number,Method,URL,Body,Headers,Response JSON,Response Status
+Create workflow,Create workflow,FAILED,,,,,,,
+,,,1,POST,https://localhost:8000/users/login/file/dev,"{""login_id"": ""devuser"", ""password"": ""developer""}","Headers({'host': 'localhost:8000', 'content-length': '48', 'content-type': 'application/json'})",{'jwt': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjozLCJleHBpcmVzX2F0IjozNjAwfQ.WZnufNLQ5AaaThG1ZSkTiSfv0pMKa9xTPRrDpAvaNG0'},200
+Database authentication,Tries logging in using database authentication.,FAILED,,,,,,,
+File-based authentication,Tries logging in using file-based authentication.,SUCCEEDED,,,,,,,
+,,,1,POST,https://localhost:8000/users/login/file/dev,"{""login_id"": ""devadmin"", ""password"": ""developer""}","Headers({'host': 'localhost:8000', 'content-length': '49', 'content-type': 'application/json'})",{'jwt': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJleHBpcmVzX2F0IjozNjAwfQ.XmGl6UxrVVq9MJ2B2sbQJ8bn_v5OgD_BYUpd7HGRYTQ'},200

@@ -31,6 +31,9 @@ honcho -e dev.env start
 
 ```sh
 psql postgresql://postgres:developer@127.0.0.1:5434/nf_cloud
+
+# ...or the test database
+psql postgresql://postgres:developer@127.0.0.1:5434/nf_cloud_test
 ```
 
 We haven't set up a migration system yet, but I think until we have an actual prototype going that's just gonna be a waste of time.
@@ -55,3 +58,10 @@ python -m nf_cloud_backend seed ./backend/db_seed.yaml
 
 ### Test Backend
 
+```sh
+# Just run the tests 
+source test.env && python -m nf_cloud_backend test
+
+# Also save test logs to CSV
+source test.env && python -m nf_cloud_backend test ./out.csv
+```

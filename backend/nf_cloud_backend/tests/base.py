@@ -69,8 +69,8 @@ class Client:
         actual_json = response.json()
         print("Got response:", actual_status, actual_json)
         
-        self.test_case.assertEqual(actual_status, status)
-        self.test_case.assert_(match_partial_json(actual_json, json)) 
+        self.test_case.assert_(match_partial_json(actual_json, json), f"JSON doesn't match: Expected {json}, got {actual_json}") 
+        self.test_case.assertEqual(actual_status, status, f"Status doesn't match: Expected {status}, got {actual_status}")
         self.logs.append(LogEntry(request, actual_status, actual_json))
         return response
     

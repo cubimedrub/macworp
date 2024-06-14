@@ -13,7 +13,7 @@ def main():
         case "seed":
             cli_seed(Path(sys.argv[2]))
         case "test":
-            cli_test(Path(sys.argv[2]) if len(sys.argv) >= 2 else None)
+            cli_test(Path(sys.argv[2]) if len(sys.argv) > 2 else None)
 
 def cli_seed(path: Path):
     with Session(engine) as session:

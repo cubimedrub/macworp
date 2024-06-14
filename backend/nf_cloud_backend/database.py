@@ -4,12 +4,17 @@ from typing_extensions import Annotated
 
 
 from fastapi import Depends
+import os
 from sqlmodel import SQLModel, Session, create_engine, delete
 import yaml 
 
 from .models.prelude import *
 
-engine = create_engine("postgresql+psycopg://postgres:developer@127.0.0.1:5434/nf_cloud", echo=True)
+MACWORP_DB_URL = os.getenv("MACWORP_DB_URL")
+if MACWORP_DB_URL is None:
+    raise RuntimeError("MACWORP_DB_URL not set")
+
+engine = create_engine(MACWORP_DB_URL, echo=True)
 
 def get_session():
     with Session(engine) as session:

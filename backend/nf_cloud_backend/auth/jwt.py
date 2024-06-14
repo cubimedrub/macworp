@@ -91,7 +91,7 @@ class JWT:
             auth_token
         )
 
-        user = session.exec(select(User).where(id == data["user_id"])).one_or_none()
+        user = session.get(User, data["user_id"])
         if user is None:
             raise ValueError("User not found")
         return (

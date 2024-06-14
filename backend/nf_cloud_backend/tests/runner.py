@@ -9,7 +9,7 @@ from unittest import TestCase, TestLoader, TextTestRunner
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, create_engine
 
-from ..main import app
+from ..main import app, engine
 from .. import database
 from .base import Client, LogEntry, Test
 from . import cases
@@ -18,16 +18,13 @@ from ..models.prelude import *
 
 def create_test_function(test: type[Test], log_requests: Path | None):
     def run_test(self: TestCase):
-        url = os.getenv("MACWORP_TEST_DB_URL")
-        if (url is None):
-            raise RuntimeError("MACWORP_TEST_DB_URL environment variable not set")
         seed_data_path = os.getenv("MACWORP_TEST_SEED_DATA")
         if (seed_data_path is None):
             raise RuntimeError("MACWORP_TEST_SEED_DATA environment variable not set")
         
-        engine = create_engine(url)
+        SQLModel.metadata.drop_all(engine)
         SQLModel.metadata.create_all(engine)
-        
+
         with Session(engine) as session:
             database.seed(session, Path(seed_data_path), True)
             session.commit()
@@ -46,7 +43,6 @@ def create_test_function(test: type[Test], log_requests: Path | None):
                 update_logs(test, client.logs, log_requests, "SUCCEEDED" if exception is None else "FAILED")
             test_client.close()
             SQLModel.metadata.drop_all(engine)
-            engine.dispose()
     return run_test
 
 

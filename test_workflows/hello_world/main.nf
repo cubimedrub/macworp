@@ -143,7 +143,7 @@ process downloadTestPDF {
  */
 process createMarkdownFile {
 
-    publishDir "${params.outDir}", mode: "move"
+    publishDir "${params.outDir}", mode:"copy"
 
     input:
     path in_file_content

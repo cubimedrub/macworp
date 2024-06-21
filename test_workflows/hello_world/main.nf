@@ -34,7 +34,7 @@ process readInFileAndConvertToUpperCase {
  */
 process listInFolderContent {
     input:
-    path in_folder // from params.inFolder
+    path in_folder
 
     output:
     path in_folder_content
@@ -51,7 +51,7 @@ process listInFolderContent {
  */
 process selectedFilesToMarkdownList {
     input:
-    val in_files // from params.inFiles
+    val in_files
 
     output:
     path selected_files_list
@@ -71,7 +71,7 @@ process selectedFilesToMarkdownList {
  */
 process selectedFoldersToMarkdownList {
     input:
-    val in_files // from params.inFiles
+    val in_files
 
     output:
     path selected_folder_list
@@ -91,7 +91,7 @@ process selectedFoldersToMarkdownList {
  */
 process txtFilesToMarkdownCodeBlocks {
     input:
-    path txt_file // from text_files
+    path txt_file
 
     output:
     path "codeblock_${txt_file.baseName}"

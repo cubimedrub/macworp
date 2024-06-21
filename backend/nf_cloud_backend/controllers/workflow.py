@@ -95,7 +95,7 @@ async def list(auth: Authenticated, session: DbSession) -> list[int]:
     """
     Lists the IDs of all workflows visible to this user. Requires authentication.
     """
-    
+
     return [
         i.id
         for i in session.exec(select(Workflow)).all()
@@ -125,6 +125,7 @@ async def new(params: WorkflowCreateParams, auth: Authenticated, session: DbSess
         is_published=params.is_published
     )
     session.add(workflow)
+
     session.commit()
     # response.status_code = status.HTTP_201_CREATED
     

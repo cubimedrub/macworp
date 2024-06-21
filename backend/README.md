@@ -22,4 +22,5 @@ For both projects and workflows, permissions act in similar ways. For brevity, "
 * 201 Created - success on creation
 * 401 Unauthorized - user not authenticated
 * 403 Forbidden - user authenticated but not permitted to perform operation
+* 404 Not Found - route doesn't exist -- NOT when a requested resource doesn't exist
 * 422 Unprocessable Content - general error

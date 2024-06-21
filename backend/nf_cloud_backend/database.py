@@ -24,20 +24,18 @@ def get_session():
 DbSession = Annotated[Session, Depends(get_session)]
 
 
-def seed(session: Session, path: Path, drop_existing_data: bool):
+def seed(path: Path):
     # Load seed data
     seeds: list[Any] = yaml.load(
         path.read_text(encoding="utf-8"), Loader=yaml.Loader
     )
-    dropped_models: Set[type[SQLModel]] = set()
     for seed in seeds:
         model = model_from_string(seed["model"])
-        # Check if records should be dropped
-        if drop_existing_data and model not in dropped_models:
-            dropped_models.add(model)
-            session.exec(delete(model)) # type:ignore[call-overload]
-        # Create record
-        session.add(model(**seed["attributes"]))
+        print("seeding ", seed)
+        
+        with Session(engine) as session:
+            session.add(model(**seed["attributes"]))
+            session.commit()
 
     
 def model_from_string(string: str) -> type[SQLModel]:

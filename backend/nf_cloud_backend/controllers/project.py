@@ -100,11 +100,11 @@ def ensure_owner(user: User, project: Project) -> None:
 @router.get("/",
             summary="List Projects")
 async def list(auth: Authenticated, session: DbSession) -> list[int]:
-	"""
+    """
     Lists the IDs of all projects visible to this user. Requires authentication.
     """
 
-	return [
+    return [
         i.id
         for i in session.exec(select(Project)).all()
         if i.id is not None and can_access_project(auth, i, False, session)
@@ -166,10 +166,10 @@ async def show(project: ExistingProject, auth: Authenticated, session: DbSession
     return ProjectShown(
         name=project.name,
         owner_id=project.owner_id,
-		workflow_id=project.workflow_id,
-		workflow_arguments=project.workflow_arguments,
-		description=project.description,
-		is_published=project.is_published,
+        workflow_id=project.workflow_id,
+        workflow_arguments=project.workflow_arguments,
+        description=project.description,
+        is_published=project.is_published,
         read_shared=[share.user_id for share in project.shares if share.user_id is not None and not share.write],
         write_shared=[share.user_id for share in project.shares if share.user_id is not None and share.write]
     )

@@ -12,7 +12,9 @@ class DatabaseAuthorization(AbstractAuthorization):
     @classmethod
     def login(cls, provider_name: str, login_request: LoginRequest, session: Session) -> User:
         
-        db_user = session.query(User).filter_by(login_id=login_request.login_id).first()
+        statement = select(User).where(User.login_id==login_request.login_id)
+        db_user = session.exec(statement).first()
+        
         if db_user is None:
             raise ValueError(f"User {login_request.login_id} not found")
         

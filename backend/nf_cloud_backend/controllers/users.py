@@ -3,6 +3,7 @@ from ..auth.login_request import LoginRequest
 
 from ..auth.file_based_authorization import FileBasedAuthorization
 from ..auth.database_authorization import DatabaseAuthorization
+from ..auth.openid_authorization import OpenIDAuthorization
 from ..auth.jwt import JWT
 from ..auth.provider_type import ProviderType
 from ..configuration import SECRET_KEY
@@ -52,7 +53,6 @@ def login_user(provider_type: str, provider: str, login_request: LoginRequest, s
 
     user = None
     match type:
-        # case ProviderType.OPENID_CONNECT:
         #     authenticated = Authorization.authenticate_user(db, form_data.username, form_data.password)
         #     if authenticated:
         #         db_user = Authorization.get_user_by_login_id(db, form_data.username)
@@ -66,6 +66,9 @@ def login_user(provider_type: str, provider: str, login_request: LoginRequest, s
         #         detail="Could not validate credentials",
         #         headers={"WWW-Authenticate": "Bearer"},
         #     )
+        case ProviderType.OPENID_CONNECT:
+            user = OpenIDAuthorization.login(provider, login_request, session)
+            
         case ProviderType.FILE:
             user = FileBasedAuthorization.login(provider, login_request, session)
 

@@ -14,3 +14,39 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  fusionauth:
+    image: fusionauth/fusionauth-app:latest
+    ports:
+      - 127.0.0.1:9011:9011
+    depends_on:
+      psql:
+        condition: service_healthy
+    links:
+      - psql
+    environment:
+      DATABASE_URL: jdbc:postgresql://psql:5432/fusionauth
+      # Prior to version 1.19.0, use this deprecated name
+      # DATABASE_ROOT_USER: ${POSTGRES_USER}
+      DATABASE_ROOT_USERNAME: postgres
+      DATABASE_ROOT_PASSWORD: developer
+      # Prior to version 1.19.0, use this deprecated name
+      # DATABASE_USER: ${DATABASE_USER}
+      DATABASE_USERNAME: fusionauth
+      DATABASE_PASSWORD: developer
+      # Prior to version 1.19.0, use this deprecated names
+      # FUSIONAUTH_MEMORY: ${FUSIONAUTH_MEMORY}
+      # FUSIONAUTH_SEARCH_ENGINE_TYPE: database
+      # FUSIONAUTH_URL: http://fusionauth:9011
+      # FUSIONAUTH_RUNTIME_MODE: development
+      FUSIONAUTH_APP_MEMORY: 512M
+      FUSIONAUTH_APP_RUNTIME_MODE: development
+      FUSIONAUTH_APP_URL: ${NF_FUSIONAUTH_PROTOCOL:-http}://${NF_HOSTNAME:-localhost}:${NF_FUSIONAUTH_PORT:-9011}
+      SEARCH_TYPE: database
+      FUSIONAUTH_APP_KICKSTART_FILE: /kickstart.json
+      FUSIONAUTH_API_KEY: OXp1Y8xCyVRIHqbXO18wdhL1TQujBCm6Mkgwbg
+      FUSIONAUTH_ADMIN_PASSWORD: developer
+      FUSIONAUTH_APPLICATION_ID: nf_cloud
+      DEVELOPER_FUSIONAUTH_API_KEY: OXp1Y8xCyVRIHqbXO18wdhL1TQujBCm6Mkgwbg
+      NF_HOSTNAME: ${NF_HOSTNAME:-localhost}
+    volumes:
+      - ./docker/fusionauth/kickstart.dev.json:/kickstart.json

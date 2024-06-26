@@ -57,7 +57,7 @@ class ProjectsController:
         -------
         Response
         """
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project:
             return jsonify({
                 "project": project.to_dict()
@@ -140,7 +140,7 @@ class ProjectsController:
             jsonify({
                 "errors": errors
             })
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project:
             project.workflow_arguments = data["workflow_arguments"]
             project.workflow_id = data["workflow_id"]     # TODO save id
@@ -153,7 +153,7 @@ class ProjectsController:
     @app.route("/api/projects/<int:id>/delete", methods=["POST"])
     @login_required
     def delete(id: int):
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project:
             project.delete_instance()
             return jsonify({})
@@ -194,7 +194,7 @@ class ProjectsController:
             200 - on success
             404 - when project was not found
         """
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return jsonify({
                 "errors": {
@@ -301,7 +301,7 @@ class ProjectsController:
                 "errors": errors
             }), 422
         
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
         project.remove_path(path)
@@ -346,7 +346,7 @@ class ProjectsController:
                 "errors": errors
             }), 422
 
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
         project.create_folder(target_path, new_path)
@@ -371,7 +371,7 @@ class ProjectsController:
             422 - errors
         """
         errors = defaultdict(list)
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
         if project and not project.is_scheduled:
@@ -420,7 +420,7 @@ class ProjectsController:
         Response
             200 - Empty response
         """
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
         project.is_scheduled = False
@@ -461,7 +461,7 @@ class ProjectsController:
             return jsonify({
                 "errors": errors
             }), 422
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return jsonify({
                 "errors": {
@@ -513,7 +513,7 @@ class ProjectsController:
         path : strs
             Path to folder or file.
         """
-        project = Project.get(Project.id == w_id)
+        project = Project.get_or_none(Project.id == w_id)
         if project is None:
             return "", 404
         path = unquote(request.args.get('path', "", type=str))
@@ -559,7 +559,7 @@ class ProjectsController:
         path : str
             Path to folder or file.
         """
-        project = Project.get(Project.id == w_id)
+        project = Project.get_or_none(Project.id == w_id)
         if project is None:
             return "", 404
         path = unquote(request.args.get('path', "", type=str))

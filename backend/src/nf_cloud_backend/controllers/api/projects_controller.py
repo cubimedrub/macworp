@@ -205,7 +205,7 @@ class ProjectsController:
         directory = project.get_path(
             Path(unquote(request.args.get('dir', "/", type=str)))
         )
-        if directory.is_dir() and project.in_file_director:
+        if directory.is_dir() and project.in_file_director(directory):
             files = []
             folders = []
             for entry in directory.iterdir():

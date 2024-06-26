@@ -41,19 +41,14 @@
                 </div>
             </li>
         </ul>
-        <div @click="passClickToFileInput" @drop.prevent="addDroppedFiles" @dragover.prevent class="filedrop-area d-flex justify-content-center align-items-center mb-3">
-            <span class="unselectable">
-                Drag new files here or click here
-                <input @change="addSelectedFiles" ref="file-input" multiple type="file" class="hidden-file-input" />
-            </span>
-        </div>
+        <div ref="dropzone" class="dropzone mb-3"></div>
         <div v-if="upload_queue.length">
             <h3>Upload queue</h3>
             <ul class="list-group">
-                <li v-for="upload_item in upload_queue" :key="upload_item.file.name" class="list-group-item d-flex justify-content-between">
-                    <span>{{ upload_item.directory }}/{{ upload_item.file.name }}</span>
+                <li v-for="upload_item in upload_queue" :key="upload_item" class="list-group-item d-flex justify-content-between">
+                    <span>{{ upload_item }}</span>
                     <div class="w-25 d-flex justify-content-end align-items-center">
-                        <Spinner v-if="upload_item.is_uploading"></Spinner>
+                        <Spinner v-if="upload_status[upload_item]"></Spinner>
                         <span v-else>wait for upload...</span>
                     </div>
                 </li>
@@ -63,7 +58,10 @@
 </template>
 
 <script>
+import Dropzone from "dropzone";
 import ProjectFileBrowser from '../mixins/project_file_browser'
+
+const DIRECTORY_REFRESH_DELAY_MS = 200
 
 export default {
     /**
@@ -75,71 +73,69 @@ export default {
     ],
     data(){
         return {
-            // uploads
-            is_uploading: false,
-            upload_queue: [],
             // logic
-            new_folder_path: null,
+            new_folder_name: null,
+            // Queue & order of uploads
+            upload_queue: [],
+            // Upload status
+            upload_status: {},
+            /**
+             * Directory refresh timeout after upload to prevent overwhelming the server with requests
+             * when uploading many small files where each upload only need sa few milliseconds.
+             */ 
+            directory_refresh_timeout: null,
+            // elements
+            dropzone: null
         }
     },
+    mounted(){
+        this.initDropzone()
+    },
     methods: {
-        passClickToFileInput(){
-            this.$refs["file-input"].click()
-        },
-        addSelectedFiles(event) {
-            var selected_files = event.target.files
-            if(!selected_files) return
-            this.addFiles([...selected_files])
-            event.target.value = event.target.defaultValue
-        },
-        addDroppedFiles(event) {
-            var dopped_files = event.dataTransfer.files
-            if(!dopped_files) return
-            this.addFiles([...dopped_files])
-        },
-        addFiles(new_files){
-            new_files.forEach(new_file => {
-                this.upload_queue.push({
-                    is_uploading: false,
-                    file: new_file,
-                    directory: `${this.current_directory}` // force copying current directory by using a template string
-                })
-            });
-            this.uploadNewFiles()
-        },
-        async uploadNewFiles(){
-            if(!this.is_uploading){
-                this.is_uploading = true;
-                while(this.upload_queue.length > 0){
-                    var form_data = new FormData();
-                    form_data.append("file", this.upload_queue[0].file);
-                    form_data.append("directory", this.upload_queue[0].directory);
-                    this.upload_queue[0].is_uploading = true;
-                    await fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/upload-file`, {
-                        method:'POST',
-                        headers: {
-                            "x-access-token": this.$store.state.login.jwt
-                        },
-                        body: form_data
-                    }).then(response => {
-                        if(response.ok) {
-                            return response.json().then(response_data => {
-                                if(response_data.directory == this.current_directory && !this.current_directory_files.includes(response_data.file)){
-                                    this.current_directory_files.push(response_data.file)
-                                    this.current_directory_files.sort()
-                                }
-                                return Promise.resolve()
-                            })
-                        } else {
-                            this.handleUnknownResponse(response)
-                        }
-                    }).finally(() => {
-                        this.upload_queue.shift()
-                        return Promise.resolve()
-                    })
+        /**
+         * Initializes the dropzone for file uploads.
+         */
+        initDropzone() {
+            this.dropzone = new Dropzone(
+                this.$refs.dropzone, 
+                { 
+                    url: `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/upload-file`,
+                    headers: {
+                        "x-access-token": this.$store.state.login.jwt
+                    },
+                    clickable: false,
+                    disablePreviews: true,
+                    parallelUploads: 1,
+                    maxFilesize: this.$config.nf_cloud_upload_max_file_size
                 }
-                this.is_uploading = false
-            }
+            );
+            this.dropzone.on("addedfile", file => {
+                var original_path = file.fullPath == null ? file.name : file.fullPath
+                file.nf_cloud__file_path = `${this.current_directory}${original_path}`
+                this.upload_queue.push(file.nf_cloud__file_path)
+                this.upload_status[file.nf_cloud__file_path] = false
+            }),
+            this.dropzone.on("sending", (file, xhr, formData) => {
+                var file_path_blob = new Blob([file.nf_cloud__file_path], { type: "text/plain"})
+                formData.append("file_path", file_path_blob)
+                this.upload_status[file.nf_cloud__file_path] = true
+            });
+            this.dropzone.on("success", file => {
+                this.upload_queue = this.upload_queue.filter(path => path != file.nf_cloud__file_path)
+                delete this.upload_status[file.nf_cloud__file_path]
+
+                // set timeout for refreshing the directory content
+                if(this.directory_refresh_timeout == null) {
+                    this.directory_refresh_timeout = setTimeout( 
+                        () => {
+                            this.getFolderContent()
+                            this.directory_refresh_timeout = null
+                        },
+                        DIRECTORY_REFRESH_DELAY_MS
+                    )
+                }
+                
+            });
         },
         /**
          * Deletes a path. If path ending with slash it is a directory.
@@ -160,7 +156,7 @@ export default {
                 })
             }).then(response => {
                 if(response.ok) {
-                    var last_segment = this.getLastSegmentOfPath(path).slice(1) // get last segment without preceding slash
+                    var last_segment = this.getLastSegmentOfPath(path)
                     if(is_file)
                         this.current_directory_files = this.current_directory_files.filter(file => file != last_segment);   
                     else
@@ -200,14 +196,13 @@ export default {
                 }
             })
         },
-        getFirstSegmentOfPath(path){
-            /**
-             * Returns the first segment of the given path.
-             * 
-             * @param  {String} path    File or folder path.
-             * @return {String}         First segment of path (e.g. `/` == root or `/folder` == first folder)
-             */
-
+        /**
+         * Returns the last segment of the given path (without preceeding slash)
+         * 
+         * @param  {String} path    File or folder path.
+         * @return {String}         Last segment of path.
+         */
+        getLastSegmentOfPath(path){
             if(path.length == 0 || path == "/") {
                 return "/"
             }
@@ -215,24 +210,7 @@ export default {
             var parts = path.split("/")
             parts = parts.filter(part => part.length > 0)
             
-            return `/${parts[0]}`
-        },
-        getLastSegmentOfPath(path){
-            /**
-             * Returns the last segment of the given path (without preceeding slash)
-             * 
-             * @param  {String} path    File or folder path.
-             * @return {String}         Last segment of path.
-             */
-
-            if(path.length == 0 || path == "/") {
-                return "/"
-            }
-
-            var parts = path.split("/")
-            parts = parts.filter(part => part.length > 0)
-
-            return `/${parts[parts.length - 1]}`
+            return `${parts[parts.length - 1]}`
         },
         /**
          * Downloads the given path.

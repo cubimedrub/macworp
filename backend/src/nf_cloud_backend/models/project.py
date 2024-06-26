@@ -166,24 +166,29 @@ class Project(db.Model):
         else:
             raise PermissionError("Path is not within the projects directory.")
 
-    def add_file(self, directory: Path, filename: str, file: Union[io.BytesIO, io.StringIO]):
+    def add_file(self, target_file_path: Path, file: Union[io.BytesIO, io.StringIO]) -> Path:
         """
         Add file to directory
 
         Parameters
         ----------
-        directory : Path
-            Target directory
-        filename : str
-            Filename
+        target_file_path: Path
+            Path of the file within the project directory
         file : Union[io.BytesIO, io.StringIO]
             File
+
+        Returns
+        -------
+        Path
+            Relative path to the file within the project directory
         """
-        target_directory = self.get_path(directory)
+        target_directory = self.get_path(target_file_path.parent)
         if not target_directory.is_dir():
             target_directory.mkdir(parents=True, exist_ok=True)
-        with target_directory.joinpath(filename).open("wb") as project_file:
+        with target_directory.joinpath(target_file_path.name).open("wb") as project_file:
             project_file.write(file)
+
+        return Path("/").joinpath(self.__secure_path_for_join(target_file_path))
 
     def remove_path(self, path: Path) -> bool:
         """

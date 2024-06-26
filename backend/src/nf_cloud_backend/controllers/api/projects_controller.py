@@ -250,26 +250,23 @@ class ProjectsController:
         if not "file" in request.files:
             errors["file"].append("cannot be empty")
 
-        directory = request.form.get("directory", None)
-        if directory is None:
-            errors["directory"].append("cannot be empty")
-        elif not isinstance(directory, str):
-            errors["directory"].append("is not type string")
+        if not "file_path" in request.files:
+            errors["file_path"].append("cannot be empty")
 
         if len(errors) > 0:
             return jsonify({
                 "errors": errors
             }), 422
         
-        new_file = request.files["file"]
+        file_path = Path(request.files["file_path"].read().decode('utf-8'))
 
-        project = Project.get(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
-        project.add_file(directory, new_file.filename, new_file.read())
+
+        file_path = project.add_file(file_path, request.files["file"].read())
         return jsonify({
-            "directory": directory,
-            "file": new_file.filename
+            "file_path": str(file_path)
         })
     
     @staticmethod
@@ -583,4 +580,5 @@ class ProjectsController:
             dataframe.to_json(orient="split", index=False),
             mimetype="application/json"
         )
+    
 

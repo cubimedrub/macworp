@@ -64,7 +64,7 @@ class Project(db.Model):
             self.__delete_file_directory()
 
 
-    def to_dict(self) -> str:
+    def to_dict(self) -> dict:
         """
         Returns
         -------

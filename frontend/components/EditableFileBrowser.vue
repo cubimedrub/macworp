@@ -12,7 +12,7 @@
             </div>
         </div>
         <ul class="list-group mb-3">
-            <li v-if="current_directory != ''" @click="moveFolderUp()" class="list-group-item">
+            <li v-if="!is_current_directory_root" @click="moveFolderUp()" class="list-group-item">
                 <i class="fas fa-angle-double-left clickable"></i>
             </li>
             <li v-for="path in current_directory_folders" :key="path" class="list-group-item d-flex justify-content-between">
@@ -24,7 +24,7 @@
                     <button @click="download(path)" type="button" class="btn btn-secondary btn-sm">
                         <i class="fas fa-download"></i>
                     </button>
-                    <button @click="deletePath(`${current_directory}/${path}`)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
+                    <button @click="deletePath(`${current_directory}${path}`)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -35,7 +35,7 @@
                     <button @click="download(file)" type="button" class="btn btn-secondary btn-sm">
                         <i class="fas fa-download"></i>
                     </button>
-                    <button @click="deletePath(`${current_directory}/${file}`)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
+                    <button @click="deletePath(`${current_directory}${file}`)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>

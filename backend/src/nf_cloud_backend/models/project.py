@@ -2,7 +2,7 @@
 from __future__ import annotations
 import io
 import json
-import pathlib
+from pathlib import Path
 import shutil
 from typing import Union
 
@@ -36,11 +36,19 @@ class Project(db.Model):
         self.__create_file_directory()
 
     @property
-    def file_directory(self) -> pathlib.Path:
+    def file_directory(self) -> Path:
+        """
+        Returns the project's file/work directory.
+
+        Returns
+        -------
+        Path
+            Root path of the project's file directory.
+        """
         return self.__file_directory
 
     def __create_file_directory(self):
-        self.__file_directory = pathlib.Path(Configuration.values()["upload_path"]).joinpath(str(self.id)).absolute()
+        self.__file_directory = Path(Configuration.values()["upload_path"]).joinpath(str(self.id)).absolute()
         self.__file_directory.mkdir(parents=True, exist_ok=True)
 
     def __delete_file_directory(self):
@@ -80,7 +88,7 @@ class Project(db.Model):
             "is_scheduled": self.is_scheduled
         }
 
-    def __secure_path_for_join(self, path: str) -> str:
+    def __secure_path_for_join(self, path: Path) -> Path:
         """
         Removes dangerous directory operations from path, e.g.
         * `/` at path begin would result in a absolut path escaping the project directory
@@ -88,25 +96,34 @@ class Project(db.Model):
 
         Parameters
         ----------
-        path : str
+        path : Path
             Path to join with project dir.s
 
         Returns
         -------
-        str
-            Save path
+        Path
+            Relative path, secure to join with projects directory.
         """
-        if len(path) > 0 and path[0] == "/":
-            return path[1:]
-        return path.replace("../", "")
+        parts = list(path.parts)
 
-    def in_file_director(self, path: pathlib.Path) -> bool:
+        # Remove leading slashes to avoid overwriting the projects directory when using joinpath
+        while True:
+            if len(parts) == 0 or parts[0] != "/":
+                break
+            parts = parts[1:]
+
+        # Remove all `..` from path as they could be used to escape the project directory
+        parts = list(filter(lambda x: x != "..", parts))
+
+        return Path(*parts)
+
+    def in_file_director(self, path: Path) -> bool:
         """
         Checks if the given path is part of the project's file directory.
 
         Parameters
         ----------
-        path : pathlib.Path
+        path : Path
             Path to check (absolute)
 
         Returns
@@ -116,14 +133,15 @@ class Project(db.Model):
         """
         return self.file_directory == path or self.file_directory in path.parents
     
-    def get_path(self, path: str) -> pathlib.Path:
+    def get_path(self, path: Path) -> Path:
         """
         Adds the given path to the project's file directory. If the joined path results in a target
         outside project directory the project directory itself is returned.
+        This method should be used to get a path within the project directory safely.
 
         Parameters
         ----------
-        path : str
+        path : Path
             Path within the project directory
 
         Returns
@@ -134,21 +152,21 @@ class Project(db.Model):
         Raises
         ------
         PermissionError
-            Raised when path is outside the project directorsy.
+            Raised when path is outside the project directory.
         """
         directory = self.file_directory.absolute().joinpath(self.__secure_path_for_join(path))
         if self.in_file_director(directory):
             return directory
         else:
-            raise PermissionError("Path is not within the project directory.")
+            raise PermissionError("Path is not within the projects directory.")
 
-    def add_file(self, directory: str, filename: str, file: Union[io.BytesIO, io.StringIO]):
+    def add_file(self, directory: Path, filename: str, file: Union[io.BytesIO, io.StringIO]):
         """
         Add file to directory
 
         Parameters
         ----------
-        directory : str
+        directory : Path
             Target directory
         filename : str
             Filename
@@ -161,13 +179,13 @@ class Project(db.Model):
         with target_directory.joinpath(filename).open("wb") as project_file:
             project_file.write(file)
 
-    def remove_path(self, path: str) -> bool:
+    def remove_path(self, path: Path) -> bool:
         """
         Removes the given file from the file directory.
 
         Parameters
         ----------
-        path : str
+        path : Path
             File or folder path. If path ends with a slash it is a directory.
 
         Returns
@@ -183,16 +201,16 @@ class Project(db.Model):
             return True
         return False
 
-    def create_folder(self, target_path: str, new_path: str) -> bool:
+    def create_folder(self, target_path: Path, new_path: Path) -> bool:
         """
         Creates a folder in the work directory of the project.
         Creates parents as well, if path contains multiple segments.
 
         Parameters
         ----------
-        target_path : str
+        target_path : Path
             Path where the new folder will be created.
-        new_path : str
+        new_path : Path
             Path to new folder
 
         Returns

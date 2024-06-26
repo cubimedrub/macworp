@@ -34,7 +34,7 @@ export default {
     },
     data(){
         return {
-            current_directory: "",
+            current_directory: "/",
             current_directory_folders: [],
             current_directory_files: []
         }
@@ -50,7 +50,7 @@ export default {
         moveFolderUp(){
             let path_segments = this.current_directory.split("/").filter(segment => segment.length > 0)
             path_segments.pop()
-            this.current_directory = path_segments.length > 0 ? `${path_segments.join("/")}/` : ""
+            this.current_directory = path_segments.length > 0 ? `/${path_segments.join("/")}/` : "/"
         },
         moveIntoFolder(path){
             this.current_directory = `${this.current_directory}${path}`

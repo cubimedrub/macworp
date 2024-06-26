@@ -1,6 +1,7 @@
 # std imports
 from collections import defaultdict
 import json
+from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote
 
@@ -202,7 +203,7 @@ class ProjectsController:
                 }
             })
         directory = project.get_path(
-            unquote(request.args.get('dir', "", type=str))
+            Path(unquote(request.args.get('dir', "/", type=str)))
         )
         if directory.is_dir() and project.in_file_director:
             files = []
@@ -304,7 +305,7 @@ class ProjectsController:
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
-        project.remove_path(path)
+        project.remove_path(Path(path))
         return "", 200
 
     @staticmethod
@@ -349,7 +350,7 @@ class ProjectsController:
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
-        project.create_folder(target_path, new_path)
+        project.create_folder(Path(target_path), Path(new_path))
         return jsonify({}), 200
 
     @staticmethod

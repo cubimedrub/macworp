@@ -81,5 +81,11 @@ class WeblogProxy:
                 Project ID
             """
             log = await request.body()
-            settings.client.post_weblog(project_id, log)
+            try:
+                settings.client.post_weblog(project_id, log)
+            # pylint: disable=broad-except
+            except Exception as e:
+                # Catch everything to prevent the FastAPI server from crashing
+                logging.error("Error while sending weblog to NFCloud API: %s", e)
+
         uvicorn.run(app, host="127.0.0.1", port=port, reload=False, log_level=log_level, access_log=log_level==logging.DEBUG)

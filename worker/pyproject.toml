@@ -19,5 +19,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "honcho",
-    "pylint"
+    "pylint",
+    "types-peewee"
 ]

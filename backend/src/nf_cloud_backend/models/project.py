@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 from pathlib import Path
+import re
 import shutil
 from typing import Union
 
@@ -17,6 +18,11 @@ from playhouse.postgres_ext import BinaryJSONField
 # internal import
 from nf_cloud_backend import db_wrapper as db
 from nf_cloud_backend.utility.configuration import Configuration
+
+
+SLASH_SEQ_REGEX: re.Pattern = re.compile(r"\/+")
+"""Regex to match multiple sequence ofg slashes.
+"""
 
 class Project(db.Model):
     id = BigAutoField(primary_key=True)
@@ -108,7 +114,7 @@ class Project(db.Model):
 
         # Remove leading slashes to avoid overwriting the projects directory when using joinpath
         while True:
-            if len(parts) == 0 or parts[0] != "/":
+            if len(parts) == 0 or SLASH_SEQ_REGEX.match(parts[0]) is None:
                 break
             parts = parts[1:]
 
@@ -201,29 +207,24 @@ class Project(db.Model):
             return True
         return False
 
-    def create_folder(self, target_path: Path, new_path: Path) -> bool:
+    def create_folder(self, new_folder_path: Path) -> bool:
         """
         Creates a folder in the work directory of the project.
         Creates parents as well, if path contains multiple segments.
 
         Parameters
         ----------
-        target_path : Path
+        new_folder_path : Path
             Path where the new folder will be created.
-        new_path : Path
-            Path to new folder
 
         Returns
         -------
         True if path was created, otherwise False
         """
-        target_path = self.get_path(target_path)
-        new_path = self.__secure_path_for_join(new_path)
+        new_folder_path = self.get_path(new_folder_path)
 
-        path_to_create = target_path.joinpath(new_path)
-
-        if not path_to_create.is_dir():
-            path_to_create.mkdir(parents=True, exist_ok=True)
+        if not new_folder_path.is_dir():
+            new_folder_path.mkdir(parents=True, exist_ok=True)
             return True
         return False
 

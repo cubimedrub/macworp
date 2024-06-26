@@ -3,8 +3,8 @@
         <div class="row">
             <div class="col-12 col-md-6 col-lg-4 offset-md-6 offset-lg-8">
                 <div class="input-group mb-3">
-                    <input v-model="new_folder_path" v-on:keyup.enter="createNewFolder" :readonly="is_creating_folder" type="text" class="form-control" placeholder="new folder">
-                    <button @click="createNewFolder" :disabled="is_creating_folder || is_new_folder_path_empty" class="btn btn-primary" type="button">
+                    <input v-model="new_folder_name" v-on:keyup.enter="createNewFolder" type="text" class="form-control" placeholder="new folder">
+                    <button @click="createNewFolder" :disabled="is_new_folder_name_empty" class="btn btn-primary" type="button">
                         <i class="fas fa-plus"></i>
                         create
                     </button>
@@ -18,13 +18,13 @@
             <li v-for="path in current_directory_folders" :key="path" class="list-group-item d-flex justify-content-between">
                 <span @click="moveIntoFolder(path)" class="clickable">
                     <i class="fas fa-folder"></i>
-                    {{path}}
+                    {{path}}/
                 </span>
                 <div class="btn-group">
-                    <button @click="download(path)" type="button" class="btn btn-secondary btn-sm">
+                    <button @click="download(`${current_directory}/${path}`)" type="button" class="btn btn-secondary btn-sm">
                         <i class="fas fa-download"></i>
                     </button>
-                    <button @click="deletePath(`${current_directory}${path}`)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
+                    <button @click="deletePath(`${current_directory}${path}`, false)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -32,10 +32,10 @@
             <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
                 <span>{{ file }}</span>
                 <div class="btn-group">
-                    <button @click="download(file)" type="button" class="btn btn-secondary btn-sm">
+                    <button @click="download(`${current_directory}/${file}`)" type="button" class="btn btn-secondary btn-sm">
                         <i class="fas fa-download"></i>
                     </button>
-                    <button @click="deletePath(`${current_directory}${file}`)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
+                    <button @click="deletePath(`${current_directory}/${file}`, true)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -80,7 +80,6 @@ export default {
             upload_queue: [],
             // logic
             new_folder_path: null,
-            is_creating_folder: false
         }
     },
     methods: {
@@ -146,8 +145,9 @@ export default {
          * Deletes a path. If path ending with slash it is a directory.
          * 
          * @param {String} path
+         * @param {Boolean} is_file If true the path belongs to a file, otherwise to a directory.
          */
-        deletePath(path){
+        deletePath(path, is_file){
             if(!this.enabled) return
             fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/delete-path`, {
                 method:'POST',
@@ -160,74 +160,79 @@ export default {
                 })
             }).then(response => {
                 if(response.ok) {
-                    var path_name = this.getLastSegementOfPath(path)
-                    if(path_name.charAt(path_name.length - 1) == "/")
-                        this.current_directory_folders = this.current_directory_folders.filter(folder => folder != path_name);
+                    var last_segment = this.getLastSegmentOfPath(path).slice(1) // get last segment without preceding slash
+                    if(is_file)
+                        this.current_directory_files = this.current_directory_files.filter(file => file != last_segment);   
                     else
-                        this.current_directory_files = this.current_directory_files.filter(file => file != path_name);
+                        this.current_directory_folders = this.current_directory_folders.filter(folder => folder != last_segment);
                 } else {
                     this.handleUnknownResponse(response)
                 }
             })
         },
-        createNewFolder(){
-            /**
-             * Creates a new folder within the current directory.
-             */
-            if(!this.is_creating_folder){
-                this.is_creating_folder = true
-                fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/create-folder`, {
-                    method:'POST',
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-access-token": this.$store.state.login.jwt
-                    },
-                    body: JSON.stringify({
-                        "new_path": this.new_folder_path,
-                        "target_path": this.current_directory
-                    })
-                }).then(response => {
-                    if(response.ok) {
-                        var new_folder_name = this.getFirstSegementOfPath(this.new_folder_path)
-                        // Adding a slash to declarate name as path
-                        new_folder_name = new_folder_name.charAt(new_folder_name.length - 1) == "/" ? new_folder_name : `${new_folder_name}/`
+        /**
+         * Creates a new folder within the current directory.
+         */
+        async createNewFolder(){
+            if(this.is_new_folder_name_empty) return
+            var target_folder = `${this.current_directory}`
+            var new_folder_name = `${this.new_folder_name}`
+            this.new_folder_name = null
+            var new_folder_path = `${target_folder}${new_folder_name}`
+            fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/create-folder`, {
+                method:'POST',
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-access-token": this.$store.state.login.jwt
+                },
+                body: JSON.stringify({
+                    path: new_folder_path
+                })
+            }).then(response => {
+                if(response.ok) {
+                    // If user did not navigate into a new folder after the request was startet add the new folder
+                    if(this.current_directory == target_folder && !this.current_directory_folders.includes(this.new_folder_name)) {
                         this.current_directory_folders.push(new_folder_name)
                         this.current_directory_folders.sort()
-                    } else {
-                        this.handleUnknownResponse(response)
                     }
-                }).finally(() => {
-                    this.is_creating_folder = false
-                    this.new_folder_path = null
-                })
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
+        },
+        getFirstSegmentOfPath(path){
+            /**
+             * Returns the first segment of the given path.
+             * 
+             * @param  {String} path    File or folder path.
+             * @return {String}         First segment of path (e.g. `/` == root or `/folder` == first folder)
+             */
+
+            if(path.length == 0 || path == "/") {
+                return "/"
             }
+
+            var parts = path.split("/")
+            parts = parts.filter(part => part.length > 0)
+            
+            return `/${parts[0]}`
         },
-        getFirstSegementOfPath(path){
+        getLastSegmentOfPath(path){
             /**
-             * Returns the first segement of the given path.
+             * Returns the last segment of the given path (without preceeding slash)
              * 
              * @param  {String} path    File or folder path.
-             * @return {String}         First segment of path.
+             * @return {String}         Last segment of path.
              */
-            // Remove preceding slash if there is one
-            var temp_path = path.indexOf("/") == 0 ? path.slice(1, path.length) : path
-            // Get first occurence of slash
-            var end_of_first_segment = temp_path.indexOf("/")
-            // If no slash was found set end_of_first_segment to end of string
-            end_of_first_segment = end_of_first_segment >= 0 ? end_of_first_segment : temp_path.length
-            return temp_path.slice(0, end_of_first_segment)
-        },
-        getLastSegementOfPath(path){
-            /**
-             * Returns the last segement of the given path (without preceeding slash)
-             * 
-             * @param  {String} path    File or folder path.
-             * @return {String}         First segment of path.
-             */
-            // Remove appending slash if there is one
-            var temp_path = path.lastIndexOf("/") == path.length - 1 ? path.slice(0, path.length - 1) : path
-            var start_of_last_segment = temp_path.lastIndexOf("/")
-            return path.slice(start_of_last_segment + 1, path.length)
+
+            if(path.length == 0 || path == "/") {
+                return "/"
+            }
+
+            var parts = path.split("/")
+            parts = parts.filter(part => part.length > 0)
+
+            return `/${parts[parts.length - 1]}`
         },
         /**
          * Downloads the given path.
@@ -235,23 +240,20 @@ export default {
          * @param {String} path Path to file in relation to the project directory
          */
         async download(path){
-            let complete_path = `${this.current_directory}${path}`
             return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/one-time-use-token`, {
                 headers: {
                     "x-access-token": this.$store.state.login.jwt
                 }
             }).then(response => {
-                console.error(response.status)
                 if(response.ok) {
-                    console.error(response.status)
                     return response.json().then(response_data => {
-                        window.location = `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${complete_path}&one-time-use-token=${response_data.token}`
+                        window.location = `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
                     })
                 } else {
                     this.handleUnknownResponse(response)
                 }
             })
-        }
+        },
     },
     computed: {
         /**
@@ -259,9 +261,12 @@ export default {
          * 
          * @return {Boolean}
          */
-        is_new_folder_path_empty(){
-            return this.new_folder_path == null
-                || this.new_folder_path.trim().length == 0
+        is_new_folder_name_empty(){
+            return this.new_folder_name == null
+                || this.new_folder_name.trim().length == 0
+        },
+        is_current_directory_root(){
+            return this.current_directory == "/"
         }
     }
 }

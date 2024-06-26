@@ -50,10 +50,12 @@ export default {
         moveFolderUp(){
             let path_segments = this.current_directory.split("/").filter(segment => segment.length > 0)
             path_segments.pop()
-            this.current_directory = path_segments.length > 0 ? `/${path_segments.join("/")}/` : "/"
+            this.current_directory = path_segments.length > 0 ? `/${path_segments.join("/")}` : "/"
         },
         moveIntoFolder(path){
-            this.current_directory = `${this.current_directory}${path}`
+            let path_segments = this.current_directory.split("/").filter(segment => segment.length > 0)
+            path_segments.push(path)
+            this.current_directory = path_segments.length > 0 ? `/${path_segments.join("/")}` : "/"
         },
         getFolderContent(){
             var url_encoded_path = encodeURIComponent(this.current_directory)
@@ -67,7 +69,7 @@ export default {
             ).then(response => {
                 if(response.ok) {
                     return response.json().then(response_data => {
-                        this.current_directory_folders = response_data.folders.map(folder => `${folder}/`)
+                        this.current_directory_folders = response_data.folders
                         this.current_directory_files = response_data.files
                     })
                 } else if(response.status == 404) {

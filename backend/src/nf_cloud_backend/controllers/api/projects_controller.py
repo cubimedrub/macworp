@@ -330,17 +330,11 @@ class ProjectsController:
         errors = defaultdict(list)
         data = request.json
 
-        target_path = data.get("target_path", None)
-        if target_path == None:
-            errors["target_path"].append("missing")
-        elif not isinstance(target_path, str):
+        path = data.get("path", None)
+        if path == None:
+            errors["path"].append("missing")
+        elif not isinstance(path, str):
             errors["target_path"].append("not a string")
-
-        new_path = data.get("new_path", None)
-        if new_path == None:
-            errors["new_path"].append("missing")
-        elif not isinstance(new_path, str):
-            errors["new_path"].append("not a string")
 
         if len(errors):
             return jsonify({
@@ -350,8 +344,8 @@ class ProjectsController:
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
-        project.create_folder(Path(target_path), Path(new_path))
-        return jsonify({}), 200
+        project.create_folder(Path(path))
+        return "", 200
 
     @staticmethod
     @app.route("/api/projects/<int:id>/schedule", methods=["POST"])
@@ -500,40 +494,50 @@ class ProjectsController:
         return "", 200
 
     @staticmethod
-    @app.route("/api/projects/<int:w_id>/download")
+    @app.route("/api/projects/<int:project_id>/download")
     @login_required
-    def download(w_id: int):
+    def download(project_id: int):
         """
         Downloads a file or folder.
         If path is a folder the response is a zip package.
 
         Parameters
         ----------
-        w_id : int
+        project_id : int
             Project ID
         path : strs
             Path to folder or file.
         """
-        project = Project.get_or_none(Project.id == w_id)
+        project: Optional[Project] = Project.get_or_none(Project.id == project_id)
         if project is None:
-            return "", 404
-        path = unquote(request.args.get('path', "", type=str))
+            return jsonify({
+                "errors": {
+                    "project": ["not found"]
+                }
+            }),  404
+        path = Path(unquote(request.args.get('path', "", type=str)))
         is_inline: bool = request.args.get('is-inline', False, type=bool)
         path_to_download = project.get_path(path)
         if not path_to_download.exists():
-            return "", 404
+            return jsonify({
+                "errors": {
+                    "path": ["not found"]
+                }
+            
+            }), 404
         elif path_to_download.is_file():
             return send_file(path_to_download, as_attachment=not is_inline)
         else:
             def build_stream():
-                    stream = zipstream.ZipFile(mode='w', compression=zipstream.ZIP_DEFLATED)
-                    project_path_len = len(str(project.file_directory))
-                    for path in path_to_download.glob("**/*"):
-                        if path.is_file():
-                            stream.write(path, arcname=str(path)[project_path_len:])    # Remove absolut path before project subfolder, including project id
-                    yield from stream
+                stream = zipstream.ZipFile(mode='w', compression=zipstream.ZIP_DEFLATED)
+                project_path_len = len(str(project.file_directory))
+                for path in path_to_download.glob("**/*"):
+                    if path.is_file():
+                        stream.write(path, arcname=str(path)[project_path_len:])    # Remove absolut path before project subfolder, including project id
+                yield from stream
             response = Response(build_stream(), mimetype='application/zip')
-            response.headers["Content-Disposition"] = f"attachment; filename={project.name}--{path.replace('/', '+')}.zip"
+            filename_friendly_path_as_str = str(path).replace('/', '+')
+            response.headers["Content-Disposition"] = f"attachment; filename={project.name}--{filename_friendly_path_as_str}.zip"
             return response
 
     @staticmethod

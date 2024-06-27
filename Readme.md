@@ -1,18 +1,33 @@
-# Nextflow Cloud
-Nextflow Cloud or NF-Cloud is a web interface to run nextflow workflows in a cloud environment.   
-NF-Cloud has three compontents
+# MaCWorP - Massive aCcessible Workflow Platform
+
+MaCWorp is a web application to give workflow developers a simple way to make their workflows easily accessible via a web browser for everyone. 
+
+* What it **does** for you
+    * Graphical user interface for
+        * Data up- & download
+        * Parameter input
+        * Rendered results (interactive plots, PDFs, images, tables, ...)
+    * Authentication
+        * Simple file based authentication (easy to set up, recommended for smaller teams, labs or institutes)
+        * OpenIDConnect (e.g. connect to ELIXIR's Life Science Login)
+    * Distributed execution of a workflow on different workers
+    * Coming soon(ish):
+        * Support for multiple workflow engines (currently Nextflow is working)
+        * Fine grained access control to projects and workflows including sharing with others.
+* What it **does not** for you
+    * Scaling - This is still the job of the workflow engine. E.g. you can configure Nextflow to use K8s or Slurm when started by MaCWorP workers but setting these executors up is still a separate job for an admin.
+
 
 ## Backend
 A web API written in [Flask](https://flask.palletsprojects.com/en/2.0.x/) for managing/scheduling workflows.
 
 ## Frontend
-A web interface written in [NuxtJS](https://nuxtjs.org/). This is basically a GUI for the web interface.
+A web interface written in [NuxtJS](https://nuxtjs.org/). This is basically a GUI for the web API.
 
 ## Worker
-A worker witten in python which runs the scheduled workflows.
+A worker written in python which runs the scheduled workflows.
 
-![NF-Cloud structure](./nf-cloud.png)
-
+![MaCWorP structure](./macworp.png)
 
 ## Developing
 Make sure the dependencies in

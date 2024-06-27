@@ -564,7 +564,7 @@ class ProjectsController:
         project = Project.get_or_none(Project.id == w_id)
         if project is None:
             return "", 404
-        path = unquote(request.args.get('path', "", type=str))
+        path = Path(unquote(request.args.get('path', "", type=str)))
         path_to_download = project.get_path(path)
         if not path_to_download.is_file():
             return "", 404

@@ -11,41 +11,36 @@ params.txtFiles = params.txtFiles ?: { log.error "No txtFiles provided."; exit 1
 params.outDir = "./"
 
 /**
- * Uses the value of NF-Cloud FileGlob to collect txt files with wildcard in path.
- */
-text_files = Channel.fromPath(params.txtFiles)
-
-/**
  * Use file from NF-Cloud PathSelector,
- * converts it to uppercase and 
+ * converts it to uppercase and
  * returns it.
  */
 process readInFileAndConvertToUpperCase {
     input:
-    path in_file from params.inFile
+    path in_file
 
     output:
-    env in_file_content into in_file_content
+    path in_file_content
 
     """
-    in_file_content=`cat ${in_file} | tr '[a-z]' '[A-Z]'`
+    cat ${in_file} | tr '[a-z]' '[A-Z]' > in_file_content
     """
 }
 
 /**
  * Use file from NF-Cloud PathSelector,
- * converts it to uppercase and 
+ * converts it to uppercase and
  * returns it.
  */
 process listInFolderContent {
     input:
-    path in_folder from params.inFolder
+    path in_folder
 
     output:
-    env in_folder_content into in_folder_content
+    path in_folder_content
 
     """
-    in_folder_content=\$(ls -lah ${in_folder})
+    ls -lah ${in_folder} > in_folder_content
     """
 }
 
@@ -56,10 +51,10 @@ process listInFolderContent {
  */
 process selectedFilesToMarkdownList {
     input:
-    val in_files from params.inFiles
+    val in_files
 
     output:
-    path selected_files_list into selected_files_list
+    path selected_files_list
 
     """
     for file in \$(echo "${in_files}" | tr ',' ' ')
@@ -76,10 +71,10 @@ process selectedFilesToMarkdownList {
  */
 process selectedFoldersToMarkdownList {
     input:
-    val in_files from params.inFiles
+    val in_files
 
     output:
-    path selected_folder_list into selected_folder_list
+    path selected_folder_list
 
     """
     for file in \$(echo "${in_files}" | tr ',' ' ')
@@ -96,10 +91,10 @@ process selectedFoldersToMarkdownList {
  */
 process txtFilesToMarkdownCodeBlocks {
     input:
-    path txt_file from text_files
+    path txt_file
 
     output:
-    path "codeblock_${txt_file.baseName}" into txt_file_codeblocks
+    path "codeblock_${txt_file.baseName}"
 
     """
     echo "${txt_file}" > codeblock_${txt_file.baseName}
@@ -110,8 +105,8 @@ process txtFilesToMarkdownCodeBlocks {
 }
 
 /**
-  * Downloads test images for image viewer and SVG viewer
-  */  
+ * Downloads test images for image viewer and SVG viewer
+ */
 process downloadTestImages {
     publishDir "${params.outDir}", mode:"copy"
 
@@ -120,15 +115,15 @@ process downloadTestImages {
     path "*.svg"
 
     """
-    curl -o ${params.outDir}/test_image.png  https://upload.wikimedia.org/wikipedia/commons/c/c4/PM5544_with_non-PAL_signals.png
-    curl -o ${params.outDir}/another_test_image.png  https://upload.wikimedia.org/wikipedia/commons/f/f1/SWTestbild.png
-    curl -o ${params.outDir}/test_svg.svg  https://upload.wikimedia.org/wikipedia/commons/0/02/SVG_logo.svg
+    curl -o test_image.png  https://upload.wikimedia.org/wikipedia/commons/c/c4/PM5544_with_non-PAL_signals.png
+    curl -o another_test_image.png  https://upload.wikimedia.org/wikipedia/commons/f/f1/SWTestbild.png
+    curl -o test_svg.svg  https://upload.wikimedia.org/wikipedia/commons/0/02/SVG_logo.svg
     """
 }
 
 /**
-  * Downloads test svg for image viewer
-  */  
+ * Downloads test svg for image viewer
+ */
 process downloadTestPDF {
     publishDir "${params.outDir}", mode:"copy"
 
@@ -136,7 +131,7 @@ process downloadTestPDF {
     path "*.pdf"
 
     """
-    curl -L -o ${params.outDir}/test_pdf.pdf  https://raw.githubusercontent.com/pdf-association/pdf20examples/master/Simple%20PDF%202.0%20file.pdf
+    curl -L -o test_pdf.pdf  https://raw.githubusercontent.com/pdf-association/pdf20examples/master/Simple%20PDF%202.0%20file.pdf
     """
 }
 
@@ -151,17 +146,17 @@ process createMarkdownFile {
     publishDir "${params.outDir}", mode:"copy"
 
     input:
-    val in_file_content from in_file_content
-    path selected_files_list from selected_files_list
-    val txt_files from txt_file_codeblocks.collect()
-    path selected_folder_list from selected_folder_list
-    val in_folder_content from in_folder_content
+    path in_file_content
+    path selected_files_list
+    val txt_files
+    path selected_folder_list
+    path in_folder_content
 
     output:
-    path "${params.outDir}/out.md" into out_file
+    path "out.md"
 
     """
-    out_md="${params.outDir}/out.md"
+    out_md="out.md"
 
     echo "# Test workflow out.md" >> \$out_md
 
@@ -178,7 +173,7 @@ process createMarkdownFile {
     echo "" >> \$out_md
     
     echo "## Uppercase content of inFile" >> \$out_md
-    echo "${in_file_content}" >> \$out_md
+    cat "${in_file_content}" >> \$out_md
     echo "" >> \$out_md
 
     echo "## List of inFiles" >> \$out_md
@@ -186,7 +181,7 @@ process createMarkdownFile {
     echo "" >> \$out_md
 
     echo "## inFolder content" >> \$out_md
-    echo "${in_folder_content}" >> \$out_md
+    cat "${in_folder_content}" >> \$out_md
     echo "" >> \$out_md
 
     echo "## List of inFolders" >> \$out_md
@@ -216,4 +211,25 @@ process createMarkdownFile {
     echo "${params.multilineText}" >> \$out_md
     echo "" >> \$out_md
     """
+}
+
+workflow {
+    /**
+     * Uses the value of NF-Cloud FileGlob to collect txt files with wildcard in path.
+     */
+    text_files = Channel.fromPath(params.txtFiles)
+    inFileContent = readInFileAndConvertToUpperCase(Channel.fromPath(params.inFile))
+    inFolderContent = listInFolderContent(Channel.fromPath(params.inFolder))
+    selectedFilesList = selectedFilesToMarkdownList(Channel.fromPath(params.inFiles))
+    selectedFoldersList = selectedFoldersToMarkdownList(Channel.fromPath(params.inFolders))
+    txtFilesCodeBlock = txtFilesToMarkdownCodeBlocks(text_files)
+    downloadTestImages()
+    downloadTestPDF()
+    createMarkdownFile(
+            inFileContent,
+            selectedFilesList,
+            txtFilesCodeBlock.collect(),
+            selectedFoldersList,
+            inFolderContent
+    )
 }

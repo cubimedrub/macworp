@@ -110,8 +110,8 @@ export default {
                 }
             );
             this.dropzone.on("addedfile", file => {
-                var original_path = file.fullPath == null ? `/${file.name}` : file.fullPath
-                file.nf_cloud__file_path = `${this.current_directory}${original_path}`
+                var original_path = file.fullPath == null ? file.name : file.fullPath
+                file.nf_cloud__file_path = `${this.current_directory}/${original_path}`
                 this.upload_queue.push(file.nf_cloud__file_path)
                 this.upload_status[file.nf_cloud__file_path] = false
             }),

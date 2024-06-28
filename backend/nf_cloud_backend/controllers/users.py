@@ -49,7 +49,7 @@ def login_user(provider_type: str, provider: str, login_request: LoginRequest, s
     try:
         type = ProviderType.from_str(provider_type)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail="Provider Type not found.") from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Provider Type not found.") from exc
 
     user = None
     match type:

@@ -1,6 +1,6 @@
 from httpx import Request
 
-from ..base import DONT_CARE, Test
+from ..base import DONT_CARE, Test, endpoint
 
 
 class FileBasedAuthenticationTest(Test):
@@ -12,7 +12,7 @@ class FileBasedAuthenticationTest(Test):
         self.send(
             Request(
                 "POST",
-                self.endpoint("/users/login/file/dev"),
+                endpoint("/users/login/file/dev"),
                 json={
                     "login_id": "devadmin",
                     "password": "developer"
@@ -32,7 +32,7 @@ class DatabaseAuthenticationTest(Test):
         self.send(
             Request(
                 "POST",
-                self.endpoint("/users/login/database/local"),
+                endpoint("/users/login/database/local"),
                 json={
                     "login_id": "testperson",
                     "password": "password"

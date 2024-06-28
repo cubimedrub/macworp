@@ -60,7 +60,7 @@ ExistingUsers = Annotated[list[User], Depends(get_users)]
 Retrieves multiple users via the `user_ids` URL parameter. Throws an HTTPException if any of those users doesn't exist.
 """
 
-async def get_optionally_authenticated_user(session: DbSession, x_token: Annotated[str | None, Header()]) -> User | None:
+async def get_optionally_authenticated_user(session: DbSession, x_token: Annotated[str | None, Header()] = None) -> User | None:
     if x_token is None:
         return None
 

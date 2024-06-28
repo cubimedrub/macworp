@@ -5,16 +5,28 @@ from typing_extensions import Annotated
 
 from fastapi import Depends
 import os
+from sqlalchemy import Engine
 from sqlmodel import SQLModel, Session, create_engine, delete
 import yaml 
 
 from .models.prelude import *
 
-MACWORP_DB_URL = os.getenv("MACWORP_DB_URL")
-if MACWORP_DB_URL is None:
-    raise RuntimeError("MACWORP_DB_URL not set")
 
-engine = create_engine(MACWORP_DB_URL, echo=True)
+def reset_engine():
+    global engine
+
+    MACWORP_DB_URL = os.getenv("MACWORP_DB_URL")
+    if MACWORP_DB_URL is None:
+        raise RuntimeError("MACWORP_DB_URL not set")
+
+    if engine is not None:
+        engine.dispose()
+    engine = create_engine(MACWORP_DB_URL, echo=True)
+
+
+engine = None
+reset_engine()
+
 
 def get_session():
     with Session(engine) as session:

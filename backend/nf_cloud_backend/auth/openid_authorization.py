@@ -6,8 +6,9 @@ from nf_cloud_backend import openid_clients
 from .provider_type import ProviderType
 
 from typing import Any, ClassVar, Dict
-from fastapi import Request
 from fastapi.responses import RedirectResponse
+from fastapi.requests import HTTPConnection
+from fastapi import FastAPI, Request
 import requests
 
 class OpenIDAuthorization(AbstractAuthorization):
@@ -26,26 +27,40 @@ class OpenIDAuthorization(AbstractAuthorization):
         Dict[Any, Any]
             Provider config
         """
-        return requests.get(
+        # print(provider_client_config["discovery_url"])
+        foo = requests.get(
             provider_client_config["discovery_url"],
             verify=provider_client_config.get("verify_ssl", True)
-        ).json()
+        )
+        # print(foo.status_code)
+        # print(foo.text)
+        return foo.json()
+
     @classmethod
-    def login(cls, provider_name: str, login_request: LoginRequest, session: Session) -> User:
-        
+    def login(cls, app: FastAPI, provider_name: str, login_request: LoginRequest, session: Session) -> User:
+        raise RuntimeError("Login works differently in OpenIDConnect")
+    
+    @classmethod
+    def get_redirect(cls, app: FastAPI, provider_name: str, login_request: LoginRequest, session: Session) -> RedirectResponse:
         provider_client_config = cls.get_provider_client_config(provider_name)
 
         if provider_client_config is None:
             raise ValueError(f"Provider not supported.")
-
+        
+        print(f"PROVIDER CONFIG: {provider_client_config}")
 
         provider_config = cls.get_autodiscovery(provider_client_config)
+        
+        if provider_config is None:
+            raise ValueError(f"Autodiscovery failure")
+
         provider_client = openid_clients[provider_name]
 
-        redirect_uri: str = Request.url_for(
+        redirect_uri: str = app.url_path_for(
             "user_auth_callback",
-            _external = True,
-            _scheme=login_request.scheme,
+            #LoginRequest,
+            #_external = True,
+            #_scheme=login_request.schema,
             provider_type = ProviderType.OPENID_CONNECT.value,
             provider = provider_name
         )
@@ -60,4 +75,7 @@ class OpenIDAuthorization(AbstractAuthorization):
                 "email"
             ]
         )
+
+        print("REQUEST URI: " + request_uri)
+
         return RedirectResponse(request_uri)

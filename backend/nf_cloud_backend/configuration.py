@@ -75,7 +75,7 @@ login_providers:    # Will be completely overridden by local config
         description: Login with local Fusionauth
         client_id: c63f35e8-66dc-4ec3-bb34-b29803ba72f1
         client_secret: 8CLrA9gAVmlM7GKKCnMnT9MHNvUMqXNVWog2kWUuC7Y2iBOnFIh9X0rpCqfMcpfQkEZfCBfxMqfz5FYC6cduB20kxqV5Ysq
-        discovery_url: http://localhost:9011/.well-known/openid-configuration/04690b25-d20a-158d-5b27-a4202477074b
+        discovery_url: http://localhost:9011/31a047c3-3353-fcd4-28e0-965a473a1ee8/.well-known/openid-configuration
         scope: "offline_access"
         verify_ssl: false
     # E.g.

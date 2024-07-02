@@ -1,3 +1,4 @@
+from fastapi import FastAPI
 from sqlmodel import Session
 from typing import Any, ClassVar, Dict, Optional
 
@@ -9,7 +10,7 @@ from nf_cloud_backend.configuration import Configuration
 
 class AbstractAuthorization:
     @classmethod
-    def login(cls, provider_name: str, login_request: LoginRequest, session: Session) -> User:
+    def login(cls, app: FastAPI, provider_name: str, login_request: LoginRequest, session: Session) -> User:
         raise NotImplementedError("method should be implemented in subclass")
     
     @classmethod
@@ -28,3 +29,5 @@ class AbstractAuthorization:
             None if config was not found of a dictionary
         """
         return Configuration.values()["login_providers"][ProviderType.OPENID_CONNECT.value].get(provider, None)
+    
+    

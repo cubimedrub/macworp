@@ -49,7 +49,6 @@ class User(SQLModel, table=True):
     provider_name: str
     email: str 
     hashed_password: str | None = None
-    disabled: bool | None = None
 
     owned_workflows: list["Workflow"] = Relationship(back_populates="owner")
     owned_projects: list["Project"] = Relationship(back_populates="owner")

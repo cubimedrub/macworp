@@ -1,5 +1,6 @@
 import os
 
+from fastapi import FastAPI
 from sqlmodel import Session, select
 import yaml
 
@@ -19,7 +20,7 @@ if os.environ.get("USERS_FILES"):
 
 class FileBasedAuthorization(AbstractAuthorization):
     @classmethod
-    def login(cls, provider_name: str, login_request: LoginRequest, session: Session) -> User:
+    def login(cls, app: FastAPI, provider_name: str, login_request: LoginRequest, session: Session) -> User:
         provider = file_based_users.get(provider_name)
         if provider is None:
             raise ValueError(f"Provider {provider_name} not found")
@@ -40,7 +41,6 @@ class FileBasedAuthorization(AbstractAuthorization):
                 provider_type=ProviderType.FILE.value, 
                 provider_name=provider_name,
                 hashed_password=login_request.password,
-                disabled=False
             )
             session.add(user)
             session.commit()

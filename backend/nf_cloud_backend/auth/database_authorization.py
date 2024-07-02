@@ -1,4 +1,5 @@
 
+from fastapi import FastAPI
 from .abstract_authorization import AbstractAuthorization
 from .login_request import LoginRequest
 from ..models.user import User
@@ -10,7 +11,7 @@ from sqlmodel import Session, select
 
 class DatabaseAuthorization(AbstractAuthorization):
     @classmethod
-    def login(cls, provider_name: str, login_request: LoginRequest, session: Session) -> User:
+    def login(cls, app: FastAPI, provider_name: str, login_request: LoginRequest, session: Session) -> User:
         
         statement = select(User).where(User.login_id==login_request.login_id)
         db_user = session.exec(statement).first()

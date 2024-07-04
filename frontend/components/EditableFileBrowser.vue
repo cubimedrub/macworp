@@ -174,7 +174,7 @@ export default {
             var target_folder = `${this.current_directory}`
             var new_folder_name = `${this.new_folder_name}`
             this.new_folder_name = null
-            var new_folder_path = `${target_folder}${new_folder_name}`
+            var new_folder_path = `${target_folder}/${new_folder_name}`
             fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/create-folder`, {
                 method:'POST',
                 headers: {

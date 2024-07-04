@@ -89,7 +89,10 @@ export default {
          * @returns {String}
          */
         getFullPath(path){
-            return `${this.current_directory}${path}`
+            if (this.current_directory === "/"){
+                return `${this.current_directory}${path}`
+            }
+            return `${this.current_directory}/${path}`
         }
     },
     watch: {

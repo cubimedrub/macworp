@@ -21,92 +21,9 @@ login_providers:
       discovery_url: https://ENV['NF_HOSTNAME']:ENV['NF_FUSIONAUTH_PORT']/.well-known/openid-configuration/04690b25-d20a-158d-5b27-a4202477074b
       scope: "offline_access"
       verify_ssl: false
-frontend_host_url: ~
-workflows:          # Will be completely overridden by local config
-  "Hello World (Locally)":
-    directory: ./test_workflows/hello_world
-    script: "main.nf"
-    args:
-      dynamic:
-        inFile:
-          type: path
-          desc: Single file
-          selectable_files: true
-          selectable_folders: false
-        inFolder:
-          type: path
-          desc: Single folder
-          selectable_files: false
-          selectable_folders: true
-        inFiles:
-          type: paths
-          desc: Multiple files
-          selectable_files: true
-          selectable_folders: false
-        inFolders:
-          type: paths
-          desc: Multiple folder
-          selectable_files: false
-          selectable_folders: true
-        txtFiles:
-          type: file-glob
-          desc: File "regex", e.g. *.txt
-        numberOfNewlines:
-          type: number
-          desc: Number input 
-        singleLineText:
-          type: text
-          desc: Single line text
-        multilineText:
-          type: text
-          desc: Multiline text
-          is_multiline: true
-      static:
-        outDir:
-          type: text
-          value: ./
-  "Hello World (Docker)":
-    directory: ./test_workflows/hello_world
-    script: "main.nf"
-    nextflow_parameters:
-      - "-with-docker"
-      - "nfcore/base"
-    args:
-      dynamic:
-        inFile:
-          type: path
-          desc: Single file
-          selectable_files: true
-          selectable_folders: false
-        inFolder:
-          type: path
-          desc: Single folder
-          selectable_files: false
-          selectable_folders: true
-        inFiles:
-          type: paths
-          desc: Multiple files
-          selectable_files: true
-          selectable_folders: false
-        inFolders:
-          type: paths
-          desc: Multiple folder
-          selectable_files: false
-          selectable_folders: true
-        txtFiles:
-          type: file-glob
-          desc: File "regex", e.g. *.txt
-        numberOfNewlines:
-          type: number
-          desc: Number input 
-        singleLineText:
-          type: text
-          desc: Single line text
-        multilineText:
-          type: text
-          desc: Multiline text
-          is_multiline: true
-      static:
-        outDir:
-          type: text
-          value: ./
+  file:
+    dev:
+      description: Login with local file
+      file: /home/mambauser/dev_auth.yaml
+      expires_in: 4294967296
+frontend_host_url: https://ENV['NF_HOSTNAME']:16160

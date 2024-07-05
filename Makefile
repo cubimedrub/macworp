@@ -16,11 +16,11 @@ production-test:
 	# Create separate upload directory
 	mkdir -p deploy_test_uploads/
 	# Build docker container for back- & frontend
-	env DOCKER_BUILDKIT=1 docker build --target development -t "nf-cloud/backend:dev" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f backend.dockerfile .
-	env DOCKER_BUILDKIT=1 docker build -t "nf-cloud/frontend:dev" -f frontend.dockerfile .
-	# Start docker-compose in separate docker-compose project called nf-cloud-deploy-test, combining the two docker-compose files
+	env DOCKER_BUILDKIT=1 docker build -t "macworp/backend:dev" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/backend.dockerfile .
+	env DOCKER_BUILDKIT=1 docker build -t "macworp/frontend:dev" -f docker/frontend.dockerfile .
+	# Start docker-compose in separate docker-compose project called macworp-deploy-test, combining the two docker-compose files
 	env NF_HOSTNAME=${NF_HOSTNAME} USER_ID=${USER_ID} GROUP_ID=${GROUP_ID} NF_FUSIONAUTH_PROTOCOL=https NF_FUSIONAUTH_PORT=16161 \
-		docker-compose -p nf-cloud-deploy-test -f docker-compose.yaml -f deploy-test.docker-compose.yaml up ${args}
+		docker-compose -p macworp-deploy-test -f docker-compose.yaml -f deploy-test.docker-compose.yaml up ${args}
 
 production-worker-test:
 	# Worker for production test

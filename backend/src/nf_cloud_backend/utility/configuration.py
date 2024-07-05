@@ -26,7 +26,7 @@ class Configuration():
     """
 
     KEY_PATHS_TO_OVERRIDE: ClassVar[Tuple[str, ...]] = (
-        "login_providers"
+        "login_providers",
     )
 
     DEFAULT_CONFIG: ClassVar[str] = """

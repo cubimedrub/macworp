@@ -59,9 +59,5 @@ python -m nf_cloud_backend seed ./backend/db_seed.yaml
 ### Test Backend
 
 ```sh
-# Just run the tests 
-source test.env && python -m nf_cloud_backend test
-
-# Also save test logs to CSV
-source test.env && python -m nf_cloud_backend test ./out.csv
+source test.env && touch $MACWORP_TEST_LOG && rm $MACWORP_TEST_LOG && python -m unittest discover nf_cloud_backend
 ```

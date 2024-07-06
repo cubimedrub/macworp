@@ -12,10 +12,6 @@ IS_PUBLISHED = True
 
 
 class ListWorkflowsTest(Test):
-    name = "List workflows"
-
-    description = "List workflows"
-
     def request(self) -> Request:
         return Request("GET", endpoint("/workflow"))
 
@@ -34,10 +30,7 @@ class ListWorkflowsTest(Test):
 
     @parameterized.expand([
         [UNAUTHENTICATED, 401],
-        [PRIVATE, 200],
-        [READ_ACCESS, 200],
-        [WRITE_ACCESS, 200],
-        [OWNED, 200],
+        [DEFAULT, 200],
         [ADMIN, 200]
     ], name_func)
     def test_permissions(self, role, status):
@@ -50,10 +43,6 @@ class ListWorkflowsTest(Test):
 
 
 class CreateWorkflowTest(Test):
-    name = "Create workflow"
-
-    description = "Creates a new workflow and then accesses it"
-
     def request(self) -> Request:
         return Request(
             "POST",
@@ -89,10 +78,7 @@ class CreateWorkflowTest(Test):
     
     @parameterized.expand([
         [UNAUTHENTICATED, 401],
-        [PRIVATE, 200],
-        [READ_ACCESS, 200],
-        [WRITE_ACCESS, 200],
-        [OWNED, 200],
+        [DEFAULT, 200],
         [ADMIN, 200]
     ], name_func)
     def test_permissions(self, role, status):
@@ -105,10 +91,6 @@ class CreateWorkflowTest(Test):
 
 
 class ShowWorkflowTest(Test):
-    name = "Show workflow"
-
-    description = "Shows an existing workflow"
-
     def request(self, workflow_id: int) -> Request:
         return Request(
             "GET",
@@ -148,10 +130,6 @@ class ShowWorkflowTest(Test):
 
 
 class EditWorkflowTest(Test):
-    name = "Edit workflow"
-
-    description = "Edits an existing workflow and then shows it"
-
     def request(self, workflow_id: int) -> Request:
         return Request(
             "POST",
@@ -206,10 +184,6 @@ class EditWorkflowTest(Test):
 
 
 class TransferWorkflowOwnershipTest(Test):
-    name = "Transfer workflow ownership"
-
-    description = "The default user transfers ownership of one of their workflows to the admin user. After the transfer, they will still have write access."
-
     def request(self, workflow_id: int) -> Request:
         return Request(
             "POST",
@@ -258,10 +232,6 @@ class TransferWorkflowOwnershipTest(Test):
 
 
 class DeleteWorkflowTest(Test):
-    name = "Delete workflow"
-
-    description = "Deletes a workflow and confirms that the workflow is in fact deleted"
-
     def request(self, workflow_id: int) -> Request:
         return Request(
             "POST",
@@ -289,6 +259,104 @@ class DeleteWorkflowTest(Test):
         [PRIVATE, 403],
         [READ_ACCESS, 403],
         [WRITE_ACCESS, 403],
+        [OWNED, 200],
+        [ADMIN, 200]
+    ], name_func)
+    def test_permissions(self, role, status):
+        self.as_user(
+            role.login,
+            self.request(role.workflow),
+            status,
+            DONT_CARE
+        )
+
+
+class AddWorkflowShareTest(Test):
+    def request(self, workflow_id: int) -> Request:
+        return Request(
+            "POST",
+            endpoint(f"/workflow/{workflow_id}/share/add?write=true"),
+            json=[USER_2_DEFAULT]
+        )
+
+    def test_result(self):
+        self.as_admin(
+            self.request(WORKFLOW_3_READ_SHARED),
+            200,
+            None
+        )
+
+        self.as_admin(
+            Request(
+                "GET",
+                endpoint(f"/workflow/{WORKFLOW_3_READ_SHARED}"),
+            ),
+            200,
+            {
+                "name": DONT_CARE,
+                "owner_id": DONT_CARE,
+                "description": DONT_CARE,
+                "definition": DONT_CARE,
+                "is_published": DONT_CARE,
+                "read_shared": [],
+                "write_shared": [USER_2_DEFAULT],
+            }
+        )
+    
+    @parameterized.expand([
+        [UNAUTHENTICATED, 401],
+        [PRIVATE, 403],
+        [READ_ACCESS, 403],
+        [WRITE_ACCESS, 200],
+        [OWNED, 200],
+        [ADMIN, 200]
+    ], name_func)
+    def test_permissions(self, role, status):
+        self.as_user(
+            role.login,
+            self.request(role.workflow),
+            status,
+            DONT_CARE
+        )
+
+
+class RemoveWorkflowShareTest(Test):
+    def request(self, workflow_id: int) -> Request:
+        return Request(
+            "POST",
+            endpoint(f"/workflow/{workflow_id}/share/remove"),
+            json=[USER_2_DEFAULT]
+        )
+
+    def test_result(self):
+        self.as_admin(
+            self.request(WORKFLOW_3_READ_SHARED),
+            200,
+            None
+        )
+
+        self.as_admin(
+            Request(
+                "GET",
+                endpoint(f"/workflow/{WORKFLOW_3_READ_SHARED}"),
+            ),
+            200,
+            {
+                "name": DONT_CARE,
+                "owner_id": DONT_CARE,
+                "description": DONT_CARE,
+                "definition": DONT_CARE,
+                "is_published": DONT_CARE,
+                "read_shared": [],
+                "write_shared": [],
+            }
+        )
+    
+    @parameterized.expand([
+        [UNAUTHENTICATED, 401],
+        [PRIVATE, 403],
+        [READ_ACCESS, 403],
+        [WRITE_ACCESS, 200],
         [OWNED, 200],
         [ADMIN, 200]
     ], name_func)

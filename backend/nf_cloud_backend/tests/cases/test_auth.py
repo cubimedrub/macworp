@@ -4,10 +4,6 @@ from ..base import DONT_CARE, Test, endpoint
 
 
 class FileBasedAuthenticationTest(Test):
-    name = "File-based authentication"
-
-    description = "Tries logging in using file-based authentication."
-
     def test_this(self):
         self.send(
             Request(
@@ -24,10 +20,6 @@ class FileBasedAuthenticationTest(Test):
 
 
 class DatabaseAuthenticationTest(Test):
-    name = "Database authentication"
-
-    description = "Tries logging in using database authentication."
-
     def test_this(self):
         self.send(
             Request(

@@ -30,6 +30,13 @@ UNAUTHENTICATED = MatrixRole(
     PROJECT_1_OWNED
 )
 
+DEFAULT = MatrixRole(
+    "default",
+    DEFAULT_LOGIN,
+    WORKFLOW_1_OWNED,
+    PROJECT_1_OWNED
+)
+
 PRIVATE = MatrixRole(
     "private",
     DEFAULT_LOGIN,
@@ -66,5 +73,5 @@ ADMIN = MatrixRole(
 )
 
 
-def name_func(test_func, param_num, param):
-    return f"{test_func.__name__}_{param.args[0].name}"    
+def name_func(test_func, _, param):
+    return f"{test_func.__name__}_{param.args[0].name}"

@@ -67,27 +67,18 @@ class LogEntry:
     request: Request
     status: int
     json: Any
+    login: UserLogin | None
 
-
-    def __init__(self, request: Request, status: int, json: Any):
+    def __init__(self, request: Request, status: int, json: Any, login: UserLogin | None):
         self.request = request
         self.status = status
         self.json = json
+        self.login = login
 
 
 class Test(unittest.TestCase):
     """
     The abstract base for all MaCWorP tests.
-    """
-
-    name: str | None = None
-    """
-    The name of the test.
-    """
-
-    description: str | None = None
-    """
-    A description of what this test does.
     """
 
     client: TestClient
@@ -111,7 +102,7 @@ class Test(unittest.TestCase):
     # UTILITY METHODS
 
 
-    def send(self, request: Request, status: int, json: PartialJson) -> Response:
+    def send(self, request: Request, status: int, json: PartialJson, login: UserLogin | None = None) -> Response:
         """
         Sends a HTTP request to the app, and ensures that it returns the correct status code and JSON.
         The request is appended to the logs.
@@ -125,7 +116,7 @@ class Test(unittest.TestCase):
         
         self.assert_(match_partial_json(actual_json, json), f"JSON doesn't match: Expected {json}, got {actual_json}") 
         self.assertEqual(actual_status, status, f"Status doesn't match: Expected {status}, got {actual_status}")
-        self.logs.append(LogEntry(request, actual_status, actual_json))
+        self.logs.append(LogEntry(request, actual_status, actual_json, login))
         return response
     
 
@@ -157,7 +148,7 @@ class Test(unittest.TestCase):
 
         if login is not None:
             request.headers["X-Token"] = self.get_token(login)
-        return self.send(request, status, json)
+        return self.send(request, status, json, login)
 
 
     def as_default(self, request: Request, status: int, json: PartialJson) -> Response:
@@ -223,8 +214,7 @@ class Test(unittest.TestCase):
             if not file_exists:
                 writer.writerow([
                     "Name",
-                    "Description",
-                    "Call Number",
+                    "Login",
                     "Method",
                     "URL",
                     "Body",
@@ -233,8 +223,7 @@ class Test(unittest.TestCase):
                     "Response Status"
                 ])
             writer.writerow([
-                self.name,
-                self.description,
+                unittest.TestCase.id(self),
                 "",
                 "",
                 "",
@@ -243,11 +232,10 @@ class Test(unittest.TestCase):
                 "",
                 "",
             ])
-            for i, log in enumerate(self.logs):
+            for log in self.logs:
                 writer.writerow([
                     "",
-                    "",
-                    i + 1,
+                    "" if log.login is None else log.login.login_id,
                     log.request.method,
                     log.request.url,
                     log.request.content.decode("utf-8"),

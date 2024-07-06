@@ -1,8 +1,4 @@
-from httpx import Request
-
-from ..base import DONT_CARE, Test, endpoint
-from ..constants import *
-from ..matrix import *
+from ..prelude import *
 
 
 NAME = "some name"

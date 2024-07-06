@@ -1,6 +1,4 @@
-from httpx import Request
-
-from ..base import DONT_CARE, Test, endpoint
+from ..prelude import *
 
 
 class FileBasedAuthenticationTest(Test):

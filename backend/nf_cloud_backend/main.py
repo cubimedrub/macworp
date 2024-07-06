@@ -21,17 +21,16 @@ async def lifespan(app: FastAPI):
     yield
     shutdown()
 
+
 def startup():
+    """
+    Executed when the app starts up.
+    """
     SQLModel.metadata.create_all(engine)
 
+
 def shutdown():
+    """
+    Executed when the app shuts down.
+    """
     pass
-
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
-
-
-#DbSession.add(User(id=1, login_id="testperson", role=UserRole.admin, provider_type="database", provider_name="dev", email="testperson@gmail.com", 
-#                   hashed_password=get_password_hash("testperson", )))
-#DbSession.commit()

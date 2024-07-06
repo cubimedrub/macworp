@@ -1,20 +1,30 @@
-from parameterized import parameterized
-
-from httpx import Request
-
-from .base import DONT_CARE, Test
-from .constants import *
+from .user_login import UserLogin
 
 
 class MatrixRole:
+    """
+    Objects of this class are column in the "permission matrix".
+    """
+    
     name: str
+    """
+    Human-readable name (used to name tests)
+    """
 
     login: UserLogin | None
+    """
+    User credentials, or None if no authentication should be performed
+    """
     
     workflow: int
+    """
+    A workflow ID (doesn't make sense for all routes)
+    """
 
     project: int
-
+    """
+    A project ID (doesn't make sense for all routes) 
+    """
 
     def __init__(self, name: str, login: UserLogin | None, workflow: int, project: int):
         self.name = name
@@ -23,55 +33,9 @@ class MatrixRole:
         self.project = project
 
 
-UNAUTHENTICATED = MatrixRole(
-    "unauthenticated",
-    None,
-    WORKFLOW_1_OWNED,
-    PROJECT_1_OWNED
-)
-
-DEFAULT = MatrixRole(
-    "default",
-    DEFAULT_LOGIN,
-    WORKFLOW_1_OWNED,
-    PROJECT_1_OWNED
-)
-
-PRIVATE = MatrixRole(
-    "private",
-    DEFAULT_LOGIN,
-    WORKFLOW_2_PRIVATE,
-    PROJECT_2_PRIVATE
-)
-
-READ_ACCESS = MatrixRole(
-    "read_access",
-    DEFAULT_LOGIN,
-    WORKFLOW_3_READ_SHARED,
-    PROJECT_3_READ_SHARED
-)
-
-WRITE_ACCESS = MatrixRole(
-    "write_access",
-    DEFAULT_LOGIN,
-    WORKFLOW_4_WRITE_SHARED,
-    PROJECT_4_WRITE_SHARED
-)
-
-OWNED = MatrixRole(
-    "owned",
-    DEFAULT_LOGIN,
-    WORKFLOW_1_OWNED,
-    PROJECT_1_OWNED
-)
-
-ADMIN = MatrixRole(
-    "admin",
-    ADMIN_LOGIN,
-    WORKFLOW_1_OWNED,
-    PROJECT_1_OWNED
-)
-
-
 def name_func(test_func, _, param):
+    """
+    Naming function for the parameterization decorator
+    """
+    
     return f"{test_func.__name__}_{param.args[0].name}"

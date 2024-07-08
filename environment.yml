@@ -1,9 +1,11 @@
 name: nf_cloud
 channels:
   - defaults
+  - conda-forge
 dependencies:
   - libpq
-  - nodejs=16.*
+  - nodejs=18.*
+  - node-gyp
   - yarn
   - python=3.10
   - pip

@@ -22,6 +22,11 @@ production-test:
 	env NF_HOSTNAME=${NF_HOSTNAME} USER_ID=${USER_ID} GROUP_ID=${GROUP_ID} NF_FUSIONAUTH_PROTOCOL=https NF_FUSIONAUTH_PORT=16161 \
 		docker-compose -p macworp-deploy-test -f docker-compose.yaml -f deploy-test.docker-compose.yaml up ${args}
 
+production-test-destroy:
+	# Destroy production test
+	env NF_HOSTNAME=${NF_HOSTNAME} USER_ID=${USER_ID} GROUP_ID=${GROUP_ID} NF_FUSIONAUTH_PROTOCOL=https NF_FUSIONAUTH_PORT=16161 \
+		docker-compose -p macworp-deploy-test -f docker-compose.yaml -f deploy-test.docker-compose.yaml down
+
 production-worker-test:
 	# Worker for production test
 	env PYTHONUNBUFFERED=1 conda run --no-capture-output --live-stream -n nf_cloud \

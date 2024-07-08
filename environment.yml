@@ -6,7 +6,7 @@ dependencies:
   - libpq
   - nodejs=18.*
   - node-gyp
-  - yarn
+  - conda-forge::yarn
   - python=3.10
   - pip
   - setuptools

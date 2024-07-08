@@ -14,8 +14,9 @@ nextflow
 /uploads
 /deploy_test_uploads
 
-# npm
+# npm & yarn
 node_modules/
+.yarn/
 
 # Copy from https://github.com/github/gitignore/blob/master/Python.gitignore with some additions
 # Byte-compiled / optimized / DLL files

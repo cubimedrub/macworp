@@ -30,6 +30,7 @@ dependencies = [
     "PyYAML >=6, <7",
     "redis >=4, <5",
     "requests  >=2, <3",
+    "typing_extensions  >=4, <5",
     "zipstream-new  >=1, <2"
 ]
 

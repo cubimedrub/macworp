@@ -232,7 +232,8 @@ class ProjectsController:
     @login_required
     def upload_file(id: int):
         """
-        Upload files
+        Upload files to the project directory. 
+        Use `/api/projects/<int:id>/upload-file-chunk` for large files.
 
         Parameters
         ----------
@@ -265,6 +266,70 @@ class ProjectsController:
             return "", 404
 
         file_path = project.add_file(file_path, request.files["file"].read())
+        return jsonify({
+            "file_path": str(file_path)
+        })
+
+    @staticmethod
+    @app.route("/api/projects/<int:project_id>/upload-file-chunk", methods=["POST"])
+    @login_required
+    def upload_file_chunk(project_id: int):
+        """
+        Upload file chunks to the project directory. Useful for uploading large files.
+
+        Method
+        ------
+        POST
+
+        Query parameters
+        ----------------
+        is-dropzone : int
+            > 0 if the request is from Dropzone.js to set the correct chunk offset in the request
+        
+        Form data
+        ---------
+        file : File
+            File chunk
+        file_path : File
+            Path of the file within the project directory
+        chunk-offset : int
+            Byte offset of the file chunk (Dropzone.js is sending it as `dzchunkbyteoffset`)
+        
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+
+        Returns
+        -------
+        Response
+            200 - on success
+            422 - on error
+        """
+        errors = defaultdict(list)
+
+        if not "file" in request.files:
+            errors["file"].append("cannot be empty")
+
+        if not "file_path" in request.files:
+            errors["file_path"].append("cannot be empty")
+
+        if len(errors) > 0:
+            return jsonify({
+                "errors": errors
+            }), 422
+
+        file_path = Path(request.files["file_path"].read().decode('utf-8'))
+
+        chunk_offset_key = "dzchunkbyteoffset" if request.args.get("is-dropzone", 0, type=bool) else "chunk-offset"
+        chunk_offset = request.form.get(chunk_offset_key, 0, type=int)
+
+        project: Optional[Project] = Project.get_or_none(Project.id == project_id)
+        if project is None:
+            return "", 404
+
+        file_path = project.add_file_chunk(file_path, chunk_offset, request.files["file"].stream)
         return jsonify({
             "file_path": str(file_path)
         })
@@ -328,7 +393,7 @@ class ProjectsController:
         data = request.json
 
         path = data.get("path", None)
-        if path == None:
+        if path is None:
             errors["path"].append("missing")
         elif not isinstance(path, str):
             errors["target_path"].append("not a string")

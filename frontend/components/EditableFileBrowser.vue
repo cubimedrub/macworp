@@ -48,7 +48,9 @@
                 <li v-for="upload_item in upload_queue" :key="upload_item" class="list-group-item d-flex justify-content-between">
                     <span>{{ upload_item }}</span>
                     <div class="w-25 d-flex justify-content-end align-items-center">
-                        <Spinner v-if="upload_status[upload_item]"></Spinner>
+                        <div v-if="upload_status[upload_item] > 0" class="progress w-100">
+                            <div :style="`width: ${upload_status[upload_item]}%`" :aria-valuenow="upload_status[upload_item]" class="progress-bar" role="progressbar"  aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
                         <span v-else>wait for upload...</span>
                     </div>
                 </li>
@@ -99,26 +101,32 @@ export default {
             this.dropzone = new Dropzone(
                 this.$refs.dropzone, 
                 { 
-                    url: `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/upload-file`,
+                    url: `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/upload-file-chunk?is-dropzone=1`,
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
                     },
                     clickable: false,
                     disablePreviews: true,
                     parallelUploads: 1,
-                    maxFilesize: this.$config.nf_cloud_upload_max_file_size
+                    maxFilesize: this.$config.nf_cloud_upload_max_file_size,
+                    chunking: true,
+                    retryChunks: true,
+                    chunkSize: 100000000 // 100MB
                 }
             );
             this.dropzone.on("addedfile", file => {
                 var original_path = file.fullPath == null ? file.name : file.fullPath
-                file.nf_cloud__file_path = `${this.current_directory}/${original_path}`
+                file.nf_cloud__file_path = this.getFullPath(original_path)
                 this.upload_queue.push(file.nf_cloud__file_path)
-                this.upload_status[file.nf_cloud__file_path] = false
+                this.upload_status[file.nf_cloud__file_path] = 0
             }),
             this.dropzone.on("sending", (file, xhr, formData) => {
                 var file_path_blob = new Blob([file.nf_cloud__file_path], { type: "text/plain"})
                 formData.append("file_path", file_path_blob)
-                this.upload_status[file.nf_cloud__file_path] = true
+            });
+            this.dropzone.on("uploadprogress", (file, progress) => {
+                this.upload_status[file.nf_cloud__file_path] = Math.round(progress * 100) / 100
+                this.$forceUpdate()
             });
             this.dropzone.on("success", file => {
                 this.upload_queue = this.upload_queue.filter(path => path != file.nf_cloud__file_path)

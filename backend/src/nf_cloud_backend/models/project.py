@@ -1,11 +1,11 @@
 # std imports
 from __future__ import annotations
-import io
 import json
 from pathlib import Path
 import re
 import shutil
-from typing import Union
+from typing import IO
+from typing_extensions import Buffer
 
 # 3rd party imports
 from peewee import BigAutoField, \
@@ -27,7 +27,7 @@ SLASH_SEQ_REGEX: re.Pattern = re.compile(r"\/+")
 class Project(db.Model):
     id = BigAutoField(primary_key=True)
     name = CharField(max_length=512, null=False)
-    workflow_id = BigIntegerField(null=False, default=0)    # TODO: Rename to workflow_id and change to bigint (migration ALTER TABLE projects ADD COLUMN workflow_id bigint; (remove old column))
+    workflow_id = BigIntegerField(null=False, default=0)
     workflow_arguments = BinaryJSONField(null=False, default={})
     is_scheduled = BooleanField(null=False, default=False)
     submitted_processes = IntegerField(null=False, default=0)
@@ -166,7 +166,7 @@ class Project(db.Model):
         else:
             raise PermissionError("Path is not within the projects directory.")
 
-    def add_file(self, target_file_path: Path, file: Union[io.BytesIO, io.StringIO]) -> Path:
+    def add_file(self, target_file_path: Path, file: Buffer) -> Path:
         """
         Add file to directory
 
@@ -174,7 +174,7 @@ class Project(db.Model):
         ----------
         target_file_path: Path
             Path of the file within the project directory
-        file : Union[io.BytesIO, io.StringIO]
+        file : IO[bytes]
             File
 
         Returns
@@ -187,6 +187,39 @@ class Project(db.Model):
             target_directory.mkdir(parents=True, exist_ok=True)
         with target_directory.joinpath(target_file_path.name).open("wb") as project_file:
             project_file.write(file)
+
+        return Path("/").joinpath(self.__secure_path_for_join(target_file_path))
+
+    def add_file_chunk(
+        self,
+        target_file_path: Path,
+        chunk_offset: int,
+        file_chunk: IO[bytes]
+    ) -> Path:
+        """
+        Adds a file_chunk to the given target_file within the project directory. 
+        Useful for uploading large files.
+
+        Parameters
+        ----------
+        target_file_path: Path
+            Path of the file within the project directory
+        chunk_offset : int
+            Offset of the file chunk
+        file_chunk : IO[bytes]
+            File chunk
+
+        Returns
+        -------
+        Path
+            Relative path to the file within the project directory
+        """
+        target_directory = self.get_path(target_file_path.parent)
+        if not target_directory.is_dir():
+            target_directory.mkdir(parents=True, exist_ok=True)
+        with target_directory.joinpath(target_file_path.name).open("ab") as project_file:
+            project_file.seek(chunk_offset)
+            project_file.write(file_chunk.read())
 
         return Path("/").joinpath(self.__secure_path_for_join(target_file_path))
 

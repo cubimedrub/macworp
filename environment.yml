@@ -5,7 +5,6 @@ channels:
 dependencies:
   - libpq
   - nodejs=18.*
-  - node-gyp
   - conda-forge::yarn
   - python=3.10
   - pip

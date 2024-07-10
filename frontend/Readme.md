@@ -3,7 +3,7 @@ The frontend is written with NuxtJS
 
 ## Dependencies
 * [NodeJS](https://nodejs.org/en) >= 18.x
-* [Yarn](https://yarnpkg.com/)
+* [Yarn](https://yarnpkg.com/) >=4.x
 
 ## Configuration
 The frontend is configured environment variables:

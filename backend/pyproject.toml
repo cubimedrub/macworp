@@ -18,6 +18,7 @@ dependencies = [
     "jsonschema  >=4, <5",
     "kombu  >=5, <6",
     "markupsafe  ==2.0.1",      # fix for `ImportError: cannot import name 'soft_unicode'
+    "markdown ~=3.6",
     "mergedeep  >=1, <2",
     "oauthlib  >=3, <4",
     "pandas ~=2.0",

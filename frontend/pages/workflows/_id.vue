@@ -32,7 +32,13 @@
             <tr>
                 <th>Description</th>
                 <td>
-                    <textarea class="form-control" v-model="workflow.description"></textarea>
+                    <v-ace-editor
+                        v-model="workflow.description"
+                        @init="initDescriptionEditor"
+                        theme="solarized_dark"
+                        lang="markdown"
+                        :options="{minHeight: description_editor_min_height, maxLines: Infinity, autoScrollEditorIntoView: true}"
+                    />
                 </td>
             </tr>
             <tr>
@@ -56,10 +62,10 @@
         <div class="row mb-3">
             <v-ace-editor
                 v-model="workflow.definition"
-                @init="initEditor"
+                @init="initDefinitionEditor"
                 theme="solarized_dark"
                 lang="json"
-                :options="{minHeight: editor_min_height, maxLines: Infinity, autoScrollEditorIntoView: true}"
+                :options="{minHeight: definition_editor_min_height, maxLines: Infinity, autoScrollEditorIntoView: true}"
             />
             <small v-if="errors.definition">
                 <AttributeErrorList :errors="errors.definition" class="alert-danger" style="list-style: none"></AttributeErrorList>
@@ -90,7 +96,8 @@ import toastr from "toastr";
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 
-const EDITOR_MIN_HEIGHT = "200"
+const DEFINITION_EDITOR_MIN_HEIGHT = "200"
+const DESCRIPTION_EDITOR_MIN_HEIGHT = "5"
 
 export default {
     data(){
@@ -105,7 +112,13 @@ export default {
         this.fetchWorkflow()
     },
     methods: {
-        initEditor(editor){
+        initDescriptionEditor(editor){
+            require('brace/ext/language_tools') //language extension prerequsite...
+            require('brace/mode/markdown')
+            require('brace/theme/solarized_dark')
+            editor.setShowPrintMargin(false);
+        },
+        initDefinitionEditor(editor){
             require('brace/ext/language_tools') //language extension prerequsite...
             require('brace/mode/json')
             require('brace/theme/solarized_dark')
@@ -215,11 +228,18 @@ export default {
             return DELETE_CONFIRMATION_DIALOG_ID
         },
         /**
-         * Provide access to EDITOR_MIN_HEIGHT in vue instance.
+         * Provide access to DEFINITION_EDITOR_MIN_HEIGHT in vue instance.
          * @return {Number}
          */
-        editor_min_height() {
-            return EDITOR_MIN_HEIGHT
+        definition_editor_min_height() {
+            return DEFINITION_EDITOR_MIN_HEIGHT
+        },
+        /**
+         * Provide access to DESCRIPTION_EDITOR_MIN_HEIGHT in vue instance.
+         * @return {Number}
+         */
+         description_editor_min_height() {
+            return DESCRIPTION_EDITOR_MIN_HEIGHT
         }
     }
 }

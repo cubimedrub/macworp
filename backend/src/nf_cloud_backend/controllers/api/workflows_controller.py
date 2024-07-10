@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, List
 
 #3rd party import
 from flask import jsonify, request
+import markdown
 import jsonschema
 
 # internal imports
@@ -205,3 +206,46 @@ class WorkflowsControllers:
         if workflow is None:
             return '', 404
         return jsonify(workflow.definition['results'])
+    
+
+    @staticmethod
+    @app.route("/api/workflows/<int:workflow_id>/description", endpoint="workflow_description")
+    def description(workflow_id: int):
+        """
+        Endpoint for getting the workflow description
+
+        Method
+        ------
+        GET
+
+        Query parameters
+        ----------------
+        parse : int
+            > 0 - parse markdown otherwise return raw text
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+
+        Returns
+        -------
+        Response
+            200 - on success
+            404 - when not found
+        """
+
+        workflow: Workflow = Workflow.get_or_none(Workflow.id == workflow_id)
+        if workflow is None:
+            return '', 404
+        
+        parse = request.args.get("parse", False, type=bool)
+
+        description = workflow.description
+        if parse:
+            description = markdown.markdown(description)
+
+        return jsonify({
+            "description": description
+        })
+    

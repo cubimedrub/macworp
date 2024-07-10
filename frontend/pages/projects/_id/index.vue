@@ -79,6 +79,11 @@
                         </ul>
 
                     </div>
+                    <div v-if="selected_workflow_description">
+                        <h2 class="mb-0">Workflow description</h2>
+                        <div  v-html="selected_workflow_description" class="mb-3"></div>
+                    </div>
+
                     <h2 class="mb-0">Workflow parameters</h2>
                     <p v-if="project.workflow_id == 0">
                         No workflow selected. Please select a workflow from the dropdown above.
@@ -243,6 +248,7 @@ export default {
             is_uploading: false,
             project_not_found: false,
             workflows: {},
+            selected_workflow_description: "",
             show_workflow_dropdown: false,
             /**
              * Event bus for communication with child components.
@@ -473,6 +479,23 @@ export default {
          */
         showStartDialog(){
             this.local_event_bus.$emit("CONFIRMATION_DIALOG_OPEN", this.start_workflow_confirmation_dialog_id)
+        },
+        /**
+         * Fetches the workflow description
+         */
+        async getWorkflowDescription(){
+            if(this.project.workflow_id == 0)
+                return Promise.resolve()
+            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.project.workflow_id}/description?parse=1`, {
+            }).then(response => {
+                if(response.ok) {
+                    response.json().then(data => {
+                        this.selected_workflow_description = data.description
+                    })
+                } else {
+                    this.handleUnknownResponse(response)
+                }
+            })
         }
     },
     computed: {
@@ -552,6 +575,9 @@ export default {
                     tab: this.tabs[this.selected_tab]
                 }
             })
+        },
+        'project.workflow_id': function() {
+            this.getWorkflowDescription()
         }
     }
 }

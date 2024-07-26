@@ -633,7 +633,7 @@ class ProjectsController:
         path_to_download = project.get_path(path)
         if not path_to_download.is_file():
             return "", 404
-        dataframe: Optional[pd.Dataframe] = None
+        dataframe: Optional[pd.DataFrame] = None
         if path_to_download.suffix == ".csv":
             dataframe = pd.read_csv(path_to_download)
         elif path_to_download.suffix == ".tsv":

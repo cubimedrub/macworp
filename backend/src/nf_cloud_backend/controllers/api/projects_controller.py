@@ -626,7 +626,7 @@ class ProjectsController:
         path : str
             Path to folder or file.
         """
-        project = Project.get_or_none(Project.id == w_id)
+        project: Optional[Project] = Project.get_or_none(Project.id == w_id)
         if project is None:
             return "", 404
         path = Path(unquote(request.args.get('path', "", type=str)))

@@ -640,7 +640,14 @@ class ProjectsController:
             dataframe = pd.read_csv(path_to_download, sep="\t")
         elif path_to_download.suffix == ".xlsx":
             dataframe = pd.read_excel(path_to_download)
-        
+
+        if dataframe is None:
+            return jsonify({
+                "errors": {
+                    "path": ["unknown table format"]
+                }
+            }), 422
+
         return Response(
             dataframe.to_json(orient="split", index=False),
             mimetype="application/json"

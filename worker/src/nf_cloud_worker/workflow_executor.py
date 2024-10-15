@@ -58,7 +58,7 @@ class WorkflowExecutor(Process):
         # Project queue
         self.__project_queue: Queue = project_queue
         # Communication channel with AckHandler
-        self.__communication_channel: List[Connection] = communication_channel
+        self.__communication_channel: Connection = communication_channel
         # Event for breaking work loop
         self.__stop_event: Event = stop_event
         self.__log_level = log_level

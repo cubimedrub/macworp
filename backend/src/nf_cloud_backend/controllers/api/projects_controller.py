@@ -17,6 +17,7 @@ from nf_cloud_backend import app, socketio, db_wrapper as db
 from nf_cloud_backend.models.project import Project
 from nf_cloud_backend.utility.configuration import Configuration
 
+
 class ProjectsController:
     """
     Controller for project endpoints.
@@ -35,12 +36,17 @@ class ProjectsController:
         """
         offset = request.args.get("offset", 0)
         limit = request.args.get("limit", 50)
-        return jsonify({
-            "projects": [
-                project.to_dict() 
-                for project in Project.select().order_by(Project.id.desc()).offset(offset).limit(limit)
-            ]
-        })
+        return jsonify(
+            {
+                "projects": [
+                    project.to_dict()
+                    for project in Project.select()
+                    .order_by(Project.id.desc())
+                    .offset(offset)
+                    .limit(limit)
+                ]
+            }
+        )
 
     @staticmethod
     @app.route("/api/projects/<int:id>")
@@ -60,9 +66,7 @@ class ProjectsController:
         """
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project:
-            return jsonify({
-                "project": project.to_dict()
-            })
+            return jsonify({"project": project.to_dict()})
         else:
             return jsonify({}), 404
 
@@ -101,9 +105,7 @@ class ProjectsController:
             project = Project.create(name=name)
             return jsonify(project.to_dict())
 
-        return jsonify({
-                "errors": errors
-            }), error_status_code
+        return jsonify({"errors": errors}), error_status_code
 
     @staticmethod
     @app.route("/api/projects/<int:id>/update", methods=["POST"])
@@ -130,21 +132,19 @@ class ProjectsController:
         for key in ["workflow_id", "workflow_arguments"]:
             if not key in data:
                 errors[key].append("can not be empty")
-        
+
         if not isinstance(data["workflow_id"], int):
-                errors["workflow_id"].append("must be integer")
+            errors["workflow_id"].append("must be integer")
 
         if not isinstance(data["workflow_arguments"], dict):
             errors["workflow_arguments"].append("must be a dictionary")
 
         if len(errors):
-            jsonify({
-                "errors": errors
-            })
+            jsonify({"errors": errors})
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project:
             project.workflow_arguments = data["workflow_arguments"]
-            project.workflow_id = data["workflow_id"]     # TODO save id
+            project.workflow_id = data["workflow_id"]  # TODO save id
             project.save()
             return jsonify({}), 200
         else:
@@ -162,7 +162,7 @@ class ProjectsController:
             return jsonify({}), 404
 
     @staticmethod
-    @app.route("/api/projects/count") 
+    @app.route("/api/projects/count")
     def count():
         """
         Returns number of project
@@ -172,10 +172,7 @@ class ProjectsController:
         Response
             200
         """
-        return jsonify({
-            "count": Project.select().count()
-        })
-    
+        return jsonify({"count": Project.select().count()})
 
     @staticmethod
     @app.route("/api/projects/<int:id>/files")
@@ -197,13 +194,9 @@ class ProjectsController:
         """
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
-            return jsonify({
-                "errors": {
-                    "general": "project not found"
-                }
-            })
+            return jsonify({"errors": {"general": "project not found"}})
         directory = project.get_path(
-            Path(unquote(request.args.get('dir', "/", type=str)))
+            Path(unquote(request.args.get("dir", "/", type=str)))
         )
         if directory.is_dir() and project.in_file_director(directory):
             files = []
@@ -216,23 +209,15 @@ class ProjectsController:
 
             folders.sort()
             files.sort()
-            return jsonify({
-                "folders": folders,
-                "files": files
-            })
-        return jsonify({
-            "errors": {
-                "general": "directory not found"
-            }
-        }), 404
-
+            return jsonify({"folders": folders, "files": files})
+        return jsonify({"errors": {"general": "directory not found"}}), 404
 
     @staticmethod
     @app.route("/api/projects/<int:id>/upload-file", methods=["POST"])
     @login_required
     def upload_file(id: int):
         """
-        Upload files to the project directory. 
+        Upload files to the project directory.
         Use `/api/projects/<int:id>/upload-file-chunk` for large files.
 
         Parameters
@@ -255,20 +240,16 @@ class ProjectsController:
             errors["file_path"].append("cannot be empty")
 
         if len(errors) > 0:
-            return jsonify({
-                "errors": errors
-            }), 422
-        
-        file_path = Path(request.files["file_path"].read().decode('utf-8'))
+            return jsonify({"errors": errors}), 422
+
+        file_path = Path(request.files["file_path"].read().decode("utf-8"))
 
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
 
         file_path = project.add_file(file_path, request.files["file"].read())
-        return jsonify({
-            "file_path": str(file_path)
-        })
+        return jsonify({"file_path": str(file_path)})
 
     @staticmethod
     @app.route("/api/projects/<int:project_id>/upload-file-chunk", methods=["POST"])
@@ -285,7 +266,7 @@ class ProjectsController:
         ----------------
         is-dropzone : int
             > 0 if the request is from Dropzone.js to set the correct chunk offset in the request
-        
+
         Form data
         ---------
         file : File
@@ -294,7 +275,7 @@ class ProjectsController:
             Path of the file within the project directory
         chunk-offset : int
             Byte offset of the file chunk (Dropzone.js is sending it as `dzchunkbyteoffset`)
-        
+
 
         Parameters
         ----------
@@ -316,24 +297,26 @@ class ProjectsController:
             errors["file_path"].append("cannot be empty")
 
         if len(errors) > 0:
-            return jsonify({
-                "errors": errors
-            }), 422
+            return jsonify({"errors": errors}), 422
 
-        file_path = Path(request.files["file_path"].read().decode('utf-8'))
+        file_path = Path(request.files["file_path"].read().decode("utf-8"))
 
-        chunk_offset_key = "dzchunkbyteoffset" if request.args.get("is-dropzone", 0, type=bool) else "chunk-offset"
+        chunk_offset_key = (
+            "dzchunkbyteoffset"
+            if request.args.get("is-dropzone", 0, type=bool)
+            else "chunk-offset"
+        )
         chunk_offset = request.form.get(chunk_offset_key, 0, type=int)
 
         project: Optional[Project] = Project.get_or_none(Project.id == project_id)
         if project is None:
             return "", 404
 
-        file_path = project.add_file_chunk(file_path, chunk_offset, request.files["file"].stream)
-        return jsonify({
-            "file_path": str(file_path)
-        })
-    
+        file_path = project.add_file_chunk(
+            file_path, chunk_offset, request.files["file"].stream
+        )
+        return jsonify({"file_path": str(file_path)})
+
     @staticmethod
     @app.route("/api/projects/<int:id>/delete-path", methods=["POST"])
     @login_required
@@ -360,10 +343,8 @@ class ProjectsController:
             errors["path"].append("not a string")
 
         if len(errors):
-            return jsonify({
-                "errors": errors
-            }), 422
-        
+            return jsonify({"errors": errors}), 422
+
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
@@ -399,9 +380,7 @@ class ProjectsController:
             errors["target_path"].append("not a string")
 
         if len(errors):
-            return jsonify({
-                "errors": errors
-            }), 422
+            return jsonify({"errors": errors}), 422
 
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
@@ -433,32 +412,36 @@ class ProjectsController:
             return "", 404
         if project and not project.is_scheduled:
             for arguments in project.workflow_arguments:
-                if not "value" in arguments or "value" in arguments and arguments["value"] is None:
+                if (
+                    not "value" in arguments
+                    or "value" in arguments
+                    and arguments["value"] is None
+                ):
                     errors[arguments["name"]].append("cannot be empty")
             if len(errors) > 0:
-                return jsonify({
-                    "errors": errors
-                }), 422
+                return jsonify({"errors": errors}), 422
             with db.database.atomic() as transaction:
                 project.is_scheduled = True
                 project.save()
                 try:
-                    connection = pika.BlockingConnection(pika.URLParameters(Configuration.values()['rabbit_mq']['url']))
+                    connection = pika.BlockingConnection(
+                        pika.URLParameters(Configuration.values()["rabbit_mq"]["url"])
+                    )
                     channel = connection.channel()
-                    channel.basic_publish(exchange='', routing_key=Configuration.values()['rabbit_mq']['project_workflow_queue'], body=project.get_queue_represenation())
+                    channel.basic_publish(
+                        exchange="",
+                        routing_key=Configuration.values()["rabbit_mq"][
+                            "project_workflow_queue"
+                        ],
+                        body=project.get_queue_representation().model_dump_json(),
+                    )
                     connection.close()
                 except BaseException as exception:
                     transaction.rollback()
                     raise exception
-                return jsonify({
-                    "is_scheduled": project.is_scheduled
-                })
+                return jsonify({"is_scheduled": project.is_scheduled})
         else:
-            return jsonify({
-                    "errors": {
-                        "general": "project not found"
-                    }
-                }), 422
+            return jsonify({"errors": {"general": "project not found"}}), 422
 
     @staticmethod
     @app.route("/api/projects/<int:id>/finished", methods=["POST"])
@@ -515,16 +498,10 @@ class ProjectsController:
             errors["request body"].append("must be a string")
 
         if len(errors):
-            return jsonify({
-                "errors": errors
-            }), 422
+            return jsonify({"errors": errors}), 422
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
-            return jsonify({
-                "errors": {
-                    "general": "project not found"
-                }
-            }),  404
+            return jsonify({"errors": {"general": "project not found"}}), 404
         # Handle process traces
         if "trace" in workflow_log and "event" in workflow_log:
             match workflow_log["event"]:
@@ -534,25 +511,23 @@ class ProjectsController:
                     project.completed_processes += 1
             project.save()
             socketio.emit(
-                "new-progress", 
+                "new-progress",
                 {
                     "submitted_processes": project.submitted_processes,
                     "completed_processes": project.completed_processes,
-                    "details": f"Task {workflow_log['trace']['task_id']}: {workflow_log['trace']['name']} - {workflow_log['trace']['status']}"
-                }, 
-                to=f"project{project.id}"
+                    "details": f"Task {workflow_log['trace']['task_id']}: {workflow_log['trace']['name']} - {workflow_log['trace']['status']}",
+                },
+                to=f"project{project.id}",
             )
         # Handle workflow traces
         elif "metadata" in workflow_log and "event" in workflow_log:
-            error_report: Optional[str] = workflow_log['metadata']['workflow'].get('errorReport', None)
+            error_report: Optional[str] = workflow_log["metadata"]["workflow"].get(
+                "errorReport", None
+            )
             if error_report is not None:
                 socketio.emit(
-                    "error", 
-                    {
-                        "error_report": error_report
-                    }, 
-                    to=f"project{project.id}"
-            )
+                    "error", {"error_report": error_report}, to=f"project{project.id}"
+                )
         return "", 200
 
     @staticmethod
@@ -572,34 +547,31 @@ class ProjectsController:
         """
         project: Optional[Project] = Project.get_or_none(Project.id == project_id)
         if project is None:
-            return jsonify({
-                "errors": {
-                    "project": ["not found"]
-                }
-            }),  404
-        path = Path(unquote(request.args.get('path', "", type=str)))
-        is_inline: bool = request.args.get('is-inline', False, type=bool)
+            return jsonify({"errors": {"project": ["not found"]}}), 404
+        path = Path(unquote(request.args.get("path", "", type=str)))
+        is_inline: bool = request.args.get("is-inline", False, type=bool)
         path_to_download = project.get_path(path)
         if not path_to_download.exists():
-            return jsonify({
-                "errors": {
-                    "path": ["not found"]
-                }
-            
-            }), 404
+            return jsonify({"errors": {"path": ["not found"]}}), 404
         elif path_to_download.is_file():
             return send_file(path_to_download, as_attachment=not is_inline)
         else:
+
             def build_stream():
-                stream = zipstream.ZipFile(mode='w', compression=zipstream.ZIP_DEFLATED)
+                stream = zipstream.ZipFile(mode="w", compression=zipstream.ZIP_DEFLATED)
                 project_path_len = len(str(project.file_directory))
                 for path in path_to_download.glob("**/*"):
                     if path.is_file():
-                        stream.write(path, arcname=str(path)[project_path_len:])    # Remove absolut path before project subfolder, including project id
+                        stream.write(
+                            path, arcname=str(path)[project_path_len:]
+                        )  # Remove absolut path before project subfolder, including project id
                 yield from stream
-            response = Response(build_stream(), mimetype='application/zip')
-            filename_friendly_path_as_str = str(path).replace('/', '+')
-            response.headers["Content-Disposition"] = f"attachment; filename={project.name}--{filename_friendly_path_as_str}.zip"
+
+            response = Response(build_stream(), mimetype="application/zip")
+            filename_friendly_path_as_str = str(path).replace("/", "+")
+            response.headers["Content-Disposition"] = (
+                f"attachment; filename={project.name}--{filename_friendly_path_as_str}.zip"
+            )
             return response
 
     @staticmethod
@@ -629,7 +601,7 @@ class ProjectsController:
         project: Optional[Project] = Project.get_or_none(Project.id == w_id)
         if project is None:
             return "", 404
-        path = Path(unquote(request.args.get('path', "", type=str)))
+        path = Path(unquote(request.args.get("path", "", type=str)))
         path_to_download = project.get_path(path)
         if not path_to_download.is_file():
             return "", 404
@@ -642,15 +614,8 @@ class ProjectsController:
             dataframe = pd.read_excel(path_to_download)
 
         if dataframe is None:
-            return jsonify({
-                "errors": {
-                    "path": ["unknown table format"]
-                }
-            }), 422
+            return jsonify({"errors": {"path": ["unknown table format"]}}), 422
 
         return Response(
-            dataframe.to_json(orient="split", index=False),
-            mimetype="application/json"
+            dataframe.to_json(orient="split", index=False), mimetype="application/json"
         )
-    
-

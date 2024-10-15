@@ -14,6 +14,7 @@ from typing import Any, ClassVar, Dict, List
 from mergedeep import merge
 
 # internal imports
+from nf_cloud_backend.models.project import ProjectQueueRepresentation
 from nf_cloud_worker.logging import get_logger
 from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
 
@@ -278,27 +279,27 @@ class WorkflowExecutor(Process):
         while not self.__stop_event.is_set():
             try:
                 (body, delivery_tag) = self.__project_queue.get(timeout=5)
+                print(body)
             except EmptyQueueError:
                 continue
 
             # Parse project parameters from message broker
-            project_params: dict = json.loads(body)
-            logger.info(f"Processing project: {project_params['id']}")
+            project_params = ProjectQueueRepresentation.model_validate_json(body)
+
+            logger.info("[WORKER / PROJECT %i] Start", project_params.id)
             # Project work dir
-            project_dir: Path = self.__project_data_path.joinpath(
-                f"{project_params['id']}/"
-            )
+            project_dir = self.__project_data_path.joinpath(f"{project_params.id}/")
             # Get workflow settings
             workflow = {}
 
             try:
                 workflow = self.__nf_cloud_web_api_client.get_workflow(
-                    project_params["workflow_id"]
+                    project_params.workflow_id
                 )
             except Exception as e:
                 logging.error(
                     "[WORKER / PROJECT %i] Not able to fetch workflow from API. Rejecting message and moving on: %s",
-                    project_params["id"],
+                    project_params.id,
                     e,
                 )
                 self.__communication_channel.send((delivery_tag, False))
@@ -314,7 +315,7 @@ class WorkflowExecutor(Process):
 
             dynamic_nextflow_arguments = {
                 argument["name"]: argument
-                for argument in project_params["workflow_arguments"]
+                for argument in project_params.workflow_arguments
             }
 
             static_workflow_arguments = self.__get_workflow_static_arguments(
@@ -323,22 +324,24 @@ class WorkflowExecutor(Process):
 
             # Create temporary work dir for Nextflow intermediate files.
             sanitized_workflow_name = self.sanitize_workflow_name(workflow["name"])
-            work_dir: Path = project_dir.joinpath(f".{sanitized_workflow_name}_work")
+            work_dir = project_dir.joinpath(f".{sanitized_workflow_name}_work")
             if not work_dir.is_dir():
                 work_dir.mkdir(parents=True, exist_ok=True)
 
             nextflow_command: List[str] = self._nextflow_command(
                 project_dir,
                 work_dir,
-                f"http://127.0.0.1:{self.__weblog_proxy_port}/projects/{project_params['id']}",
+                f"http://127.0.0.1:{self.__weblog_proxy_port}/projects/{project_params.id}",
                 fix_nextflow_paramters,
                 dynamic_nextflow_arguments,
                 static_workflow_arguments,
                 nextflow_main_scrip_path,
             )
 
-            logger.info(
-                f"Project {project_params['id']}: `{' '.join(nextflow_command)}`"
+            logger.debug(
+                "[WORKER / PROJECT %i] %s",
+                project_params.id,
+                " ".join(nextflow_command),
             )
 
             nf_proc = subprocess.Popen(
@@ -360,18 +363,18 @@ class WorkflowExecutor(Process):
             self.__communication_channel.send((delivery_tag, True))
 
             try:
-                self.__nf_cloud_web_api_client.post_finish(project_params["id"])
+                self.__nf_cloud_web_api_client.post_finish(project_params.id)
             except ConnectionError as e:
                 logging.error(
                     (
                         "[WORKER / PROJECT %i] Could not mark the project as finished. "
                         "Please do that manually an check why the web API is not available: %s"
                     ),
-                    project_params["id"],
+                    project_params.id,
                     e,
                 )
 
-            logger.info(f"Finished project: {project_params['id']}")
+            logger.info("[WORKER / PROJECT %i] finished", project_params.id)
 
     def __get_workflow_main_script_path(self, workflow_settings: dict) -> Path:
         return (

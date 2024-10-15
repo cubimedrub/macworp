@@ -4,16 +4,13 @@ import json
 from pathlib import Path
 import re
 import shutil
-from typing import IO
+from typing import IO, Any, Dict, List
 from typing_extensions import Buffer
 
 # 3rd party imports
-from peewee import BigAutoField, \
-    CharField, \
-    BooleanField, \
-    IntegerField, \
-    BigIntegerField
+from peewee import BigAutoField, CharField, BooleanField, IntegerField, BigIntegerField
 from playhouse.postgres_ext import BinaryJSONField
+from pydantic import BaseModel, Field
 
 # internal import
 from nf_cloud_backend import db_wrapper as db
@@ -23,6 +20,7 @@ from nf_cloud_backend.utility.configuration import Configuration
 SLASH_SEQ_REGEX: re.Pattern = re.compile(r"\/+")
 """Regex to match multiple sequence ofg slashes.
 """
+
 
 class Project(db.Model):
     id = BigAutoField(primary_key=True)
@@ -34,7 +32,7 @@ class Project(db.Model):
     completed_processes = IntegerField(null=False, default=0)
 
     class Meta:
-        db_table="projects"
+        db_table = "projects"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -54,7 +52,11 @@ class Project(db.Model):
         return self.__file_directory
 
     def __create_file_directory(self):
-        self.__file_directory = Path(Configuration.values()["upload_path"]).joinpath(str(self.id)).absolute()
+        self.__file_directory = (
+            Path(Configuration.values()["upload_path"])
+            .joinpath(str(self.id))
+            .absolute()
+        )
         self.__file_directory.mkdir(parents=True, exist_ok=True)
 
     def __delete_file_directory(self):
@@ -77,7 +79,6 @@ class Project(db.Model):
         if deleted_rows > 0:
             self.__delete_file_directory()
 
-
     def to_dict(self) -> dict:
         """
         Returns
@@ -91,7 +92,7 @@ class Project(db.Model):
             "workflow_id": self.workflow_id,
             "submitted_processes": self.submitted_processes,
             "completed_processes": self.completed_processes,
-            "is_scheduled": self.is_scheduled
+            "is_scheduled": self.is_scheduled,
         }
 
     def __secure_path_for_join(self, path: Path) -> Path:
@@ -138,7 +139,7 @@ class Project(db.Model):
             True if path if part of file directory or file directory itself.
         """
         return self.file_directory == path or self.file_directory in path.parents
-    
+
     def get_path(self, path: Path) -> Path:
         """
         Adds the given path to the project's file directory. If the joined path results in a target
@@ -160,7 +161,9 @@ class Project(db.Model):
         PermissionError
             Raised when path is outside the project directory.
         """
-        directory = self.file_directory.absolute().joinpath(self.__secure_path_for_join(path))
+        directory = self.file_directory.absolute().joinpath(
+            self.__secure_path_for_join(path)
+        )
         if self.in_file_director(directory):
             return directory
         else:
@@ -185,19 +188,18 @@ class Project(db.Model):
         target_directory = self.get_path(target_file_path.parent)
         if not target_directory.is_dir():
             target_directory.mkdir(parents=True, exist_ok=True)
-        with target_directory.joinpath(target_file_path.name).open("wb") as project_file:
+        with target_directory.joinpath(target_file_path.name).open(
+            "wb"
+        ) as project_file:
             project_file.write(file)
 
         return Path("/").joinpath(self.__secure_path_for_join(target_file_path))
 
     def add_file_chunk(
-        self,
-        target_file_path: Path,
-        chunk_offset: int,
-        file_chunk: IO[bytes]
+        self, target_file_path: Path, chunk_offset: int, file_chunk: IO[bytes]
     ) -> Path:
         """
-        Adds a file_chunk to the given target_file within the project directory. 
+        Adds a file_chunk to the given target_file within the project directory.
         Useful for uploading large files.
 
         Parameters
@@ -217,7 +219,9 @@ class Project(db.Model):
         target_directory = self.get_path(target_file_path.parent)
         if not target_directory.is_dir():
             target_directory.mkdir(parents=True, exist_ok=True)
-        with target_directory.joinpath(target_file_path.name).open("ab") as project_file:
+        with target_directory.joinpath(target_file_path.name).open(
+            "ab"
+        ) as project_file:
             project_file.seek(chunk_offset)
             project_file.write(file_chunk.read())
 
@@ -234,7 +238,7 @@ class Project(db.Model):
 
         Returns
         -------
-        Returns true (file was deleted) or false (file does not exists) 
+        Returns true (file was deleted) or false (file does not exists)
         """
         full_path = self.get_path(path)
         if full_path.is_file():
@@ -266,7 +270,7 @@ class Project(db.Model):
             return True
         return False
 
-    def get_queue_represenation(self) -> str:
+    def get_queue_representation(self) -> ProjectQueueRepresentation:
         """
         Returns
         -------
@@ -274,8 +278,16 @@ class Project(db.Model):
         """
         if self.workflow_id <= 0:
             raise ValueError("Workflow ID is not set.")
-        return json.dumps({
-            "id": self.id,
-            "workflow_id": self.workflow_id,
-            "workflow_arguments": self.workflow_arguments
-        })
+        return ProjectQueueRepresentation(
+            id=self.id,  # type: ignore[arg-type]
+            workflow_id=self.workflow_id,  # type: ignore[arg-type]
+            workflow_arguments=self.workflow_arguments,  # type: ignore[arg-type]
+        )
+
+
+class ProjectQueueRepresentation(BaseModel):
+    id: int = 0
+    workflow_id: int = 0
+    workflow_arguments: List[Dict[str, Any]] = Field(
+        default_factory=List[Dict[str, Any]]
+    )

@@ -289,9 +289,20 @@ class WorkflowExecutor(Process):
                 f"{project_params['id']}/"
             )
             # Get workflow settings
-            workflow: Dict[str, Any] = self.__nf_cloud_web_api_client.get_workflow(
-                project_params["workflow_id"]
-            )
+            workflow = {}
+
+            try:
+                workflow = self.__nf_cloud_web_api_client.get_workflow(
+                    project_params["workflow_id"]
+                )
+            except Exception as e:
+                logging.error(
+                    "[WORKER / PROJECT %i] Not able to fetch workflow from API. Rejecting message and moving on: %s",
+                    project_params["id"],
+                    e,
+                )
+                self.__communication_channel.send((delivery_tag, False))
+                continue
 
             nextflow_main_scrip_path = self.__get_workflow_main_script_path(
                 workflow["definition"]
@@ -346,10 +357,19 @@ class WorkflowExecutor(Process):
                     project_dir.joinpath(".nextflow.log").unlink()
 
             # Send delivery tag to thread for acknowledgement
-            self.__communication_channel.send(delivery_tag)
+            self.__communication_channel.send((delivery_tag, True))
 
-            # Report project as finished
-            self.__nf_cloud_web_api_client.post_finish(project_params["id"])
+            try:
+                self.__nf_cloud_web_api_client.post_finish(project_params["id"])
+            except ConnectionError as e:
+                logging.error(
+                    (
+                        "[WORKER / PROJECT %i] Could not mark the project as finished. "
+                        "Please do that manually an check why the web API is not available: %s"
+                    ),
+                    project_params["id"],
+                    e,
+                )
 
             logger.info(f"Finished project: {project_params['id']}")
 

@@ -22,8 +22,9 @@ from nf_cloud_worker.workflow_executor import WorkflowExecutor
 
 class AckHandler(Thread):
     """
-    A separate thread for handling message acknowledgement as soon a delivery tag
-    is send over the given communication channels.
+    A separate thread for handling message acknowledgement.
+    The communication channel receives tuples with the delivery tag and
+    True (for ACK) or False (for NACK).
 
     Attributes
     ----------
@@ -58,6 +59,18 @@ class AckHandler(Thread):
         if self.__broker_channel.is_open:
             self.__broker_channel.basic_ack(delivery_tag)
 
+    def send_nack(self, delivery_tag: Any):
+        """
+        Sends message acknowledgement to message broker.
+
+        Parameters
+        ----------
+        delivery_tag : Any
+            Message delivery tag.
+        """
+        if self.__broker_channel.is_open:
+            self.__broker_channel.basic_nack(delivery_tag)
+
     def run(self):
         """
         Listen on comm channels for incomming delivery tags to acknowledge.
@@ -66,11 +79,15 @@ class AckHandler(Thread):
         while len(self.__comm_channels) > 0:
             for comm_channel in wait(self.__comm_channels):
                 try:
-                    delivery_tag: Any = comm_channel.recv()
+                    (delivery_tag, is_ack) = comm_channel.recv()
 
                     # Send the ack threadsafe!
-                    ack_callback = functools.partial(self.send_ack, delivery_tag)
-                    self.__broker_connection.add_callback_threadsafe(ack_callback)
+                    callback = (
+                        functools.partial(self.send_ack, delivery_tag)
+                        if is_ack
+                        else functools.partial(self.send_nack, delivery_tag)
+                    )
+                    self.__broker_connection.add_callback_threadsafe(callback)
 
                 except EOFError:
                     self.__comm_channels.remove(comm_channel)

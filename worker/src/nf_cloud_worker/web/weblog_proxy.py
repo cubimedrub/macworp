@@ -11,11 +11,14 @@ import uvicorn
 # local imports
 from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
 
+
 class WeblogProxySettings(BaseSettings):
     """
     Shared settings for FastAPI process.
     """
+
     client: NFCloudWebApiClient
+
 
 class WeblogProxy:
     """
@@ -23,17 +26,18 @@ class WeblogProxy:
     """
 
     def __init__(self, client: NFCloudWebApiClient, log_level: int):
-        settings = WeblogProxySettings(
-            client=client
-        )
+        settings = WeblogProxySettings(client=client)
         # Get a free port
         self.__port = 0
         with socket.socket() as sock:
-            sock.bind(('', 0))
+            sock.bind(("", 0))
             self.__port = sock.getsockname()[1]
 
         # Start the FastAPI server in a separate process
-        self.__process = Process(target=self.__class__.server_process, args=(settings, self.__port, log_level))
+        self.__process = Process(
+            target=self.__class__.server_process,
+            args=(settings, self.__port, log_level),
+        )
         self.__process.start()
 
     def __del__(self):
@@ -70,7 +74,7 @@ class WeblogProxy:
         """
         app = FastAPI()
 
-        @app.post('/projects/{project_id:int}')
+        @app.post("/projects/{project_id:int}")
         async def handle_weblog_request(project_id: int, request: Request):
             """
             Receives the weblogs from Nextflow and forwards them to the NFCloud API.
@@ -88,4 +92,11 @@ class WeblogProxy:
                 # Catch everything to prevent the FastAPI server from crashing
                 logging.error("Error while sending weblog to NFCloud API: %s", e)
 
-        uvicorn.run(app, host="127.0.0.1", port=port, reload=False, log_level=log_level, access_log=log_level==logging.DEBUG)
+        uvicorn.run(
+            app,
+            host="127.0.0.1",
+            port=port,
+            reload=False,
+            log_level=log_level,
+            access_log=log_level == logging.DEBUG,
+        )

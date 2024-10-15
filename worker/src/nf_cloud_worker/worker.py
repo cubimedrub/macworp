@@ -19,6 +19,7 @@ from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
 from nf_cloud_worker.web.weblog_proxy import WeblogProxy
 from nf_cloud_worker.workflow_executor import WorkflowExecutor
 
+
 class AckHandler(Thread):
     """
     A separate thread for handling message acknowledgement as soon a delivery tag
@@ -34,7 +35,12 @@ class AckHandler(Thread):
         Connections between this handler and process worker for receiving delivery tags for acknowledgement
     """
 
-    def __init__(self, broker_connection: pika.BlockingConnection, broker_channel: Channel, comm_channels: List[Connection]):
+    def __init__(
+        self,
+        broker_connection: pika.BlockingConnection,
+        broker_channel: Channel,
+        comm_channels: List[Connection],
+    ):
         super().__init__()
         self.__broker_connection: pika.BlockingConnection = broker_connection
         self.__broker_channel: Channel = broker_channel
@@ -69,6 +75,7 @@ class AckHandler(Thread):
                 except EOFError:
                     self.__comm_channels.remove(comm_channel)
 
+
 class Worker:
     """
     Worker which receives a workflow execution job via a message broker like RabbitMQ.
@@ -97,14 +104,26 @@ class Worker:
         Channel to the message brokers queue
     __number_of_workers: int
         Number of concurrent workers
+    __keep_intermediate_files: bool
+        Keep work folder after workflow execution
     __stop_event: Event
         Event for stopping worker processes and threads reliable.
     __weblog_proxy: WeblogProxy
         Proxy for sending weblog requests to the NFCloud API using credentials.
     """
 
-    def __init__(self, nf_bin: Path, nf_cloud_api_client: NFCloudWebApiClient, projects_data_path: Path, rabbit_mq_url: str,
-        project_queue_name: str, number_of_workers: int, stop_event: Event, log_level: int):
+    def __init__(
+        self,
+        nf_bin: Path,
+        nf_cloud_api_client: NFCloudWebApiClient,
+        projects_data_path: Path,
+        rabbit_mq_url: str,
+        project_queue_name: str,
+        number_of_workers: int,
+        keep_intermediate_files: bool,
+        stop_event: Event,
+        log_level: int,
+    ):
         # nextflow binary
         self.__nf_bin: Path = nf_bin
         # nextflow cloud attributes
@@ -117,11 +136,12 @@ class Worker:
         self.__channel: Optional[Channel] = None
         # number of workers
         self.__number_of_workers: int = number_of_workers
+        # additional worker behavior
+        self.__keep_intermediate_files: bool = keep_intermediate_files
         # control
         self.__stop_event: Event = stop_event
         self.__log_level: int = log_level
         self.__weblog_proxy = WeblogProxy(nf_cloud_api_client, log_level)
-
 
     def start(self):
         """
@@ -136,7 +156,9 @@ class Worker:
 
         while not self.__stop_event.is_set():
             try:
-                self.__connection = pika.BlockingConnection(pika.URLParameters(self.__rabbit_mq_url))
+                self.__connection = pika.BlockingConnection(
+                    pika.URLParameters(self.__rabbit_mq_url)
+                )
                 self.__channel = self.__connection.channel()
                 self.__channel.basic_qos(prefetch_count=self.__number_of_workers)
 
@@ -148,34 +170,32 @@ class Worker:
                         self.__project_data_path,
                         project_queue,
                         rw_comm,
+                        self.__keep_intermediate_files,
                         self.__stop_event,
                         self.__log_level,
-                        self.__weblog_proxy.port
+                        self.__weblog_proxy.port,
                     )
                     executor.start()
                     comm_channels.append(ro_comm)
                     # Close this reference to the read write connection
                     rw_comm.close()
                     wf_executors.append(executor)
-                    
+
                 ack_handler: AckHandler = AckHandler(
-                    self.__connection,
-                    self.__channel,
-                    comm_channels
+                    self.__connection, self.__channel, comm_channels
                 )
                 ack_handler.start()
 
                 logger.info("Executor and AckHandler startet, listening for jobs...")
                 # Second return value 'properties' is unnecessary. After 0.5 second it consume will return '(None, None, None)' if no message was send.
                 # This will give us time for maintenance, e.g. stop if a stop signal was received
-                for method_frame, _, body in self.__channel.consume(self.__project_queue_name, inactivity_timeout=.5, auto_ack=False):
+                for method_frame, _, body in self.__channel.consume(
+                    self.__project_queue_name, inactivity_timeout=0.5, auto_ack=False
+                ):
                     if method_frame and body:
                         try:
                             logger.info("Received job, add it to local queue.")
-                            project_queue.put((
-                                body,
-                                method_frame.delivery_tag
-                            ))
+                            project_queue.put((body, method_frame.delivery_tag))
                         except FullQueueError:
                             pass
                     if self.__stop_event.is_set():
@@ -195,7 +215,9 @@ class Worker:
         self.__channel.close()
         self.__connection.close()
 
-    def __handle_rabbitmq_connection_error(self, logger: logging.Logger, error: BaseException):
+    def __handle_rabbitmq_connection_error(
+        self, logger: logging.Logger, error: BaseException
+    ):
         logger.error(
             (
                 "RabbitMQ connetion was closed unexpectedly. "

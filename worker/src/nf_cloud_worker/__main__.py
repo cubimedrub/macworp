@@ -32,16 +32,18 @@ def main():
         NFCloudWebApiClient(
             cli.arguments.nf_cloud_url,
             cli.arguments.api_user,
-            cli.arguments.api_password
+            cli.arguments.api_password,
         ),
         Path(cli.arguments.projects_data_path).absolute(),
         cli.arguments.rabbitmq_url,
         cli.arguments.project_queue_name,
         cli.arguments.number_of_workers,
+        cli.arguments.keep_intermediate_files,
         stop_event,
-        log_level
+        log_level,
     )
     worker.start()
+
 
 if __name__ == "__main__":
     main()

@@ -33,8 +33,8 @@ class ProjectsController:
         -------
         Response
         """
-        offset = request.args.get("offset", None)
-        limit = request.args.get("limit", None)
+        offset = request.args.get("offset", 0)
+        limit = request.args.get("limit", 50)
         return jsonify({
             "projects": [
                 project.to_dict() 

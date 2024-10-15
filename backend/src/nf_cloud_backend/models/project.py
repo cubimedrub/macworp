@@ -1,5 +1,6 @@
 # std imports
 from __future__ import annotations
+import argparse
 import json
 from pathlib import Path
 import re
@@ -30,6 +31,7 @@ class Project(db.Model):
     is_scheduled = BooleanField(null=False, default=False)
     submitted_processes = IntegerField(null=False, default=0)
     completed_processes = IntegerField(null=False, default=0)
+    ignore = BooleanField(null=False, default=False)
 
     class Meta:
         db_table = "projects"
@@ -93,6 +95,7 @@ class Project(db.Model):
             "submitted_processes": self.submitted_processes,
             "completed_processes": self.completed_processes,
             "is_scheduled": self.is_scheduled,
+            "ignore": self.ignore,
         }
 
     def __secure_path_for_join(self, path: Path) -> Path:
@@ -291,3 +294,80 @@ class ProjectQueueRepresentation(BaseModel):
     workflow_arguments: List[Dict[str, Any]] = Field(
         default_factory=List[Dict[str, Any]]
     )
+
+
+class ProjectCommandLineInterface:
+    """Command line interface for projects"""
+
+    @classmethod
+    def set_project_ignore(cls, project_id: int, ignore: bool):
+        """
+        Set project ignore flag to a new value. If ignore is set to True, the project schedule status is also reset.
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+        ignore : bool
+            Ignore flag
+        """
+        project = Project.get(Project.id == project_id)
+        project.ignore = ignore
+        if ignore:
+            project.is_scheduled = False
+            project.submitted_processes = 0
+            project.completed_processes = 0
+        project.save()
+
+    @classmethod
+    def add_set_project_ignore_cli(cls, subparsers: argparse._SubParsersAction):
+        """
+        Adds CLI for setting or unsetting the ignore flag
+
+        Parameters
+        ----------
+        subparsers : argparse._SubParsersAction
+            Subparser for new arguments
+        """
+
+        parser = subparsers.add_parser(
+            "ignore",
+            help="Sets or unset the ignore flag. A ignored project is removed from the queue once a worker is receiving it.",
+        )
+        parser.set_defaults(func=lambda args: parser.print_help())
+
+        parser.add_argument("project_id", type=int, help="Project ID")
+        group = parser.add_mutually_exclusive_group(required=True)
+        group.add_argument(
+            "--set",
+            action="store_true",
+            help="Set the ignore flag and removes the projects schedule status",
+        )
+        group.add_argument("--unset", action="store_true", help="Unset the ignore flag")
+
+        def set_project_ignore(cli_args: argparse.Namespace):
+            """Determines the new ignore flag and calls the set_project_ignore method"""
+            ignore = True
+            if cli_args.set:
+                ignore = True
+            elif cli_args.unset:
+                ignore = False
+            cls.set_project_ignore(cli_args.project_id, ignore)
+
+        parser.set_defaults(func=set_project_ignore)
+
+    @classmethod
+    def add_cli_arguments(cls, subparsers: argparse._SubParsersAction):
+        """
+        Adds cli arguments for projects
+
+        Parameters
+        ----------
+        subparsers : argparse._SubParsersAction
+            Subparser for new arguments
+        """
+        parser = subparsers.add_parser("projects", help="Project utilities")
+        parser.set_defaults(func=lambda args: parser.print_help())
+
+        local_subparsers: argparse._SubParsersAction = parser.add_subparsers()
+        cls.add_set_project_ignore_cli(local_subparsers)

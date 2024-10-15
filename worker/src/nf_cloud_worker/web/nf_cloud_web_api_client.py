@@ -92,6 +92,69 @@ class NFCloudWebApiClient:
 
                 raise e
 
+    def is_project_ignored(self, project_id: int) -> bool:
+        """
+        Check if project is currently ignored
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+
+        Returns
+        -------
+        Bool
+            Project not found also returns True
+
+        Raises
+        ------
+        ValueError
+            If the request was not successful.
+        """
+        url = f"{self.__nf_cloud_base_url}/api/projects/{project_id}/is-ignored"
+        for i in range(self.__class__.API_CALL_TRIES):
+            try:
+                with requests.get(
+                    url,
+                    auth=HTTPBasicAuth(
+                        self.__nf_cloud_api_usr, self.__nf_cloud_api_pwd
+                    ),
+                    headers=self.__class__.HEADERS,
+                    timeout=self.__class__.TIMEOUT,
+                ) as response:
+                    print(
+                        f"Checking ignore status for project {project_id}: {response.text} - {response.status_code}"
+                    )
+                    logging.debug(
+                        f"Checking ignore status for project {project_id}: {response.text} - {response.status_code}"
+                    )
+                    match response.status_code:
+                        case 200:
+                            return True
+                        case 204:
+                            return False
+                        case 404:
+                            return True
+                        case _:
+                            raise ValueError(
+                                f"Error getting ignore status: {response.text}"
+                            )
+            except requests.exceptions.ConnectionError as e:
+                if i < self.__class__.API_CALL_TRIES - 1:
+                    logging.error(
+                        (
+                            "[WORKER / API CLIENT / ATTEMPT %i]"
+                            "Error while getting workflow from API: %s"
+                        ),
+                        i + 1,
+                        e,
+                    )
+                    sleep(self.__class__.RETRY_TIMEOUT)
+                    continue
+
+                raise e
+        return False
+
     def post_finish(self, project_id: int):
         """
         Marks a project run as finished.

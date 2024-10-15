@@ -404,12 +404,24 @@ class ProjectsController:
         -------
         Response
             200 - successfull
+            409 - project is already in ignore state
             422 - errors
         """
         errors = defaultdict(list)
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return "", 404
+        if project.ignore:
+            return (
+                jsonify(
+                    {
+                        "errors": {
+                            "general": "project is ignored and cannot be scheduled"
+                        }
+                    }
+                ),
+                409,
+            )
         if project and not project.is_scheduled:
             for arguments in project.workflow_arguments:
                 if (
@@ -444,6 +456,30 @@ class ProjectsController:
                 return jsonify({"is_scheduled": project.is_scheduled})
         else:
             return jsonify({"errors": {"general": "project not found"}}), 422
+
+    @staticmethod
+    @app.route("/api/projects/<int:project_id>/is-ignored", methods=["GET"])
+    @login_required
+    def is_ignored(project_id: int):
+        """
+        Endpoint to quickly check if project is currently ignored.
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+
+        Returns
+        -------
+        Response
+            * 200 - Project is ignored
+            * 204 - If project is not ignored
+            * 404 - If project was not found
+        """
+        project: Optional[Project] = Project.get_or_none(Project.id == project_id)
+        if project is None:
+            return "", 404
+        return "", 200 if project.ignore else 204
 
     @staticmethod
     @app.route("/api/projects/<int:id>/finished", methods=["POST"])

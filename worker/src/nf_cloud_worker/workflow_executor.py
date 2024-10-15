@@ -279,7 +279,6 @@ class WorkflowExecutor(Process):
         while not self.__stop_event.is_set():
             try:
                 (body, delivery_tag) = self.__project_queue.get(timeout=5)
-                print(body)
             except EmptyQueueError:
                 continue
 
@@ -287,6 +286,27 @@ class WorkflowExecutor(Process):
             project_params = ProjectQueueRepresentation.model_validate_json(body)
 
             logger.info("[WORKER / PROJECT %i] Start", project_params.id)
+
+            try:
+                if self.__nf_cloud_web_api_client.is_project_ignored(project_params.id):
+                    logger.warning(
+                        "[WORKER / PROJECT %i] Project is ignored. Removing from queue and moving on.",
+                        project_params.id,
+                    )
+                    self.__communication_channel.send((delivery_tag, True))
+                    continue
+            except Exception as e:
+                logging.error(
+                    (
+                        "[WORKER / PROJECT %i] Not able to fetch project ignore status from API. "
+                        "Rejecting message and moving on: %s"
+                    ),
+                    project_params.id,
+                    e,
+                )
+                self.__communication_channel.send((delivery_tag, False))
+                continue
+
             # Project work dir
             project_dir = self.__project_data_path.joinpath(f"{project_params.id}/")
             # Get workflow settings

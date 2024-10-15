@@ -2,8 +2,11 @@
     <div>
         <div v-if="project && !project_not_found">
             <div class="d-flex justify-content-between align-items-center">
-                <h1>Project "{{ project.name }}"</h1>
-                <button @click="showStartDialog" :disabled="project.is_scheduled || !project.workflow_id in workflows" class="btn btn-success btn-sm">
+                <div class="d-flex align-items-start">
+                    <h1>Project "{{ project.name }}"</h1>
+                    <span v-if="project.ignore" class="badge bg-warning text-dark ml-3">Currently ignored</span>
+                </div>
+                <button @click="showStartDialog" :disabled="project.is_scheduled || !project.workflow_id in workflows || project.ignore" class="btn btn-success btn-sm">
                     Start project
                     <i class="fas fa-play"></i>
                 </button>
@@ -334,7 +337,13 @@ export default {
                             toastr.success("Workflow is scheduled for execution")
                         })
                     } else {
-                        this.handleUnknownResponse(response)
+                        if (response.status == 409) {
+                            response.json().then(data => {
+                                toastr.error(data.errors.general)
+                            })
+                        } else {
+                            this.handleUnknownResponse(response)
+                        }
                     }
                 })
             }

@@ -267,9 +267,8 @@ class WorkflowExecutor(Process):
             )
 
             # Create temporary work dir for Nextflow intermediate files.
-            work_dir: Path = project_dir.joinpath(
-                self.sanitize_workflow_name(workflow["name"])
-            )
+            sanitized_workflow_name = self.sanitize_workflow_name(workflow["name"])
+            work_dir: Path = project_dir.joinpath(f".{sanitized_workflow_name}_work")
             if not work_dir.is_dir():
                 work_dir.mkdir(parents=True, exist_ok=True)
 

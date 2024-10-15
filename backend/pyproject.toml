@@ -39,5 +39,7 @@ dependencies = [
 dev = [
     "black",
     "honcho",
+    "pandas-stubs",
+    "pika-stubs",
     "pylint"
 ]

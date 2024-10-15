@@ -272,8 +272,10 @@ class Project(db.Model):
         -------
         JSON string for message queue
         """
+        if self.workflow_id <= 0:
+            raise ValueError("Workflow ID is not set.")
         return json.dumps({
             "id": self.id,
-            "workflow_id": self.workflow_id,      # TODO: rename to workflow_id
+            "workflow_id": self.workflow_id,
             "workflow_arguments": self.workflow_arguments
         })

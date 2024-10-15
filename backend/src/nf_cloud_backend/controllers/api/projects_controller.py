@@ -433,7 +433,9 @@ class ProjectsController:
                         routing_key=Configuration.values()["rabbit_mq"][
                             "project_workflow_queue"
                         ],
-                        body=project.get_queue_representation().model_dump_json(),
+                        body=project.get_queue_representation()
+                        .model_dump_json()
+                        .encode(),
                     )
                     connection.close()
                 except BaseException as exception:

@@ -644,12 +644,15 @@ class ProjectsController:
         if not path_to_download.is_file():
             return "", 404
         dataframe: Optional[pd.DataFrame] = None
-        if path_to_download.suffix == ".csv":
-            dataframe = pd.read_csv(path_to_download)
-        elif path_to_download.suffix == ".tsv":
-            dataframe = pd.read_csv(path_to_download, sep="\t")
-        elif path_to_download.suffix == ".xlsx":
-            dataframe = pd.read_excel(path_to_download)
+        try:
+            if path_to_download.suffix == ".csv":
+                dataframe = pd.read_csv(path_to_download)
+            elif path_to_download.suffix == ".tsv":
+                dataframe = pd.read_csv(path_to_download, sep="\t")
+            elif path_to_download.suffix == ".xlsx":
+                dataframe = pd.read_excel(path_to_download)
+        except pd.errors.EmptyDataError:
+            dataframe = pd.DataFrame()
 
         if dataframe is None:
             return jsonify({"errors": {"path": ["unknown table format"]}}), 422

@@ -19,6 +19,11 @@
                                 {{content}}
                             </td>
                         </tr>
+                        <tr v-if="data.length == 0">
+                            <td :colspan="Math.max(columns.length, 1)">
+                                No data available
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
             </div>

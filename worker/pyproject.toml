@@ -9,6 +9,7 @@ version = "1.0.0"
 dependencies = [
     "fastapi ~=0.110",
     "mergedeep >=1.3.4, <2",
+    "pydantic ~= 2.9",
     "pydantic-settings ~=2.2 ",
     "pika  >=1, <2",
     "requests  >=2, <3",

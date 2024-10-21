@@ -12,11 +12,20 @@ from typing import Any, ClassVar, Dict, List
 
 # 3rd party imports
 from mergedeep import merge
+from pydantic import BaseModel, Field
 
 # internal imports
-from nf_cloud_backend.models.project import ProjectQueueRepresentation
 from nf_cloud_worker.logging import get_logger
 from nf_cloud_worker.web.nf_cloud_web_api_client import NFCloudWebApiClient
+
+
+# TODO: add this to a shared module between worker and backend
+class ProjectQueueRepresentation(BaseModel):
+    id: int = 0
+    workflow_id: int = 0
+    workflow_arguments: List[Dict[str, Any]] = Field(
+        default_factory=List[Dict[str, Any]]
+    )
 
 
 class WorkflowExecutor(Process):

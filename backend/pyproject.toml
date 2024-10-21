@@ -27,6 +27,7 @@ dependencies = [
     "pika  >=1, <2",
     "piwikapi  ==0.3",
     "psycopg2-binary  >=2, <3",
+    "pydantic ~= 2.9",
     "pyjwt  >=2, <3",
     "PyYAML >=6, <7",
     "redis >=4, <5",

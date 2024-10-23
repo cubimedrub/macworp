@@ -40,7 +40,9 @@ dependencies = [
 dev = [
     "black",
     "honcho",
+    "kaleido", # for demo workflow
     "pandas-stubs",
     "pika-stubs",
+    "plotly", # for demo workflow
     "pylint"
 ]

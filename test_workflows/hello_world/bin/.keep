@@ -1,2 +1,0 @@
-The bin-folder (with at least one empty file, or this .keep-file) is necessary for Nextflow to mount the intermediate results in a docker container (don't know exactly why). 
-Without this folder Nextflow will not find intermediate results.

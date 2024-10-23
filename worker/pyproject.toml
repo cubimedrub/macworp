@@ -20,6 +20,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "honcho",
+    "kaleido", # for demo workflow
+    "plotly", # for demo workflow
     "pylint",
     "types-peewee"
 ]

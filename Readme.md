@@ -136,6 +136,25 @@ Run `conda run -n nf_cloud python`
 `python -m nf_cloud_backend utility config create .` this will create a new config named `nf_cloud.local.config.yaml` in the current directory. You can also print the configuration with `python -m nf_cloud_backend utility config print` (useful for piping the results from a Docker container).
 
 
+## Workflow developer
+
+### Input elements
+List is coming soon.
+
+### Results
+MAcWorP is able to render a couple of file formats directly in the browser. The file extension tells the renderer how the element should be rendered.   
+Below is a list of supported elements:
+
+| Type | File extension | Description |
+| --- | --- | --- |
+| Raster graphics | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp` | Images are display using [Viewer.js](https://fengyuanchen.github.io/viewerjs/). This gives the user some useful features, like zooming |
+| Vector graphics | `.svg`, `.images.svg` | SVG files can be rendered iun two ways, embedded into the DOM (`.svg`) which automatically scales it, or within an img-Tag (`.image.svg`) |
+| PDF | `.pdf` | PDFs are shown using the browser integrated PDF viewer |
+| Table | `.csv`, `.tsv`, `.xlsx` | Tables are rendered using the HTML-table elements. As two many cells will make browser unresponsive, tables with to many elements will be paginated |
+| Interactive plots | `.plolty.json` | To generate Plolty conform JSON files, have a look into the [documentation](https://plotly.com/python-api-reference/generated/plotly.io.to_json.html#plotly.io.to_json). These kind of plots have few advantages for the user, like the ability to enable/disable traces and zoom. MAcWorP is also adding a JSON editor to change the plot layout or colors. |
+
+
+
 ## ToDos
 * Try to move Nextflow intermediate result folders into a subfolder.
 * Add some more inputs

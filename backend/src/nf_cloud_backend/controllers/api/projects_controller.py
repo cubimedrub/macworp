@@ -7,7 +7,7 @@ from urllib.parse import unquote
 
 # 3rd party imports
 import pandas as pd
-from flask import request, jsonify, send_file, Response
+from flask import make_response, request, jsonify, send_file, Response
 from flask_login import login_required
 import pika
 import zipstream
@@ -16,6 +16,7 @@ import zipstream
 from nf_cloud_backend import app, socketio, db_wrapper as db
 from nf_cloud_backend.models.project import Project
 from nf_cloud_backend.utility.configuration import Configuration
+from nf_cloud_backend.errors.unknown_table_format import UnknownTableFormat
 
 
 class ProjectsController:
@@ -582,18 +583,75 @@ class ProjectsController:
             Project ID
         path : strs
             Path to folder or file.
+
+        URL query parameters
+        --------------------
+        path : str
+            Path to download
+        is-inline : int
+            If true, the download is inline (for further processing),
+            otherwise as attachment (browser download). Values: 0 == False, >0 == True, default: False
+            (only valid for files)
+        with-metadata : int
+            If true, the file metadata will be delivered as headers (`MMData-Header` & `MMData-Description`).
+            Values: 0 == False, >0 == True, default: False
+            (only valid for files)
+        is-table: : int
+            If true, the table-file will be returned as JSON table, see: Pandas documentation `DataFrame.to_json(orient="split")`
+            Values: 0 == False, >0 == True, default: False
         """
+        # Get project
         project: Optional[Project] = Project.get_or_none(Project.id == project_id)
         if project is None:
             return jsonify({"errors": {"project": ["not found"]}}), 404
+
+        # Set path
         path = Path(unquote(request.args.get("path", "", type=str)))
-        is_inline: bool = request.args.get("is-inline", False, type=bool)
         path_to_download = project.get_path(path)
-        if not path_to_download.exists():
-            return jsonify({"errors": {"path": ["not found"]}}), 404
-        elif path_to_download.is_file():
-            return send_file(path_to_download, as_attachment=not is_inline)
-        else:
+
+        # Set download type
+        is_inline: bool = request.args.get("is-inline", False, type=bool)
+
+        # Set if metadata is added
+        with_metadata: bool = request.args.get("with-metadata", False, type=bool)
+
+        # Set if table is requested
+        is_table: bool = request.args.get("is-table", False, type=bool)
+
+        app.logger.error("is_table: %s", is_table)
+
+        if path_to_download.is_file():
+            response: Optional[Response] = None
+            if not is_table:
+                response = ProjectsController.file_download(path_to_download, is_inline)
+            else:
+                try:
+                    response = ProjectsController.table_download(path_to_download)
+                except UnknownTableFormat as error:
+                    return (
+                        jsonify(
+                            {
+                                "errors": {
+                                    "general": f"unknown table format, supported types are: {', '.join(error.supported_table_formats)}",
+                                }
+                            }
+                        ),
+                        422,
+                    )
+
+            if with_metadata:
+                metadata_file_path = path_to_download.with_suffix(
+                    f"{path_to_download.suffix}.mmdata"
+                )
+                metadata = {}
+                if metadata_file_path.is_file():
+                    metadata = json.loads(metadata_file_path.read_text())
+                response.headers["MMD-Header"] = metadata.get("header", "")
+                response.headers["MMD-Description"] = metadata.get("description", "")
+
+            return response
+
+        elif path_to_download.is_dir():
 
             def build_stream():
                 stream = zipstream.ZipFile(mode="w", compression=zipstream.ZIP_DEFLATED)
@@ -611,13 +669,30 @@ class ProjectsController:
                 f"attachment; filename={project.name}--{filename_friendly_path_as_str}.zip"
             )
             return response
+        else:
+            return jsonify({"errors": {"path": ["not found"]}}), 404
 
     @staticmethod
-    @app.route("/api/projects/<int:w_id>/table")
-    @login_required
-    def download_table(w_id: int):
+    def file_download(path: Path, is_inline: bool) -> Response:
+        """Downloads a file inline or as attatchment
+
+        Parameters
+        ----------
+        path : Path
+            Full path to file crated with `Project.get_path()`
+        is_inline : bool
+            If true, file is downloaded inline, otherwise as attachment
+
+        Returns
+        -------
+        Response
+            Flask response with file
         """
-        Reads the table at the given path and returns it as json
+        return make_response(send_file(path, as_attachment=not is_inline))
+
+    @staticmethod
+    def table_download(path: Path) -> Response:
+        """Downloads table as JSON, created with Pandas `DataFrame.to_json(orient="split")`, e.g.
         ```json
         {
             "columns": ["col1", "col2", ...],
@@ -628,35 +703,110 @@ class ProjectsController:
             ]
         }
         ```
+        Supported are CSV, TSV and XLSX files.
 
         Parameters
         ----------
-        w_id : int
-            Project ID
-        path : str
-            Path to folder or file.
+        path : Path
+            Full path to file crated with `Project.get_path()`
+
+        Returns
+        -------
+        Response
+            Response with table data
         """
-        project: Optional[Project] = Project.get_or_none(Project.id == w_id)
-        if project is None:
-            return "", 404
-        path = Path(unquote(request.args.get("path", "", type=str)))
-        path_to_download = project.get_path(path)
-        if not path_to_download.is_file():
-            return "", 404
         dataframe: Optional[pd.DataFrame] = None
         try:
-            if path_to_download.suffix == ".csv":
-                dataframe = pd.read_csv(path_to_download)
-            elif path_to_download.suffix == ".tsv":
-                dataframe = pd.read_csv(path_to_download, sep="\t")
-            elif path_to_download.suffix == ".xlsx":
-                dataframe = pd.read_excel(path_to_download)
+            match path.suffix.lower():
+                case ".csv":
+                    dataframe = pd.read_csv(path)
+                case ".tsv":
+                    dataframe = pd.read_csv(path, sep="\t")
+                case ".xlsx":
+                    dataframe = pd.read_excel(path)
         except pd.errors.EmptyDataError:
             dataframe = pd.DataFrame()
 
         if dataframe is None:
-            return jsonify({"errors": {"path": ["unknown table format"]}}), 422
+            raise UnknownTableFormat(["CSV", "TSV", "XLSX"])
 
         return Response(
             dataframe.to_json(orient="split", index=False), mimetype="application/json"
         )
+
+    @staticmethod
+    @app.route("/api/projects/<int:project_id>/file-size")
+    @login_required
+    def file_size(project_id: int):
+        """
+        Returns the size of a file
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+
+        URL query parameters
+        --------------------
+        path : str
+            Path to file
+
+        Returns
+        -------
+        Response
+            * 200 - on success, JSON with `size` keys, value is the size in bytes
+            * 404 - on project or path not found
+            * 422 - on path is not a file
+
+        """
+        project: Optional[Project] = Project.get_or_none(Project.id == project_id)
+        if project is None:
+            return jsonify({"errors": {"general": ["project not found"]}}), 404
+        path = Path(unquote(request.args.get("path", "", type=str)))
+        path_to_download = project.get_path(path)
+        if not path_to_download.exists():
+            return jsonify({"errors": {"path": ["not found"]}}), 404
+        if not path_to_download.is_file():
+            return jsonify({"errors": {"path": ["not a file"]}}), 422
+
+        return jsonify({"size": path_to_download.stat().st_size})
+
+    @staticmethod
+    @app.route("/api/projects/<int:project_id>/metadata")
+    @login_required
+    def metadata(project_id: int):
+        """
+        Returns the metadata of a file
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+
+        URL query parameters
+        --------------------
+        path : str
+            Path to file
+
+        Returns
+        -------
+        Response
+            * 200 - on success, JSON with header and description
+            * 404 - on project or path not found
+            * 422 - on metadata is not a file
+
+        """
+        project: Optional[Project] = Project.get_or_none(Project.id == project_id)
+        if project is None:
+            return jsonify({"errors": {"general": ["project not found"]}}), 404
+        path = Path(unquote(request.args.get("path", "", type=str)))
+        path_to_download = project.get_path(path)
+        metadata_file_path = path_to_download.with_suffix(
+            f"{path_to_download.suffix}.mmdata"
+        )
+        if not metadata_file_path.exists():
+            return jsonify({"errors": {"path": ["not found"]}}), 404
+        if not metadata_file_path.is_file():
+            return jsonify({"errors": {"path": ["not a file"]}}), 422
+
+        return Response(metadata_file_path.read_text(), content_type="application/json")

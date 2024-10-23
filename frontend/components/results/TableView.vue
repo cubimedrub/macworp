@@ -1,8 +1,8 @@
 <template>
     <div class="table-view">
-        <h2>{{ header }}</h2>
+        <h2>{{ result_file_header }}</h2>
         <div v-if="result_file_download_status == result_file_download_status_map.FINISHED">
-            <p v-if="description">{{ description }}</p>
+            <p v-if="result_file_description">{{ result_file_description }}</p>
             <div class="table-container">
                 <table class="table table-sm table-striped">
                     <thead>
@@ -43,33 +43,24 @@
                 {{ result_file_not_found_message }}
             </p>
         </div>
+        <div v-if="result_file_download_status == result_file_download_status_map.FILESIZE_TOO_LARGE">
+            <p>
+                {{ result_file_too_large_message }}
+            </p>
+        </div>
     </div>
 </template>
 
 <script>
 import Vue from 'vue'
-import ResultMixin from '../mixins/result_file_download.js'
+import ResultRendererMixin from '@/mixins/result_renderer'
 
 const PAGE_CHANGE_EVENT = "PAGE_CHANGED"
 
 export default {
     mixins: [
-        ResultMixin
+        ResultRendererMixin
     ],
-    props: {
-        "path": {
-            type: String,
-            required: true
-        },
-        "header": {
-            type: String,
-            required: true
-        },
-        "description": {
-            type: String,
-            required: false
-        },
-    },
     data(){
         return {
             columns: [],                             // Table header
@@ -84,27 +75,19 @@ export default {
         }
     },
     mounted(){
-        fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/table?path=${this.path}`, {
-            headers: {
-                "x-access-token": this.$store.state.login.jwt
-            }
-        }).then(response => {
-            if(response.ok) {
-                return response.json().then(table => {
-                    this.columns = table.columns
-                    this.data = table.data
-                    this.result_file_download_status = this.result_file_download_status_map.FINISHED
-                    // initial display
-                    this.update_displayed_data()
-                })
-            } else if(response.status == 404) {
-                this.result_file_download_status = this.result_file_download_status_map.NOT_FOUND
-                return Promise.resolve(null)
-            } else {
-                return this.handleUnknownResponse(response)
-            }
-        }).finally(() => {
-            this.result_file_loading = false
+        this.downloadFileForRender(
+            this.path,
+            true,
+            true
+        ).then(response => {
+            return response.json().then(data => {
+                this.columns = data.columns
+                this.data = data.data
+                this.update_displayed_data()
+            })
+        }).catch(error => {
+            if (error !== null && error !== undefined)
+                console.error(error)
         })
         this.local_event_bus.$on(PAGE_CHANGE_EVENT, new_page => this.page = new_page)
     },
@@ -119,7 +102,7 @@ export default {
                 // Sort new if sort column changed
                 if(this.sort_by != new_sort_by){
                     this.sort_by = new_sort_by
-                    var sort_column = this.header.indexOf(this.sort_by)
+                    var sort_column = this.columns.indexOf(this.sort_by)
                     // Sort array ascending
                     this.data = this.data.sort((elem_x, elem_y) => {
                         if(elem_x[sort_column] < elem_y[sort_column]){

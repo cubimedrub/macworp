@@ -1,11 +1,11 @@
 <template>
     <div v-resize:debounce.100="onResize">
-        <h2> {{ header }} </h2>
+        <h2> {{ result_file_header }} </h2>
         <div v-if="result_file_download_status == result_file_download_status_map.FINISHED">
             <div ref="plot-container"></div>
             <div class="row">
                 <div class="col col-md-11 d-flex justify-content-center">
-                    <p>  {{ description }} </p>
+                    <p v-if="result_file_description">  {{ result_file_description }} </p>
                 </div>
                 <div class="col col-md-1 d-flex justify-content-center">
                     <button @click="show" type="button" class="btn btn-primary btn-sm">
@@ -49,17 +49,28 @@
                 {{ result_file_not_found_message }}
             </p>
         </div>
+        <div v-if="result_file_download_status == result_file_download_status_map.FILESIZE_TOO_LARGE">
+            <p>
+                {{ result_file_too_large_message }}
+            </p>
+        </div>
     </div>
 </template>
 
 <script>
-import ResultMixin from '../mixins/result_file_download'
 import Plotly from 'plotly.js-dist-min'
+import ResultRendererMixin from '@/mixins/result_renderer'
 
+/**
+ * Configuration for ploty plots
+ */
 const PLOTLY_CONFIG = {
     responsive: false
 }
 
+/**
+ * VueJS directive to resize the plot.
+ */
 const directives = {};
 if (typeof window !== "undefined") {
     directives.resize = require("vue-resize-directive");
@@ -68,23 +79,9 @@ if (typeof window !== "undefined") {
 
 export default {
     mixins: [
-        ResultMixin
+        ResultRendererMixin
     ],
     directives,
-    props: {
-        header: {
-            type: String,
-            required: true
-        },
-        path: {
-            type: String,
-            required: true
-        },
-        description: {
-            type: String,
-            required: true
-        }
-    },
     data(){
         return {
             plot_data: null,
@@ -93,27 +90,30 @@ export default {
         }
     },
     initialized(){
-        this.modal_identifier = `${this.header}-modal-${this._uid}`
+        this.modal_identifier = `${this.path}-modal-${this._uid}`
     },
     mounted(){
-        this.downloadFile(this.path, true).then(response => {
-            return response.json().then(data => {
+        this.downloadFileForRender(this.path, true, false).then(response => {
+            response.json().then(data => {
                 this.plot_data = data.data
                 this.plot_layout = data.layout
-                return Promise.resolve()
+            }).then(() => {
+                Plotly.newPlot(
+                    this.$refs['plot-container'],
+                    this.plot_data,
+                    this.plot_layout,
+                    PLOTLY_CONFIG
+                )
             })
-        }).then(() => {
-            Plotly.newPlot(
-                this.$refs['plot-container'],
-                this.plot_data,
-                this.plot_layout,
-                PLOTLY_CONFIG
-            )
+        }).catch(error => {
+            if (error !== null && error !== undefined)
+                console.error(error)
         })
     },
     beforeDestroy() {
         //events.forEach(event => this.$el.removeAllListeners(event.completeName));
-        Plotly.purge(this.$refs['plot-container']);
+        if (this.$refs['plot-container'])
+            Plotly.purge(this.$refs['plot-container']);
     },
     methods: {
         /**

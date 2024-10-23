@@ -1,11 +1,11 @@
 <template>
     <div class="svg-viewer">
-        <h2>{{ header }}</h2>
+        <h2>{{ result_file_header }}</h2>
+        <p v-if="result_file_description">{{ result_file_description }}</p>
         <div v-if="result_file_download_status == result_file_download_status_map.FINISHED">
-            <div v-if="authorized_url" class="d-flex flex-column align-items-center">
-                <img v-if="!embed" :src="authorized_url" :alt="description" width="50%" />
-                <div v-else v-html="svg" class="embedded-svg"></div>
-                <p>{{ description }}</p>
+            <div class="d-flex flex-column align-items-center">
+                <div v-if="embed && svg" v-html="svg" class="embedded-svg"></div>
+                <img v-else :src="authorized_url" :alt="result_file_description || ''" width="50%" />
             </div>
         </div>
         <div v-if="result_file_download_status == result_file_download_status_map.FETCHING" class="d-flex justify-content-center">
@@ -16,41 +16,25 @@
                 {{ result_file_not_found_message }}
             </p>
         </div>
+        <div v-if="result_file_download_status == result_file_download_status_map.FILESIZE_TOO_LARGE">
+            <p>
+                {{ result_file_too_large_message }}
+            </p>
+        </div>
     </div>
 </template>
 
 <script>
-import ResultMixin from '../mixins/result_file_download'
+import ResultRendererMixin from '@/mixins/result_renderer'
 
 /**
  * Component to display SVG files.
  */
 export default {
     mixins: [
-        ResultMixin
+        ResultRendererMixin
     ],
     props: {
-        /**
-         * Path to the SVG.
-         */
-        path: {
-            type: String,
-            required: true
-        },
-        /**
-         * Header of the SVG.
-         */
-        header: {
-            type: String,
-            required: true
-        },
-        /**
-         * Description of the SVG.
-         */
-        description: {
-            type: String,
-            required: true
-        },
         /**
          * Whether to embed the SVG in the page or show it as img tag.
          */
@@ -68,15 +52,14 @@ export default {
     },
     beforeMount(){
         if (this.embed) {
-            this.downloadFile(this.path).then(response => {
+            this.downloadFileForRender(this.path, true, false).then( response => {
                 response.text().then(svg => {
                     this.svg = svg
                 })
             })
         } else {
-            this.authenticateFileDownload(this.path).then(url => {
-                // needs to be set manually as the SVG is downloaded by the browser not the mixin
-                this.result_file_download_status = this.result_file_download_status_map.FINISHED
+            this.getAuthenticatedUrlForRender(this.path).then(url => {
+                console.log(">>>>>", url)
                 this.authorized_url = url
             })
         }

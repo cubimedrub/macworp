@@ -135,55 +135,57 @@
 
                 <template v-slot:results v-if="project.results_definition">
                     <div class="results-container">
-                        <template v-for="(result, result_idx) in project.results_definition">
-                            <ImageViewer
-                                v-if="result.type == 'images'"
+                        <SelectableFileBrowser 
+                            :project_id="project.id"
+                            :parent_event_bus="local_event_bus"
+                            :directory_change_event="result_dir_change_event"
+                            :with_selectable_files="false"
+                            :with_selectable_folders="false"
+                            :reload_event="reload_project_files_event"
+                            :enabled="true"
+                        ></SelectableFileBrowser>
+
+                        <template v-for="filepath in result_dir_file_paths">
+                            <ResultsImageViewer
+                                v-if="isImageFile(filepath)"
                                 :project_id="project.id"
-                                :header="result.header"
-                                :images="result.images"
-                                :key="result_idx"
-                            ></ImageViewer>
-                            <PDFViewer
-                                v-if="result.type == 'pdf'"
+                                :path="filepath"
+                                :key="filepath"
+                            ></ResultsImageViewer>
+                            <ResultsPDFViewer
+                                v-if="filepath.endsWith('.pdf')"
                                 :project_id="project.id"
-                                :header="result.header"
-                                :description="result.description"
-                                :path="result.path"
-                                :key="result_idx"
-                            ></PDFViewer>
-                            <SVGViewer
-                                v-if="result.type == 'svg'"
+                                :path="filepath"
+                                :key="filepath"
+                            ></ResultsPDFViewer>
+                            <!-- Wraps the SVG in an image tag -->
+                            <ResultsSVGViewer
+                                v-if="filepath.endsWith('.image.svg')"
                                 :project_id="project.id"
-                                :header="result.header"
-                                :description="result.description"
-                                :path="result.path"
-                                :embed="result.embed !== undefined ? result.embed : false"
-                                :key="result_idx"
-                            ></SVGViewer>
-                            <PlotlyViewer
-                                v-if="result.type == 'plotly'"
+                                :path="filepath"
+                                :embed="false"
+                                :key="filepath"
+                            ></ResultsSVGViewer>
+                            <!-- Adds the SVG into the DOM -->
+                            <ResultsSVGViewer
+                                v-if="filepath.endsWith('.svg') && !filepath.endsWith('.image.svg')"
                                 :project_id="project.id"
-                                :header="result.header"
-                                :description="result.description"
-                                :path="result.path"
-                                :key="result_idx"
-                            ></PlotlyViewer>
-                            <MultiResultView
-                                v-if="result.type == 'multi-result-view'"
+                                :path="filepath"
+                                :embed="true"
+                                :key="filepath"
+                            ></ResultsSVGViewer>
+                            <ResultsPlotlyViewer
+                                v-if="filepath.endsWith('.plotly.json')"
                                 :project_id="project.id"
-                                :header="result.header"
-                                :description="result.description"
-                                :path="result.path"
-                                :key="result_idx"
-                            ></MultiResultView>
-                            <TableView
-                                v-if="result.type == 'table'"
+                                :path="filepath"
+                                :key="filepath"
+                            ></ResultsPlotlyViewer>
+                            <ResultsTableView
+                                v-if="isTableFile(filepath)"
                                 :project_id="project.id"
-                                :header="result.header"
-                                :description="result.description"
-                                :path="result.path"
-                                :key="result_idx"
-                            ></TableView>
+                                :path="filepath"
+                                :key="filepath"
+                            ></ResultsTableView>
                         </template>
                     </div>
                 </template>
@@ -230,6 +232,7 @@ import toastr from "toastr"
 const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 const START_WORKFLOW_CONFIRMATION_DIALOG_ID = "start_workflow_confirmation_dialog"
+
 /**
  * Keys for tabs
  */
@@ -242,6 +245,21 @@ const TAB_LABELS = ['Files', 'Workflow', 'Results'];
  * Event name for argument changes.
  */
 const ARGUMENT_CHANGED_EVENT = "ARGUMENT_CHANGED"
+
+/**
+ * Event name for result dir change.
+ */
+const RESULT_DIR_CHANGE_EVENT = "RESULT_DIR_CHANGE"
+
+/** 
+ * Table file extensions
+ */
+const TABLE_FILE_EXTENSIONS = [".csv", ".tsv"]
+
+/** 
+ * Image file extensions
+ */
+const IMAGE_FILE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]
 
 export default {
     data(){
@@ -260,12 +278,14 @@ export default {
             logs: [],
             error_report: null,
             selected_tab: 0,
+            result_dir_file_paths: []
         }
     },
     mounted(){
         this.loadProject()
         this.getWorkflows()
         this.bindWorkflowArgumentChangeEvent()
+        this.bindResultDirChangeEvent()
         // Set selected tab and bind event for tab changes
         this.selected_tab = this.$route.query.tab ? TABS.indexOf(this.$route.query.tab) : 0
         this.local_event_bus.$on("TAB_CHANGED", (tab_idx) => {
@@ -505,6 +525,36 @@ export default {
                     this.handleUnknownResponse(response)
                 }
             })
+        },
+        async onResultDirChange(file_browser_attributes){
+            this.result_dir_file_paths = file_browser_attributes.current_directory_files.map(filename => `${file_browser_attributes.current_directory}/${filename}`)
+        },
+        /**
+         * Binds the result dir change event to the local event bus.
+         */
+        bindResultDirChangeEvent(){
+            this.local_event_bus.$on(
+                this.result_dir_change_event,
+                file_browser_attributes => {this.onResultDirChange(file_browser_attributes)}
+            )
+        },
+        /**
+         * Checks if filepath is a table file
+         */
+        isTableFile(filepath){
+            for (const extension of TABLE_FILE_EXTENSIONS){
+                if(filepath.endsWith(extension)) return true
+            }
+            return false
+        },
+        /**
+         * Checks if filepath is an image file
+         */
+        isImageFile(filepath){
+            for (const extension of IMAGE_FILE_EXTENSIONS){
+                if(filepath.endsWith(extension)) return true
+            }
+            return false
         }
     },
     computed: {
@@ -568,6 +618,13 @@ export default {
          */
         logs_text(){
             return this.logs.join("\n")
+        },
+        /**
+         * Provide access to RESULT_DIR_CHANGE_EVENT in vue instance.
+         * @return {string}
+         */
+        result_dir_change_event(){
+            return RESULT_DIR_CHANGE_EVENT
         }
     },
     watch: {

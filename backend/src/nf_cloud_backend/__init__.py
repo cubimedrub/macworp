@@ -22,46 +22,42 @@ from werkzeug.exceptions import HTTPException
 # internal imports
 from nf_cloud_backend.authorization.provider_type import ProviderType
 from nf_cloud_backend.constants import (
-    ACCESS_TOKEN_HEADER, 
+    ACCESS_TOKEN_HEADER,
     ONE_TIME_USE_ACCESS_TOKEN_PARAM_NAME,
-    ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX
+    ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX,
 )
 from nf_cloud_backend.utility.configuration import Configuration
-from nf_cloud_backend.utility.headers.cross_origin_resource_sharing import add_allow_cors_headers
+from nf_cloud_backend.utility.headers.cross_origin_resource_sharing import (
+    add_allow_cors_headers,
+)
 from nf_cloud_backend.utility.matomo import track_request as matomo_track_request
-from nf_cloud_backend import models   # Import module only to prevent circular imports
+from nf_cloud_backend import models  # Import module only to prevent circular imports
 
 # Load config and environment.
 Configuration.initialize()
 
-app = Flask('app')
+app = Flask("app")
 """Flask app
 """
 
 # Allow CORS in general
-CORS(app)
+CORS(app, expose_headers=["MMD-Header, MMD-Description"])
 
 # Default Flask parameter
 app.config.update(
-    ENV = "development" if Configuration.values()["debug"] else "production",
-    DEBUG = Configuration.values()['debug'],
-    SECRET_KEY = Configuration.values()['secret']
+    ENV="development" if Configuration.values()["debug"] else "production",
+    DEBUG=Configuration.values()["debug"],
+    SECRET_KEY=Configuration.values()["secret"],
 )
 
 if Configuration.values()["use_reverse_proxy"]:
-    app.wsgi_app = ProxyFix(
-        app.wsgi_app,
-        x_for=1,
-        x_proto=1,
-        x_host=1,
-        x_prefix=1
-    )
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 cache = Cache(
     config={
         "CACHE_TYPE": "RedisCache",
         "CACHE_REDIS_URL": Configuration.values()["redis_url"],
-        "CACHE_DEFAULT_TIMEOUT": 60
+        "CACHE_DEFAULT_TIMEOUT": 60,
     }
 )
 """ Cache for one time use authentication tokens
@@ -77,33 +73,33 @@ if not Configuration.values()["debug"]:
 
 socketio = SocketIO(
     app,
-    message_queue=Configuration.values()['rabbit_mq']['url'],
+    message_queue=Configuration.values()["rabbit_mq"]["url"],
     cors_allowed_origins="*",
     async_mode=async_mode,
-    engineio_logger=app.logger if Configuration.values()['debug'] else False,
-    logger=Configuration.values()['debug'],
-    always_connect=True
+    engineio_logger=app.logger if Configuration.values()["debug"] else False,
+    logger=Configuration.values()["debug"],
+    always_connect=True,
 )
 """SocketIO for bidirectional communication (events) between server and browser.
 """
 
-db_wrapper = FlaskDB(
-    app,
-    Configuration.values()['database']['url']
-)
+db_wrapper = FlaskDB(app, Configuration.values()["database"]["url"])
 
 openid_clients = {
     provider: WebApplicationClient(provider_data["client_id"])
-    for provider, provider_data in Configuration.values()["login_providers"]["openid"].items()
+    for provider, provider_data in Configuration.values()["login_providers"][
+        "openid"
+    ].items()
 }
 
 # Load all file based authentication 'databases'
 file_auth_databases = {
     provider: yaml.load(
-        Path(provider_data['file']).read_text(encoding="utf-8"),
-        Loader=yaml.FullLoader
+        Path(provider_data["file"]).read_text(encoding="utf-8"), Loader=yaml.FullLoader
     )
-    for provider, provider_data in Configuration.values()["login_providers"].get(ProviderType.FILE.value, {}).items()
+    for provider, provider_data in Configuration.values()["login_providers"]
+    .get(ProviderType.FILE.value, {})
+    .items()
 }
 
 
@@ -111,7 +107,10 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 
 # Do not move import up, it would result in cyclic dependencies
-from nf_cloud_backend.authorization.jwt import JWT                      # pylint: disable=wrong-import-position
+from nf_cloud_backend.authorization.jwt import (
+    JWT,
+)  # pylint: disable=wrong-import-position
+
 
 @login_manager.request_loader
 def load_user_from_request(incomming_request: Request):
@@ -134,8 +133,12 @@ def load_user_from_request(incomming_request: Request):
     # These are usually used for download URLs via the frontend where it is not possible to
     # add the access token to the headers and the file is too large fo the usual "Download -> Blob -> Blob download"-Javascript stuff.
     if auth_header is None:
-        one_time_use_token: Optional[str] = incomming_request.args.get(ONE_TIME_USE_ACCESS_TOKEN_PARAM_NAME, None)
-        one_time_use_token = f"{ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX}{one_time_use_token}"
+        one_time_use_token: Optional[str] = incomming_request.args.get(
+            ONE_TIME_USE_ACCESS_TOKEN_PARAM_NAME, None
+        )
+        one_time_use_token = (
+            f"{ONE_TIME_USE_ACCESS_TOKEN_CACHE_PREFIX}{one_time_use_token}"
+        )
         if cache.has(one_time_use_token):
             auth_header = cache.get(one_time_use_token)
             # Delete the one time use token from cache
@@ -145,28 +148,26 @@ def load_user_from_request(incomming_request: Request):
     if auth_header is not None:
         try:
             user, is_unexpired = JWT.decode_auth_token_to_user(
-                app.config["SECRET_KEY"],
-                auth_header
+                app.config["SECRET_KEY"], auth_header
             )
             if user is not None and is_unexpired:
                 return user
-        except (
-            jwt.ExpiredSignatureError,
-            jwt.InvalidTokenError
-        ):
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
             return None
     auth_header = incomming_request.headers.get("Authorization", None)
     if auth_header is not None:
         basic_auth = incomming_request.authorization
-        if basic_auth.username == Configuration.values()["worker_credentials"]["username"] \
-            and basic_auth.password == Configuration.values()["worker_credentials"]["password"]:
+        if (
+            basic_auth.username
+            == Configuration.values()["worker_credentials"]["username"]
+            and basic_auth.password
+            == Configuration.values()["worker_credentials"]["password"]
+        ):
             return models.user.User(
-                id=0,
-                provider_type="local",
-                provider="local",
-                login_id="worker"
+                id=0, provider_type="local", provider="local", login_id="worker"
             )
     return None
+
 
 @app.before_request
 def track_request():
@@ -174,26 +175,30 @@ def track_request():
     Sends a tracking request to Matomo.
     """
     if Configuration.values()["matomo"]["enabled"]:
-        track_thread = Thread(target=matomo_track_request, args=(
-            request.headers.get("User-Agent", ""),
-            request.remote_addr,
-            request.headers.get("Referer", ""),
-            request.headers.get("Accept-Language", ""),
-            request.headers.get("Host", ""),
-            request.full_path,
-            request.query_string,
-            request.url.startswith("https"),
-            Configuration.values()["matomo"]["url"],
-            Configuration.values()["matomo"]["site_id"],
-            Configuration.values()["matomo"]["auth_token"], 
-            app,
-            Configuration.values()["debug"]
-        ))
+        track_thread = Thread(
+            target=matomo_track_request,
+            args=(
+                request.headers.get("User-Agent", ""),
+                request.remote_addr,
+                request.headers.get("Referer", ""),
+                request.headers.get("Accept-Language", ""),
+                request.headers.get("Host", ""),
+                request.full_path,
+                request.query_string,
+                request.url.startswith("https"),
+                Configuration.values()["matomo"]["url"],
+                Configuration.values()["matomo"]["site_id"],
+                Configuration.values()["matomo"]["auth_token"],
+                app,
+                Configuration.values()["debug"],
+            ),
+        )
         track_thread.start()
-        request_store.track_thread = track_thread 
+        request_store.track_thread = track_thread
+
 
 @app.teardown_appcontext
-def wait_for_track_request(exception=None): #pylint: disable=unused-argument
+def wait_for_track_request(exception=None):  # pylint: disable=unused-argument
     """
     Waits for the Matomo tracking to finish.s
 
@@ -205,6 +210,7 @@ def wait_for_track_request(exception=None): #pylint: disable=unused-argument
     track_thread = request_store.pop("track_thread", None)
     if track_thread:
         track_thread.join()
+
 
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -228,27 +234,18 @@ def handle_exception(e):
         # start with the correct headers and status code from the error
         response = e.get_response()
         # replace the body with JSON
-        response.data = json.dumps({
-            "errors": {
-                "general": e.description
-            }
-        })
+        response.data = json.dumps({"errors": {"general": e.description}})
         response.content_type = "application/json"
     else:
         response = app.response_class(
-            response=json.dumps({
-                "errors": {
-                    "general": str(e)
-                }
-            }),
+            response=json.dumps({"errors": {"general": str(e)}}),
             status=500,
-            mimetype='application/json'
+            mimetype="application/json",
         )
-    if Configuration.values()['debug']:
-        app.logger.error(traceback.format_exc()) # pylint: disable=no-member
+    if Configuration.values()["debug"]:
+        app.logger.error(traceback.format_exc())  # pylint: disable=no-member
         response = add_allow_cors_headers(response)
     return response
-
 
 
 # Import controllers.

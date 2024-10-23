@@ -72,7 +72,7 @@ export default {
   publicRuntimeConfig: {
     nf_cloud_backend_base_url: process.env.NF_CLOUD_BACKEND_BASE_URL || 'http://localhost:3001',
     nf_cloud_backend_ws_url: process.env.NF_CLOUD_BACKEND_WS_URL || 'http://localhost:3001',
-    nf_cloud_upload_max_file_size: process.env.NF_CLOUD_UPLOAD_MAX_FILE_SITE || 5368709120, // 5GB
+    nf_cloud_upload_max_file_size: process.env.NF_CLOUD_UPLOAD_MAX_FILE_SIZE || 5368709120, // 5GB
     nf_cloud_render_max_file_size: process.env.NF_CLOUD_RENDER_MAX_FILE_SIZE || 1048576, // 1MB
   },
 

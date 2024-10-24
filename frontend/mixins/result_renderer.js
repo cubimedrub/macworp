@@ -39,8 +39,8 @@ export default {
             result_file_description: null,
         }
     },
-    initialized() {
-        this.result_file_header = path
+    created() {
+        this.result_file_header = this.path
     },
     methods: {
         /**

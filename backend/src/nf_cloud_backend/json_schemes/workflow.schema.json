@@ -4,13 +4,52 @@
   "title": "Workflow",
   "description": "NF-Cloud workflow definition",
   "properties": {
-    "directory": {
-      "description": "Workflow directory",
-      "type": "string"
-    },
-    "script": {
-      "description": "Nextflow main script",
-      "type": "string"
+    "src": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "local" 
+            },
+            "directory": {
+              "description": "Workflow directory",
+              "type": "string"
+            },
+            "script": {
+              "description": "Nextflow main script",
+              "type": "string"
+            }
+          },
+          "required": [
+              "directory",
+              "script"
+            ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "remote" 
+            },
+            "url": {
+              "description": "Repository URL, e.g. https://github.com/cubimedrub/macdii",
+              "type": "string"
+            },
+            "version": {
+              "description": "Branch, tag or commit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "version"
+          ]
+        }
+      ]
     },
     "nextflow_parameters": {
       "type": "array",
@@ -288,8 +327,7 @@
     }
   },
   "required": [
-    "directory",
-    "script",
+    "src",
     "nextflow_parameters",
     "args"
   ]

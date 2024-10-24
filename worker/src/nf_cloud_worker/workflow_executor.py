@@ -140,7 +140,7 @@ class WorkflowExecutor(Process):
         fix_nextflow_paramters: List[str],
         dynamic_nextflow_arguments: dict,
         static_workflow_arguments: Dict[str, Any],
-        nextflow_main_scrip_path: Path,
+        workflow_source: List[str],
     ) -> List[str]:
         """
         Nextflow command, inclusive nextflow run parameters and script.
@@ -159,8 +159,8 @@ class WorkflowExecutor(Process):
             _description_
         static_workflow_arguments : dict
             _description_
-        nextflow_main_scrip_path : Path
-            _description_
+        workflow_source : List[str]
+            Workflow source, e.g. path to script (local) or URL with optional version (remote)
 
         Returns
         -------
@@ -173,7 +173,7 @@ class WorkflowExecutor(Process):
             + self._nextflow_run_parameters(
                 work_dir, nextflow_weblog_url, fix_nextflow_paramters
             )
-            + [str(nextflow_main_scrip_path)]
+            + workflow_source
             + self.__get_arguments_as_list(
                 project_dir, dynamic_nextflow_arguments, static_workflow_arguments
             )
@@ -334,9 +334,7 @@ class WorkflowExecutor(Process):
                 self.__communication_channel.send((delivery_tag, False))
                 continue
 
-            nextflow_main_scrip_path = self.__get_workflow_main_script_path(
-                workflow["definition"]
-            )
+            workflow_source = self.__get_workflow_source(workflow["definition"])
 
             fix_nextflow_paramters = self.__get_fix_nextflow_parameters(
                 workflow["definition"]
@@ -364,8 +362,10 @@ class WorkflowExecutor(Process):
                 fix_nextflow_paramters,
                 dynamic_nextflow_arguments,
                 static_workflow_arguments,
-                nextflow_main_scrip_path,
+                workflow_source,
             )
+
+            nextflow_command
 
             logger.debug(
                 "[WORKER / PROJECT %i] %s",
@@ -405,7 +405,24 @@ class WorkflowExecutor(Process):
 
             logger.info("[WORKER / PROJECT %i] finished", project_params.id)
 
-    def __get_workflow_main_script_path(self, workflow_settings: dict) -> Path:
+    def __get_workflow_source(self, workflow_settings: dict) -> List[str]:
+        workflow_source = workflow_settings["src"]
+        match workflow_source["type"]:
+            case "local":
+                directory = Path(workflow_source["directory"]).absolute()
+                directory = directory.joinpath(workflow_source["script"])
+                return [str(directory)]
+            case "remote":
+                source = [workflow_source["url"]]
+                if "version" in workflow_source:
+                    source.append("-r")
+                    source.append(workflow_source["version"])
+                return source
+            case _:
+                raise ValueError(
+                    f"Unsupported workflow location: {workflow_source['type']}"
+                )
+
         return (
             Path(workflow_settings["directory"])
             .absolute()

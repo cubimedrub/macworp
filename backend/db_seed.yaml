@@ -5,8 +5,10 @@ seeds:
       description: "Creates a variety of result types for testing the rendering of results"
       definition: |
         {
-            "directory": "./demo_workflows/result_demo",
-            "script": "main.nf",
+            "src": { 
+                "directory": "./demo_workflows/result_demo",
+                "script": "main.nf",
+            },
             "nextflow_parameters": [],
             "args": {
                 "dynamic": [],

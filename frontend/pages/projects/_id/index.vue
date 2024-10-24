@@ -133,7 +133,7 @@
                     </button>
                 </template>
 
-                <template v-slot:results v-if="project.results_definition">
+                <template v-slot:results>
                     <div class="results-container">
                         <SelectableFileBrowser 
                             :project_id="project.id"
@@ -309,11 +309,9 @@ export default {
                 if(response.ok) {
                     response.json().then(response_data => {
                         let project = response_data.project
-                        project.results_definition = []
                         this.project = project
                         this.bindWorkflowArgumentChangeEvent()
                         this.connectToProjectSocketIoRoom()
-                        if(this.project.workflow_id) this.getResultsDefinition()
                     })
                 } else if(response.status == 404) {
                     this.project_not_found = true
@@ -410,7 +408,6 @@ export default {
             if (this.project.is_scheduled) return
             this.project.workflow_id = workflow_id
             this.getDynamicWorkflowArguments()
-            this.getResultsDefinition()
         },
         /**
          * Sets a neww value to the workflow argument
@@ -441,21 +438,6 @@ export default {
                 if(response.ok) {
                     response.json().then(data => {
                         this.project.workflow_arguments = data
-                    })
-                } else {
-                    this.handleUnknownResponse(response)
-                }
-            })
-        },
-        /**
-         * Fetches the result definition
-         */
-        getResultsDefinition(){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.project.workflow_id}/result_definition`, {
-            }).then(response => {
-                if(response.ok) {
-                    response.json().then(data => {
-                        this.project.results_definition = data
                     })
                 } else {
                     this.handleUnknownResponse(response)

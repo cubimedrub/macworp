@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional, List
 
-#3rd party import
+# 3rd party import
 from flask import jsonify, request
 import markdown
 import jsonschema
@@ -29,12 +29,14 @@ class WorkflowsControllers:
         """
         offset = request.args.get("offset", None)
         limit = request.args.get("limit", None)
-        return jsonify({
-            "workflows": [
-                workflow.to_dict()
-                for workflow in Workflow.select().offset(offset).limit(limit)
-            ]
-        })
+        return jsonify(
+            {
+                "workflows": [
+                    workflow.to_dict()
+                    for workflow in Workflow.select().offset(offset).limit(limit)
+                ]
+            }
+        )
 
     @staticmethod
     @app.route("/api/workflows/published", endpoint="workflow_index_published")
@@ -46,12 +48,17 @@ class WorkflowsControllers:
         """
         offset = request.args.get("offset", None)
         limit = request.args.get("limit", None)
-        return jsonify({
-            "workflows": {
-                workflow.id: workflow.name
-                for workflow in Workflow.select().where(Workflow.is_published == True).offset(offset).limit(limit)
+        return jsonify(
+            {
+                "workflows": {
+                    workflow.id: workflow.name
+                    for workflow in Workflow.select()
+                    .where(Workflow.is_published == True)
+                    .offset(offset)
+                    .limit(limit)
+                }
             }
-        })
+        )
 
     @staticmethod
     @app.route("/api/workflows/create", methods=["POST"], endpoint="workflow_create")
@@ -79,11 +86,11 @@ class WorkflowsControllers:
         errors = Workflow.validate_description(description, errors)
 
         if len(errors) > 0:
-            return jsonify({
-                "errors": errors
-            }), error_status_code
+            return jsonify({"errors": errors}), error_status_code
 
-        workflow: Workflow = Workflow.create(name=name, description=data.get("description", None))
+        workflow: Workflow = Workflow.create(
+            name=name, description=data.get("description", None)
+        )
         return jsonify(workflow.to_dict())
 
     @staticmethod
@@ -108,7 +115,11 @@ class WorkflowsControllers:
         return jsonify(workflow_dict)
 
     @staticmethod
-    @app.route("/api/workflows/<int:workflow_id>/update", methods=["POST"], endpoint="workflow_update")
+    @app.route(
+        "/api/workflows/<int:workflow_id>/update",
+        methods=["POST"],
+        endpoint="workflow_update",
+    )
     def update(workflow_id: int):
         """
         Endpoint for updating a workflow.
@@ -149,16 +160,18 @@ class WorkflowsControllers:
                 workflow.is_validated = False
 
         if len(errors) > 0:
-            return jsonify({
-                "errors": errors
-            }), 422
+            return jsonify({"errors": errors}), 422
 
         workflow.save()
 
         return "", 200
 
     @staticmethod
-    @app.route("/api/workflows/<int:workflow_id>/delete", methods=["POST"], endpoint="workflow_delete")
+    @app.route(
+        "/api/workflows/<int:workflow_id>/delete",
+        methods=["POST"],
+        endpoint="workflow_delete",
+    )
     def delete(workflow_id: int):
         """
         Endpoint for deleteing a workflow.
@@ -179,7 +192,9 @@ class WorkflowsControllers:
         return "", 200
 
     @staticmethod
-    @app.route("/api/workflows/<int:workflow_id>/arguments", endpoint="workflow_arguments")
+    @app.route(
+        "/api/workflows/<int:workflow_id>/arguments", endpoint="workflow_arguments"
+    )
     def arguments(workflow_id: int):
         """
         Endpoint for deleteing a workflow.
@@ -196,20 +211,13 @@ class WorkflowsControllers:
 
         workflow: Workflow = Workflow.get_or_none(Workflow.id == workflow_id)
         if workflow is None:
-            return '', 404
-        return jsonify(workflow.definition['args']['dynamic'])
-    
-    @staticmethod
-    @app.route("/api/workflows/<int:workflow_id>/result_definition")
-    def result_definition(workflow_id: int):
-        workflow: Workflow = Workflow.get_or_none(Workflow.id == workflow_id)
-        if workflow is None:
-            return '', 404
-        return jsonify(workflow.definition['results'])
-    
+            return "", 404
+        return jsonify(workflow.definition["args"]["dynamic"])
 
     @staticmethod
-    @app.route("/api/workflows/<int:workflow_id>/description", endpoint="workflow_description")
+    @app.route(
+        "/api/workflows/<int:workflow_id>/description", endpoint="workflow_description"
+    )
     def description(workflow_id: int):
         """
         Endpoint for getting the workflow description
@@ -237,15 +245,12 @@ class WorkflowsControllers:
 
         workflow: Workflow = Workflow.get_or_none(Workflow.id == workflow_id)
         if workflow is None:
-            return '', 404
-        
+            return "", 404
+
         parse = request.args.get("parse", False, type=bool)
 
         description = workflow.description
         if parse:
             description = markdown.markdown(description)
 
-        return jsonify({
-            "description": description
-        })
-    
+        return jsonify({"description": description})

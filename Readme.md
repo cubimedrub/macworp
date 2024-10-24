@@ -154,6 +154,24 @@ Below is a list of supported elements:
 | Interactive plots | `.plolty.json` | To generate Plolty conform JSON files, have a look into the [documentation](https://plotly.com/python-api-reference/generated/plotly.io.to_json.html#plotly.io.to_json). These kind of plots have few advantages for the user, like the ability to enable/disable traces and zoom. MAcWorP is also adding a JSON editor to change the plot layout or colors. |
 
 
+#### Metadata files
+Each result file can be annotated with a header and description, by adding a JSON formatted MAcWorP metadata file next to the result file. It should have the same name as the result file plus the extension `.mmdata`, e.g.:
+* File to annotate file: `./some_barplot.png`
+* Metadata file:  `./some_barplot.png.mmdata`
+
+The content would look like this:
+```json
+{
+    "header": "That some kind of a bar plot",
+    "description": "Some very lengthy description, telling users what the barplot is showing."
+}
+```
+Header and description are then rendered in the frontend. If no metadata is given, the header is replaced by the filename and the description skipped.
+
+
+Have a look into the [results demo workflow](./demo_workflows/result_demo/)
+
+
 
 ## ToDos
 * Try to move Nextflow intermediate result folders into a subfolder.

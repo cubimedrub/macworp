@@ -59,7 +59,6 @@ export default {
             })
         } else {
             this.getAuthenticatedUrlForRender(this.path).then(url => {
-                console.log(">>>>>", url)
                 this.authorized_url = url
             })
         }

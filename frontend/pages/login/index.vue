@@ -1,7 +1,7 @@
 <template>
     <div class="row justify-content-center login ">
         <template v-for="(providers, provider_type) in login_providers">
-            <div v-for="(description, provider) in providers" :key="`${provider_type}_${provider}`" class="card" style="width: 18rem;">
+            <div v-for="(description, provider) in providers" :key="`${provider_type}_${provider}`" class="card m-2" style="width: 18rem;">
                 <div class="card-body">
                     <h5 class="card-title">{{provider | capitalize}}</h5>
                     <p class="card-text">{{ description}}</p>

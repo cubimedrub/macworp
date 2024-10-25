@@ -339,6 +339,7 @@ class WorkflowExecutor(Process):
             dynamic_nextflow_arguments = {
                 argument["name"]: argument
                 for argument in project_params.workflow_arguments
+                if argument["type"] != "separator"
             }
 
             static_workflow_arguments = self.__get_workflow_static_arguments(
@@ -401,6 +402,7 @@ class WorkflowExecutor(Process):
 
     def __get_workflow_source(self, workflow_settings: dict) -> List[str]:
         workflow_source = workflow_settings["src"]
+        print("Workflow source: ", workflow_source)
         match workflow_source["type"]:
             case "local":
                 directory = Path(workflow_source["directory"]).absolute()

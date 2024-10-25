@@ -186,6 +186,12 @@
                                 :path="filepath"
                                 :key="filepath"
                             ></ResultsTableView>
+                            <ResultsTextViewer
+                                v-if="filepath.endsWith('txt')"
+                                :project_id="project.id"
+                                :path="filepath"
+                                :key="filepath"
+                            ></ResultsTextViewer>
                         </template>
                     </div>
                 </template>

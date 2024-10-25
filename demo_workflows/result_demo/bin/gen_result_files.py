@@ -88,6 +88,19 @@ def main():
             )
         )
 
+    df_2021.to_csv("07_healthexp_2021.txt", index=False)
+    with Path("07_healthexp_2021.txt.mmdata").open(
+        "w", encoding="utf-8"
+    ) as mmdata_file:
+        mmdata_file.write(
+            json.dumps(
+                {
+                    "header": "Same as CSV but with .txt extension",
+                    "description": "Simple txt viewer",
+                }
+            )
+        )
+
 
 if __name__ == "__main__":
     main()

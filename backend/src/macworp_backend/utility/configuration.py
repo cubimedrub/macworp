@@ -43,7 +43,7 @@ secret: "development"
 debug: true
 # Path to put working directories
 upload_path: "./uploads"
-# Set this in production to the base url of MaCWorP. E.g. https://macworp.cubimed.rub.de
+# Set this in production to the base url of MAcWorP. E.g. https://macworp.cubimed.rub.de
 # frontend_host_url
 # Database
 database:

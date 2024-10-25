@@ -1,4 +1,4 @@
-# MaCWorP - Massive aCcessible Workflow Platform
+# MAcWorP - Massive aCcessible Workflow Platform
 
 MaCWorp is a web application to give workflow developers a simple way to make their workflows easily accessible via a web browser for everyone. 
 
@@ -15,7 +15,7 @@ MaCWorp is a web application to give workflow developers a simple way to make th
         * Support for multiple workflow engines (currently Nextflow is working)
         * Fine grained access control to projects and workflows including sharing with others.
 * What it **does not** for you
-    * Scaling - This is still the job of the workflow engine. E.g. you can configure Nextflow to use K8s or Slurm when started by MaCWorP workers but setting these executors up is still a separate job for an admin.
+    * Scaling - This is still the job of the workflow engine. E.g. you can configure Nextflow to use K8s or Slurm when started by MAcWorP workers but setting these executors up is still a separate job for an admin.
 
 
 ## Backend
@@ -27,7 +27,7 @@ A web interface written in [NuxtJS](https://nuxtjs.org/). This is basically a GU
 ## Worker
 A worker written in python which runs the scheduled workflows.
 
-![MaCWorP structure](./macworp.png)
+![MAcWorP structure](./macworp.png)
 
 ## Developing
 Make sure the dependencies in

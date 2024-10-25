@@ -15,7 +15,7 @@ class ComandLineInterface:
     __arguments: argparse.Namespace
 
     def __init__(self):
-        self.__arg_parser = argparse.ArgumentParser(description="MaCWorP worker")
+        self.__arg_parser = argparse.ArgumentParser(description="MAcWorP worker")
         self.__arg_parser.add_argument(
             "--nf-bin", "-n", type=str, help="Path to nextflow binary."
         )

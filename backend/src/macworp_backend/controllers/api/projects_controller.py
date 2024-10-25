@@ -430,7 +430,7 @@ class ProjectsController:
                     or "value" in arguments
                     and arguments["value"] is None
                 ):
-                    errors[arguments["name"]].append("cannot be empty")
+                    errors[arguments["label"]].append("cannot be empty")
             if len(errors) > 0:
                 return jsonify({"errors": errors}), 422
             with db.database.atomic() as transaction:

@@ -1,11 +1,13 @@
+"""Command line interface for the worker application."""
+
 # std imports
 import argparse
 from dataclasses import dataclass
-from typing import Any
 
 
 @dataclass
 class ComandLineInterface:
+    """Command line interface"""
 
     __slots__ = ["__arg_parser", "__arguments"]
 
@@ -51,11 +53,22 @@ class ComandLineInterface:
             "--keep-intermediate-files",
             default=False,
             action="store_true",
-            help="Keep work folder, workflow engine logs and cache folder after workflow execution. (default: False)",
+            help=(
+                "Keep work folder, workflow engine logs and cache folder "
+                "after workflow execution. (default: False)"
+            ),
         )
 
         self.__arguments = self.__arg_parser.parse_args()
 
     @property
     def arguments(self) -> argparse.Namespace:
+        """
+        Returns the parsed arguments.s
+
+        Returns
+        -------
+        argparse.Namespace
+            Parsed arguments
+        """
         return self.__arguments

@@ -1,8 +1,10 @@
+"""Executor for Nextflow workflows."""
+
 # std imports
-import json
 import logging
-from multiprocessing import Process, Event, Queue
+from multiprocessing import Process, Queue
 from multiprocessing.connection import Connection
+from multiprocessing.synchronize import Event as EventClass
 from pathlib import Path
 from queue import Empty as EmptyQueueError
 import re
@@ -11,8 +13,8 @@ import subprocess
 from typing import Any, ClassVar, Dict, List
 
 # 3rd party imports
-from macworp_utils.exchange.queued_project import QueuedProject
-from mergedeep import merge
+from macworp_utils.exchange.queued_project import QueuedProject  # type: ignore[import-untyped]
+from mergedeep import merge  # type: ignore[import-untyped]
 
 # internal imports
 from macworp_worker.logging import get_logger
@@ -37,7 +39,7 @@ class WorkflowExecutor(Process):
         Communication channel with AckHandler for sending delivery tags after work is done.#
     __keep_intermediate_files: bool
         Keep work folder after workflow execution.
-    __stop_event: Event
+    __stop_event: EventClass
         Event for stopping worker processes and threads reliable.
     __log_level: int
         Log level
@@ -60,7 +62,7 @@ class WorkflowExecutor(Process):
         project_queue: Queue,
         communication_channel: Connection,
         keep_intermediate_files: bool,
-        stop_event: Event,
+        stop_event: EventClass,
         log_level: int,
         weblog_proxy_port: int,
     ):
@@ -77,7 +79,7 @@ class WorkflowExecutor(Process):
         # Additional worker behavior
         self.__keep_intermediate_files: bool = keep_intermediate_files
         # Event for breaking work loop
-        self.__stop_event: Event = stop_event
+        self.__stop_event: EventClass = stop_event
         self.__log_level = log_level
         self.__weblog_proxy_port = weblog_proxy_port
 
@@ -290,12 +292,15 @@ class WorkflowExecutor(Process):
             try:
                 if self.__backend_web_api_client.is_project_ignored(project_params.id):
                     logger.warning(
-                        "[WORKER / PROJECT %i] Project is ignored. Removing from queue and moving on.",
+                        (
+                            "[WORKER / PROJECT %i] Project is ignored. "
+                            "Removing from queue and moving on.",
+                        ),
                         project_params.id,
                     )
                     self.__communication_channel.send((delivery_tag, True))
                     continue
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-except
                 logging.error(
                     (
                         "[WORKER / PROJECT %i] Not able to fetch project ignore status from API. "
@@ -316,7 +321,7 @@ class WorkflowExecutor(Process):
                 workflow = self.__backend_web_api_client.get_workflow(
                     project_params.workflow_id
                 )
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-except
                 logging.error(
                     "[WORKER / PROJECT %i] Not able to fetch workflow from API. Rejecting message and moving on: %s",
                     project_params.id,
@@ -346,7 +351,7 @@ class WorkflowExecutor(Process):
             if not work_dir.is_dir():
                 work_dir.mkdir(parents=True, exist_ok=True)
 
-            nextflow_command: List[str] = self._nextflow_command(
+            nextflow_command = self._nextflow_command(
                 project_dir,
                 work_dir,
                 f"http://127.0.0.1:{self.__weblog_proxy_port}/projects/{project_params.id}",
@@ -355,8 +360,6 @@ class WorkflowExecutor(Process):
                 static_workflow_arguments,
                 workflow_source,
             )
-
-            nextflow_command
 
             logger.debug(
                 "[WORKER / PROJECT %i] %s",

@@ -48,5 +48,6 @@ dev = [
     "pandas-stubs",
     "pika-stubs",
     "plotly", # for demo workflow
-    "pylint"
+    "pylint",
+    "types-PyYAML"
 ]

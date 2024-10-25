@@ -27,5 +27,6 @@ dev = [
     "kaleido", # for demo workflow
     "plotly", # for demo workflow
     "pylint",
-    "types-peewee"
+    "types-peewee",
+    "types-PyYAML"
 ]

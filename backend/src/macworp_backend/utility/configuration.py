@@ -1,4 +1,4 @@
-# Module for configuration
+"""Configuration module"""
 
 # std imports
 from __future__ import annotations
@@ -7,6 +7,9 @@ from io import StringIO
 import os
 from pathlib import Path
 import re
+from typing import ClassVar, Dict, Any, List, Optional, Tuple, Type
+
+# 3rd party imports
 from yaml import load as yaml_load, Loader as YamlLoader
 
 
@@ -103,17 +106,43 @@ frontend_host_url: http://localhost:5001
         Initializes configuration
         """
         config = yaml_load(cls.DEFAULT_CONFIG, Loader=YamlLoader)
-        config_path: Path = Path(f"./{cls.LOCAL_CONFIG_NAME}")
+        config_path = Path(f"./{cls.LOCAL_CONFIG_NAME}")
         if config_path.is_file():
             with config_path.open("r", encoding="utf-8") as config_file:
-                local_config_io: StringIO = StringIO(
-                    cls.env_resolver(config_file.read())
-                )
+                local_config_io = StringIO(cls.env_resolver(config_file.read()))
                 new_config = yaml_load(local_config_io, Loader=YamlLoader)
                 config = cls._merge_dicts_recursively(new_config, config)
         cls._validate_config(config)
 
         cls.__values = config
+
+    @classmethod
+    def env_resolver(cls, config: str) -> str:
+        """
+        Resolves environment variables in given YAML config.
+        Environment variables can be used like:
+        ```
+        text: i'm a yaml config
+        used_environment: ENV['name-of-the-env-var']
+        ```
+
+        Parameters
+        ----------
+        config : str
+            YAML config
+
+        Returns
+        -------
+        str
+            YAML config with resolved environment variables.
+        """
+
+        def resolve(match: re.Match) -> Optional[str]:
+            return os.getenv(match.group("env_name"))
+
+        # According to the [re.sub](https://docs.python.org/3/library/re.html#re.sub) documentation,
+        # `repl`-argument can be a function
+        return re.sub(cls.YAML_ENV_VAR_REG, resolve, config)  # type: ignore[arg-type]
 
     @classmethod
     def _validate_config(cls, config: Dict[str, Any]):
@@ -266,32 +295,6 @@ frontend_host_url: http://localhost:5001
             else:
                 destination[key] = value
         return destination
-
-    @classmethod
-    def env_resolver(cls, config: str) -> str:
-        """
-        Resolves environment variables in given YAML config.
-        Environment variables can be used like:
-        ```
-        text: i'm a yaml config
-        used_environment: ENV['name-of-the-env-var']
-        ```
-
-        Parameters
-        ----------
-        config : str
-            YAML config
-
-        Returns
-        -------
-        str
-            YAML config with resolved environment variables.
-        """
-
-        def resolve(match: re.Match) -> str:
-            return os.getenv(match.group("env_name"))
-
-        return re.sub(cls.YAML_ENV_VAR_REG, resolve, config)
 
     @classmethod
     def create_default_config(cls, folder_path: Path):

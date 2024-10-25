@@ -1,3 +1,5 @@
+"""Entry point for the worker application."""
+
 # std imports
 from pathlib import Path
 from multiprocessing import Event
@@ -23,7 +25,7 @@ def main():
     signal.signal(signal.SIGTERM, handle_stop_signals)
     signal.signal(signal.SIGINT, handle_stop_signals)
 
-    cli: CLI = CLI()
+    cli = CLI()
 
     log_level = verbosity_to_log_level(cli.arguments.verbose)
 

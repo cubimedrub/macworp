@@ -1,8 +1,11 @@
+"""Worker which receives a workflow execution job via a message broker like RabbitMQ."""
+
 # std imports
 import functools
 import logging
-from multiprocessing import Event, Pipe, Queue
+from multiprocessing import Pipe, Queue
 from multiprocessing.connection import Connection, wait
+from multiprocessing.synchronize import Event as EventClass
 from pathlib import Path
 from queue import Full as FullQueueError
 import time
@@ -10,11 +13,11 @@ from threading import Thread
 from typing import Any, List, Optional
 
 # external imports
-from macworp_worker.logging import get_logger
 import pika
 from pika.channel import Channel
 
 # internal imports
+from macworp_worker.logging import get_logger
 from macworp_worker.web.backend_web_api_client import BackendWebApiClient
 from macworp_worker.web.weblog_proxy import WeblogProxy
 from macworp_worker.workflow_executor import WorkflowExecutor
@@ -33,7 +36,8 @@ class AckHandler(Thread):
     __broker_channel: Channel
         Channel to message broker queue
     __comm_channels: List[Connection]
-        Connections between this handler and process worker for receiving delivery tags for acknowledgement
+        Connections between this handler and process worker
+        for receiving delivery tags for acknowledgement
     """
 
     def __init__(
@@ -138,7 +142,7 @@ class Worker:
         project_queue_name: str,
         number_of_workers: int,
         keep_intermediate_files: bool,
-        stop_event: Event,
+        stop_event: EventClass,
         log_level: int,
     ):
         # nextflow binary
@@ -156,7 +160,7 @@ class Worker:
         # additional worker behavior
         self.__keep_intermediate_files: bool = keep_intermediate_files
         # control
-        self.__stop_event: Event = stop_event
+        self.__stop_event: EventClass = stop_event
         self.__log_level: int = log_level
         self.__weblog_proxy = WeblogProxy(backend_api_client, log_level)
 
@@ -167,9 +171,9 @@ class Worker:
         logger = get_logger("worker", self.__log_level)
         logger.info("Starting worker with %i executors.", self.__number_of_workers)
 
-        project_queue: Queue = Queue()
-        comm_channels: List[Connection] = []
-        wf_executors: List[WorkflowExecutor] = []
+        project_queue = Queue()
+        comm_channels: List[Connection] = []  # type: ignore[annotation-unchecked]
+        wf_executors: List[WorkflowExecutor] = []  # type: ignore[annotation-unchecked]
 
         while not self.__stop_event.is_set():
             try:
@@ -198,13 +202,15 @@ class Worker:
                     rw_comm.close()
                     wf_executors.append(executor)
 
-                ack_handler: AckHandler = AckHandler(
+                ack_handler = AckHandler(
                     self.__connection, self.__channel, comm_channels
                 )
                 ack_handler.start()
 
                 logger.info("Executor and AckHandler startet, listening for jobs...")
-                # Second return value 'properties' is unnecessary. After 0.5 second it consume will return '(None, None, None)' if no message was send.
+                # Second return value 'properties' is unnecessary.
+                # After 0.5 second it consume will return '(None, None, None)'
+                # if no message was send.
                 # This will give us time for maintenance, e.g. stop if a stop signal was received
                 for method_frame, _, body in self.__channel.consume(
                     self.__project_queue_name, inactivity_timeout=0.5, auto_ack=False

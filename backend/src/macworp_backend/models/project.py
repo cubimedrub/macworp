@@ -1,11 +1,12 @@
+"""Object and functions to deal with project data"""
+
 # std imports
 from __future__ import annotations
 import argparse
-import json
 from pathlib import Path
 import re
 import shutil
-from typing import IO, Any, Dict, List
+from typing import IO
 from typing_extensions import Buffer
 
 # 3rd party imports
@@ -23,7 +24,9 @@ SLASH_SEQ_REGEX: re.Pattern = re.compile(r"\/+")
 """
 
 
-class Project(db.Model):
+class Project(db.Model):  # type: ignore[name-defined]
+    """Handling project data"""
+
     id = BigAutoField(primary_key=True)
     name = CharField(max_length=512, null=False)
     workflow_id = BigIntegerField(null=False, default=0)
@@ -34,6 +37,8 @@ class Project(db.Model):
     ignore = BooleanField(null=False, default=False)
 
     class Meta:
+        """Peewee meta class"""
+
         db_table = "projects"
 
     def __init__(self, **kwargs):
@@ -75,7 +80,8 @@ class Project(db.Model):
         recursive : bool, optional
             Delete related models.
         delete_nullable : bool, optional
-            Delete related models that have a null foreign key. If False nullable relations will be set to NULL
+            Delete related models that have a null foreign key.
+            If False nullable relations will be set to NULL
         """
         deleted_rows = super().delete_instance(recursive=False, delete_nullable=False)
         if deleted_rows > 0:
@@ -294,7 +300,8 @@ class ProjectCommandLineInterface:
     @classmethod
     def set_project_ignore(cls, project_id: int, ignore: bool):
         """
-        Set project ignore flag to a new value. If ignore is set to True, the project schedule status is also reset.
+        Set project ignore flag to a new value.
+        If ignore is set to True, the project schedule status is also reset.
 
         Parameters
         ----------
@@ -324,7 +331,10 @@ class ProjectCommandLineInterface:
 
         parser = subparsers.add_parser(
             "ignore",
-            help="Sets or unset the ignore flag. A ignored project is removed from the queue once a worker is receiving it.",
+            help=(
+                "Sets or unset the ignore flag. "
+                "A ignored project is removed from the queue once a worker is receiving it."
+            ),
         )
         parser.set_defaults(func=lambda args: parser.print_help())
 

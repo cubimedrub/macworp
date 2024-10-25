@@ -7,7 +7,7 @@ seeds:
         {
             "src": { 
                 "directory": "./demo_workflows/result_demo",
-                "script": "main.nf",
+                "script": "main.nf"
             },
             "nextflow_parameters": [],
             "args": {

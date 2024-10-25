@@ -6,6 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "macworp_utils"
 requires-python = ">=3.9"
 version = "1.0.0"
+license = {file = "../LICENSE"}
+description = "Shared code for Massive Accessible Workflow Platform (MAcWorP) backend and worker"
+authors = [
+    {name = "Core Unit Bioinformatic Ruhr University Bochum", email = "cubimed@rub.de"},
+]
+maintainers = [
+    {name = "Dirk Winkelhardt", email = "dirk.winkelhardt@rub.de"}
+]
+
+
 dependencies = [
     "jsonschema  >=4, <5",
     "kombu  >=5, <6",
@@ -29,3 +39,6 @@ dev = [
     "black",
     "pylint"
 ]
+
+[project.urls]
+homepage = "https://github.com/cubimedrub/macworp"

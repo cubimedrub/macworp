@@ -425,6 +425,8 @@ class ProjectsController:
             )
         if project and not project.is_scheduled:
             for arguments in project.workflow_arguments:
+                if arguments["type"] == "separator":
+                    continue
                 if (
                     not "value" in arguments
                     or "value" in arguments

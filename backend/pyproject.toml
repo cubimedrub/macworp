@@ -1,6 +1,9 @@
 [build-system]
-requires = ["setuptools", "wheel", "Cython"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools", "wheel", "Cython", "hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [project]
 name = "macworp_backend"
@@ -17,6 +20,7 @@ dependencies = [
     "gunicorn @ git+https://github.com/benoitc/gunicorn.git@ff58e0c6da83d5520916bc4cc109a529258d76e1#egg=gunicorn",
     "jsonschema  >=4, <5",
     "kombu  >=5, <6",
+    "macworp_utils @ {root:parent:uri}/utils",
     "markupsafe  ==2.0.1",      # fix for `ImportError: cannot import name 'soft_unicode'
     "markdown ~=3.6",
     "mergedeep  >=1, <2",

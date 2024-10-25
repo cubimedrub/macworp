@@ -26,6 +26,7 @@ RUN apt-get update -y \
 WORKDIR /home/mambauser
 # Copy backend and environment.yml
 COPY --chown=mambauser:mambauser backend/ ./backend/
+COPY --chown=mambauser:mambauser utils/ ./utils/
 COPY --chown=mambauser:mambauser environment.yml .
 COPY --chown=mambauser:mambauser docker/entrypoints/backend.sh ./entrypoint.sh
 

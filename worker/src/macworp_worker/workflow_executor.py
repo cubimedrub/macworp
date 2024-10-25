@@ -11,8 +11,8 @@ import subprocess
 from typing import Any, ClassVar, Dict, List
 
 # 3rd party imports
+from macworp_utils.exchange.queued_project import QueuedProject
 from mergedeep import merge
-from pydantic import BaseModel, Field
 
 # internal imports
 from macworp_worker.logging import get_logger
@@ -283,7 +283,7 @@ class WorkflowExecutor(Process):
                 continue
 
             # Parse project parameters from message broker
-            project_params = ProjectQueueRepresentation.model_validate_json(body)
+            project_params = QueuedProject.model_validate_json(body)
 
             logger.info("[WORKER / PROJECT %i] Start", project_params.id)
 

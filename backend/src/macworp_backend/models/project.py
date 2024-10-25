@@ -9,9 +9,9 @@ from typing import IO, Any, Dict, List
 from typing_extensions import Buffer
 
 # 3rd party imports
+from macworp_utils.exchange.queued_project import QueuedProject
 from peewee import BigAutoField, CharField, BooleanField, IntegerField, BigIntegerField
 from playhouse.postgres_ext import BinaryJSONField
-from pydantic import BaseModel, Field
 
 # internal import
 from macworp_backend import db_wrapper as db
@@ -273,7 +273,7 @@ class Project(db.Model):
             return True
         return False
 
-    def get_queue_representation(self) -> ProjectQueueRepresentation:
+    def get_queue_representation(self) -> QueuedProject:
         """
         Returns
         -------
@@ -281,19 +281,11 @@ class Project(db.Model):
         """
         if self.workflow_id <= 0:
             raise ValueError("Workflow ID is not set.")
-        return ProjectQueueRepresentation(
+        return QueuedProject(
             id=self.id,  # type: ignore[arg-type]
             workflow_id=self.workflow_id,  # type: ignore[arg-type]
             workflow_arguments=self.workflow_arguments,  # type: ignore[arg-type]
         )
-
-
-class ProjectQueueRepresentation(BaseModel):
-    id: int = 0
-    workflow_id: int = 0
-    workflow_arguments: List[Dict[str, Any]] = Field(
-        default_factory=List[Dict[str, Any]]
-    )
 
 
 class ProjectCommandLineInterface:

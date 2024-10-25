@@ -4,6 +4,7 @@
             <nav :class="{'extended-menu': show_menu}" class="col-12 col-lg-2 position-sticky d-flex flex-column py-3 application-nav-column collapsed-menu">
                 <div class="d-flex flex-column justify-content-center align-items-center">
                     <NuxtLink to="/" class="text-decoration-none">
+                        <img class="w-100" src="~/assets/images/logo.svg" alt="Massive Accessible Workflow Platform Logo"/>
                         <h1 class="brand text-break">
                             MAcWorP
                         </h1>
@@ -65,7 +66,7 @@
                         </ul>
                         <div class="sponsors-logos">
                             <a href="https://www.ruhr-uni-bochum.de" target="_blank"><img class="w-25" src="~/assets/images/rub-logo-small.png" alt="Logo of the Ruhr University Bochum"/></a>
-                            <a href="https://www.ruhr-uni-bochum.de/mpc/" target="_blank"><img class="w-25" src="~/assets/images/mpc-logo-small.png" alt="Logo of the Medical Proteom Center"/></a>
+                            <a href="https://www.cubimed.ruhr-uni-bochum.de" target="_blank"><img class="w-50" src="~/assets/images/cubimed-logo.png" alt="Core Unit Bioinformatics Ruhr University Bochum"/></a>
                         </div>
                     </div>
                 </nav>

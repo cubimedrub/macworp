@@ -618,8 +618,6 @@ class ProjectsController:
         # Set if table is requested
         is_table: bool = request.args.get("is-table", False, type=bool)
 
-        app.logger.error("is_table: %s", is_table)
-
         if path_to_download.is_file():
             response: Optional[Response] = None
             if not is_table:

@@ -71,7 +71,7 @@ export default {
     },
     mounted() {
         // fetch all json files in the directory
-        fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/files?dir=${this.path}`, {
+        fetch(`${this.$config.macworp_base_url}/api/projects/${this.project_id}/files?dir=${this.path}`, {
             headers: {
                 "x-access-token": this.$store.state.login.jwt
             }

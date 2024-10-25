@@ -46,7 +46,7 @@ export default {
     methods: {
         async loadTotalProjectCount(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/count`,
+                `${this.$config.macworp_base_url}/api/projects/count`,
                 {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
@@ -65,7 +65,7 @@ export default {
         async loadProjects(){
             var query_string = `?offset=${this.offset}&limit=${this.projects_per_page}`
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects${query_string}`, {
+                `${this.$config.macworp_base_url}/api/projects${query_string}`, {
                 headers: {
                     "x-access-token": this.$store.state.login.jwt
                 },

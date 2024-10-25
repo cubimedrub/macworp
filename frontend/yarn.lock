@@ -9467,9 +9467,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nf_cloud_frontend@workspace:.":
+"macworp_frontend@workspace:.":
   version: 0.0.0-use.local
-  resolution: "nf_cloud_frontend@workspace:."
+  resolution: "macworp_frontend@workspace:."
   dependencies:
     "@fortawesome/fontawesome-free": "npm:^5.15.3"
     "@nuxt/content": "npm:^1.15.1"

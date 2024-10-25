@@ -50,7 +50,7 @@ export default {
         createWorkflow(){
             if(!this.is_creating){
                 this.is_creating = true
-                return fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/create`, {
+                return fetch(`${this.$config.macworp_base_url}/api/workflows/create`, {
                     method: "POST",
                     cache: "no-cache",
                     headers: {

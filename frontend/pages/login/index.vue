@@ -31,7 +31,7 @@ export default {
     },
     methods: {
         async get_login_provider(){
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/login-providers`)
+            return fetch(`${this.$config.macworp_base_url}/api/users/login-providers`)
             .then(response => {
                 return response.json().then(data => {
                     this.login_providers = data
@@ -39,7 +39,7 @@ export default {
             })
         },
         get_login_url(provider_type, provider){
-            return `${this.$config.nf_cloud_backend_base_url}/api/users/${provider_type}/${provider}/login`
+            return `${this.$config.macworp_base_url}/api/users/${provider_type}/${provider}/login`
         }
     },
     filters: {

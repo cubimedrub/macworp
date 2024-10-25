@@ -2,13 +2,13 @@
 
 ####
 # Downloads mkcert binary, and creates self-signed certificates for testing 
-# if env var NF_HOSTNAME is set.
+# if env var MACWORP_HOSTNAME is set.
 ####
 
 CUSTOM_SSL_DIR=/etc/custom_ssl
 CERT_FILE=${CUSTOM_SSL_DIR}/cert.pem
 KEY_FILE=${CUSTOM_SSL_DIR}/key.pem
-LAST_NF_HOSTNAME_FILE=${CUSTOM_SSL_DIR}/last_nf_hostname
+LAST_MACWORP_HOSTNAME_FILE=${CUSTOM_SSL_DIR}/last_nf_hostname
 MK_CERT_PATH=/usr/local/bin/mkcert
 
 create_certificate=false
@@ -34,22 +34,22 @@ then
     create_certificate=true
 fi
 
-# Compare last NF_HOSTNAME with current one and schedule recreation of certificates
+# Compare last MACWORP_HOSTNAME with current one and schedule recreation of certificates
 # if hostnames don't match.
-if [ -f $LAST_NF_HOSTNAME_FILE ]; 
+if [ -f $LAST_MACWORP_HOSTNAME_FILE ]; 
 then
-    last_nf_hostname=$(cat $LAST_NF_HOSTNAME_FILE)
-    if [ "$last_nf_hostname" = "$NF_HOSTNAME" ]; 
+    last_nf_hostname=$(cat $LAST_MACWORP_HOSTNAME_FILE)
+    if [ "$last_nf_hostname" = "$MACWORP_HOSTNAME" ]; 
     then
-        echo '$NF_HOSTNAME changed, recreating certificates'
+        echo '$MACWORP_HOSTNAME changed, recreating certificates'
         create_certificate=true
     fi
 fi
 
-# Cancel (re-) creation if NF_HOSTNAME not set
-if [ -z $NF_HOSTNAME ];
+# Cancel (re-) creation if MACWORP_HOSTNAME not set
+if [ -z $MACWORP_HOSTNAME ];
 then
-    echo '$NF_HOSTNAME not set, canceling (re-) creation'
+    echo '$MACWORP_HOSTNAME not set, canceling (re-) creation'
     create_certificate=false
 fi
 
@@ -57,6 +57,6 @@ if [ "${create_certificate}" = "true" ];
 then
     echo 'creating new certificates'
     rm -f /etc/custom_ssl/*
-    $MK_CERT_PATH -key-file $KEY_FILE -cert-file $CERT_FILE $NF_HOSTNAME localhost
-    echo $NF_HOSTNAME > $LAST_NF_HOSTNAME_FILE
+    $MK_CERT_PATH -key-file $KEY_FILE -cert-file $CERT_FILE $MACWORP_HOSTNAME localhost
+    echo $MACWORP_HOSTNAME > $LAST_MACWORP_HOSTNAME_FILE
 fi

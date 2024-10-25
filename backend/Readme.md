@@ -1,4 +1,4 @@
-# Nextflow cloud backend
+# MAcWorP backend
 ## Dependencies
 Most dependencies will be installed via Conda, however to avoid additional Conda-channels some dependencies will be installed natively in addition to some basic compiler  which should be installable on most platforms:
 * [Conda](https://docs.conda.io/en/latest/)
@@ -18,9 +18,9 @@ The configuration for the backend is split into multiple files for different env
 | `config.production.yaml` | 2 | production | some minor adjustments for production |
 | `config.local.yaml` | 4 | all | excluded from GIT, serves as user specific overwrite |
 
-The environment is set by the environment variable `NF_CLOUD_ENV`. The default environment is `development`.
+The environment is set by the environment variable `MACWORP_ENV`. The default environment is `development`.
 
-You can overwrite some configuration variables and the environment with CLI arguments. For more information run `pipenv run python -m nf_cloud_backend --help`
+You can overwrite some configuration variables and the environment with CLI arguments. For more information run `pipenv run python -m macworp --help`
 
 #### Workflow configuration
 Workflows are defined under the key `workflows`.

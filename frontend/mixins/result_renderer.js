@@ -50,14 +50,14 @@ export default {
          * @returns {Promise} Resolved promise if file size is ok, rejected promise with FileTooLargeError if file size is too large
          */
         async getFileSize() {
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/file-size?path=${this.path}`, {
+            return fetch(`${this.$config.macworp_base_url}/api/projects/${this.project_id}/file-size?path=${this.path}`, {
                 headers: {
                     "x-access-token": this.$store.state.login.jwt
                 }
             }).then(response => {
                 if(response.ok) {
                     return response.json().then(response_data => {
-                        if(response_data.size <= this.$config.nf_cloud_render_max_file_size ) {
+                        if(response_data.size <= this.$config.macworp_render_max_file_size ) {
                             return Promise.resolve()
                         } else {
                             this.result_file_download_status = this.result_file_download_status_map.FILESIZE_TOO_LARGE

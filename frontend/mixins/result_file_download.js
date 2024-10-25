@@ -17,14 +17,14 @@ export default {
          * @returns {Promise} Preauthenticated download URL (can be used in a GET request to download the file)
          */
         async authenticateFileDownload(path) {
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/one-time-use-token`, {
+            return fetch(`${this.$config.macworp_base_url}/api/users/one-time-use-token`, {
                 headers: {
                     "x-access-token": this.$store.state.login.jwt
                 }
             }).then(response => {
                 if(response.ok) {
                     return response.json().then(response_data => {
-                        return `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
+                        return `${this.$config.macworp_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
                     })
                 } else {
                     return Promise.reject(response)
@@ -64,7 +64,7 @@ export default {
          * @param {String} path Path to file in project directory
          */
         async downloadResultFileMetadata(path) {
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/metadata?path=${path}`, {
+            return fetch(`${this.$config.macworp_base_url}/api/projects/${this.project_id}/metadata?path=${path}`, {
                 headers: {
                     "x-access-token": this.$store.state.login.jwt
                 }

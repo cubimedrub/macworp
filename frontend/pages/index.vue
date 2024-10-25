@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard">
-    <h1>Welcome to Nextflow Cloud</h1>
+    <h1>Welcome to MAcWorP</h1>
   </div>
 </template>
 

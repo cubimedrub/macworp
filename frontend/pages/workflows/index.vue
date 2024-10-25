@@ -51,7 +51,7 @@ export default {
     methods: {
         fetchWorkflows(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/workflows`, {
+                `${this.$config.macworp_base_url}/api/workflows`, {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
                     },
@@ -68,7 +68,7 @@ export default {
         },
         deleteWorkflow(workflow_id){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/workflows/${workflow_id}/delete`,
+                `${this.$config.macworp_base_url}/api/workflows/${workflow_id}/delete`,
                 {
                     method: "POST",
                     headers: {

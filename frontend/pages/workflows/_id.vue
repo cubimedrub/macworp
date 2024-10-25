@@ -126,7 +126,7 @@ export default {
         },
         fetchWorkflow(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}?definition_as_text=1`, {
+                `${this.$config.macworp_base_url}/api/workflows/${this.$route.params.id}?definition_as_text=1`, {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
                     },
@@ -143,7 +143,7 @@ export default {
         },
         deleteWorkflow(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}/delete`,
+                `${this.$config.macworp_base_url}/api/workflows/${this.$route.params.id}/delete`,
                 {
                     method: "POST",
                     headers: {
@@ -162,7 +162,7 @@ export default {
             if(!this.is_updating){
                 this.is_updating = true
                 this.errors = {}
-                return fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.$route.params.id}/update`, {
+                return fetch(`${this.$config.macworp_base_url}/api/workflows/${this.$route.params.id}/update`, {
                     method: "POST",
                     cache: "no-cache",
                     headers: {

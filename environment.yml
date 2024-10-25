@@ -1,4 +1,4 @@
-name: nf_cloud
+name: macworp
 channels:
   - defaults
   - conda-forge

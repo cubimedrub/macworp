@@ -299,7 +299,7 @@ export default {
         loadProject(){
             this.disconnectFromProjectSocketIoRoom()
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}`,
+                `${this.$config.macworp_base_url}/api/projects/${this.$route.params.id}`,
                 {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
@@ -322,7 +322,7 @@ export default {
         },
         deleteProject(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/delete`,
+                `${this.$config.macworp_base_url}/api/projects/${this.$route.params.id}/delete`,
                 {
                     method: "POST",
                     headers: {
@@ -341,7 +341,7 @@ export default {
             if(this.project.is_scheduled) return
             if(this.project.workflow_id in this.workflows){
                 fetch(
-                    `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/schedule`,
+                    `${this.$config.macworp_base_url}/api/projects/${this.$route.params.id}/schedule`,
                     {
                         method:'POST',
                         headers: {
@@ -369,7 +369,7 @@ export default {
         updateProject(){
             if(this.project.is_scheduled) return
             fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.$route.params.id}/update`,
+                `${this.$config.macworp_base_url}/api/projects/${this.$route.params.id}/update`,
                 {
                     method:'POST',
                     headers: {
@@ -390,7 +390,7 @@ export default {
             })
         },
         getWorkflows(){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/published`, {
+            fetch(`${this.$config.macworp_base_url}/api/workflows/published`, {
             }).then(response => {
                 if(response.ok) {
                     response.json().then(data => {
@@ -433,7 +433,7 @@ export default {
          * and assigns it to the project.
          */
         getDynamicWorkflowArguments(){
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.project.workflow_id}/arguments`, {
+            fetch(`${this.$config.macworp_base_url}/api/workflows/${this.project.workflow_id}/arguments`, {
             }).then(response => {
                 if(response.ok) {
                     response.json().then(data => {
@@ -497,7 +497,7 @@ export default {
         async getWorkflowDescription(){
             if(this.project.workflow_id == 0)
                 return Promise.resolve()
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/workflows/${this.project.workflow_id}/description?parse=1`, {
+            return fetch(`${this.$config.macworp_base_url}/api/workflows/${this.project.workflow_id}/description?parse=1`, {
             }).then(response => {
                 if(response.ok) {
                     response.json().then(data => {

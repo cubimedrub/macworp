@@ -32,7 +32,7 @@ COPY --chown=mambauser:mambauser docker/entrypoints/backend.sh ./entrypoint.sh
 USER mambauser
 ENV HOME /home/mambauser
 ENV PATH $PATH:$HOME/.local/bin
-ENV ENV_NAME=nf_cloud
+ENV ENV_NAME=macworp
 
 RUN echo 'show_banner: false' > ~/.mambarc
 

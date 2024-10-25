@@ -81,7 +81,7 @@ export default {
         getFolderContent(){
             var url_encoded_path = encodeURIComponent(this.current_directory)
             fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/files?dir=${url_encoded_path}`,
+                `${this.$config.macworp_base_url}/api/projects/${this.project_id}/files?dir=${url_encoded_path}`,
                 {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt

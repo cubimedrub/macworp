@@ -4,15 +4,15 @@ services:
   backend_1: &migrating_backend
     image: macworp/backend:dev
     volumes:
-      - ./nf_cloud_backend:/home/mambauser/nf_cloud_backend
+      - ./macworp:/home/mambauser/macworp
       - ./deploy_test_uploads:/home/mambauser/uploads
       # Pass the local config
-      - ./config.docker-compose.yaml:/home/mambauser/nf_cloud.local.config.yaml:ro
+      - ./config.docker-compose.yaml:/home/mambauser/macworp.local.config.yaml:ro
       - ./dev_auth.yaml:/home/mambauser/dev_auth.yaml:ro
     environment:
       OAUTHLIB_INSECURE_TRANSPORT: 1
-      NF_HOSTNAME: ${NF_HOSTNAME:-localhost}
-      NF_FUSIONAUTH_PORT: ${NF_FUSIONAUTH_PORT:-9011}
+      MACWORP_HOSTNAME: ${MACWORP_HOSTNAME:-localhost}
+      MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
       RUN_MIGRATION: "true"
       MIGRATION_DB_HOSTNAME: psql
       PYTHONUNBUFFERED: "true"
@@ -27,8 +27,8 @@ services:
     environment:
       RUN_MIGRATION: "false"
       OAUTHLIB_INSECURE_TRANSPORT: 1
-      NF_HOSTNAME: ${NF_HOSTNAME:-localhost}
-      NF_FUSIONAUTH_PORT: ${NF_FUSIONAUTH_PORT:-9011}
+      MACWORP_HOSTNAME: ${MACWORP_HOSTNAME:-localhost}
+      MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
       PYTHONUNBUFFERED: "true"
     depends_on:
       - backend_1
@@ -37,17 +37,17 @@ services:
   frontend:
     image: macworp/frontend:dev
     environment:
-      NF_CLOUD_BACKEND_BASE_URL: https://${NF_HOSTNAME:-localhost}:16160
-      NF_CLOUD_BACKEND_WS_URL: https://${NF_HOSTNAME:-localhost}:16160
-      NF_CLOUD_FRONTEND_INTERFACE: 0.0.0.0
-      NF_CLOUD_UPLOAD_MAX_FILE_SITE: 10737418240
+      MACWORP_BACKEND_BASE_URL: https://${MACWORP_HOSTNAME:-localhost}:16160
+      MACWORP_BACKEND_WS_URL: https://${MACWORP_HOSTNAME:-localhost}:16160
+      MACWORP_FRONTEND_INTERFACE: 0.0.0.0
+      MACWORP_UPLOAD_MAX_FILE_SITE: 10737418240
   nginx:
     image: nginx:stable
     ports:
       - 16160:16160
       - 16161:16161
     environment:
-      NF_HOSTNAME: ${NF_HOSTNAME}
+      MACWORP_HOSTNAME: ${MACWORP_HOSTNAME}
     volumes:
       - ./docker/nginx/certificate-creation.sh:/docker-entrypoint.d/99-certificates.sh:ro
       - ./docker/nginx/high-available.conf.template:/etc/nginx/templates/default.conf.template:ro

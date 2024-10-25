@@ -2,12 +2,13 @@
     <main v-if="$store.state.login.jwt != null" class="container-fluid mr-0">
         <div class="row application-content-row">
             <nav :class="{'extended-menu': show_menu}" class="col-12 col-lg-2 position-sticky d-flex flex-column py-3 application-nav-column collapsed-menu">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h1 class="brand text-break">
-                        <NuxtLink to="/">
-                            Nextflow Cloud
-                        </NuxtLink>
-                    </h1>
+                <div class="d-flex flex-column justify-content-center align-items-center">
+                    <NuxtLink to="/" class="text-decoration-none">
+                        <h1 class="brand text-break">
+                            MAcWorP
+                        </h1>
+                        <small>Massive Accessible Workflow Platform</small>
+                    </NuxtLink>
                     <button @click="toggleMenu" type="button" class="btn btn-sm btn-outline-primary d-lg-none">
                         <i :class="{'fa-times': show_menu, 'fa-bars': !show_menu}" class="fas"></i>
                     </button>
@@ -97,7 +98,7 @@ export default {
         },
         async logout(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/users/logout`,
+                `${this.$config.macworp_base_url}/api/users/logout`,
                 {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt

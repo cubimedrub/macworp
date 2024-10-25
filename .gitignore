@@ -7,7 +7,7 @@
 # Local development files like database files
 /.db
 local.env
-nf_cloud.local.config.yaml
+macworp.local.config.yaml
 nextflow
 
 # uploads

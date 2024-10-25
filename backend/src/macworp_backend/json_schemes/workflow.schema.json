@@ -24,6 +24,7 @@
             }
           },
           "required": [
+              "type",
               "directory",
               "script"
             ]

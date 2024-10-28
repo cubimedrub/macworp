@@ -1924,7 +1924,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@fortawesome/fontawesome-free@npm:^5.15.3":
+"@fortawesome/fontawesome-free@npm:^5.15.4":
   version: 5.15.4
   resolution: "@fortawesome/fontawesome-free@npm:5.15.4"
   checksum: 10c0/0a12f11b17b3073475df965d423ac485715e281d11ecde17250fab5dc0a177fb29ced59242f6c024bef59429c502ba8fe831ed9500e14713cc30138e70df8fbc
@@ -2603,7 +2603,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@popperjs/core@npm:^2.9.2":
+"@popperjs/core@npm:^2.11.8":
   version: 2.11.8
   resolution: "@popperjs/core@npm:2.11.8"
   checksum: 10c0/4681e682abc006d25eb380d0cf3efc7557043f53b6aea7a5057d0d1e7df849a00e281cd8ea79c902a35a414d7919621fc2ba293ecec05f413598e0b23d5a1e63
@@ -3960,7 +3960,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"bootstrap@npm:^5.0.1":
+"bootstrap@npm:^5.3.3":
   version: 5.3.3
   resolution: "bootstrap@npm:5.3.3"
   peerDependencies:
@@ -4887,10 +4887,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"core-js@npm:^3.37.1, core-js@npm:^3.9.1":
+"core-js@npm:^3.37.1":
   version: 3.37.1
   resolution: "core-js@npm:3.37.1"
   checksum: 10c0/440eb51a7a39128a320225fe349f870a3641b96c9ecd26470227db730ef8c161ea298eaea621db66ec0ff622a85299efb4e23afebf889c0a1748616102307675
+  languageName: node
+  linkType: hard
+
+"core-js@npm:^3.38.1":
+  version: 3.38.1
+  resolution: "core-js@npm:3.38.1"
+  checksum: 10c0/7df063b6f13a54e46515817ac3e235c6c598a4d3de65cd188a061fc250642be313b895fb9fb2f36e1e31890a1bb4ef61d82666a340413f540b7ce3c65689739b
   languageName: node
   linkType: hard
 
@@ -5811,16 +5818,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"engine.io-client@npm:~6.5.2":
-  version: 6.5.4
-  resolution: "engine.io-client@npm:6.5.4"
+"engine.io-client@npm:~6.6.1":
+  version: 6.6.2
+  resolution: "engine.io-client@npm:6.6.2"
   dependencies:
     "@socket.io/component-emitter": "npm:~3.1.0"
     debug: "npm:~4.3.1"
     engine.io-parser: "npm:~5.2.1"
     ws: "npm:~8.17.1"
-    xmlhttprequest-ssl: "npm:~2.0.0"
-  checksum: 10c0/ef220f9875d6a43bade906bd9b61118e812474bbe46e80f38c92dca238484170daf92d51e58bbade6433c29ffb5ba329f4864c5609f2e33c5e31041b1f8ad672
+    xmlhttprequest-ssl: "npm:~2.1.1"
+  checksum: 10c0/a1a0995df1ce2425b43c7dd396cf4ef12d3ca85973b63e1b7bd3933d0292459e922d6be25d14013c9608dc7159ae1e10cd7005754b02bc42d40450381f691859
   languageName: node
   linkType: hard
 
@@ -6282,7 +6289,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"fibers@npm:^5.0.0":
+"fibers@npm:^5.0.3":
   version: 5.0.3
   resolution: "fibers@npm:5.0.3"
   dependencies:
@@ -7213,7 +7220,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"highlight.js@npm:^11.6.0":
+"highlight.js@npm:^11.10.0":
   version: 11.10.0
   resolution: "highlight.js@npm:11.10.0"
   checksum: 10c0/cd8bf7ef06cbd72ddb83580ecabe769f08f062be8bb82d2eb492d31c17f7480d1f8d14a66fc81deee0601645435f19f04c470510563f847242a41ccff0ab873e
@@ -8169,7 +8176,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"json-editor-vue@npm:^0.10.6":
+"json-editor-vue@npm:^0.10.19":
   version: 0.10.19
   resolution: "json-editor-vue@npm:0.10.19"
   dependencies:
@@ -8486,7 +8493,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lowlight@npm:^2.7.0":
+"lowlight@npm:^2.9.0":
   version: 2.9.0
   resolution: "lowlight@npm:2.9.0"
   dependencies:
@@ -8538,6 +8545,35 @@ __metadata:
   checksum: 10c0/b3a452b491433db885beed95041eb104c157ef7794b9c9b4d647be503be91769d11206bb573849a16b4cc0d03cbd15ffd22df7960997788b74c1d399ac7a4fed
   languageName: node
   linkType: hard
+
+"macworp_frontend@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "macworp_frontend@workspace:."
+  dependencies:
+    "@fortawesome/fontawesome-free": "npm:^5.15.4"
+    "@nuxt/content": "npm:^1.15.1"
+    "@popperjs/core": "npm:^2.11.8"
+    bootstrap: "npm:^5.3.3"
+    core-js: "npm:^3.38.1"
+    dropzone: "npm:^6.0.0-beta.2"
+    fibers: "npm:^5.0.3"
+    highlight.js: "npm:^11.10.0"
+    json-editor-vue: "npm:^0.10.19"
+    lodash.debounce: "npm:^4.0.8"
+    lowlight: "npm:^2.9.0"
+    node-gyp: "npm:^10.2.0"
+    node-sass: "npm:^9.0.0"
+    nuxt: "npm:^2.18.1"
+    plotly.js-dist-min: "npm:^2.35.2"
+    sass-loader: "npm:10.5.2"
+    socket.io-client: "npm:^4.8.1"
+    toastr: "npm:^2.1.4"
+    v-viewer: "npm:^1.7.4"
+    vanilla-jsoneditor: "npm:^0.17.10"
+    vue-resize-directive: "npm:^1.2.0"
+    vue2-ace-editor: "npm:^0.0.15"
+  languageName: unknown
+  linkType: soft
 
 "make-dir@npm:^1.0.0":
   version: 1.3.0
@@ -9467,35 +9503,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"macworp_frontend@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "macworp_frontend@workspace:."
-  dependencies:
-    "@fortawesome/fontawesome-free": "npm:^5.15.3"
-    "@nuxt/content": "npm:^1.15.1"
-    "@popperjs/core": "npm:^2.9.2"
-    bootstrap: "npm:^5.0.1"
-    core-js: "npm:^3.9.1"
-    dropzone: "npm:^6.0.0-beta.2"
-    fibers: "npm:^5.0.0"
-    highlight.js: "npm:^11.6.0"
-    json-editor-vue: "npm:^0.10.6"
-    lodash.debounce: "npm:^4.0.8"
-    lowlight: "npm:^2.7.0"
-    node-gyp: "npm:^10.1.0"
-    node-sass: "npm:>=7.0.0"
-    nuxt: "npm:^2.17.0"
-    plotly.js-dist-min: "npm:^2.22.0"
-    sass-loader: "npm:10"
-    socket.io-client: "npm:^4.6.2"
-    toastr: "npm:^2.1.4"
-    v-viewer: "npm:^1.6.4"
-    vanilla-jsoneditor: "npm:^0.17.4"
-    vue-resize-directive: "npm:^1.2.0"
-    vue2-ace-editor: "npm:^0.0.15"
-  languageName: unknown
-  linkType: soft
-
 "no-case@npm:^3.0.4":
   version: 3.0.4
   resolution: "no-case@npm:3.0.4"
@@ -9527,9 +9534,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-gyp@npm:^10.1.0, node-gyp@npm:latest":
-  version: 10.1.0
-  resolution: "node-gyp@npm:10.1.0"
+"node-gyp@npm:^10.2.0":
+  version: 10.2.0
+  resolution: "node-gyp@npm:10.2.0"
   dependencies:
     env-paths: "npm:^2.2.0"
     exponential-backoff: "npm:^3.1.1"
@@ -9537,13 +9544,13 @@ __metadata:
     graceful-fs: "npm:^4.2.6"
     make-fetch-happen: "npm:^13.0.0"
     nopt: "npm:^7.0.0"
-    proc-log: "npm:^3.0.0"
+    proc-log: "npm:^4.1.0"
     semver: "npm:^7.3.5"
-    tar: "npm:^6.1.2"
+    tar: "npm:^6.2.1"
     which: "npm:^4.0.0"
   bin:
     node-gyp: bin/node-gyp.js
-  checksum: 10c0/9cc821111ca244a01fb7f054db7523ab0a0cd837f665267eb962eb87695d71fb1e681f9e21464cc2fd7c05530dc4c81b810bca1a88f7d7186909b74477491a3c
+  checksum: 10c0/00630d67dbd09a45aee0a5d55c05e3916ca9e6d427ee4f7bc392d2d3dc5fad7449b21fc098dd38260a53d9dcc9c879b36704a1994235d4707e7271af7e9a835b
   languageName: node
   linkType: hard
 
@@ -9564,6 +9571,26 @@ __metadata:
   bin:
     node-gyp: bin/node-gyp.js
   checksum: 10c0/80ef333b3a882eb6a2695a8e08f31d618f4533eff192864e4a3a16b67ff0abc9d8c1d5fac0395550ec699326b9248c5e2b3be178492f7f4d1ccf97d2cf948021
+  languageName: node
+  linkType: hard
+
+"node-gyp@npm:latest":
+  version: 10.1.0
+  resolution: "node-gyp@npm:10.1.0"
+  dependencies:
+    env-paths: "npm:^2.2.0"
+    exponential-backoff: "npm:^3.1.1"
+    glob: "npm:^10.3.10"
+    graceful-fs: "npm:^4.2.6"
+    make-fetch-happen: "npm:^13.0.0"
+    nopt: "npm:^7.0.0"
+    proc-log: "npm:^3.0.0"
+    semver: "npm:^7.3.5"
+    tar: "npm:^6.1.2"
+    which: "npm:^4.0.0"
+  bin:
+    node-gyp: bin/node-gyp.js
+  checksum: 10c0/9cc821111ca244a01fb7f054db7523ab0a0cd837f665267eb962eb87695d71fb1e681f9e21464cc2fd7c05530dc4c81b810bca1a88f7d7186909b74477491a3c
   languageName: node
   linkType: hard
 
@@ -9649,7 +9676,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-sass@npm:>=7.0.0":
+"node-sass@npm:^9.0.0":
   version: 9.0.0
   resolution: "node-sass@npm:9.0.0"
   dependencies:
@@ -9791,7 +9818,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nuxt@npm:^2.17.0":
+"nuxt@npm:^2.18.1":
   version: 2.18.1
   resolution: "nuxt@npm:2.18.1"
   dependencies:
@@ -10359,10 +10386,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"plotly.js-dist-min@npm:^2.22.0":
-  version: 2.33.0
-  resolution: "plotly.js-dist-min@npm:2.33.0"
-  checksum: 10c0/1db4b063822d4639041f1141bd1a7512195d975079252e62bc9ca047a7d6eff33b2ca6852edba75370992b59882db5ab5436d90425326f26bd758fbfb66714a2
+"plotly.js-dist-min@npm:^2.35.2":
+  version: 2.35.2
+  resolution: "plotly.js-dist-min@npm:2.35.2"
+  checksum: 10c0/aee0da99e1e083ed38886c5a5b9a6a6a0e767769bd62e15c3c277a89b5bd7295b0f501a041886bbd71dbba43c23ec2601cc9b990a4843a719c6f1eb2b7542eff
   languageName: node
   linkType: hard
 
@@ -11550,7 +11577,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"proc-log@npm:^4.2.0":
+"proc-log@npm:^4.1.0, proc-log@npm:^4.2.0":
   version: 4.2.0
   resolution: "proc-log@npm:4.2.0"
   checksum: 10c0/17db4757c2a5c44c1e545170e6c70a26f7de58feb985091fb1763f5081cab3d01b181fb2dd240c9f4a4255a1d9227d163d5771b7e69c9e49a561692db865efb9
@@ -12312,7 +12339,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"sass-loader@npm:10":
+"sass-loader@npm:10.5.2":
   version: 10.5.2
   resolution: "sass-loader@npm:10.5.2"
   dependencies:
@@ -12721,15 +12748,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"socket.io-client@npm:^4.6.2":
-  version: 4.7.5
-  resolution: "socket.io-client@npm:4.7.5"
+"socket.io-client@npm:^4.8.1":
+  version: 4.8.1
+  resolution: "socket.io-client@npm:4.8.1"
   dependencies:
     "@socket.io/component-emitter": "npm:~3.1.0"
     debug: "npm:~4.3.2"
-    engine.io-client: "npm:~6.5.2"
+    engine.io-client: "npm:~6.6.1"
     socket.io-parser: "npm:~4.2.4"
-  checksum: 10c0/d5dc90ee63755fbbb0a1cb3faf575c9ce20d98e809a43a4c9c3ce03a56b8810335ae38e678ceb0650ac434d55e72ea6449c2e5d6db8bc7258f7c529148fac99d
+  checksum: 10c0/544c49cc8cc77118ef68b758a8a580c8e680a5909cae05c566d2cc07ec6cd6720a4f5b7e985489bf2a8391749177a5437ac30b8afbdf30b9da6402687ad51c86
   languageName: node
   linkType: hard
 
@@ -13337,7 +13364,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tar@npm:^6.0.2, tar@npm:^6.1.11, tar@npm:^6.1.2":
+"tar@npm:^6.0.2, tar@npm:^6.1.11, tar@npm:^6.1.2, tar@npm:^6.2.1":
   version: 6.2.1
   resolution: "tar@npm:6.2.1"
   dependencies:
@@ -14127,7 +14154,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"v-viewer@npm:^1.6.4":
+"v-viewer@npm:^1.7.4":
   version: 1.7.4
   resolution: "v-viewer@npm:1.7.4"
   dependencies:
@@ -14150,7 +14177,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vanilla-jsoneditor@npm:^0.17.4":
+"vanilla-jsoneditor@npm:^0.17.10":
   version: 0.17.10
   resolution: "vanilla-jsoneditor@npm:0.17.10"
   checksum: 10c0/0d120701c82e13e80d5802c4db19e7c82fd20c2f2f79ff1feee8635d845b658023f57331e5c5044c5407936cf38d022a046e3067561fbe9bacc594647201a72b
@@ -14729,10 +14756,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"xmlhttprequest-ssl@npm:~2.0.0":
-  version: 2.0.0
-  resolution: "xmlhttprequest-ssl@npm:2.0.0"
-  checksum: 10c0/b64ab371459bd5e3a4827e3c7535759047d285fd310aea6fd028973d547133f3be0d473c1fdae9f14d89bf509267759198ae1fbe89802079a7e217ddd990d734
+"xmlhttprequest-ssl@npm:~2.1.1":
+  version: 2.1.2
+  resolution: "xmlhttprequest-ssl@npm:2.1.2"
+  checksum: 10c0/70d60869323e823f473a238f78fd108437edbc3690ecd5859c39c83217080090a18899b272e515769c0d1f518cc64cbed6b6995b23fdd7ba13b297d530b6e631
   languageName: node
   linkType: hard
 

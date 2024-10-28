@@ -9,7 +9,7 @@ allow-direct-references = true
 name = "macworp_worker"
 requires-python = ">=3.9"
 version = "1.0.0"
-license = {file = "../LICENSE"}
+license = {file = "./LICENSE"}
 description = "Worker for handling tasks scheduled by Massive Accessible Workflow Platform (MAcWorP) backend"
 authors = [
     {name = "Core Unit Bioinformatic Ruhr University Bochum", email = "cubimed@rub.de"},

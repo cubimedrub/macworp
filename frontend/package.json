@@ -2,7 +2,7 @@
   "name": "macworp_frontend",
   "version": "1.0.0",
   "private": true,
-  "license": "BSD-3-Clause",
+  "license": "SEE LICENSE IN LICENSE",
   "description": "Frontend for Massive Accessible Workflow Platform (MAcWorP)",
   "homepage": "https://github.com/cubimedrub/macworp",
   "scripts": {

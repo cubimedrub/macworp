@@ -30,7 +30,11 @@ class BackendWebApiClient:
     """Timeout between retries in seconds"""
 
     def __init__(
-        self, macworp_base_url: str, macworp_api_user: str, macworp_api_password: str
+        self,
+        macworp_base_url: str,
+        macworp_api_user: str,
+        macworp_api_password: str,
+        verify_cert: bool,
     ):
         """
         Creates a new BackendWebApiClient.
@@ -43,10 +47,13 @@ class BackendWebApiClient:
             Username for the MAcWorP API
         macworp_api_password : str
             Password for the MAcWorP API
+        verify_cert : bool
+            Whether to verify the certificate
         """
         self.__macworp_base_url = macworp_base_url
         self.__macworp_api_usr = macworp_api_user
         self.__macworp_api_pwd = macworp_api_password
+        self.__verify_cert = verify_cert
 
     def get_workflow(self, workflow_id: int):
         """
@@ -74,6 +81,7 @@ class BackendWebApiClient:
                     url,
                     headers=self.__class__.HEADERS,
                     timeout=self.__class__.TIMEOUT,
+                    verify=self.__verify_cert,
                 ) as response:
                     if not response.ok:
                         raise ValueError(f"Error posting finish: {response.text}")
@@ -120,6 +128,7 @@ class BackendWebApiClient:
                     auth=HTTPBasicAuth(self.__macworp_api_usr, self.__macworp_api_pwd),
                     headers=self.__class__.HEADERS,
                     timeout=self.__class__.TIMEOUT,
+                    verify=self.__verify_cert,
                 ) as response:
                     print(
                         f"Checking ignore status for project {project_id}: {response.text} - {response.status_code}"
@@ -176,6 +185,7 @@ class BackendWebApiClient:
                     auth=HTTPBasicAuth(self.__macworp_api_usr, self.__macworp_api_pwd),
                     headers=self.__class__.HEADERS,
                     timeout=self.__class__.TIMEOUT,
+                    verify=self.__verify_cert,
                 ) as response:
                     if not response.ok:
                         raise ValueError(f"Error posting finish: {response.text}")
@@ -216,6 +226,7 @@ class BackendWebApiClient:
                     auth=HTTPBasicAuth(self.__macworp_api_usr, self.__macworp_api_pwd),
                     headers=headers,
                     timeout=self.__class__.TIMEOUT,
+                    verify=self.__verify_cert,
                     data=log,
                 ) as response:
                     if not response.ok:

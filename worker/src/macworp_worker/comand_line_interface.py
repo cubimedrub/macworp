@@ -58,6 +58,12 @@ class ComandLineInterface:
                 "after workflow execution. (default: False)"
             ),
         )
+        self.__arg_parser.add_argument(
+            "--skip-cert-verification",
+            default=False,
+            action="store_true",
+            help="If set, certification of SSL certificate is skipped. (default: False)",
+        )
 
         self.__arguments = self.__arg_parser.parse_args()
 

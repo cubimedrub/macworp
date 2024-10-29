@@ -35,6 +35,7 @@ def main():
             cli.arguments.macworp_url,
             cli.arguments.api_user,
             cli.arguments.api_password,
+            not cli.arguments.skip_cert_verification,
         ),
         Path(cli.arguments.projects_data_path).absolute(),
         cli.arguments.rabbitmq_url,

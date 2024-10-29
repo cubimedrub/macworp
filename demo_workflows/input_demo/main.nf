@@ -3,15 +3,15 @@
 nextflow.enable.dsl=2
 nextflow.preview.output = true
 
-params.inFile
-params.inFolder
-params.inFiles
-params.inFolders
-params.txtFiles
-params.numberOfNewlines
-params.singleLineText
-params.multilineText
-params.valueSelect
+params.inFile = ""
+params.inFolder = ""
+params.inFiles = ""
+params.inFolders = ""
+params.txtFiles = ""
+params.numberOfNewlines = ""
+params.singleLineText = ""
+params.multilineText = ""
+params.valueSelect = ""
 
 params.resultsFolder = 'results'
 
@@ -30,6 +30,7 @@ process print_params {
     output:
     path 'params.txt'
 
+    script:
     """
     echo "inFile => $inFile" >> params.txt
     echo "inFiles => $inFiles" >> params.txt
@@ -45,6 +46,7 @@ process print_params {
 
 
 workflow  {
+    main:
     params_txt = print_params(
         params.inFile,
         params.inFolder,
@@ -58,12 +60,15 @@ workflow  {
     )
 
     publish:
-    params_txt >> params.resultsFolder
+    params_txt >> "default"
 }
 
 /**
  * Move the output files to the results folder
  */
 output {
-    mode 'move'
+    "default" {
+        mode 'move'
+        path params.resultsFolder
+    }
 }

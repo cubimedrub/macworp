@@ -10,6 +10,7 @@ process download {
     output:
     path 'healthexp.csv'
 
+    script:
     """
     curl -o healthexp.csv https://raw.githubusercontent.com/mwaskom/seaborn-data/refs/heads/master/raw/healthexp.csv
     """
@@ -22,22 +23,27 @@ process generate_result_files {
     output:
     path '*_healthexp_2021.*'
 
+    script:
     """
     gen_result_files.py $healthexp
     """
 }
 
 workflow  {
+    main:
     csv = download()
     files = generate_result_files(csv)
 
     publish:
-    files >> params.resultsFolder
+    files >> "default"
 }
 
 /**
  * Move the output files to the results folder
  */
 output {
-    mode 'move'
+    "default" {
+        mode 'move'
+        path params.resultsFolder
+    }
 }

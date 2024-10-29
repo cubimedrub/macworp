@@ -37,7 +37,8 @@ dev = [
     "plotly", # for demo workflow
     "pylint",
     "types-peewee",
-    "types-PyYAML"
+    "types-PyYAML",
+    "types-requests"
 ]
 
 

@@ -58,6 +58,7 @@ dev = [
     "pika-stubs",
     "plotly", # for demo workflow
     "pylint",
+    "types-jsonschema",
     "types-PyYAML"
 ]
 

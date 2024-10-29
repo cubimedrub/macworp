@@ -5,7 +5,8 @@ seeds:
       description: "Creates a variety of result types for testing the rendering of results"
       definition: |
         {
-            "src": { 
+            "src": {
+                "type": "local",
                 "directory": "./demo_workflows/result_demo",
                 "script": "main.nf"
             },

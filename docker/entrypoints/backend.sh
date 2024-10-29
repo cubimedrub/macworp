@@ -13,6 +13,18 @@ then
     python -m macworp_backend utility rabbitmq prepare
 fi
 
+if [ "$RUN_SEED" = "true" ]
+then
+    db_is_ready=1
+    while [ $db_is_ready -gt 0 ]
+    do
+        echo "waiting for DB server"
+        pg_isready -h $MIGRATION_DB_HOSTNAME -t 3
+        db_is_ready=$?
+    done
+    python -m macworp_backend database seed
+fi
+
 # If macworp web serve is called with option gunicorn build params and pass it to gunicorn
 # otherwise pass parameter to macworp.
 if [[ "$1" == *"serve"* ]] && [[ "$@" == *"--gunicorn"* ]]

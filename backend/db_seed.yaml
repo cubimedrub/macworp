@@ -3,6 +3,8 @@ seeds:
     attributes:
       name: "Demo: Result rendering"
       description: "Creates a variety of result types for testing the rendering of results"
+      is_published: true
+      is_validated: true
       definition: |
         {
             "src": {
@@ -25,6 +27,8 @@ seeds:
     attributes:
       name: "Demo: Input options"
       description: "Renders all input options and prints the selected values into a file to show how they are given to the workflow call."
+      is_published: true
+      is_validated: true
       definition: |
           {
               "src": { 

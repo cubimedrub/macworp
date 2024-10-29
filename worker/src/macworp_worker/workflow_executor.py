@@ -375,13 +375,27 @@ class WorkflowExecutor(Process):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            _nf_stdout, _nf_stderr = nf_proc.communicate()
+            nf_stdout, nf_stderr = nf_proc.communicate()
 
             if not self.__keep_intermediate_files:
                 shutil.rmtree(work_dir, ignore_errors=True)
                 shutil.rmtree(project_dir.joinpath(".nextflow"), ignore_errors=True)
                 if nf_proc.returncode == 0:
                     project_dir.joinpath(".nextflow.log").unlink()
+
+            if nf_proc.returncode != 0:
+                logger.error(
+                    (
+                        "[WORKER / PROJECT %i] Workflow execution failed:"
+                        "\n----stdout----\n%s"
+                        "\n----stderr----\n%s"
+                    ),
+                    project_params.id,
+                    nf_stdout.replace("\n", "\n\t"),
+                    nf_stderr.replace("\n", "\n\t"),
+                )
+                self.__communication_channel.send((delivery_tag, False))
+                continue
 
             # Send delivery tag to thread for acknowledgement
             self.__communication_channel.send((delivery_tag, True))

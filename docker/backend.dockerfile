@@ -31,13 +31,13 @@ COPY --chown=mambauser:mambauser environment.yml .
 COPY --chown=mambauser:mambauser docker/entrypoints/backend.sh ./entrypoint.sh
 
 USER mambauser
-ENV HOME /home/mambauser
-ENV PATH $PATH:$HOME/.local/bin
+ENV HOME=/home/mambauser
+ENV PATH=$PATH:$HOME/.local/bin
 ENV ENV_NAME=macworp
 
 RUN echo 'show_banner: false' > ~/.mambarc
 
-ENV PATH $PATH:$HOME/.cargo/bin
+ENV PATH=$PATH:$HOME/.cargo/bin
 
 # Remove unneeded dependencies python modules and extras and add GIT
 RUN sed -i 's;^.*./worker.*$;;g' environment.yml \

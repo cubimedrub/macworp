@@ -1,5 +1,5 @@
 # Use in addition to docker-compose.yaml to test the deployment with unicorn and NginX as reverse proxy, see Readme.md
-version: '2.2'
+name: macworp-deployment-test
 services:  
   backend_1: &migrating_backend
     image: macworp/backend:dev

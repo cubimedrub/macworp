@@ -59,7 +59,7 @@ class Server:
             if not "-b" in gunicorn_args and not "--bind" in gunicorn_args:
                 gunicorn_args += f" -b {Configuration.values()['interface']}:{Configuration.values()['port']} "
             gunicorn_args = f"{gunicorn_args} -k eventlet"
-            print(f"{gunicorn_args} 'macworp.server:get_app()'")
+            print(f"{gunicorn_args} 'macworp_backend.server:get_app()'")
 
     @classmethod
     def add_cli_arguments(cls, subparsers):

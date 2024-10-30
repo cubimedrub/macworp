@@ -41,6 +41,10 @@ process print_params {
     echo "numberOfNewlines => $numberOfNewlines" >> params.txt
     echo "valueSelect => $valueSelect" >> params.txt
     echo "multilineText => $multilineText" >> params.txt
+
+    echo "The following is the full CMD line" >> params.txt
+
+    echo "$workflow.commandLine" >> params.txt
     """
 }
 

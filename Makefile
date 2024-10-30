@@ -52,18 +52,3 @@ production-test-down:
 	# Destroy production test
 	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} USER_ID=${USER_ID} GROUP_ID=${GROUP_ID} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-deploy-test -f docker-compose.yaml -f deploy-test.docker-compose.yaml down
-
-production-worker-test:
-	# Worker for production test
-	env PYTHONUNBUFFERED=1 conda run --no-capture-output --live-stream -n macworp \
-		python -m macworp_worker -n ./nextflow -c https://winkelhardtdi-server:16160 -r amqp://admin:developer@127.0.0.1:5674/%2f -q project_workflow -d ./deploy_test_uploads -w ./config.docker-compose.yaml -u worker -p developer 
-
-
-# worker:
-# 	# Worker for native development
-# 	env PYTHONUNBUFFERED=1 conda run --no-capture-output --live-stream -n macworp \
-# 		python -m macworp_worker -n ./nextflow -c http://localhost:3001 -r amqp://admin:developer@127.0.0.1:5674/%2f -q project_workflow -d ./uploads -u worker -p developer -vvvvvvvv
-
-# dev:
-# 	# Back- & frontend for nativ development
-# 	env OAUTHLIB_INSECURE_TRANSPORT=1 conda run --no-capture-output --live-stream -n macworp honcho -e dev.env start

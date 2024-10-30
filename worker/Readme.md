@@ -6,6 +6,7 @@ Simple python module, which fetches the scheduled nextflow workflows from Rabbit
 * Conda--derivate (conda, micromamba, ...)
 * Java (version depends on Nextflow)
 * [Nextflow](https://www.nextflow.io/)
+    * Version 24.09.2-edge until https://github.com/nextflow-io/nextflow/issues/5443#issuecomment-2445609593 us fixed
 
 ## Install
 

@@ -13,7 +13,7 @@ params.singleLineText = ""
 params.multilineText = ""
 params.valueSelect = ""
 
-params.resultsFolder = 'results'
+params.resultsFolder = "results"
 
 process print_params {
     input:
@@ -60,15 +60,26 @@ workflow  {
     )
 
     publish:
-    params_txt >> "default"
+    params_txt >> params.resultsFolder
 }
 
 /**
  * Move the output files to the results folder
  */
 output {
-    "default" {
-        mode 'move'
-        path params.resultsFolder
-    }
+    mode "move"
 }
+
+/**
+ * Once https://github.com/nextflow-io/nextflow/issues/5443#issuecomment-2445609593
+ * is resolved and MAcWorP is updated to 24.10
+ * we can use the following code to move the output files to the results folder
+ * and replace `results >> params.resultsFolder` with `results >> "root"`
+ * in the workflow
+ */
+// output {
+//     "root" {
+//         mode "move"
+//         path "."
+//     }
+// }

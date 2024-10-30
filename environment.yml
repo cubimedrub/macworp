@@ -13,4 +13,4 @@ dependencies:
   - yaml
   - pip:
     - -e ./backend[dev]
-    - -e ./worker[dev]
+    - -e ./worker[dev,demo]

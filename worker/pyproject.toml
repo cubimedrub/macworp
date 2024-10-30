@@ -33,12 +33,16 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "honcho",
-    "kaleido", # for demo workflow
-    "plotly", # for demo workflow
     "pylint",
     "types-peewee",
     "types-PyYAML",
     "types-requests"
+]
+
+# Dependencies for the demo Workflows
+demo = [
+    "kaleido",
+    "plotly"
 ]
 
 

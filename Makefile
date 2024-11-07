@@ -44,6 +44,8 @@ production-test-up:
 	env DOCKER_BUILDKIT=1 docker build -t "macworp/backend:dev" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/backend.dockerfile .
 	env DOCKER_BUILDKIT=1 docker build -t "macworp/worker:dev" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/worker.dockerfile .
 	env DOCKER_BUILDKIT=1 docker build -t "macworp/frontend:dev" -f docker/frontend.dockerfile .
+	# Write the link to the project directory
+	echo "https://${MACWORP_HOSTNAME}:16161" > PRODUCTION_TEST_URL
 	# Start docker-compose in separate docker-compose project called macworp-deploy-test, combining the two docker-compose files
 	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} USER_ID=${USER_ID} GROUP_ID=${GROUP_ID} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-deploy-test -f docker-compose.yaml -f deploy-test.docker-compose.yaml up ${args}

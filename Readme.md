@@ -17,6 +17,17 @@ MaCWorp is a web application to give workflow developers a simple way to make th
 * What it **does not** for you
     * Scaling - This is still the job of the workflow engine. E.g. you can configure Nextflow to use K8s or Slurm when started by MAcWorP workers but setting these executors up is still a separate job for an admin.
 
+## Quickstart
+You are interested and want to try MAcWroP?
+1. A Unix-like operating system is mandatory: You are good to go with any popular Linux distribution, Windows Subsystem for Linux or macOS
+2. Install [Docker](https://docs.docker.com/get-started/get-docker/)
+    * On Linux make sure your user is allowed to access the Docker service by adding the user to the Docker group `usermod -aG docker <your-user>`
+3. Install `make`
+4. Install `git`
+5. Clone the repository
+6. `make production-test-up`
+
+This will start the web interface on `https://<local-computer-name>:16160`, the complete URL is written to the file `PRODUCTION_TEST_URL`. It might change depending on your location (home, office, ...) as it includes the computers FQDN.
 
 ## Backend
 A web API written in [Flask](https://flask.palletsprojects.com/en/2.0.x/) for managing/scheduling workflows.

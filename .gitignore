@@ -2,13 +2,15 @@
 .vscode
 .idea
 
-# TEmpfiles for workflows
+# Tempfiles for workflows
 /tmp
+
 # Local development files like database files
 /.db
 local.env
 macworp.local.config.yaml
 nextflow
+PRODUCTION_TEST_URL
 
 # uploads
 /uploads

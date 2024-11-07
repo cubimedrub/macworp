@@ -45,10 +45,10 @@ class NextflowCmdGenerator(CmdGenerator):
             project_dir, project_params.workflow_arguments
         )
 
-        # Add workflow static parameters
-        for argument in workflow_settings["parameters"]["static"]:
-            command.append(f"--{argument['name']}")
-            command.append(argument["value"])
+        # Add workflow dynamic parameters
+        command += self.get_workflow_arguments(
+            project_dir, workflow_settings["parameters"]["static"], is_static=True
+        )
 
         return command
 
@@ -76,9 +76,20 @@ class NextflowCmdGenerator(CmdGenerator):
         self,
         project_dir: Path,
         workflow_arguments: List[Dict[str, Any]],
+        is_static: bool = False,
     ) -> List[str]:
         """
         Processes the workflow arguments
+
+        Parameters
+        ----------
+        project_dir : Path
+            Path to the project directory
+        workflow_arguments : List[Dict[str, Any]]
+            List of workflow arguments
+        is_static : bool
+            If the parameters are static parameters.
+            Some parameter options are only available for static parameters.
 
         Returns
         -------
@@ -91,7 +102,7 @@ class NextflowCmdGenerator(CmdGenerator):
                 continue
             processed_arguments.append(f"--{argument['name']}")
             processed_arguments.append(
-                self.process_workflow_param(project_dir, argument)
+                self.process_workflow_param(project_dir, argument, is_static)
             )
 
         return processed_arguments

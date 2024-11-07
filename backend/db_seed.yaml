@@ -18,8 +18,14 @@ seeds:
                 "dynamic": [],
                 "static": [
                     {
+                        "type": "path",
                         "name": "resultsFolder",
-                        "value": "./results"
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false,
+                        "value": "./results",
+                        "is_relative": true
                     }
                 ]
             }
@@ -122,8 +128,14 @@ seeds:
                   ],
                   "static": [
                       {
+                          "type": "path",
                           "name": "resultsFolder",
-                          "value": "./results"
+                          "label": "",
+                          "desc": "",
+                          "selectable_files": true,
+                          "selectable_folders": false,
+                          "value": "./results",
+                          "is_relative": true
                       }
                   ]
               }

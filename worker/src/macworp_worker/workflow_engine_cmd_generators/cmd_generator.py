@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Dict, List
 
 from macworp_utils.exchange.queued_project import QueuedProject
-from macworp_utils.path import secure_joinpath
+from macworp_utils.path import make_relative_to, secure_joinpath
 from macworp_worker.web.backend_web_api_client import BackendWebApiClient
 
 
@@ -85,6 +85,7 @@ class CmdGenerator:
         cls,
         project_dir: Path,
         parameter: Dict[str, Any],
+        is_static: bool = False,
     ) -> str:
         """
         Process the workflow the given workflow parameter
@@ -106,6 +107,9 @@ class CmdGenerator:
             Project parameters
         parameter : Dict[str, Any]
             Workflow parameter for the definition
+        is_static : bool
+            If the parameter is a static parameter.
+            Some parameter options are only available for static parameters.
 
         Returns
         -------
@@ -121,7 +125,14 @@ class CmdGenerator:
                     ]
                 )
             case "path":
-                return str(secure_joinpath(project_dir, parameter["value"]))
+                path = secure_joinpath(project_dir, parameter["value"])
+                if (
+                    is_static
+                    and "is_relative" in parameter
+                    and parameter["is_relative"]
+                ):
+                    return str(make_relative_to(project_dir, path))
+                return str(path)
             case "file-glob":
                 return str(secure_joinpath(project_dir, parameter["value"]))
             case "separator":

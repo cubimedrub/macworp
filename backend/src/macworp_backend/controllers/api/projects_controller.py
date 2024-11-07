@@ -35,8 +35,12 @@ class ProjectsController:
         -------
         Response
         """
-        offset = request.args.get("offset", 0)
-        limit = request.args.get("limit", 50)
+        offset = request.args.get("offset", 0, type=int)
+        limit = request.args.get("limit", 50, type=int)
+        if offset < 0:
+            offset = 0
+        if limit < 1:
+            limit = 1
         return jsonify(
             {
                 "projects": [

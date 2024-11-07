@@ -29,18 +29,22 @@ You are interested and want to try MAcWroP?
 
 This will start the web interface on `https://<local-computer-name>:16160`, the complete URL is written to the file `PRODUCTION_TEST_URL`. It might change depending on your location (home, office, ...) as it includes the computers FQDN.
 
-## Backend
+
+## Developing
+### Structure
+
+#### Backend
 A web API written in [Flask](https://flask.palletsprojects.com/en/2.0.x/) for managing/scheduling workflows.
 
-## Frontend
+#### Frontend
 A web interface written in [NuxtJS](https://nuxtjs.org/). This is basically a GUI for the web API.
 
-## Worker
+#### Worker
 A worker written in python which runs the scheduled workflows.
 
 ![MAcWorP structure](./macworp.png)
 
-## Developing
+### Requirements
 Make sure the dependencies in
 
 * [Frontend](frontend/Readme.md)

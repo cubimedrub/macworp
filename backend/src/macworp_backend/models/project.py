@@ -1,27 +1,19 @@
 """Object and functions to deal with project data"""
 
-# std imports
 from __future__ import annotations
 import argparse
 from pathlib import Path
-import re
 import shutil
 from typing import IO
 from typing_extensions import Buffer
 
-# 3rd party imports
 from macworp_utils.exchange.queued_project import QueuedProject
+from macworp_utils.path import is_within_path, secure_joinpath
 from peewee import BigAutoField, CharField, BooleanField, IntegerField, BigIntegerField
 from playhouse.postgres_ext import BinaryJSONField
 
-# internal import
 from macworp_backend import db_wrapper as db
 from macworp_backend.utility.configuration import Configuration
-
-
-SLASH_SEQ_REGEX: re.Pattern = re.compile(r"\/+")
-"""Regex to match multiple sequence ofg slashes.
-"""
 
 
 class Project(db.Model):  # type: ignore[name-defined]
@@ -104,50 +96,21 @@ class Project(db.Model):  # type: ignore[name-defined]
             "ignore": self.ignore,
         }
 
-    def __secure_path_for_join(self, path: Path) -> Path:
-        """
-        Removes dangerous directory operations from path, e.g.
-        * `/` at path begin would result in a absolut path escaping the project directory
-        * `..` can be used to escape the project dir.
-
-        Parameters
-        ----------
-        path : Path
-            Path to join with project dir.s
-
-        Returns
-        -------
-        Path
-            Relative path, secure to join with projects directory.
-        """
-        parts = list(path.parts)
-
-        # Remove leading slashes to avoid overwriting the projects directory when using joinpath
-        while True:
-            if len(parts) == 0 or SLASH_SEQ_REGEX.match(parts[0]) is None:
-                break
-            parts = parts[1:]
-
-        # Remove all `..` from path as they could be used to escape the project directory
-        parts = list(filter(lambda x: x != "..", parts))
-
-        return Path(*parts)
-
-    def in_file_director(self, path: Path) -> bool:
+    def in_file_directory(self, path: Path) -> bool:
         """
         Checks if the given path is part of the project's file directory.
 
         Parameters
         ----------
         path : Path
-            Path to check (absolute)
+            Path to check
 
         Returns
         -------
         bool
-            True if path if part of file directory or file directory itself.
+            True if path is part of the project's file directory
         """
-        return self.file_directory == path or self.file_directory in path.parents
+        return is_within_path(self.file_directory.absolute(), path)
 
     def get_path(self, path: Path) -> Path:
         """
@@ -170,10 +133,9 @@ class Project(db.Model):  # type: ignore[name-defined]
         PermissionError
             Raised when path is outside the project directory.
         """
-        directory = self.file_directory.absolute().joinpath(
-            self.__secure_path_for_join(path)
-        )
-        if self.in_file_director(directory):
+        absolute_fire_directory = self.file_directory.absolute()
+        directory = secure_joinpath(absolute_fire_directory, path)
+        if self.in_file_directory(directory):
             return directory
         else:
             raise PermissionError("Path is not within the projects directory.")

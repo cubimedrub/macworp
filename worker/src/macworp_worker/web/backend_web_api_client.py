@@ -200,7 +200,7 @@ class BackendWebApiClient:
                     continue
                 raise e
 
-    def post_weblog(self, project_id: int, log: bytes):
+    def post_weblog(self, project_id: int, workflow_engine_type: str, log: bytes):
         """
         Posts a web log entry.
 
@@ -208,6 +208,8 @@ class BackendWebApiClient:
         ----------
         project_id : int
             Project ID
+        workflow_engine_type : str
+            Workflow engine type, see: `macworp_utils.constants.SupportedWorkflowEngine`
         log : Dict[str, str]
             Log entry
 
@@ -218,6 +220,7 @@ class BackendWebApiClient:
         """
         headers = self.__class__.HEADERS.copy()
         headers["Content-Type"] = "application/json"
+        headers["X-Workflow-Engine-Type"] = workflow_engine_type
 
         for i in range(self.__class__.API_CALL_TRIES):
             try:

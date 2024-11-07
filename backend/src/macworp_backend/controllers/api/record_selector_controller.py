@@ -27,7 +27,7 @@ class RecordSelectorController:
         """
         workflow_argument: Dict[str, Any] = Configuration.values()["workflows"][
             workflow
-        ]["args"]["dynamic"][argument]
+        ]["parameters"]["dynamic"][argument]
         offset: Optional[int] = request.args.get("offset", None, type=int)
 
         db_url_protocol_idx: int = workflow_argument["database_url"].find("://")

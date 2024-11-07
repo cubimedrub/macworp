@@ -7,13 +7,14 @@ seeds:
       is_validated: true
       definition: |
         {
+            "engine": "nextflow",
             "src": {
                 "type": "local",
                 "directory": "./demo_workflows/result_demo",
                 "script": "main.nf"
             },
-            "nextflow_parameters": [],
-            "args": {
+            "engine_parameters": [],
+            "parameters": {
                 "dynamic": [],
                 "static": [
                     {
@@ -31,13 +32,14 @@ seeds:
       is_validated: true
       definition: |
           {
+              "engine": "nextflow",
               "src": { 
                   "type": "local",
                   "directory": "./demo_workflows/input_demo",
                   "script": "main.nf"
               },
-              "nextflow_parameters": [],
-              "args": {
+              "engine_parameters": [],
+              "parameters": {
                   "dynamic": [
                       {
                           "type": "path",

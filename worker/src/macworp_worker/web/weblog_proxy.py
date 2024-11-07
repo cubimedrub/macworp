@@ -74,8 +74,8 @@ class WeblogProxy:
         """
         app = FastAPI()
 
-        @app.post("/projects/{project_id:int}")
-        async def handle_weblog_request(project_id: int, request: Request):
+        @app.post("/projects/{project_id:int}/{workflow_engine_type:str}")
+        async def h(project_id: int, workflow_engine_type: str, request: Request):
             """
             Receives the weblogs from Nextflow and forwards them to the NFCloud API.
 
@@ -83,10 +83,12 @@ class WeblogProxy:
             ----------
             project_id : ints
                 Project ID
+            workflow_engine_type : str
+                Workflow engine type, see: `macworp_utils.constants.SupportedWorkflowEngine`
             """
             log = await request.body()
             try:
-                settings.client.post_weblog(project_id, log)
+                settings.client.post_weblog(project_id, workflow_engine_type, log)
             # pylint: disable=broad-except
             except Exception as e:
                 # Catch everything to prevent the FastAPI server from crashing

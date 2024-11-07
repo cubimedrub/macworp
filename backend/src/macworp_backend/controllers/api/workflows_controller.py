@@ -212,7 +212,7 @@ class WorkflowsControllers:
         workflow: Workflow = Workflow.get_or_none(Workflow.id == workflow_id)
         if workflow is None:
             return "", 404
-        return jsonify(workflow.definition["args"]["dynamic"])
+        return jsonify(workflow.definition["parameters"]["dynamic"])
 
     @staticmethod
     @app.route(

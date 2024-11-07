@@ -15,12 +15,13 @@ from typing import Any, List, Optional
 # external imports
 import pika
 from pika.channel import Channel
+from macworp_utils.exchange.queued_project import QueuedProject
 
 # internal imports
 from macworp_worker.logging import get_logger
 from macworp_worker.web.backend_web_api_client import BackendWebApiClient
 from macworp_worker.web.weblog_proxy import WeblogProxy
-from macworp_worker.workflow_executor import WorkflowExecutor
+from macworp_worker.executor import Executor
 
 
 class AckHandler(Thread):
@@ -173,7 +174,7 @@ class Worker:
 
         project_queue = Queue()
         comm_channels: List[Connection] = []  # type: ignore[annotation-unchecked]
-        wf_executors: List[WorkflowExecutor] = []  # type: ignore[annotation-unchecked]
+        wf_executors: List[Executor] = []  # type: ignore[annotation-unchecked]
 
         while not self.__stop_event.is_set():
             try:
@@ -185,7 +186,7 @@ class Worker:
 
                 for _ in range(self.__number_of_workers):
                     ro_comm, rw_comm = Pipe(duplex=False)
-                    executor = WorkflowExecutor(
+                    executor = Executor(
                         self.__nf_bin,
                         self.__backend_api_client,
                         self.__project_data_path,
@@ -218,7 +219,10 @@ class Worker:
                     if method_frame and body:
                         try:
                             logger.info("Received job, add it to local queue.")
-                            project_queue.put((body, method_frame.delivery_tag))
+                            project_params = QueuedProject.model_validate_json(body)
+                            project_queue.put(
+                                (project_params, method_frame.delivery_tag)
+                            )
                         except FullQueueError:
                             pass
                     if self.__stop_event.is_set():

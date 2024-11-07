@@ -68,7 +68,6 @@ conda activate macworp
 yarn --cwd ./frontend install
 ```
 
-
 ### Start
 ```bash
 # Shell 1
@@ -152,6 +151,12 @@ Run `conda run -n macworp python`
 
 
 ## Workflow developer
+
+### Best practice
+1. In general it is a good idea to use publicly available Docker container to manage your dependencies as most workflow engines can download containers by themselves. For help see:
+    * [Nextflow](https://snakemake.readthedocs.io/en/stable/snakefiles/deployment.html#running-jobs-in-containers)
+    * [Snakemake](https://snakemake.readthedocs.io/en/stable/snakefiles/deployment.html#running-jobs-in-containers)
+    However it is possible use dependencies installed via Conda or package managers, but it has to be done manually on each worker. 
 
 ### Input elements
 List is coming soon.

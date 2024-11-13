@@ -66,7 +66,14 @@ export default {
         include: /node_modules/,
         type: 'javascript/auto',
       })
-   }
+    },
+    loaders: {
+      sass: {
+        sassOptions: {
+          quietDeps: true
+        }
+      }
+    }
   },
 
   publicRuntimeConfig: {

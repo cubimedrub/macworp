@@ -12,7 +12,6 @@ import subprocess
 from typing import ClassVar, List
 
 from macworp_utils.constants import SupportedWorkflowEngine
-from macworp_utils.exchange.queued_project import QueuedProject
 from macworp_utils.path import secure_joinpath
 
 from macworp_worker.logging import get_logger

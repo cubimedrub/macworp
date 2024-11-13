@@ -9,6 +9,11 @@ from typing import ClassVar, Dict
 import requests
 from requests.auth import HTTPBasicAuth
 
+from macworp_utils.constants import (
+    WEBLOG_WORKFLOW_ENGINE_HEADER,
+    SupportedWorkflowEngine,
+)
+
 
 class BackendWebApiClient:
     """
@@ -200,7 +205,9 @@ class BackendWebApiClient:
                     continue
                 raise e
 
-    def post_weblog(self, project_id: int, workflow_engine_type: str, log: bytes):
+    def post_weblog(
+        self, project_id: int, workflow_engine: SupportedWorkflowEngine, log: bytes
+    ):
         """
         Posts a web log entry.
 
@@ -208,8 +215,8 @@ class BackendWebApiClient:
         ----------
         project_id : int
             Project ID
-        workflow_engine_type : str
-            Workflow engine type, see: `macworp_utils.constants.SupportedWorkflowEngine`
+        workflow_engine : SupportedWorkflowEngine
+            Workflow engine type
         log : Dict[str, str]
             Log entry
 
@@ -220,7 +227,7 @@ class BackendWebApiClient:
         """
         headers = self.__class__.HEADERS.copy()
         headers["Content-Type"] = "application/json"
-        headers["X-Workflow-Engine-Type"] = workflow_engine_type
+        headers[WEBLOG_WORKFLOW_ENGINE_HEADER] = str(workflow_engine)
 
         for i in range(self.__class__.API_CALL_TRIES):
             try:

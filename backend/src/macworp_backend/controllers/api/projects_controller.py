@@ -13,8 +13,12 @@ import pika
 import zipstream
 
 # internal imports
+from macworp_utils.constants import (
+    WEBLOG_WORKFLOW_ENGINE_HEADER,
+    SupportedWorkflowEngine,
+)
 from macworp_backend import app, socketio, db_wrapper as db
-from macworp_backend.models.project import Project
+from macworp_backend.models.project import Project, LogProcessingResultType
 from macworp_backend.utility.configuration import Configuration
 from macworp_backend.errors.unknown_table_format import UnknownTableFormat
 
@@ -547,31 +551,31 @@ class ProjectsController:
         project: Optional[Project] = Project.get_or_none(Project.id == id)
         if project is None:
             return jsonify({"errors": {"general": "project not found"}}), 404
-        # Handle process traces
-        if "trace" in workflow_log and "event" in workflow_log:
-            match workflow_log["event"]:
-                case "process_submitted":
-                    project.submitted_processes += 1
-                case "process_completed":
-                    project.completed_processes += 1
-            project.save()
-            socketio.emit(
-                "new-progress",
-                {
-                    "submitted_processes": project.submitted_processes,
-                    "completed_processes": project.completed_processes,
-                    "details": f"Task {workflow_log['trace']['task_id']}: {workflow_log['trace']['name']} - {workflow_log['trace']['status']}",
-                },
-                to=f"project{project.id}",
-            )
-        # Handle workflow traces
-        elif "metadata" in workflow_log and "event" in workflow_log:
-            error_report: Optional[str] = workflow_log["metadata"]["workflow"].get(
-                "errorReport", None
-            )
-            if error_report is not None:
+
+        workflow_engine = SupportedWorkflowEngine.from_str(
+            request.headers[WEBLOG_WORKFLOW_ENGINE_HEADER]
+        )
+
+        log_processing_result = project.process_workflow_log(
+            workflow_log, workflow_engine
+        )
+
+        match log_processing_result.type:
+            case LogProcessingResultType.PROGRESS:
                 socketio.emit(
-                    "error", {"error_report": error_report}, to=f"project{project.id}"
+                    "new-progress",
+                    {
+                        "submitted_processes": project.submitted_processes,
+                        "completed_processes": project.completed_processes,
+                        "details": log_processing_result.message,
+                    },
+                    to=f"project{project.id}",
+                )
+            case LogProcessingResultType.ERROR:
+                socketio.emit(
+                    "error",
+                    {"error_report": log_processing_result.message},
+                    to=f"project{project.id}",
                 )
         return "", 200
 

@@ -20,7 +20,7 @@ from macworp_utils.exchange.queued_project import QueuedProject
 # internal imports
 from macworp_worker.logging import get_logger
 from macworp_worker.web.backend_web_api_client import BackendWebApiClient
-from macworp_worker.web.weblog_proxy import WeblogProxy
+from macworp_worker.web.log_proxy.server import Server as LogProxy
 from macworp_worker.executor import Executor
 
 
@@ -130,7 +130,7 @@ class Worker:
         Keep work folder after workflow execution
     __stop_event: Event
         Event for stopping worker processes and threads reliable.
-    __weblog_proxy: WeblogProxy
+    __log_proxy: LogProxy
         Proxy for sending weblog requests to the NFCloud API using credentials.
     """
 
@@ -163,7 +163,7 @@ class Worker:
         # control
         self.__stop_event: EventClass = stop_event
         self.__log_level: int = log_level
-        self.__weblog_proxy = WeblogProxy(backend_api_client, log_level)
+        self.__log_proxy = LogProxy(backend_api_client, log_level)
 
     def start(self):
         """
@@ -195,7 +195,7 @@ class Worker:
                         self.__keep_intermediate_files,
                         self.__stop_event,
                         self.__log_level,
-                        self.__weblog_proxy.port,
+                        self.__log_proxy.port,
                     )
                     executor.start()
                     comm_channels.append(ro_comm)

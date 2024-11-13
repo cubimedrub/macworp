@@ -2,18 +2,40 @@
 
 from __future__ import annotations
 import argparse
+from enum import unique, Enum
 from pathlib import Path
 import shutil
-from typing import IO
-from typing_extensions import Buffer
+from typing import IO, Any, Dict, Optional
 
 from macworp_utils.exchange.queued_project import QueuedProject
 from macworp_utils.path import is_within_path, secure_joinpath
+from macworp_utils.constants import SupportedWorkflowEngine
 from peewee import BigAutoField, CharField, BooleanField, IntegerField, BigIntegerField
 from playhouse.postgres_ext import BinaryJSONField
+from pydantic import BaseModel
+from typing_extensions import Buffer
 
 from macworp_backend import db_wrapper as db
 from macworp_backend.utility.configuration import Configuration
+
+
+@unique
+class LogProcessingResultType(Enum):
+    """Type of log which was processed"""
+
+    PROGRESS = 1
+    ERROR = 2
+    NONE = 3
+
+
+class LogProcessingResult(BaseModel):
+    """Result of processing a log entry"""
+
+    type: LogProcessingResultType
+    """True if processing log was not an error"""
+
+    message: str
+    """Log message"""
 
 
 class Project(db.Model):  # type: ignore[name-defined]
@@ -254,6 +276,57 @@ class Project(db.Model):  # type: ignore[name-defined]
             workflow_id=self.workflow_id,  # type: ignore[arg-type]
             workflow_arguments=self.workflow_arguments,  # type: ignore[arg-type]
         )
+
+    def process_workflow_log(
+        self, log: Dict[str, Any], workflow_engine: SupportedWorkflowEngine
+    ) -> LogProcessingResult:
+        """
+        Processes the workflow log and sends it to the web log proxy.
+
+        Parameters
+        ----------
+        log : Dict[str, Any]
+            Log
+        workflow_engine : SupportedWorkflowEngine
+            Workflow engine
+        """
+        match workflow_engine:
+            case SupportedWorkflowEngine.NEXTFLOW:
+                return self.process_nextflow_log(log)
+        return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
+
+    def process_nextflow_log(self, log: Dict[str, Any]) -> LogProcessingResult:
+        """
+        Processes the Nextflow log and sends it to the web log proxy.
+
+        Parameters
+        ----------
+        log : Dict[str, Any]
+            Log
+        """
+        if "trace" in log and "event" in log:
+            match log["event"]:
+                case "process_submitted":
+                    self.submitted_processes += 1  # type: ignore[assignment]
+                case "process_completed":
+                    self.completed_processes += 1  # type: ignore[assignment]
+            self.save()
+            return LogProcessingResult(
+                type=LogProcessingResultType.PROGRESS,
+                message=(
+                    f"Task {log['trace']['task_id']}: "
+                    f"{log['trace']['name']} - {log['trace']['status']}"
+                ),
+            )
+        elif "metadata" in log and "event" in log:
+            error_report: Optional[str] = log["metadata"]["workflow"].get(
+                "errorReport", None
+            )
+            if error_report is not None:
+                return LogProcessingResult(
+                    type=LogProcessingResultType.ERROR, message=error_report
+                )
+        return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
 
 
 class ProjectCommandLineInterface:

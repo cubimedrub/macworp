@@ -29,8 +29,8 @@ class NextflowCmdGenerator(CmdGenerator):
             str(work_dir),
             "-with-weblog",
             (
-                f"http://127.0.0.1:{self.weblog_proxy_port}/projects"
-                f"/{project_params.id}/{SupportedWorkflowEngine.NEXTFLOW}"
+                f"http://127.0.0.1:{self.weblog_proxy_port}/{SupportedWorkflowEngine.NEXTFLOW.value}"
+                f"/projects/{project_params.id}"
             ),
         ]
 

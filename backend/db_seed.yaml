@@ -1,7 +1,7 @@
 seeds:
   - model: Workflow
     attributes:
-      name: "Demo: Result rendering"
+      name: "Nextflow Demo: Result rendering"
       description: "Creates a variety of result types for testing the rendering of results"
       is_published: true
       is_validated: true
@@ -10,7 +10,7 @@ seeds:
             "engine": "nextflow",
             "src": {
                 "type": "local",
-                "directory": "./demo_workflows/result_demo",
+                "directory": "./demo_workflows/nextflow/result_demo",
                 "script": "main.nf"
             },
             "engine_parameters": [],
@@ -32,7 +32,7 @@ seeds:
         }
   - model: Workflow
     attributes:
-      name: "Demo: Input options"
+      name: "Nextflow Demo: Input options"
       description: "Renders all input options and prints the selected values into a file to show how they are given to the workflow call."
       is_published: true
       is_validated: true
@@ -41,7 +41,7 @@ seeds:
               "engine": "nextflow",
               "src": { 
                   "type": "local",
-                  "directory": "./demo_workflows/input_demo",
+                  "directory": "./demo_workflows/nextflow/input_demo",
                   "script": "main.nf"
               },
               "engine_parameters": [],

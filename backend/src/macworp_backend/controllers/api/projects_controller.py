@@ -561,7 +561,7 @@ class ProjectsController:
         )
 
         match log_processing_result.type:
-            case LogProcessingResultType.PROGRESS:
+            case LogProcessingResultType.PROGRESS | LogProcessingResultType.MESSAGE:
                 socketio.emit(
                     "new-progress",
                     {

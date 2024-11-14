@@ -11,6 +11,10 @@
         {
           "type": "string",
           "const": "nextflow" 
+        },
+        {
+          "type": "string",
+          "const": "snakemake" 
         }
       ]
     },

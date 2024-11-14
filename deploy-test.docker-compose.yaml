@@ -79,6 +79,7 @@ services:
       "-vvvvvvvv",
       "--skip-cert-verification",
       "-n", "/usr/local/bin/nextflow",
+      "-s", "/opt/conda/envs/macworp/bin/snakemake",
       "-c", "https://${MACWORP_HOSTNAME:-localhost}:16160",
       "-r", "amqp://admin:developer@rabbitmq:5672/%2f",
       "-q", "project_workflow",

@@ -20,6 +20,9 @@ class ComandLineInterface:
             "--nf-bin", "-n", type=str, help="Path to nextflow binary."
         )
         self.__arg_parser.add_argument(
+            "--sm-bin", "-s", type=str, help="Path to snakemake binary."
+        )
+        self.__arg_parser.add_argument(
             "--macworp-url", "-c", type=str, help="Cloud URL"
         )
         self.__arg_parser.add_argument(

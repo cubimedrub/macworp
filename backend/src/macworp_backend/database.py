@@ -4,7 +4,7 @@ from typing import Any, ClassVar, Dict, Optional, Set
 
 # 3rd party imports
 from peewee_migrate import Router
-from peewee import PostgresqlDatabase
+from peewee import PostgresqlDatabase, IntegrityError
 from yaml import load as yaml_load, Loader as YamlLoader
 
 # internal imports
@@ -64,7 +64,12 @@ class Database:
                 dropped_models.add(seed["model"])
                 model.delete().execute()
             # Create record
-            model.create(**seed["attributes"])
+            try:
+                model.create(**seed["attributes"])
+            except IntegrityError:
+                print(
+                    f"[INFO] Model object of type '{seed['model']}' with attributes '{seed['attributes']}' already exists. Skipping ..."
+                )
 
     @classmethod
     def run_migration_by_cli(cls, cli_args):

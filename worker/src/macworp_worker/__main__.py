@@ -31,6 +31,7 @@ def main():
 
     worker = Worker(
         Path(cli.arguments.nf_bin).absolute(),
+        Path(cli.arguments.sm_bin).absolute(),
         BackendWebApiClient(
             cli.arguments.macworp_url,
             cli.arguments.api_user,

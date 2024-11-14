@@ -5,6 +5,9 @@ from multiprocessing import Process
 import socket
 
 from fastapi import APIRouter, FastAPI
+from macworp_worker.web.log_proxy.controllers.snakemake_controller import (
+    SnakemakeController,
+)
 import uvicorn
 
 from macworp_worker.web.backend_web_api_client import BackendWebApiClient
@@ -59,6 +62,30 @@ class Server:
             "/nextflow/projects/{project_id:int}",
             NextflowController.weblogs,
             methods=["POST"],
+        )
+
+        router.add_api_route(
+            "/snakemake/api/service-info",
+            SnakemakeController.service_info,
+            methods=["GET"],
+        )
+
+        router.add_api_route(
+            "/snakemake/create_workflow",
+            SnakemakeController.create_workflow,
+            methods=["GET"],
+        )
+
+        router.add_api_route(
+            "/snakemake/update_workflow_status",
+            SnakemakeController.update_workflow_status,
+            methods=["POST"],
+        )
+
+        router.add_api_route(
+            "/snakemake/api/workflow/{project_id:int}",
+            SnakemakeController.workflow,
+            methods=["PUT"],
         )
 
         return router

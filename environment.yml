@@ -11,6 +11,7 @@ dependencies:
   - setuptools
   - cython
   - yaml
+  - bioconda::snakemake=8.25.3
   - pip:
     - -e ./backend[dev]
     - -e ./worker[dev,demo]

@@ -139,3 +139,27 @@ class CmdGenerator:
                 return ""
             case _:
                 return str(parameter["value"])
+
+    @classmethod
+    def cleanup(
+        cls,
+        project_dir: Path,
+        work_dir: Path,
+        is_success: bool,
+        keep_intermediate_files: bool,
+    ) -> None:
+        """
+        Cleanup after the workflow execution.
+
+        Parameters
+        ----------
+        project_dir : Path
+            Path to the project directory
+        work_dir : Path
+            Path to the work directory
+        is_success : bool
+            If the workflow was successful
+        keep_intermediate_files : bool
+            If the intermediate files should be kept
+        """
+        raise NotImplementedError("Need to implement this method in a subclass.")

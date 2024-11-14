@@ -24,8 +24,9 @@ class LogProcessingResultType(Enum):
     """Type of log which was processed"""
 
     PROGRESS = 1
-    ERROR = 2
-    NONE = 3
+    MESSAGE = 2
+    ERROR = 3
+    NONE = 4
 
 
 class LogProcessingResult(BaseModel):
@@ -293,6 +294,8 @@ class Project(db.Model):  # type: ignore[name-defined]
         match workflow_engine:
             case SupportedWorkflowEngine.NEXTFLOW:
                 return self.process_nextflow_log(log)
+            case SupportedWorkflowEngine.SNAKEMAKE:
+                return self.process_snakemake_log(log)
         return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
 
     def process_nextflow_log(self, log: Dict[str, Any]) -> LogProcessingResult:
@@ -326,6 +329,43 @@ class Project(db.Model):  # type: ignore[name-defined]
                 return LogProcessingResult(
                     type=LogProcessingResultType.ERROR, message=error_report
                 )
+        return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
+
+    def process_snakemake_log(self, log: Dict[str, Any]) -> LogProcessingResult:
+        """
+        Processes the Nextflow log and sends it to the web log proxy.
+
+        Parameters
+        ----------
+        log : Dict[str, Any]
+            Log
+        """
+        if "level" in log:
+            match log["level"]:
+                case "progress":
+                    self.submitted_processes += log["done"]  # type: ignore[assignment]
+                    self.completed_processes += log["total"]  # type: ignore[assignment]
+                    self.save()
+                    return LogProcessingResult(
+                        type=LogProcessingResultType.PROGRESS,
+                        message="",
+                    )
+                case "job_info":
+                    msg = f"- {log['msg']}" if log["msg"] is not None else ""
+                    return LogProcessingResult(
+                        type=LogProcessingResultType.MESSAGE,
+                        message=(f"Task {log['jobid']}: " f"{log['name']}{msg}"),
+                    )
+                case "run_info" | "info":
+                    return LogProcessingResult(
+                        type=LogProcessingResultType.MESSAGE,
+                        message=log["msg"],
+                    )
+                case "error":
+                    return LogProcessingResult(
+                        type=LogProcessingResultType.ERROR,
+                        message=log["msg"],
+                    )
         return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
 
 

@@ -19,6 +19,9 @@ from macworp_worker.web.backend_web_api_client import BackendWebApiClient
 from macworp_worker.workflow_engine_cmd_generators.nextflow_cmd_generator import (
     NextflowCmdGenerator,
 )
+from macworp_worker.workflow_engine_cmd_generators.snakemake_cmd_generator import (
+    SnakemakeCmdGenerator,
+)
 
 
 class Executor(Process):
@@ -60,6 +63,7 @@ class Executor(Process):
     def __init__(
         self,
         nextflow_executable: Path,
+        snakemake_executable: Path,
         backend_web_api_client: BackendWebApiClient,
         project_data_path: Path,
         project_queue: Queue,
@@ -71,6 +75,7 @@ class Executor(Process):
     ):
         super().__init__()
         self.nextflow_executable: Path = nextflow_executable
+        self.snakemake_executable: Path = snakemake_executable
         self.backend_web_api_client = backend_web_api_client
         self.project_data_path: Path = project_data_path
         self.project_queue: Queue = project_queue
@@ -149,18 +154,11 @@ class Executor(Process):
 
             command = []
 
-            if workflow["definition"]["engine"] == str(
-                SupportedWorkflowEngine.NEXTFLOW
-            ):
-                command = NextflowCmdGenerator(
-                    self.nextflow_executable,
-                    self.backend_web_api_client,
-                    logger,
-                    self.weblog_proxy_port,
-                ).generate_command(
-                    project_dir, work_dir, project_params, workflow["definition"]
+            try:
+                workflow_engine = SupportedWorkflowEngine.from_str(
+                    workflow["definition"]["engine"]
                 )
-            else:
+            except ValueError as e:
                 logger.error(
                     "[WORKER / PROJECT %i] Unsupported workflow engine: %s",
                     project_params.id,
@@ -168,6 +166,26 @@ class Executor(Process):
                 )
                 self.communication_channel.send((delivery_tag, False))
                 continue
+
+            match workflow_engine:
+                case SupportedWorkflowEngine.NEXTFLOW:
+                    command = NextflowCmdGenerator(
+                        self.nextflow_executable,
+                        self.backend_web_api_client,
+                        logger,
+                        self.weblog_proxy_port,
+                    ).generate_command(
+                        project_dir, work_dir, project_params, workflow["definition"]
+                    )
+                case SupportedWorkflowEngine.SNAKEMAKE:
+                    command = SnakemakeCmdGenerator(
+                        self.snakemake_executable,
+                        self.backend_web_api_client,
+                        logger,
+                        self.weblog_proxy_port,
+                    ).generate_command(
+                        project_dir, work_dir, project_params, workflow["definition"]
+                    )
 
             logger.debug(
                 "[WORKER / PROJECT %i] %s",
@@ -184,11 +202,21 @@ class Executor(Process):
             )
             workflow_stdout, workflow_stderr = workflow_process.communicate()
 
-            if not self.keep_intermediate_files:
-                shutil.rmtree(work_dir, ignore_errors=True)
-                shutil.rmtree(project_dir.joinpath(".nextflow"), ignore_errors=True)
-                if workflow_process.returncode == 0:
-                    project_dir.joinpath(".nextflow.log").unlink()
+            match workflow_engine:
+                case SupportedWorkflowEngine.NEXTFLOW:
+                    NextflowCmdGenerator.cleanup(
+                        project_dir,
+                        work_dir,
+                        workflow_process.returncode == 0,
+                        self.keep_intermediate_files,
+                    )
+                case SupportedWorkflowEngine.SNAKEMAKE:
+                    SnakemakeCmdGenerator.cleanup(
+                        project_dir,
+                        work_dir,
+                        workflow_process.returncode == 0,
+                        self.keep_intermediate_files,
+                    )
 
             if workflow_process.returncode != 0:
                 logger.error(

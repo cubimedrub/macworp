@@ -4,16 +4,21 @@ from pathlib import Path
 import shutil
 from typing import Any, ClassVar, Dict, List
 
+from git import Repo as GitRepo
+
 from macworp_utils.exchange.queued_project import QueuedProject  # type: ignore[import-untyped]
 from macworp_utils.constants import SupportedWorkflowEngine  # type: ignore[import-untyped]
 from macworp_worker.workflow_engine_cmd_generators.cmd_generator import CmdGenerator
 
 
-class NextflowCmdGenerator(CmdGenerator):
+class SnakemakeCmdGenerator(CmdGenerator):
     """Executes a workflow on a project."""
 
-    WORKFLOW_ENGINE_PARAMETER_PREFIX: ClassVar[str] = "-"
+    WORKFLOW_ENGINE_PARAMETER_PREFIX: ClassVar[str] = "--"
     """Prefix for workflow engine parameters"""
+
+    LOG_DIR_NAME_IN_CACHE_DIR: ClassVar[str] = "log"
+    """Name of the log directory in the cache directory"""
 
     def generate_command(
         self,
@@ -25,49 +30,67 @@ class NextflowCmdGenerator(CmdGenerator):
         # Start `nextflow run -work-dir ... -with-weblog ...`
         command = [
             str(self.workflow_engine_executable),
-            "run",
-            "-work-dir",
-            str(work_dir),
-            "-with-weblog",
+            "--directory",
+            str(project_dir),
+            "--default-resources",
+            f"tmpdir='{str(work_dir)}'",
+            "--wms-monitor",
             (
-                f"http://127.0.0.1:{self.weblog_proxy_port}/{SupportedWorkflowEngine.NEXTFLOW.value}"
-                f"/projects/{project_params.id}"
+                f"http://127.0.0.1:{self.weblog_proxy_port}/{SupportedWorkflowEngine.SNAKEMAKE}"
             ),
+            "--wms-monitor-arg",
+            f"project_id={project_params.id}",
         ]
 
         # Add developer defined workflow engine parameters, e.g. "-profile docker"
         command += self.__class__.get_workflow_engine_params(workflow_settings)
 
         # Add workflow source
-        command += self.get_workflow_source(workflow_settings)
+        command += self.get_workflow_source(workflow_settings, work_dir=work_dir)
+
+        config_params = []
 
         # Add workflow dynamic parameters
-        command += self.get_workflow_arguments(
+        config_params += self.get_workflow_arguments(
             project_dir, project_params.workflow_arguments
         )
 
         # Add workflow dynamic parameters
-        command += self.get_workflow_arguments(
+        config_params += self.get_workflow_arguments(
             project_dir, workflow_settings["parameters"]["static"], is_static=True
         )
 
+        if len(config_params) > 0:
+            command.append("--config")
+            command.append(" ".join(config_params))
+
         return command
 
-    def get_workflow_source(self, workflow_settings: Dict[str, Any]) -> List[str]:
-        """Returns the workflow source as list of strings."""
+    def get_workflow_source(
+        self, workflow_settings: Dict[str, Any], work_dir: Path
+    ) -> List[str]:
+        """
+        Returns the snakefile option.
+        If the workflow source is remote, the repository is cloned to the work directory.
+        """
 
         workflow_source = workflow_settings["src"]
         match workflow_source["type"]:
             case "local":
                 directory = Path(workflow_source["directory"]).absolute()
                 directory = directory.joinpath(workflow_source["script"])
-                return [str(directory)]
+                return ["--snakefile", str(directory)]
             case "remote":
-                source = [workflow_source["url"]]
-                if "version" in workflow_source:
-                    source.append("-r")
-                    source.append(workflow_source["version"])
-                return source
+                local_repo_path = work_dir.joinpath("workflow_repo")
+                GitRepo.clone_from(
+                    workflow_source["url"],
+                    local_repo_path,
+                    multi_options=[f"--branch {workflow_source['version']}"],
+                )
+                return [
+                    "--snakefile",
+                    str(local_repo_path.joinpath("Snakefile")),
+                ]
             case _:
                 raise ValueError(
                     f"Unsupported workflow location: {workflow_source['type']}"
@@ -97,16 +120,12 @@ class NextflowCmdGenerator(CmdGenerator):
         List[str]
             List of processed arguments ready for command line
         """
-        processed_arguments = []
-        for argument in workflow_arguments:
-            if argument["type"] == "separator":
-                continue
-            processed_arguments.append(f"--{argument['name']}")
-            processed_arguments.append(
-                self.process_workflow_param(project_dir, argument, is_static)
-            )
 
-        return processed_arguments
+        return [
+            f"{argument['name']}='{self.process_workflow_param(project_dir, argument, is_static)}'"
+            for argument in workflow_arguments
+            if argument["type"] != "separator"
+        ]
 
     @classmethod
     def cleanup(
@@ -116,11 +135,16 @@ class NextflowCmdGenerator(CmdGenerator):
         is_success: bool,
         keep_intermediate_files: bool,
     ) -> None:
+        snakemake_cache_dir = project_dir.joinpath(".snakemake")
         if not keep_intermediate_files:
-            nextflow_cache_dir = project_dir.joinpath(".nextflow")
             if work_dir.is_dir():
                 shutil.rmtree(work_dir, ignore_errors=True)
-            if nextflow_cache_dir.is_dir():
-                shutil.rmtree(nextflow_cache_dir, ignore_errors=True)
-        if is_success:
-            project_dir.joinpath(".nextflow.log").unlink()
+            if snakemake_cache_dir.is_dir():
+                if is_success:
+                    # delete the complete cache directory on success
+                    shutil.rmtree(snakemake_cache_dir, ignore_errors=True)
+                else:
+                    # delete everything except the log directory on failure
+                    for node in snakemake_cache_dir.iterdir():
+                        if node.is_dir() and node.name != cls.LOG_DIR_NAME_IN_CACHE_DIR:
+                            shutil.rmtree(node, ignore_errors=True)

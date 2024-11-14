@@ -459,7 +459,7 @@ export default {
                 "access_token": this.$store.state.login.jwt
             })
             this.$socket.on("error", data => {
-                this.error_report = data.error_report
+                this.error_report += `${data.error_report}\n`
             })
             this.$socket.on("finished-project", () => {
                 this.project.is_scheduled = false

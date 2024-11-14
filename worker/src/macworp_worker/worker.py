@@ -112,6 +112,8 @@ class Worker:
     ----------
     __nf_bin: Path
         Path to Nextflow binary
+    __snakemake_bin: Path
+        Path to Snakemake binary
     __backend_api_client: NFCloudAPIClient
         Client for communicating with the NFCloud API
     __project_data_path: Path
@@ -137,6 +139,7 @@ class Worker:
     def __init__(
         self,
         nf_bin: Path,
+        snakemake_bin: Path,
         backend_api_client: BackendWebApiClient,
         projects_data_path: Path,
         rabbit_mq_url: str,
@@ -148,6 +151,7 @@ class Worker:
     ):
         # nextflow binary
         self.__nf_bin: Path = nf_bin
+        self.__snakemake_bin = snakemake_bin
         # nextflow cloud attributes
         self.__backend_api_client = backend_api_client
         self.__project_data_path: Path = projects_data_path
@@ -188,6 +192,7 @@ class Worker:
                     ro_comm, rw_comm = Pipe(duplex=False)
                     executor = Executor(
                         self.__nf_bin,
+                        self.__snakemake_bin,
                         self.__backend_api_client,
                         self.__project_data_path,
                         project_queue,

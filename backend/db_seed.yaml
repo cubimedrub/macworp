@@ -140,4 +140,33 @@ seeds:
                 ]
             }
         }
-
+  - model: Workflow
+    attributes:
+      name: "Snakemake Demo: Result rendering"
+      description: "Creates a variety of result types for testing the rendering of results using snakemake."
+      is_published: true
+      is_validated: true
+      definition: |
+        {
+            "engine": "snakemake",
+            "src": {
+                "type": "local",
+                "directory": "./demo_workflows/snakemake/result_demo",
+                "script": "Snakefile"
+            },
+            "engine_parameters": [],
+            "parameters": {
+                "dynamic": [],
+                "static": [
+                    {
+                        "type": "path",
+                        "name": "resultsFolder",
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false,
+                        "value": "./results"
+                    }
+                ]
+            }
+        }

@@ -68,7 +68,6 @@ async_mode = "threading"
 """Mode for SocketIO
 """
 if not Configuration.values()["debug"]:
-    eventlet.monkey_patch()
     async_mode = "eventlet"
 
 socketio = SocketIO(

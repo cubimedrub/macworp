@@ -468,7 +468,6 @@ export default {
                 this.local_event_bus.$emit(this.reload_project_files_event)
             })
             this.$socket.on("new-progress", data => {
-                console.error(data)
                 this.project.submitted_processes = data.submitted_processes
                 this.project.completed_processes = data.completed_processes
                 this.logs.push(data.details)

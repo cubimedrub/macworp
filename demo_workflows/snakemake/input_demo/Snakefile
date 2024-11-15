@@ -1,0 +1,30 @@
+import sys
+
+cmdline = " ".join(sys.argv)
+
+rule all:
+    input:
+        directory(config["resultsFolder"])
+
+rule print_params:
+    output:
+        directory(config["resultsFolder"])
+    shell:
+        """
+        echo {config}
+        mkdir -p {output}
+        echo "inFile => {config[inFile]}" >> {output}/params.txt
+        echo "inFiles => {config[inFiles]}" >> {output}/params.txt
+        echo "inFolder => {config[inFolder]}" >> {output}/params.txt
+        echo "txtFiles => {config[txtFiles]}" >> {output}/params.txt
+        echo "inFolders => {config[inFolders]}" >> {output}/params.txt
+        echo "singleLineText => {config[singleLineText]}" >> {output}/params.txt
+        echo "numberOfNewlines => {config[numberOfNewlines]}" >> {output}/params.txt
+        echo "valueSelect => {config[valueSelect]}" >> {output}/params.txt
+        echo "multilineText => {config[multilineText]}" >> {output}/params.txt
+
+        echo "The following is the full CMD line" >> {output}/params.txt
+        echo "{cmdline}" >> {output}/params.txt
+
+        echo "\n\nSome of the parameters values need to be put in double quotes to avoid errors when copying it into the CMD line. e.g. --default-resources \"tmpdir='<path>'"\" >> {output}/params.txt
+        """

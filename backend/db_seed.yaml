@@ -170,3 +170,113 @@ seeds:
                 ]
             }
         }
+  - model: Workflow
+    attributes:
+      name: "Snakemake Demo: Input options"
+      description: "Snakemake workflow rendering all input options and prints the selected values into a file to show how they are given to the workflow call."
+      is_published: true
+      is_validated: true
+      definition: |
+        {
+            "engine": "snakemake",
+            "src": { 
+                "type": "local",
+                "directory": "./demo_workflows/snakemake/input_demo",
+                "script": "Snakefile"
+            },
+            "engine_parameters": [],
+            "parameters": {
+                "dynamic": [
+                    {
+                        "type": "path",
+                        "name": "inFile",
+                        "label": "Input file",
+                        "desc": "Single file",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "path",
+                        "name": "inFolder",
+                        "label": "Input folder",
+                        "desc": "Single folder",
+                        "selectable_files": false,
+                        "selectable_folders": true
+                    },
+                    {
+                        "type": "paths",
+                        "name": "inFiles",
+                        "label": "Multiple input files",
+                        "desc": "Multiple files",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "paths",
+                        "name": "inFolders",
+                        "label": "Multiple input folders",
+                        "desc": "Multiple folder",
+                        "selectable_files": false,
+                        "selectable_folders": true
+                    },
+                    {
+                        "type": "file-glob",
+                        "name": "txtFiles",
+                        "label": "Text files",
+                        "desc": "File \"regex\", e.g. *.txt"
+                    },
+                    {
+                        "type": "number",
+                        "name": "numberOfNewlines",
+                        "label": "Number of newlines",
+                        "desc": "Number input"
+                    },
+                    {
+                        "type": "text",
+                        "name": "singleLineText",
+                        "label": "Single line text",
+                        "desc": "Single line text"
+                    },
+                    {
+                        "type": "text",
+                        "name": "multilineText",
+                        "label": "Multiple line text",
+                        "desc": "Multiline text",
+                        "is_multiline": true
+                    },
+                    {
+                        "type": "separator",
+                        "label": "This separator is not a real input, but an element to structure the form"
+                    },
+                    {
+                        "type": "value-select",
+                        "name": "valueSelect",
+                        "label": "Selecting on of multiple values",
+                        "desc": "The value behind Yes is true, the value behind No is false",
+                        "options": [
+                            {
+                                "label": "Yes",
+                                "value": "true"
+                            },
+                            {
+                                "label": "No",
+                                "value": "false"
+                            }
+                        ],
+                        "value": "true"
+                    }
+                ],
+                "static": [
+                    {
+                        "type": "path",
+                        "name": "resultsFolder",
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false,
+                        "value": "./results"
+                    }
+                ]
+            }
+        }
+  

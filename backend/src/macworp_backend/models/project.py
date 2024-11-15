@@ -7,11 +7,10 @@ from pathlib import Path
 import shutil
 from typing import IO, Any, Dict, Optional
 
-from macworp_utils.exchange.queued_project import QueuedProject
+from macworp_backend.models.workflow import Workflow
 from macworp_utils.path import is_within_path, secure_joinpath
 from macworp_utils.constants import SupportedWorkflowEngine
-from peewee import BigAutoField, CharField, BooleanField, IntegerField, BigIntegerField
-from playhouse.postgres_ext import BinaryJSONField
+from peewee import BigAutoField, CharField, BooleanField, IntegerField
 from pydantic import BaseModel
 from typing_extensions import Buffer
 
@@ -44,8 +43,6 @@ class Project(db.Model):  # type: ignore[name-defined]
 
     id = BigAutoField(primary_key=True)
     name = CharField(max_length=512, null=False)
-    workflow_id = BigIntegerField(null=False, default=0)
-    workflow_arguments = BinaryJSONField(null=False, default={})
     is_scheduled = BooleanField(null=False, default=False)
     submitted_processes = IntegerField(null=False, default=0)
     completed_processes = IntegerField(null=False, default=0)
@@ -111,8 +108,6 @@ class Project(db.Model):  # type: ignore[name-defined]
         return {
             "id": self.id,
             "name": self.name,
-            "workflow_arguments": self.workflow_arguments,
-            "workflow_id": self.workflow_id,
             "submitted_processes": self.submitted_processes,
             "completed_processes": self.completed_processes,
             "is_scheduled": self.is_scheduled,
@@ -264,19 +259,58 @@ class Project(db.Model):  # type: ignore[name-defined]
             return True
         return False
 
-    def get_queue_representation(self) -> QueuedProject:
+    def get_cache_directory(self) -> Path:
         """
+        Returns the cache directory for MAcWorP specific files.
+        Makes sure the directory exists.
+
         Returns
         -------
-        JSON string for message queue
+        Path
+            Cache directory
         """
-        if self.workflow_id <= 0:
-            raise ValueError("Workflow ID is not set.")
-        return QueuedProject(
-            id=self.id,  # type: ignore[arg-type]
-            workflow_id=self.workflow_id,  # type: ignore[arg-type]
-            workflow_arguments=self.workflow_arguments,  # type: ignore[arg-type]
-        )
+        cache_dir = self.get_path(Path(".macworp_cache"))
+        if not cache_dir.is_dir():
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir
+
+    def get_history_directory(self) -> Path:
+        """
+        Returns the history directory for MAcWorP specific files.
+        Makes sure the directory exists.
+        """
+
+        history_dir = self.get_cache_directory().joinpath("history")
+        if not history_dir.is_dir():
+            history_dir.mkdir(parents=True, exist_ok=True)
+        return history_dir
+
+    def get_workflow_params_cache_file(self, workflow: Workflow) -> Path:
+        """
+        Returns the path to the cache file for the workflow parameters.
+
+        Parameters
+        ----------
+        workflow : Workflow
+            Workflow
+
+        Returns
+        -------
+        Path
+            Cache file path
+        """
+        return self.get_history_directory().joinpath(f"{workflow.id}.json")
+
+    def get_last_executed_workflow_cache_file(self) -> Path:
+        """
+        Returns the path to the cache file for the last executed workflow.
+
+        Returns
+        -------
+        Path
+            Cache file path
+        """
+        return self.get_history_directory().joinpath("last_executed_workflow.json")
 
     def process_workflow_log(
         self, log: Dict[str, Any], workflow_engine: SupportedWorkflowEngine

@@ -6,6 +6,8 @@ from typing import Optional
 from urllib.parse import unquote
 
 # 3rd party imports
+from macworp_backend.models.workflow import Workflow
+from macworp_utils.exchange.queued_project import QueuedProject
 import pandas as pd
 from flask import make_response, request, jsonify, send_file, Response
 from flask_login import login_required
@@ -115,49 +117,6 @@ class ProjectsController:
             return jsonify(project.to_dict())
 
         return jsonify({"errors": errors}), error_status_code
-
-    @staticmethod
-    @app.route("/api/projects/<int:id>/update", methods=["POST"])
-    @login_required
-    def update(id: int):
-        """
-        Endpoint for updating project.
-
-        Parameters
-        ----------
-        id : int
-            Project ID
-
-        Returns
-        -------
-        Response
-            200 - on success
-            404 - when ressource not found
-            422 - on error
-        """
-        errors = defaultdict(list)
-        data = request.json
-
-        for key in ["workflow_id", "workflow_arguments"]:
-            if not key in data:
-                errors[key].append("can not be empty")
-
-        if not isinstance(data["workflow_id"], int):
-            errors["workflow_id"].append("must be integer")
-
-        if not isinstance(data["workflow_arguments"], dict):
-            errors["workflow_arguments"].append("must be a dictionary")
-
-        if len(errors):
-            jsonify({"errors": errors})
-        project: Optional[Project] = Project.get_or_none(Project.id == id)
-        if project:
-            project.workflow_arguments = data["workflow_arguments"]
-            project.workflow_id = data["workflow_id"]  # TODO save id
-            project.save()
-            return jsonify({}), 200
-        else:
-            return jsonify({}), 404
 
     @staticmethod
     @app.route("/api/projects/<int:id>/delete", methods=["POST"])
@@ -398,9 +357,11 @@ class ProjectsController:
         return "", 200
 
     @staticmethod
-    @app.route("/api/projects/<int:id>/schedule", methods=["POST"])
+    @app.route(
+        "/api/projects/<int:project_id>/schedule/<int:workflow_id>", methods=["POST"]
+    )
     @login_required
-    def schedule(id: int):
+    def schedule(project_id: int, workflow_id: int):
         """
         Endpoint to schedule project for execution in RabbitMQ.
 
@@ -412,14 +373,20 @@ class ProjectsController:
         Returns
         -------
         Response
-            200 - successfull
+            200 - successful
+            404 - project or workflow not found
             409 - project is already in ignore state
             422 - errors
         """
         errors = defaultdict(list)
-        project: Optional[Project] = Project.get_or_none(Project.id == id)
+        project: Optional[Project] = Project.get_or_none(Project.id == project_id)
+
         if project is None:
-            return "", 404
+            return (
+                jsonify({"errors": {"general": "project not found"}}),
+                404,
+            )
+
         if project.ignore:
             return (
                 jsonify(
@@ -431,42 +398,94 @@ class ProjectsController:
                 ),
                 409,
             )
-        if project and not project.is_scheduled:
-            for arguments in project.workflow_arguments:
-                if arguments["type"] == "separator":
-                    continue
-                if (
-                    not "value" in arguments
-                    or "value" in arguments
-                    and arguments["value"] is None
-                ):
-                    errors[arguments["label"]].append("cannot be empty")
-            if len(errors) > 0:
-                return jsonify({"errors": errors}), 422
-            with db.database.atomic() as transaction:
-                project.is_scheduled = True
-                project.save()
-                try:
-                    connection = pika.BlockingConnection(
-                        pika.URLParameters(Configuration.values()["rabbit_mq"]["url"])
-                    )
-                    channel = connection.channel()
-                    channel.basic_publish(
-                        exchange="",
-                        routing_key=Configuration.values()["rabbit_mq"][
-                            "project_workflow_queue"
-                        ],
-                        body=project.get_queue_representation()
-                        .model_dump_json()
-                        .encode(),
-                    )
-                    connection.close()
-                except BaseException as exception:
-                    transaction.rollback()
-                    raise exception
-                return jsonify({"is_scheduled": project.is_scheduled})
-        else:
+        if project.is_scheduled:
             return jsonify({"errors": {"general": "project not found"}}), 422
+
+        workflow: Optional[Project] = Workflow.get_or_none(Workflow.id == workflow_id)
+        if workflow is None:
+            return (
+                jsonify({"errors": {"general": "workflow not found"}}),
+                404,
+            )
+
+        workflow_parameters = request.json
+        app.logger.debug(f"Workflow parameters: {workflow_parameters}")
+
+        if workflow_parameters is None:
+            return (
+                jsonify({"errors": {"general": "workflow parameters cannot be none"}}),
+                422,
+            )
+
+        # Check if arguments are present
+        present_params = {
+            param["name"]
+            for param in workflow_parameters
+            if param["type"] != "separator"
+        }
+        for expected_argument in workflow.definition["parameters"]["dynamic"]:
+            if expected_argument["type"] == "separator":
+                continue
+            if expected_argument["name"] not in present_params:
+                errors[expected_argument["label"]].append("is missing")
+
+        if len(errors) > 0:
+            return jsonify({"errors": errors}), 422
+
+        for param in workflow_parameters:
+            if param["type"] == "separator":
+                continue
+            if not "value" in param or "value" in param and param["value"] is None:
+                errors[param["label"]].append("cannot be empty")
+
+        if len(errors) > 0:
+            return jsonify({"errors": errors}), 422
+
+        # Save params to cache file
+        params_cache_file_path = project.get_workflow_params_cache_file(workflow)
+        params_cache_file_path.write_text(
+            json.dumps(
+                {
+                    param["name"]: param["value"]
+                    for param in workflow_parameters
+                    if param["type"] != "separator"
+                }
+            )
+        )
+
+        last_executed_workflow_cache_file_path = (
+            project.get_last_executed_workflow_cache_file()
+        )
+        last_executed_workflow_cache_file_path.write_text(
+            json.dumps({"id": workflow_id})
+        )
+
+        queued_project = QueuedProject(
+            id=project.id,
+            workflow_id=workflow.id,
+            workflow_arguments=workflow_parameters,
+        )
+
+        with db.database.atomic() as transaction:
+            project.is_scheduled = True  # type: ignore[assignment]
+            project.save()
+            try:
+                connection = pika.BlockingConnection(
+                    pika.URLParameters(Configuration.values()["rabbit_mq"]["url"])
+                )
+                channel = connection.channel()
+                channel.basic_publish(
+                    exchange="",
+                    routing_key=Configuration.values()["rabbit_mq"][
+                        "project_workflow_queue"
+                    ],
+                    body=queued_project.model_dump_json().encode(),
+                )
+                connection.close()
+            except BaseException as exception:
+                transaction.rollback()
+                raise exception
+        return jsonify({"is_scheduled": project.is_scheduled})
 
     @staticmethod
     @app.route("/api/projects/<int:project_id>/is-ignored", methods=["GET"])
@@ -818,3 +837,104 @@ class ProjectsController:
             return jsonify({"errors": {"path": ["not a file"]}}), 422
 
         return Response(metadata_file_path.read_text(), content_type="application/json")
+
+    @staticmethod
+    @app.route(
+        "/api/projects/<int:project_id>/cached-workflow-parameters/<int:workflow_id>",
+        methods=["GET"],
+    )
+    @login_required
+    def cached_workflow_parameters(project_id: int, workflow_id: int):
+        """
+        Returns the cached workflow parameters of a project
+
+        Method
+        ------
+        GET
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+        workflow_id : int
+            Workflow ID
+
+        Returns
+        -------
+        Response
+            * 200 - on success, JSON with cached parameters
+            * 404 - on project or workflow not found
+            * 422 - on cached parameters not found
+
+        """
+        project: Optional[Project] = Project.get_or_none(Project.id == project_id)
+        if project is None:
+            return jsonify({"errors": {"general": ["project not found"]}}), 404
+
+        workflow: Optional[Workflow] = Workflow.get_or_none(Workflow.id == workflow_id)
+        if workflow is None:
+            return jsonify({"errors": {"general": ["workflow not found"]}}), 404
+
+        params_cache_file_path = project.get_workflow_params_cache_file(workflow)
+        if not params_cache_file_path.is_file():
+            return (
+                jsonify({"errors": {"general": ["cached parameters not found"]}}),
+                422,
+            )
+
+        return Response(
+            params_cache_file_path.read_text(), content_type="application/json"
+        )
+
+    @staticmethod
+    @app.route(
+        "/api/projects/<int:project_id>/last-executed-workflow",
+        methods=["GET"],
+    )
+    @login_required
+    def last_executed_workflow(project_id: int):
+        """
+        Returns the cached workflow parameters of a project
+
+        Method
+        ------
+        GET
+
+        Parameters
+        ----------
+        project_id : int
+            Project ID
+        Returns
+        -------
+        Response
+            * 200 - on success, JSON with cached parameters
+            * 404 - on project or workflow not found
+            * 422 - on cached parameters not found
+
+        """
+        project: Optional[Project] = Project.get_or_none(Project.id == project_id)
+        if project is None:
+            return jsonify({"errors": {"general": ["project not found"]}}), 404
+
+        last_executed_workflow_cache_file_path = (
+            project.get_last_executed_workflow_cache_file()
+        )
+
+        if not last_executed_workflow_cache_file_path.is_file():
+            return (
+                jsonify(
+                    {
+                        "errors": {
+                            "general": [
+                                "now workflow was executed yet or the cache was deleted"
+                            ]
+                        }
+                    }
+                ),
+                422,
+            )
+
+        return Response(
+            last_executed_workflow_cache_file_path.read_text(),
+            content_type="application/json",
+        )

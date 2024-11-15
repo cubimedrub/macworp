@@ -18,6 +18,4 @@ class QueuedProject(BaseModel):
 
     id: int = 0
     workflow_id: int = 0
-    workflow_arguments: List[Dict[str, Any]] = Field(
-        default_factory=List[Dict[str, Any]]
-    )
+    workflow_arguments: List[Dict[str, Any]] = Field(default_factory=list)

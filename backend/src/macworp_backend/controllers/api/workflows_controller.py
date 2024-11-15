@@ -193,11 +193,21 @@ class WorkflowsControllers:
 
     @staticmethod
     @app.route(
-        "/api/workflows/<int:workflow_id>/arguments", endpoint="workflow_arguments"
+        "/api/workflows/<int:workflow_id>/parameters", endpoint="workflow_parameters"
     )
-    def arguments(workflow_id: int):
+    def parameters(workflow_id: int):
         """
-        Endpoint for deleteing a workflow.
+        Returns the dynamic parameters of a workflow
+
+        Method
+        ------
+        GET
+
+        Parameters
+        ----------
+        workflow_id : int
+            Workflow ID
+
         Returns
         -------
         Response

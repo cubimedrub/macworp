@@ -62,7 +62,7 @@ class SnakemakeCmdGenerator(CmdGenerator):
 
         if len(config_params) > 0:
             command.append("--config")
-            command.append(" ".join(config_params))
+            command += config_params
 
         return command
 

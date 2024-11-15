@@ -91,10 +91,10 @@ To keep track of database changes, this project uses [`peewee_migrate`](https://
 Migrations are located in `macworp/migrations/`. For now this needs to be added manually when using `pw_migrate`. 
 
 #### Create new migration
-`pw_migrate create --directory macworp/migrations --database postgresql://postgres:developer@127.0.0.1:5434/macworp "<description>"`
+`pw_migrate create --directory macworp/migrations --database postgresql://postgres:developer@127.0.0.1:5434/macworp --directory backend/src/macworp_backend/migrations "<description>"`
 
 #### Run migrations
-`pw_migrate migrate --database 'postgresql://postgres:developer@127.0.0.1:5434/macworp' --directory macworp/migrations`
+`pw_migrate migrate --database 'postgresql://postgres:developer@127.0.0.1:5434/macworp' --directory backend/src/macworp_backend/migrations`
 
 #### Accessing the database
 `psql postgresql://postgres:developer@127.0.0.1:5434/macworp`

@@ -82,11 +82,16 @@ class SnakemakeCmdGenerator(CmdGenerator):
                 return ["--snakefile", str(directory)]
             case "remote":
                 local_repo_path = work_dir.joinpath("workflow_repo")
-                GitRepo.clone_from(
-                    workflow_source["url"],
-                    local_repo_path,
-                    multi_options=[f"--branch {workflow_source['version']}"],
-                )
+                if not local_repo_path.exists():
+                    GitRepo.clone_from(
+                        workflow_source["url"],
+                        local_repo_path,
+                        multi_options=[f"--branch {workflow_source['version']}"],
+                    )
+                else:
+                    repo = GitRepo(local_repo_path)
+                    repo.remotes.origin.fetch()
+                    repo.git.checkout(workflow_source["version"])
                 return [
                     "--snakefile",
                     str(local_repo_path.joinpath("Snakefile")),

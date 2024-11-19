@@ -3,12 +3,14 @@
         <div class="row application-content-row">
             <nav :class="{'extended-menu': show_menu}" class="col-12 col-lg-2 position-sticky d-flex flex-column py-3 application-nav-column collapsed-menu">
                 <div class="d-flex flex-column justify-content-center align-items-center">
-                    <NuxtLink to="/" class="text-decoration-none">
-                        <img class="w-100" src="~/assets/images/logo.svg" alt="Massive Accessible Workflow Platform Logo"/>
-                        <h1 class="brand text-break">
-                            MAcWorP
-                        </h1>
-                        <small>Massive Accessible Workflow Platform</small>
+                    <NuxtLink to="/" class="d-flex flex-row flex-lg-column mb-2 mb-lg-0 text-decoration-none">
+                        <img class="w-100 logo" src="~/assets/images/logo.svg" alt="Massive Accessible Workflow Platform Logo"/>
+                        <div>
+                            <h1 class="brand text-break">
+                                MAcWorP
+                            </h1>
+                            <small>Massive Accessible Workflow Platform</small>
+                        </div>
                     </NuxtLink>
                     <button @click="toggleMenu" type="button" class="btn btn-sm btn-outline-primary d-lg-none">
                         <i :class="{'fa-times': show_menu, 'fa-bars': !show_menu}" class="fas"></i>

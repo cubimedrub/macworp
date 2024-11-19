@@ -182,7 +182,7 @@ class Project(db.Model):  # type: ignore[name-defined]
         ) as project_file:
             project_file.write(file)
 
-        return Path("/").joinpath(self.__secure_path_for_join(target_file_path))
+        return target_directory
 
     def add_file_chunk(
         self, target_file_path: Path, chunk_offset: int, file_chunk: IO[bytes]
@@ -214,7 +214,7 @@ class Project(db.Model):  # type: ignore[name-defined]
             project_file.seek(chunk_offset)
             project_file.write(file_chunk.read())
 
-        return Path("/").joinpath(self.__secure_path_for_join(target_file_path))
+        return target_directory
 
     def remove_path(self, path: Path) -> bool:
         """

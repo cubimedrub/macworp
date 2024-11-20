@@ -1,5 +1,5 @@
 <template>
-    <div class="broder border-dark">
+    <div class="editable-file-browser">
         <div class="row">
             <div class="col-12 col-md-6 col-lg-4 offset-md-6 offset-lg-8">
                 <div class="input-group mb-3">
@@ -11,37 +11,45 @@
                 </div>
             </div>
         </div>
-        <ul class="list-group mb-3">
-            <li v-if="!is_current_directory_root" @click="moveFolderUp()" class="list-group-item">
-                <i class="fas fa-angle-double-left clickable"></i>
-            </li>
-            <li v-for="path in current_directory_folders" :key="path" class="list-group-item d-flex justify-content-between">
-                <span @click="moveIntoFolder(path)" class="clickable">
-                    <i class="fas fa-folder"></i>
-                    {{path}}/
-                </span>
-                <div class="btn-group">
-                    <button @click="download(`${current_directory}/${path}`)" type="button" class="btn btn-secondary btn-sm">
-                        <i class="fas fa-download"></i>
-                    </button>
-                    <button @click="deletePath(`${current_directory}/${path}`, false)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </li>
-            <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
-                <span>{{ file }}</span>
-                <div class="btn-group">
-                    <button @click="download(`${current_directory}/${file}`)" type="button" class="btn btn-secondary btn-sm">
-                        <i class="fas fa-download"></i>
-                    </button>
-                    <button @click="deletePath(`${current_directory}/${file}`, true)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </li>
-        </ul>
-        <div ref="dropzone" class="dropzone mb-3"></div>
+        
+        <div ref="dropzone" class="dropzone">
+            <div class="d-flex justify-content-center align-items-center w-100 upload-notice">
+                <small>Drag and drop file/folders to upload</small>
+            </div>
+            <ul :class="{'none-element-visibility-border': !has_elements}" class="list-group">
+                <li v-if="!is_current_directory_root" @click="moveFolderUp()" class="list-group-item">
+                    <i class="fas fa-angle-double-left clickable"></i>
+                </li>
+                <li v-for="path in current_directory_folders" :key="path" class="list-group-item d-flex justify-content-between">
+                    <span @click="moveIntoFolder(path)" class="clickable">
+                        <i class="fas fa-folder"></i>
+                        {{path}}/
+                    </span>
+                    <div class="btn-group">
+                        <button @click="download(`${current_directory}/${path}`)" type="button" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button @click="deletePath(`${current_directory}/${path}`, false)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </li>
+                <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
+                    <span>{{ file }}</span>
+                    <div class="btn-group">
+                        <button @click="download(`${current_directory}/${file}`)" type="button" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button @click="deletePath(`${current_directory}/${file}`, true)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </li>
+            </ul>
+            <div v-if="current_directory_folders.length + current_directory_files.length > 5" class="d-flex justify-content-center align-items-center w-100 upload-notice">
+                <small>Drag and drop file/folders to upload</small>
+            </div>
+        </div>
         <div v-if="upload_queue.length">
             <h3>Upload queue</h3>
             <ul class="list-group">
@@ -253,7 +261,15 @@ export default {
         },
         is_current_directory_root(){
             return this.current_directory == "/"
-        }
+        },
+        /**
+         * Checks if the current directory has elements.
+         * 
+         * @return {Boolean}
+         */
+        has_elements(){
+            return this.current_directory_folders.length + this.current_directory_files.length > 0
+        },
     }
 }
 </script>

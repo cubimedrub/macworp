@@ -19,7 +19,7 @@
                     </tr>
                 </tbody>
             </table>
-            <div class="d-flex justify-content-end">
+            <div class="d-flex justify-content-end mb-3">
                 <button @click="showStartDialog" :disabled="project.is_scheduled || project.ignore" class="btn btn-success mx-3">
                     <i class="fas fa-play"></i>
                     Start workflow
@@ -56,79 +56,65 @@
                     <b>Hint:</b> The error report is not persisted yet. Save it and show it to your trusty developer.
                 </small>
             </div>
-            <Tab :tabs="tabs" :tab_labels="tab_labels" :preselected_tab="selected_tab" :parent_event_bus="local_event_bus">
-                <template v-slot:files>
-                    <EditableFileBrowser
+
+            <EditableFileBrowser
+                :project_id="project.id"
+                :parent_event_bus="local_event_bus"
+                :reload_event="reload_project_files_event"
+                :enabled="!project.is_scheduled"
+                :directory_change_event="directory_change_event"
+            ></EditableFileBrowser>
+
+            <div class="results-container">
+                <template v-for="filepath in current_directory_files">
+                    <ResultsImageViewer
+                        v-if="isImageFile(filepath)"
                         :project_id="project.id"
-                        :parent_event_bus="local_event_bus"
-                        :reload_event="reload_project_files_event"
-                        :enabled="!project.is_scheduled"
-                    ></EditableFileBrowser>
-                </template>
-
-                <template v-slot:results>
-                    <div class="results-container">
-                        <SelectableFileBrowser 
-                            :project_id="project.id"
-                            :parent_event_bus="local_event_bus"
-                            :directory_change_event="result_dir_change_event"
-                            :with_selectable_files="false"
-                            :with_selectable_folders="false"
-                            :reload_event="reload_project_files_event"
-                            :enabled="true"
-                        ></SelectableFileBrowser>
-
-                        <template v-for="filepath in result_dir_file_paths">
-                            <ResultsImageViewer
-                                v-if="isImageFile(filepath)"
-                                :project_id="project.id"
-                                :path="filepath"
-                                :key="filepath"
-                            ></ResultsImageViewer>
-                            <ResultsPDFViewer
-                                v-if="filepath.endsWith('.pdf')"
-                                :project_id="project.id"
-                                :path="filepath"
-                                :key="filepath"
-                            ></ResultsPDFViewer>
-                            <!-- Wraps the SVG in an image tag -->
-                            <ResultsSVGViewer
-                                v-if="filepath.endsWith('.image.svg')"
-                                :project_id="project.id"
-                                :path="filepath"
-                                :embed="false"
-                                :key="filepath"
-                            ></ResultsSVGViewer>
-                            <!-- Adds the SVG into the DOM -->
-                            <ResultsSVGViewer
-                                v-if="filepath.endsWith('.svg') && !filepath.endsWith('.image.svg')"
-                                :project_id="project.id"
-                                :path="filepath"
-                                :embed="true"
-                                :key="filepath"
-                            ></ResultsSVGViewer>
-                            <ResultsPlotlyViewer
-                                v-if="filepath.endsWith('.plotly.json')"
-                                :project_id="project.id"
-                                :path="filepath"
-                                :key="filepath"
-                            ></ResultsPlotlyViewer>
-                            <ResultsTableView
-                                v-if="isTableFile(filepath)"
-                                :project_id="project.id"
-                                :path="filepath"
-                                :key="filepath"
-                            ></ResultsTableView>
-                            <ResultsTextViewer
-                                v-if="filepath.endsWith('txt')"
-                                :project_id="project.id"
-                                :path="filepath"
-                                :key="filepath"
-                            ></ResultsTextViewer>
-                        </template>
-                    </div>
-                </template>
-            </Tab>
+                        :path="filepath"
+                        :key="filepath"
+                    ></ResultsImageViewer>
+                    <ResultsPDFViewer
+                        v-if="filepath.endsWith('.pdf')"
+                        :project_id="project.id"
+                        :path="filepath"
+                        :key="filepath"
+                    ></ResultsPDFViewer>
+                    <!-- Wraps the SVG in an image tag -->
+                    <ResultsSVGViewer
+                        v-if="filepath.endsWith('.image.svg')"
+                        :project_id="project.id"
+                        :path="filepath"
+                        :embed="false"
+                        :key="filepath"
+                    ></ResultsSVGViewer>
+                    <!-- Adds the SVG into the DOM -->
+                    <ResultsSVGViewer
+                        v-if="filepath.endsWith('.svg') && !filepath.endsWith('.image.svg')"
+                        :project_id="project.id"
+                        :path="filepath"
+                        :embed="true"
+                        :key="filepath"
+                    ></ResultsSVGViewer>
+                    <ResultsPlotlyViewer
+                        v-if="filepath.endsWith('.plotly.json')"
+                        :project_id="project.id"
+                        :path="filepath"
+                        :key="filepath"
+                    ></ResultsPlotlyViewer>
+                    <ResultsTableView
+                        v-if="isTableFile(filepath)"
+                        :project_id="project.id"
+                        :path="filepath"
+                        :key="filepath"
+                    ></ResultsTableView>
+                    <ResultsTextViewer
+                        v-if="filepath.endsWith('txt')"
+                        :project_id="project.id"
+                        :path="filepath"
+                        :key="filepath"
+                    ></ResultsTextViewer>
+                </template> 
+            </div>
         </div>
         <div v-if="!project && project_not_found">
             Project not found
@@ -165,13 +151,10 @@ const RELOAD_WORKFLOW_FILES_EVENT = "RELOAD_WORKFLOW_FILES"
 const DELETE_CONFIRMATION_DIALOG_ID = "delete_confirmation_dialog"
 
 /**
- * Keys for tabs
+ * Event for directory change.
  */
-const TABS = ['files', 'results'];
-/**
- * Labels for tabs
- */
-const TAB_LABELS = ['Files', 'Results'];
+ const DIRECTORY_CHANGE_EVENT = "directory-change"
+
 /**
  * Event name for argument changes.
  */
@@ -205,18 +188,12 @@ export default {
             local_event_bus: new Vue(),
             logs: [],
             error_report: null,
-            selected_tab: 0,
-            result_dir_file_paths: []
+            current_directory_files: []
         }
     },
     mounted(){
         this.loadProject()
-        this.bindResultDirChangeEvent()
-        // Set selected tab and bind event for tab changes
-        this.selected_tab = this.$route.query.tab ? TABS.indexOf(this.$route.query.tab) : 0
-        this.local_event_bus.$on("TAB_CHANGED", (tab_idx) => {
-            this.selected_tab = tab_idx
-        })
+        this.bindCurrentDirChange()
         // Lock project on workflow start
         this.local_event_bus.$on(WORKFLOW_SCHEDULED_EVENT, () => {
             this.project.is_scheduled = true
@@ -313,16 +290,16 @@ export default {
         showStartDialog(){
             this.local_event_bus.$emit(OPEN_WORKFLOW_DIALOG)
         },
-        async onResultDirChange(file_browser_attributes){
-            this.result_dir_file_paths = file_browser_attributes.current_directory_files.map(filename => `${file_browser_attributes.current_directory}/${filename}`)
+        async onDirectoryChange(file_browser_attributes){
+            this.current_directory_files = file_browser_attributes.current_directory_files.map(filename => `${file_browser_attributes.current_directory}/${filename}`)
         },
         /**
          * Binds the result dir change event to the local event bus.
          */
-        bindResultDirChangeEvent(){
+        bindCurrentDirChange(){
             this.local_event_bus.$on(
-                this.result_dir_change_event,
-                file_browser_attributes => {this.onResultDirChange(file_browser_attributes)}
+                this.directory_change_event,
+                file_browser_attributes => {this.onDirectoryChange(file_browser_attributes)}
             )
         },
         /**
@@ -376,22 +353,6 @@ export default {
             return DELETE_CONFIRMATION_DIALOG_ID
         },
         /**
-         * Returns tabs
-         *
-         * @returns {string}
-         */
-        tabs(){
-            return TABS
-        },
-        /**
-         * Returns tab labels
-         *
-         * @returns {string}
-         */
-        tab_labels(){
-            return TAB_LABELS
-        },
-        /**
          * Returns the logs as text 
          *
          * @returns {string}
@@ -405,22 +366,14 @@ export default {
          */
         result_dir_change_event(){
             return RESULT_DIR_CHANGE_EVENT
-        }
-    },
-    watch: {
+        },
         /**
-         * Watch for changes in the project id and reload the project.
+         * Access to directory change event.
+         * 
+         * @return {String}
          */
-        selected_tab(){
-            this.$router.replace({
-                name: "projects-id",
-                params: {
-                    id: this.$route.params.id
-                },
-                query: {
-                    tab: this.tabs[this.selected_tab]
-                }
-            })
+        directory_change_event(){
+            return DIRECTORY_CHANGE_EVENT
         }
     }
 }

@@ -8,14 +8,13 @@ from pydantic import BaseModel, Field
 
 
 class QueuedProject(BaseModel):
-    """Reduced representation of the project with all necessary data to run a workflow.
-
-    Parameters
-    ----------
-    BaseModel : _type_
-        _description_
-    """
+    """Reduced representation of the project with all necessary data to run a workflow."""
 
     id: int = 0
+    """Project ID"""
+
     workflow_id: int = 0
+    """ID of workflow to run"""
+
     workflow_arguments: List[Dict[str, Any]] = Field(default_factory=list)
+    """List of dictionaries with workflow arguments"""

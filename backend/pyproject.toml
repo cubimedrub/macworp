@@ -59,7 +59,8 @@ dev = [
     "plotly", # for demo workflow
     "pylint",
     "types-jsonschema",
-    "types-PyYAML"
+    "types-PyYAML",
+    "types-Markdown"
 ]
 
 [project.urls]

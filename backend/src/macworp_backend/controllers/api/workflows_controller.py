@@ -1,13 +1,13 @@
+"""Controller for workflows API endpoints."""
+
 # std imports
 from collections import defaultdict
 import json
-from pathlib import Path
 from typing import Any, Dict, Optional, List
 
 # 3rd party import
 from flask import jsonify, request
 import markdown
-import jsonschema
 
 # internal imports
 from macworp_backend import app
@@ -136,19 +136,19 @@ class WorkflowsControllers:
         RuntimeError
             Workflow cannot be inserted.
         """
-        errors = defaultdict(list)
+        errors: Dict[str, List[Any]] = defaultdict(list)
 
-        data: Dict[str, Any] = request.json
+        data: Dict[str, Any] = request.json  # type: ignore[assignment]
         definition: Optional[str] = data.get("definition", None)
         description: Optional[str] = data.get("description", None)
         is_published: Optional[bool] = data.get("is_published", None)
 
-        errors = Workflow.validate_description(description, errors)
+        errors = Workflow.validate_description(description, errors)  # type: ignore[arg-type]
         errors = Workflow.validate_is_published(is_published, errors)
 
         workflow: Workflow = Workflow.get(Workflow.id == workflow_id)
-        workflow.description = description
-        workflow.is_published = is_published
+        workflow.description = description  # type: ignore[assignment]
+        workflow.is_published = is_published  # type: ignore[assignment]
 
         try:
             workflow.definition = definition
@@ -158,9 +158,9 @@ class WorkflowsControllers:
         if workflow.is_published:
             errors = Workflow.validate_definition(workflow.definition, errors)
             if "definition" not in errors:
-                workflow.is_validated = True
+                workflow.is_validated = True  # type: ignore[assignment]
             else:
-                workflow.is_validated = False
+                workflow.is_validated = False  # type: ignore[assignment]
 
         if len(errors) > 0:
             return jsonify({"errors": errors}), 422
@@ -264,6 +264,6 @@ class WorkflowsControllers:
 
         description = workflow.description
         if parse:
-            description = markdown.markdown(description)
+            description = markdown.markdown(description)  # type: ignore[assignment,arg-type]
 
         return jsonify({"description": description})

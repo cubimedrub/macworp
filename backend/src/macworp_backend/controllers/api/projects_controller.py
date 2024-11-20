@@ -1,3 +1,5 @@
+"""Endpoints for dealing with projects."""
+
 # std imports
 from collections import defaultdict
 import json
@@ -6,23 +8,23 @@ from typing import Optional
 from urllib.parse import unquote
 
 # 3rd party imports
-from macworp_backend.models.workflow import Workflow
-from macworp_utils.exchange.queued_project import QueuedProject
 import pandas as pd
 from flask import make_response, request, jsonify, send_file, Response
-from flask_login import login_required
+from flask_login import login_required  # type: ignore[import-untyped]
 import pika
-import zipstream
+import zipstream  # type: ignore[import-untyped]
 
 # internal imports
 from macworp_utils.constants import (
     WEBLOG_WORKFLOW_ENGINE_HEADER,
     SupportedWorkflowEngine,
 )
+from macworp_backend.models.workflow import Workflow
 from macworp_backend import app, socketio, db_wrapper as db
 from macworp_backend.models.project import Project, LogProcessingResultType
 from macworp_backend.utility.configuration import Configuration
 from macworp_backend.errors.unknown_table_format import UnknownTableFormat
+from macworp_utils.exchange.queued_project import QueuedProject  # type: ignore[import-untyped]
 
 
 class ProjectsController:
@@ -157,7 +159,7 @@ class ProjectsController:
 
         Returns
         -------
-        Reponse
+        Response
             200 - on success
             404 - when project was not found
         """
@@ -305,7 +307,7 @@ class ProjectsController:
         errors = defaultdict(list)
         data = request.json
 
-        path = data.get("path", None)
+        path = data.get("path", None)  # type: ignore[union-attr]
         if path == None:
             errors["path"].append("missing")
         elif not isinstance(path, str):
@@ -517,7 +519,7 @@ class ProjectsController:
     @login_required
     def finished(id: int):
         """
-        Endpoint to finialize set project as finished by the worker.
+        Endpoint to finalize set project as finished by the worker.
 
         Parameters
         ----------
@@ -702,7 +704,7 @@ class ProjectsController:
 
     @staticmethod
     def file_download(path: Path, is_inline: bool) -> Response:
-        """Downloads a file inline or as attatchment
+        """Downloads a file inline or as attachment
 
         Parameters
         ----------

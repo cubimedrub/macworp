@@ -33,7 +33,10 @@ class WorkflowsControllers:
             {
                 "workflows": [
                     workflow.to_dict()
-                    for workflow in Workflow.select().offset(offset).limit(limit)
+                    for workflow in Workflow.select()
+                    .offset(offset)
+                    .limit(limit)
+                    .order_by(Workflow.name)
                 ]
             }
         )

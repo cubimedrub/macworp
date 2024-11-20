@@ -7,28 +7,16 @@
                 Create new workflow
             </NuxtLink>
         </div>
-        <div class="row">
-            <div v-for="workflow in workflows" :key="workflow.id" class="col-sm-3 mb-3">
-                <div class="card shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between">
-                            <template v-if="workflow.is_published">
-                                <i class="fas fa-circle small" style="color: green; margin-top: 0.8em"></i>
-                            </template>
-                            <template v-else>
-                                <i class="fas fa-circle small" style="color: #dc3545; margin-top: 0.8em"></i>
-                            </template>
-                            <h5 class="card-title" style="margin-top: 0.3em">{{ workflow.name }}</h5>
-                            <NuxtLink :to="{name: 'workflows-id', params: {'id': workflow.id}}" class="btn btn-outline-primary btn-sm" style="margin-bottom: 0.1em">
-                                <i class="fas fa-edit"></i>
-                                Edit
-                            </NuxtLink>
-                        </div>
-                        <p class="card-text">{{workflow.description}}</p>
-                    </div>
+        <ul class="list-group">
+            <NuxtLink v-for="workflow in workflows" :to="{name: 'workflows-id', params: {'id': workflow.id}}" :key="workflow.id" class="list-group-item list-group-item-action d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto">
+                    <div class="fw-bold">{{ workflow.name }}</div>
+                    {{workflow.description}}
                 </div>
-            </div>
-        </div>
+                <span v-if="workflow.is_published" class="badge text-bg-primary rounded-pill">published</span>
+                <span v-else class="badge text-bg-warning rounded-pill">not published</span>
+            </NuxtLink>
+        </ul>
     </div>
 </template>
 

@@ -55,6 +55,7 @@ class ProjectsController:
                     .order_by(Project.id.desc())
                     .offset(offset)
                     .limit(limit)
+                    .order_by(Project.name)
                 ]
             }
         )

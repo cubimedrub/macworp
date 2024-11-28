@@ -13,7 +13,16 @@
         <div class="row mb-3">
             <label for="workflow-description" class="col-sm-2 col-form-label">Description</label>
             <div class="col-sm-10 d-flex flex-column justify-content-center">
-                <input v-model="description" v-on:keyup.enter="createWorkflow" id="workflow-description" class="form-control" type="text">
+                <v-ace-editor
+                    v-model="description"
+                    @init="initDescriptionEditor"
+                    theme="solarized_dark"
+                    lang="markdown"
+                    :options="{minHeight: description_editor_min_height, maxLines: Infinity, autoScrollEditorIntoView: true}"
+                />
+                <small>
+                    Markdown supported
+                </small>
                 <small v-if="errors.description">
                     <AttributeErrorList :errors="errors.description" class="alert-danger" style="list-style: none"></AttributeErrorList>
                 </small>
@@ -32,6 +41,12 @@
 
 
 <script>
+
+/**
+ * Minimum height for the description editor.
+ */
+const DESCRIPTION_EDITOR_MIN_HEIGHT = "5"
+
 export default {
     data(){
         return {
@@ -47,6 +62,12 @@ export default {
         this.is_creating = false
     },
     methods: {
+        initDescriptionEditor(editor){
+            require('brace/ext/language_tools') //language extension prerequsite...
+            require('brace/mode/markdown')
+            require('brace/theme/solarized_dark')
+            editor.setShowPrintMargin(false);
+        },
         createWorkflow(){
             if(!this.is_creating){
                 this.is_creating = true
@@ -82,6 +103,15 @@ export default {
                         this.is_creating = false
                     })
             }
+        }
+    },
+    computed: {
+        /**
+         * Provide access to DESCRIPTION_EDITOR_MIN_HEIGHT in vue instance.
+         * @return {Number}
+         */
+        description_editor_min_height() {
+            return DESCRIPTION_EDITOR_MIN_HEIGHT
         }
     }
 }

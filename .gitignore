@@ -9,7 +9,7 @@
 /.db
 local.env
 macworp.local.config.yaml
-nextflow
+/nextflow
 PRODUCTION_TEST_URL
 
 # uploads

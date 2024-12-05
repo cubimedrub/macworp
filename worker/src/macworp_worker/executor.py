@@ -229,8 +229,6 @@ class Executor(Process):
                     workflow_stdout.replace("\n", "\n\t"),
                     workflow_stderr.replace("\n", "\n\t"),
                 )
-                self.communication_channel.send((delivery_tag, False))
-                continue
 
             # Send delivery tag to thread for acknowledgement
             self.communication_channel.send((delivery_tag, True))

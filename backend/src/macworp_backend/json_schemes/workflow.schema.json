@@ -41,7 +41,7 @@
               "type",
               "directory",
               "script"
-            ]
+          ]
         },
         {
           "type": "object",
@@ -62,6 +62,22 @@
           "required": [
             "url",
             "version"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "nf-core" 
+            },
+            "pipeline": {
+              "description": "nf-core pipeline name (w/ `nf-core/`-.part) e.g. `rnaseq`",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pipeline"
           ]
         }
       ]

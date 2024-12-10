@@ -68,6 +68,8 @@ class NextflowCmdGenerator(CmdGenerator):
                     source.append("-r")
                     source.append(workflow_source["version"])
                 return source
+            case "nf-core":
+                return [f"nf-core/{workflow_source['pipeline']}"]
             case _:
                 raise ValueError(
                     f"Unsupported workflow location: {workflow_source['type']}"

@@ -69,6 +69,7 @@ yarn --cwd ./frontend install
 ```
 
 ### Start
+In each shell te conda environment need be activated
 ```bash
 # Shell 1
 docker-compose up
@@ -76,6 +77,9 @@ docker-compose up
 python -m macworp database migrate
 python -m macworp utility rabbitmq prepare
 honcho -e dev.env start
+# Shell 3
+# Worker needs to run outside of honcho otherwise SDKMAN is not properly initialized when running Nextflow
+env PYTHONUNBUFFERED=1 python -m macworp_worker -n ./nextflow -s $(which snakemake) -c http://localhost:3001 -r amqp://admin:developer@127.0.0.1:5674/%2f -q project_workflow -d ./uploads -u worker -p developer -vvvvvvvv
 ```
 
 | Component | Access | User | Password |

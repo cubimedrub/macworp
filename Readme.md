@@ -55,6 +55,8 @@ are installed.
 
 ### Prepare development environment
 ```bash
+# Install Nextflow in the root directory of the repository. Follow https://www.nextflow.io/docs/latest/install.html
+
 # Create environment
 conda env create -f environment.yml
 

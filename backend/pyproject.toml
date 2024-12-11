@@ -42,6 +42,7 @@ dependencies = [
     "psycopg2-binary  >=2, <3",
     "pydantic ~= 2.9",
     "pyjwt  >=2, <3",
+    "openpyxl ~= 3.0",
     "PyYAML >=6, <7",
     "redis >=4, <5",
     "requests  >=2, <3",

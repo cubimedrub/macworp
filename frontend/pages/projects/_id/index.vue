@@ -168,7 +168,7 @@ const RESULT_DIR_CHANGE_EVENT = "RESULT_DIR_CHANGE"
 /** 
  * Table file extensions
  */
-const TABLE_FILE_EXTENSIONS = [".csv", ".tsv"]
+const TABLE_FILE_EXTENSIONS = [".csv", ".tsv", ".xlsx"]
 
 /** 
  * Image file extensions

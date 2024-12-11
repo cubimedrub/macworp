@@ -38,8 +38,8 @@ def migrate(migrator, database, fake=False, **kwargs):
     """Write your migrations here."""
     migrator.sql(
         """
-        alter table projects remove column workflow_id;
-        alter table projects remove column workflow_arguments;
+        alter table projects drop column workflow_id;
+        alter table projects drop column workflow_arguments;
         """
     )
 

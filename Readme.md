@@ -1,6 +1,6 @@
 # MAcWorP - Massive aCcessible Workflow Platform
 
-MaCWorp is a web application to give workflow developers a simple way to make their workflows easily accessible via a web browser for everyone. 
+MaCWorP is a web application to give workflow developers a simple way to make their workflows easily accessible via a web browser for everyone. 
 
 * What it **does** for you
     * Graphical user interface for
@@ -17,101 +17,6 @@ MaCWorp is a web application to give workflow developers a simple way to make th
 * What it **does not** for you
     * Scaling - This is still the job of the workflow engine. E.g. you can configure Nextflow to use K8s or Slurm when started by MAcWorP workers but setting these executors up is still a separate job for an admin.
 
-## Quickstart
-You are interested and want to try MAcWroP?
-1. A Unix-like operating system is mandatory: You are good to go with any popular Linux distribution, Windows Subsystem for Linux or macOS
-2. Install [Docker](https://docs.docker.com/get-started/get-docker/)
-    * On Linux make sure your user is allowed to access the Docker service by adding the user to the Docker group `usermod -aG docker <your-user>`
-3. Install `make`
-4. Install `git`
-5. Clone the repository
-6. `make production-test-up`
-
-This will start the web interface on `https://<local-computer-name>:16160`, the complete URL is written to the file `PRODUCTION_TEST_URL`. It might change depending on your location (home, office, ...) as it includes the computers FQDN.
-
-
-## Developing
-### Structure
-
-#### Backend
-A web API written in [Flask](https://flask.palletsprojects.com/en/2.0.x/) for managing/scheduling workflows.
-
-#### Frontend
-A web interface written in [NuxtJS](https://nuxtjs.org/). This is basically a GUI for the web API.
-
-#### Worker
-A worker written in python which runs the scheduled workflows.
-
-![MAcWorP structure](./macworp.png)
-
-### Requirements
-Make sure the dependencies in
-
-* [Frontend](frontend/Readme.md)
-* [Backend](backend/Readme.md)
-* [Worker](worker/Readme.md)
-
-are installed.
-
-### Prepare development environment
-```bash
-# Install Nextflow in the root directory of the repository. Follow https://www.nextflow.io/docs/latest/install.html
-
-# Create environment
-conda env create -f environment.yml
-
-# Already creates the environment and need updates???
-conda env update -f environment.yml --prune
-
-# Upgrade pip and setuptools
-conda activate macworp
-
-# Install node requirements
-yarn --cwd ./frontend install
-```
-
-### Start
-In each shell te conda environment need be activated
-```bash
-# Shell 1
-docker-compose up
-# Shell 2
-python -m macworp database migrate
-python -m macworp utility rabbitmq prepare
-honcho -e dev.env start
-# Shell 3
-# Worker needs to run outside of honcho otherwise SDKMAN is not properly initialized when running Nextflow
-env PYTHONUNBUFFERED=1 python -m macworp_worker -n ./nextflow -s $(which snakemake) -c http://localhost:3001 -r amqp://admin:developer@127.0.0.1:5674/%2f -q project_workflow -d ./uploads -u worker -p developer -vvvvvvvv
-```
-
-| Component | Access | User | Password |
-| --- | --- | --- | --- |
-| Frontend | `http://localhost:5001` | | |
-| API | `http://localhost:3001` | | |
-| Fusionauth | `http://localhost:9011` | `developer@example.com` | `developer` |
-
-For development, Flask is configured to add CORS-Headers by default.
-
-### Database migrations
-To keep track of database changes, this project uses [`peewee_migrate`](https://github.com/klen/peewee_migrate).
-Migrations are located in `macworp/migrations/`. For now this needs to be added manually when using `pw_migrate`. 
-
-#### Create new migration
-`pw_migrate create --directory macworp/migrations --database postgresql://postgres:developer@127.0.0.1:5434/macworp --directory backend/src/macworp_backend/migrations "<description>"`
-
-#### Run migrations
-`pw_migrate migrate --database 'postgresql://postgres:developer@127.0.0.1:5434/macworp' --directory backend/src/macworp_backend/migrations`
-
-#### Accessing the database
-`psql postgresql://postgres:developer@127.0.0.1:5434/macworp`
-
-### Testing deployment
-In production NF-Cloud is designed to run as Gunicorn service behind a NginX reverse proxy. This setup can be tested with `make production-test`   
-This will build and start back- & frontend containers, start multiple instances and put them behind a NginX reverse proxy, running on the port 16160 (NF-Cloud) and 16161 (Fusionauth). Both applications are served under HTTPS with a self signed certificate for testing and the hosts name as domain.   
-A worker can be started with `make production-worker-test`
-
-### Test data
-Use `python -m macworp database seed --drop` to insert some test records (e.g. workflows) into the database.
 
 ## Production
 
@@ -166,34 +71,3 @@ Run `conda run -n macworp python`
 
 ### Input elements
 List is coming soon.
-
-### Results
-MAcWorP is able to render a couple of file formats directly in the browser. The file extension tells the renderer how the element should be rendered.   
-Below is a list of supported elements:
-
-| Type | File extension | Description |
-| --- | --- | --- |
-| Raster graphics | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp` | Images are display using [Viewer.js](https://fengyuanchen.github.io/viewerjs/). This gives the user some useful features, like zooming |
-| Vector graphics | `.svg`, `.image.svg` | SVG files can be rendered iun two ways, embedded into the DOM (`.svg`) which automatically scales it, or within an img-Tag (`.image.svg`) |
-| PDF | `.pdf` | PDFs are shown using the browser integrated PDF viewer |
-| Table | `.csv`, `.tsv`, `.xlsx` | Tables are rendered using the HTML-table elements. As two many cells will make browser unresponsive, tables with to many elements will be paginated |
-| Interactive plots | `.plolty.json` | To generate Plolty conform JSON files, have a look into the [documentation](https://plotly.com/python-api-reference/generated/plotly.io.to_json.html#plotly.io.to_json). These kind of plots have few advantages for the user, like the ability to enable/disable traces and zoom. MAcWorP is also adding a JSON editor to change the plot layout or colors. |
-| Plain text | `.txt` | Show the content of the text file |
-
-
-#### Metadata files
-Each result file can be annotated with a header and description, by adding a JSON formatted MAcWorP metadata file next to the result file. It should have the same name as the result file plus the extension `.mmdata`, e.g.:
-* File to annotate file: `./some_barplot.png`
-* Metadata file:  `./some_barplot.png.mmdata`
-
-The content would look like this:
-```json
-{
-    "header": "That some kind of a bar plot",
-    "description": "Some very lengthy description, telling users what the barplot is showing."
-}
-```
-Header and description are then rendered in the frontend. If no metadata is given, the header is replaced by the filename and the description skipped.
-
-
-Have a look into the [results demo workflow](./demo_workflows/result_demo/)

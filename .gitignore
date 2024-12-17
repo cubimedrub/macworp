@@ -20,6 +20,9 @@ PRODUCTION_TEST_URL
 node_modules/
 .yarn/
 
+# Docs
+_site/
+
 # Copy from https://github.com/github/gitignore/blob/master/Python.gitignore with some additions
 # Byte-compiled / optimized / DLL files
 __pycache__/

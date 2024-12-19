@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="description" content="None" />
+      <link rel="shortcut icon" href="img/favicon.ico" />
+    <title>MAcWorP - Massive Accessible Workflow Platform</title>
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="css/version-select.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "MAcWorP - Massive aCcessible Workflow Platform";
+        var mkdocs_page_input_path = "index.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="." class="icon icon-home"> MAcWorP - Massive Accessible Workflow Platform
+        </a>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">MAcWorP - Massive aCcessible Workflow Platform</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#production">Production</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#external-services">External services</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#rabbitmq">RabbitMQ</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#preparation">Preparation</a>
+        <ul>
+    <li class="toctree-l4"><a class="reference internal" href="#docker-image">Docker image</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#native">Native</a>
+    </li>
+    <li class="toctree-l4"><a class="reference internal" href="#create-a-new-configuration-file">Create a new configuration file</a>
+    </li>
+        </ul>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#workflow-developer">Workflow developer</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#best-practice">Best practice</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#input-elements">Input elements</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="development/">Development</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="installation/">Installation</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="workflow_integration/">Workflow integration</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Components</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="components/backend/">Backend</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="components/frontend/">Frontend</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="components/worker/">Worker</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href=".">MAcWorP - Massive Accessible Workflow Platform</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">MAcWorP - Massive aCcessible Workflow Platform</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="macworp-massive-accessible-workflow-platform">MAcWorP - Massive aCcessible Workflow Platform</h1>
+<p>MaCWorP is a web application to give workflow developers a simple way to make their workflows easily accessible via a web browser for everyone. </p>
+<ul>
+<li>What it <strong>does</strong> for you<ul>
+<li>Graphical user interface for<ul>
+<li>Data up- &amp; download</li>
+<li>Parameter input</li>
+<li>Rendered results (interactive plots, PDFs, images, tables, ...)</li>
+</ul>
+</li>
+<li>Authentication<ul>
+<li>Simple file based authentication (easy to set up, recommended for smaller teams, labs or institutes)</li>
+<li>OpenIDConnect (e.g. connect to ELIXIR's Life Science Login)</li>
+</ul>
+</li>
+<li>Distributed execution of a workflow on different workers</li>
+<li>Coming soon(ish):<ul>
+<li>Support for multiple workflow engines (currently Nextflow is working)</li>
+<li>Fine grained access control to projects and workflows including sharing with others.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>What it <strong>does not</strong> for you<ul>
+<li>Scaling - This is still the job of the workflow engine. E.g. you can configure Nextflow to use K8s or Slurm when started by MAcWorP workers but setting these executors up is still a separate job for an admin.</li>
+</ul>
+</li>
+</ul>
+<h2 id="production">Production</h2>
+<h3 id="external-services">External services</h3>
+<h4 id="rabbitmq">RabbitMQ</h4>
+<p>Set the <code>consumer_timeout</code> to a high value. Otherwise scheduled workflows can't be acknowledged after finishing and getting rescheduled</p>
+<h3 id="preparation">Preparation</h3>
+<p>The following part contains CLI usage of <code>macworp</code>, which assume you use the nativ installation. If you run <code>macworp</code> in docker just replace <code>python -m macworp</code> with <code>docker run mpc/macworp</code>.</p>
+<h4 id="docker-image">Docker image</h4>
+<h5 id="creation-backend">Creation (backend)</h5>
+<p>Create the docker image with </p>
+<pre><code>docker build -t mpc/macworp-backend:latest -f docker/backend.dockerfile .
+</code></pre>
+<p>You can use the build arguments (<code>--build-arg</code>) <code>NEW_MAMBA_USER_ID</code> and <code>NEW_MAMBA_USER_GID</code> to change the user and group ID of the container user. Useful for harmonizing the ownership of the uploaded files with a local user.</p>
+<h5 id="creation-frontend">Creation (frontend)</h5>
+<pre><code>docker build -t mpc/macworp-frontend:latest -f docker/frontend.dockerfile .
+</code></pre>
+<h5 id="usage">Usage</h5>
+<p>The images entrypoint is the <code>macworp</code> command line interface, so users can start using command line arguments (e.g. <code>--help</code>). If the option <code>serve --gunicorn</code> is given, the image will start NF-Cloud as Gunicorn application, unlike the native installation which prints the Gunicorn parameters.  <br />
+NF-Cloud is running in the folder <code>/home/app</code>. So please mount a local configuration accordingly when running the images, e.g.: <code>docke run -v &lt;some-local-config&gt;:/home/app/macworp.local.config.yaml</code>. To persist the uploaded files a persistent volume or bind-mount should be used. </p>
+<p><strong>Attention</strong>: The worker needs to be deployed natively to use Docker containers in workflows.</p>
+<h4 id="native">Native</h4>
+<p>Clone the repository and use Conda or Miniconda to create an environment with all necessary dependencies: <code>conda env create -f environment.yml</code> (the environment name will be <code>macworp</code>)</p>
+<h5 id="usage_1">Usage</h5>
+<p>Make sure to activate the environment and go into the root folder of the repository before using <code>macworp</code> or use <code>conda run -n macworp python -m macworp_worker</code></p>
+<h5 id="worker">Worker</h5>
+<p>Run <code>conda run -n macworp python</code></p>
+<h4 id="create-a-new-configuration-file">Create a new configuration file</h4>
+<p><code>python -m macworp utility config create .</code> this will create a new config named <code>macworp.local.config.yaml</code> in the current directory. You can also print the configuration with <code>python -m macworp utility config print</code> (useful for piping the results from a Docker container).</p>
+<h2 id="workflow-developer">Workflow developer</h2>
+<h3 id="best-practice">Best practice</h3>
+<ol>
+<li>In general it is a good idea to use publicly available Docker container to manage your dependencies as most workflow engines can download containers by themselves. For help see:<ul>
+<li><a href="https://snakemake.readthedocs.io/en/stable/snakefiles/deployment.html#running-jobs-in-containers">Nextflow</a></li>
+<li><a href="https://snakemake.readthedocs.io/en/stable/snakefiles/deployment.html#running-jobs-in-containers">Snakemake</a>
+However it is possible use dependencies installed via Conda or package managers, but it has to be done manually on each worker. </li>
+</ul>
+</li>
+</ol>
+<h3 id="input-elements">Input elements</h3>
+<p>List is coming soon.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="development/" class="btn btn-neutral float-right" title="Development">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+    
+      <span><a href="development/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = ".";</script>
+    <script src="js/theme_extra.js"></script>
+    <script src="js/theme.js"></script>
+      <script src="js/version-select.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
+
+<!--
+MkDocs version : 1.6.1
+Build Date UTC : 2024-12-19 17:28:24.650850+00:00
+-->

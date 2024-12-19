@@ -1,5 +1,5 @@
 # Codebase unrelated tools
 ## Documentation
-mikegit~=2.1
+mike~=2.1
 mkdocs~=1.6
 pymdown-extensions~=10.12

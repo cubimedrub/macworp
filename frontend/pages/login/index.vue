@@ -1,7 +1,7 @@
 <template>
     <div class="row justify-content-center login ">
         <template v-for="(providers, provider_type) in login_providers">
-            <div v-for="(description, provider) in providers" :key="`${provider_type}_${provider}`" class="card" style="width: 18rem;">
+            <div v-for="(description, provider) in providers" :key="`${provider_type}_${provider}`" class="card m-2" style="width: 18rem;">
                 <div class="card-body">
                     <h5 class="card-title">{{provider | capitalize}}</h5>
                     <p class="card-text">{{ description}}</p>
@@ -31,7 +31,7 @@ export default {
     },
     methods: {
         async get_login_provider(){
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/login-providers`)
+            return fetch(`${this.$config.macworp_base_url}/api/users/login-providers`)
             .then(response => {
                 return response.json().then(data => {
                     this.login_providers = data
@@ -39,7 +39,7 @@ export default {
             })
         },
         get_login_url(provider_type, provider){
-            return `${this.$config.nf_cloud_backend_base_url}/api/users/${provider_type}/${provider}/login`
+            return `${this.$config.macworp_base_url}/api/users/${provider_type}/${provider}/login`
         }
     },
     filters: {

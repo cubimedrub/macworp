@@ -1,0 +1,5 @@
+site_name: MAcWorP - Massive Accessible Workflow Platform
+theme: readthedocs
+markdown_extensions:
+  - pymdownx.snippets:
+      base_path: !relative $config_dir

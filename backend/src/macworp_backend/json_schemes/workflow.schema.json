@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/product.schema.json",
+  "title": "Workflow",
+  "description": "NF-Cloud workflow definition",
+  "properties": {
+    "engine": {
+      "type": "string",
+      "description": "Workflow engine",
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "nextflow" 
+        },
+        {
+          "type": "string",
+          "const": "snakemake" 
+        }
+      ]
+    },
+    "src": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "local" 
+            },
+            "directory": {
+              "description": "Workflow directory",
+              "type": "string"
+            },
+            "script": {
+              "description": "Main script",
+              "type": "string"
+            }
+          },
+          "required": [
+              "type",
+              "directory",
+              "script"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "remote" 
+            },
+            "url": {
+              "description": "Repository URL, e.g. https://github.com/cubimedrub/macdii",
+              "type": "string"
+            },
+            "version": {
+              "description": "Branch, tag or commit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "version"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "nf-core" 
+            },
+            "pipeline": {
+              "description": "nf-core pipeline name (w/ `nf-core/`-.part) e.g. `rnaseq`",
+              "type": "string"
+            }
+          },
+          "required": [
+            "pipeline"
+          ]
+        }
+      ]
+    },
+    "engine_parameters": {
+      "type": "array",
+      "description": "Parameters for workflow engine the workflow engine, e.g. nextflow run -engine_parameters1 foo -engine_parameters2 bar ... main.nf --workflow_parameters1 foo --workflow_parameters2 bar ...",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          }
+        ]
+      }
+    },
+    "parameters": {
+      "description": "Workflow parameters which are passed to the workflows",
+      "type": "object",
+      "properties": {
+        "dynamic": { "$ref": "#/$defs/validated_parameters" },
+        "static": { "$ref": "#/$defs/validated_parameters" }
+      },
+      "required": [
+        "dynamic",
+        "static"
+      ]
+    }
+  },
+  "required": [
+    "engine",
+    "src",
+    "engine_parameters",
+    "parameters"
+  ],
+  "$defs": {
+    "validated_parameters": {
+      "description": "Workflow parameters",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "path" 
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "description": "Human readable label",
+                "type": "string"
+              },
+              "desc": {
+                "type": "string"
+              },
+              "selectable_files": {
+                "description": "If true files are selectable.",
+                "type": "boolean"
+              },
+              "selectable_folders": {
+                "description": "If true folders are selectable.",
+                "type": "boolean"
+              },
+              "is_relative": {
+                "description": "If true, the path is made relative to the workflow directory, only used in static workflow parameters.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "label",
+              "desc"
+            ]
+          },
+          {
+            "description": "Paths to files or folders, will be returned as comma-separated list",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "paths" 
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "description": "Human readable label",
+                "type": "string"
+              },
+              "desc": {
+                "type": "string"
+              },
+              "selectable_files": {
+                "description": "If true files are selectable.",
+                "type": "boolean"
+              },
+              "selectable_folders": {
+                "description": "If true folders are selectable.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "label",
+              "desc"
+            ]
+          },
+          {
+            "description": "Number input.",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "file-glob" 
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "description": "Human readable label",
+                "type": "string"
+              },
+              "desc": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "label",
+              "desc"
+            ]
+          },
+          {
+            "description": "Number input.",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "number" 
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "description": "Human readable label",
+                "type": "string"
+              },
+              "desc": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "label",
+              "desc"
+            ]
+          },
+          {
+            "description": "Text input",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "text" 
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "description": "Human readable label",
+                "type": "string"
+              },
+              "desc": {
+                "type": "string"
+              },
+              "is_multiline": {
+                "description": "If true, the input is multiline.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "label",
+              "desc"
+            ]
+          },
+          {
+            "description": "Value select",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "value-select" 
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "description": "Human readable label",
+                "type": "string"
+              },
+              "desc": {
+                "type": "string"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string"
+                        },
+                        "value": {}
+                      },
+                      "required": [
+                        "label",
+                        "value"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "label",
+              "desc",
+              "options"
+            ]
+          },
+          {
+            "description": "Separator",
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "separator" 
+              },
+              "label": {
+                "description": "Human readable label",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "label"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

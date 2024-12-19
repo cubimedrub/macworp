@@ -7,12 +7,12 @@
                 start new project
             </NuxtLink>
         </div>
-        <ul v-if="projects">
-            <li v-for="project in projects" :key="project.id">
-                <NuxtLink :to="{name: 'projects-id', params: {'id': project.id}}">
-                    {{ project.name }}
-                </NuxtLink>
-            </li>
+        <ul v-if="projects" class="list-group">
+            <NuxtLink v-for="project in projects" :to="{name: 'projects-id', params: {'id': project.id}}" :key="project.id" class="list-group-item list-group-item-action">
+                <div class="ms-2 me-auto">
+                    <div class="fw-bold">{{ project.name }}</div>
+                </div>
+            </NuxtLink>
         </ul>
         <Pagination :parent_event_bus="local_event_bus" :total_items="total_project_count" :items_per_page="projects_per_page"></Pagination>
     </div>
@@ -46,7 +46,7 @@ export default {
     methods: {
         async loadTotalProjectCount(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/count`,
+                `${this.$config.macworp_base_url}/api/projects/count`,
                 {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
@@ -65,7 +65,7 @@ export default {
         async loadProjects(){
             var query_string = `?offset=${this.offset}&limit=${this.projects_per_page}`
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects${query_string}`, {
+                `${this.$config.macworp_base_url}/api/projects${query_string}`, {
                 headers: {
                     "x-access-token": this.$store.state.login.jwt
                 },

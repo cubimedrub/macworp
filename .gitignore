@@ -2,13 +2,15 @@
 .vscode
 .idea
 
-# TEmpfiles for workflows
+# Tempfiles for workflows
 /tmp
+
 # Local development files like database files
 /.db
 local.env
-nf_cloud.local.config.yaml
-nextflow
+macworp.local.config.yaml
+/nextflow
+PRODUCTION_TEST_URL
 
 # uploads
 /uploads
@@ -17,6 +19,9 @@ nextflow
 # npm & yarn
 node_modules/
 .yarn/
+
+# Docs
+_site/
 
 # Copy from https://github.com/github/gitignore/blob/master/Python.gitignore with some additions
 # Byte-compiled / optimized / DLL files

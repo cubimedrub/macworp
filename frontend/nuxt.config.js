@@ -6,7 +6,7 @@ export default {
 
   // Global page headers: https://go.nuxtjs.dev/config-head
   head: {
-    title: 'NF Cloud',
+    title: 'MAcWorP',
     htmlAttrs: {
       lang: 'en'
     },
@@ -66,18 +66,26 @@ export default {
         include: /node_modules/,
         type: 'javascript/auto',
       })
-   }
+    },
+    loaders: {
+      sass: {
+        sassOptions: {
+          quietDeps: true
+        }
+      }
+    }
   },
 
   publicRuntimeConfig: {
-    nf_cloud_backend_base_url: process.env.NF_CLOUD_BACKEND_BASE_URL || 'http://localhost:3001',
-    nf_cloud_backend_ws_url: process.env.NF_CLOUD_BACKEND_WS_URL || 'http://localhost:3001',
-    nf_cloud_upload_max_file_size: process.env.NF_CLOUD_UPLOAD_MAX_FILE_SITE || 5368709120 // 5GB
+    macworp_base_url: process.env.MACWORP_BACKEND_BASE_URL || 'http://localhost:3001',
+    macworp_ws_url: process.env.MACWORP_BACKEND_WS_URL || 'http://localhost:3001',
+    macworp_upload_max_file_size: process.env.MACWORP_UPLOAD_MAX_FILE_SIZE || 5368709120, // 5GB
+    macworp_render_max_file_size: process.env.MACWORP_RENDER_MAX_FILE_SIZE || 1048576, // 1MB
   },
 
   server: {
-    host: process.env.NF_CLOUD_FRONTEND_INTERFACE || "127.0.0.1",
-    port: process.env.NF_CLOUD_FRONTEND_PORT || 5001,
+    host: process.env.MACWORP_FRONTEND_INTERFACE || "127.0.0.1",
+    port: process.env.MACWORP_FRONTEND_PORT || 5001,
     timing: false
   }
 }

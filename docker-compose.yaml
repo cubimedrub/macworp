@@ -55,14 +55,14 @@ services:
       # FUSIONAUTH_RUNTIME_MODE: development
       FUSIONAUTH_APP_MEMORY: 512M
       FUSIONAUTH_APP_RUNTIME_MODE: development
-      FUSIONAUTH_APP_URL: ${NF_FUSIONAUTH_PROTOCOL:-http}://${NF_HOSTNAME:-localhost}:${NF_FUSIONAUTH_PORT:-9011}
+      FUSIONAUTH_APP_URL: ${MACWORP_FUSIONAUTH_PROTOCOL:-http}://${MACWORP_HOSTNAME:-localhost}:${MACWORP_FUSIONAUTH_PORT:-9011}
       SEARCH_TYPE: database
       FUSIONAUTH_APP_KICKSTART_FILE: /kickstart.json
       FUSIONAUTH_API_KEY: OXp1Y8xCyVRIHqbXO18wdhL1TQujBCm6Mkgwbg
       FUSIONAUTH_ADMIN_PASSWORD: developer
-      FUSIONAUTH_APPLICATION_ID: nf_cloud
+      FUSIONAUTH_APPLICATION_ID: macworp
       DEVELOPER_FUSIONAUTH_API_KEY: OXp1Y8xCyVRIHqbXO18wdhL1TQujBCm6Mkgwbg
-      NF_HOSTNAME: ${NF_HOSTNAME:-localhost}
+      MACWORP_HOSTNAME: ${MACWORP_HOSTNAME:-localhost}
     volumes:
       - ./docker/fusionauth/kickstart.dev.json:/kickstart.json
   redis:

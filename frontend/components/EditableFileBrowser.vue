@@ -1,5 +1,5 @@
 <template>
-    <div class="broder border-dark">
+    <div class="editable-file-browser">
         <div class="row">
             <div class="col-12 col-md-6 col-lg-4 offset-md-6 offset-lg-8">
                 <div class="input-group mb-3">
@@ -11,37 +11,45 @@
                 </div>
             </div>
         </div>
-        <ul class="list-group mb-3">
-            <li v-if="!is_current_directory_root" @click="moveFolderUp()" class="list-group-item">
-                <i class="fas fa-angle-double-left clickable"></i>
-            </li>
-            <li v-for="path in current_directory_folders" :key="path" class="list-group-item d-flex justify-content-between">
-                <span @click="moveIntoFolder(path)" class="clickable">
-                    <i class="fas fa-folder"></i>
-                    {{path}}/
-                </span>
-                <div class="btn-group">
-                    <button @click="download(`${current_directory}/${path}`)" type="button" class="btn btn-secondary btn-sm">
-                        <i class="fas fa-download"></i>
-                    </button>
-                    <button @click="deletePath(`${current_directory}${path}`, false)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </li>
-            <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
-                <span>{{ file }}</span>
-                <div class="btn-group">
-                    <button @click="download(`${current_directory}/${file}`)" type="button" class="btn btn-secondary btn-sm">
-                        <i class="fas fa-download"></i>
-                    </button>
-                    <button @click="deletePath(`${current_directory}/${file}`, true)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </li>
-        </ul>
-        <div ref="dropzone" class="dropzone mb-3"></div>
+        
+        <div ref="dropzone" class="dropzone">
+            <div class="d-flex justify-content-center align-items-center w-100 upload-notice">
+                <small>Drag and drop file/folders to upload</small>
+            </div>
+            <ul :class="{'none-element-visibility-border': !has_elements}" class="list-group">
+                <li v-if="!is_current_directory_root" @click="moveFolderUp()" class="list-group-item">
+                    <i class="fas fa-angle-double-left clickable"></i>
+                </li>
+                <li v-for="path in current_directory_folders" :key="path" class="list-group-item d-flex justify-content-between">
+                    <span @click="moveIntoFolder(path)" class="clickable">
+                        <i class="fas fa-folder"></i>
+                        {{path}}/
+                    </span>
+                    <div class="btn-group">
+                        <button @click="download(`${current_directory}/${path}`)" type="button" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button @click="deletePath(`${current_directory}/${path}`, false)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </li>
+                <li v-for="file in current_directory_files" :key="file" class="list-group-item d-flex justify-content-between">
+                    <span>{{ file }}</span>
+                    <div class="btn-group">
+                        <button @click="download(`${current_directory}/${file}`)" type="button" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button @click="deletePath(`${current_directory}/${file}`, true)" :disabled="!enabled" type="button" class="btn btn-danger btn-sm">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </li>
+            </ul>
+            <div v-if="current_directory_folders.length + current_directory_files.length > 5" class="d-flex justify-content-center align-items-center w-100 upload-notice">
+                <small>Drag and drop file/folders to upload</small>
+            </div>
+        </div>
         <div v-if="upload_queue.length">
             <h3>Upload queue</h3>
             <ul class="list-group">
@@ -101,14 +109,14 @@ export default {
             this.dropzone = new Dropzone(
                 this.$refs.dropzone, 
                 { 
-                    url: `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/upload-file-chunk?is-dropzone=1`,
+                    url: `${this.$config.macworp_base_url}/api/projects/${this.project_id}/upload-file-chunk?is-dropzone=1`,
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
                     },
                     clickable: false,
                     disablePreviews: true,
                     parallelUploads: 1,
-                    maxFilesize: this.$config.nf_cloud_upload_max_file_size,
+                    maxFilesize: this.$config.macworp_upload_max_file_size,
                     chunking: true,
                     retryChunks: true,
                     chunkSize: 100000000 // 100MB
@@ -116,21 +124,21 @@ export default {
             );
             this.dropzone.on("addedfile", file => {
                 var original_path = file.fullPath == null ? file.name : file.fullPath
-                file.nf_cloud__file_path = this.getFullPath(original_path)
-                this.upload_queue.push(file.nf_cloud__file_path)
-                this.upload_status[file.nf_cloud__file_path] = 0
+                file.macworp__file_path = this.getFullPath(original_path)
+                this.upload_queue.push(file.macworp__file_path)
+                this.upload_status[file.macworp__file_path] = 0
             }),
             this.dropzone.on("sending", (file, xhr, formData) => {
-                var file_path_blob = new Blob([file.nf_cloud__file_path], { type: "text/plain"})
+                var file_path_blob = new Blob([file.macworp__file_path], { type: "text/plain"})
                 formData.append("file_path", file_path_blob)
             });
             this.dropzone.on("uploadprogress", (file, progress) => {
-                this.upload_status[file.nf_cloud__file_path] = Math.round(progress * 100) / 100
+                this.upload_status[file.macworp__file_path] = Math.round(progress * 100) / 100
                 this.$forceUpdate()
             });
             this.dropzone.on("success", file => {
-                this.upload_queue = this.upload_queue.filter(path => path != file.nf_cloud__file_path)
-                delete this.upload_status[file.nf_cloud__file_path]
+                this.upload_queue = this.upload_queue.filter(path => path != file.macworp__file_path)
+                delete this.upload_status[file.macworp__file_path]
 
                 // set timeout for refreshing the directory content
                 if(this.directory_refresh_timeout == null) {
@@ -153,7 +161,7 @@ export default {
          */
         deletePath(path, is_file){
             if(!this.enabled) return
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/delete-path`, {
+            fetch(`${this.$config.macworp_base_url}/api/projects/${this.project_id}/delete-path`, {
                 method:'POST',
                 headers: {
                     "Content-Type": "application/json",
@@ -183,7 +191,7 @@ export default {
             var new_folder_name = `${this.new_folder_name}`
             this.new_folder_name = null
             var new_folder_path = `${target_folder}/${new_folder_name}`
-            fetch(`${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/create-folder`, {
+            fetch(`${this.$config.macworp_base_url}/api/projects/${this.project_id}/create-folder`, {
                 method:'POST',
                 headers: {
                     "Content-Type": "application/json",
@@ -226,14 +234,14 @@ export default {
          * @param {String} path Path to file in relation to the project directory
          */
         async download(path){
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/one-time-use-token`, {
+            return fetch(`${this.$config.macworp_base_url}/api/users/one-time-use-token`, {
                 headers: {
                     "x-access-token": this.$store.state.login.jwt
                 }
             }).then(response => {
                 if(response.ok) {
                     return response.json().then(response_data => {
-                        window.location = `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
+                        window.location = `${this.$config.macworp_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
                     })
                 } else {
                     this.handleUnknownResponse(response)
@@ -253,7 +261,15 @@ export default {
         },
         is_current_directory_root(){
             return this.current_directory == "/"
-        }
+        },
+        /**
+         * Checks if the current directory has elements.
+         * 
+         * @return {Boolean}
+         */
+        has_elements(){
+            return this.current_directory_folders.length + this.current_directory_files.length > 0
+        },
     }
 }
 </script>

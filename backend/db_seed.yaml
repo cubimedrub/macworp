@@ -1,148 +1,51 @@
 seeds:
   - model: Workflow
     attributes:
-      name: "Test Workflow"
-      description: "Simple test workflow"
+      name: "Nextflow Demo: Result rendering"
+      description: "Creates a variety of result types for testing the rendering of results"
+      is_published: true
+      is_validated: true
       definition: |
         {
-            "directory": "./test_workflows/hello_world",
-            "script": "main.nf",
-            "nextflow_parameters": [
-            ],
-            "args": {
-                "dynamic": [
-                    {
-                        "type": "path",
-                        "name": "inFile",
-                        "label": "Input file",
-                        "desc": "Single file",
-                        "selectable_files": true,
-                        "selectable_folders": false
-                    },
-                    {
-                        "type": "path",
-                        "name": "inFolder",
-                        "label": "Input folder",
-                        "desc": "Single folder",
-                        "selectable_files": false,
-                        "selectable_folders": true
-                    },
-                    {
-                        "type": "paths",
-                        "name": "inFiles",
-                        "label": "Multiple input files",
-                        "desc": "Multiple files",
-                        "selectable_files": true,
-                        "selectable_folders": false
-                    },
-                    {
-                        "type": "paths",
-                        "name": "inFolders",
-                        "label": "Multiple input folders",
-                        "desc": "Multiple folder",
-                        "selectable_files": false,
-                        "selectable_folders": true
-                    },
-                    {
-                        "type": "file-glob",
-                        "name": "txtFiles",
-                        "label": "Text files",
-                        "desc": "File \"regex\", e.g. *.txt"
-                    },
-                    {
-                        "type": "number",
-                        "name": "numberOfNewlines",
-                        "label": "Number of newlines",
-                        "desc": "Number input"
-                    },
-                    {
-                        "type": "text",
-                        "name": "singleLineText",
-                        "label": "Single line text",
-                        "desc": "Single line text"
-                    },
-                    {
-                        "type": "text",
-                        "name": "multilineText",
-                        "label": "Multiple line text",
-                        "desc": "Multiline text",
-                        "is_multiline": true
-                    }
-                ],
+            "engine": "nextflow",
+            "src": {
+                "type": "local",
+                "directory": "./demo_workflows/nextflow/result_demo",
+                "script": "main.nf"
+            },
+            "engine_parameters": [],
+            "parameters": {
+                "dynamic": [],
                 "static": [
                     {
-                        "name": "outDir",
-                        "value": "./"
+                        "type": "path",
+                        "name": "resultsFolder",
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false,
+                        "value": "./results",
+                        "is_relative": true
                     }
                 ]
-            },
-            "results": [
-                {
-                    "type": "images",
-                    "header": "Singe image",
-                    "images": [
-                        {
-                            "description": "Test image",
-                            "path": "test_image.png"
-                        }
-                    ]
-                },
-                {
-                    "type": "images",
-                    "header": "Multiple image",
-                    "images": [
-                        {
-                            "description": "Test image",
-                            "path": "test_image.png"
-                        },
-                        {
-                            "description": "Another test image",
-                            "path": "another_test_image.png"
-                        }
-                    ]
-                },
-                {
-                    "type": "pdf",
-                    "header": "PDF",
-                    "description": "Test PDF",
-                    "path": "test_pdf.pdf"
-                },
-                {
-                    "type": "svg",
-                    "header": "SVG",
-                    "description": "Test SVG",
-                    "path": "test_svg.svg"
-                },
-                {
-                    "type": "svg",
-                    "header": "SVG (embedded)",
-                    "description": "Test SVG",
-                    "path": "test_svg.svg",
-                    "embed": true
-                },
-                {
-                    "type": "plotly",
-                    "header": "Plotly",
-                    "description": "Plotly plot",
-                    "path": "plotly.json"
-                }
-            ]
+            }
         }
   - model: Workflow
     attributes:
-      name: "Test Workflow using Docker"
-      description: "Simple test workflow which runs in a Docker container"
+      name: "Nextflow Demo: Input options"
+      description: "Renders all input options and prints the selected values into a file to show how they are given to the workflow call."
+      is_published: true
+      is_validated: true
       definition: |
         {
-            "directory": "./test_workflows/hello_world",
-            "script": "main.nf",
-            "nextflow_parameters": [
-                {
-                    "name": "-with-docker",
-                    "value": "nfcore/base"
-                }
-            ],
-            "args": {
+            "engine": "nextflow",
+            "src": { 
+                "type": "local",
+                "directory": "./demo_workflows/nextflow/input_demo",
+                "script": "main.nf"
+            },
+            "engine_parameters": [],
+            "parameters": {
                 "dynamic": [
                     {
                         "type": "path",
@@ -202,79 +105,178 @@ seeds:
                         "is_multiline": true
                     },
                     {
+                        "type": "separator",
+                        "label": "This separator is not a real input, but an element to structure the form"
+                    },
+                    {
                         "type": "value-select",
-                        "name": "method",
-                        "label": "Creation method of decoys",
-                        "desc": "Possible values `reverse`& `suffix`",
+                        "name": "valueSelect",
+                        "label": "Selecting on of multiple values",
+                        "desc": "The value behind Yes is true, the value behind No is false",
                         "options": [
                             {
-                                "label": "reverse",
-                                "value": "reverse"
+                                "label": "Yes",
+                                "value": "true"
                             },
                             {
-                                "label": "suffix",
-                                "value": "suffix"
+                                "label": "No",
+                                "value": "false"
                             }
                         ],
-                        "value": "reverse"
+                        "value": "true"
                     }
                 ],
                 "static": [
                     {
-                        "name": "outDir",
-                        "value": "./"
+                        "type": "path",
+                        "name": "resultsFolder",
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false,
+                        "value": "./results",
+                        "is_relative": true
                     }
                 ]
-            },
-            "results": [
-                {
-                    "type": "images",
-                    "header": "Singe image",
-                    "images": [
-                        {
-                            "description": "Test image",
-                            "path": "test_image.png"
-                        }
-                    ]
-                },
-                {
-                    "type": "images",
-                    "header": "Multiple image",
-                    "images": [
-                        {
-                            "description": "Test image",
-                            "path": "test_image.png"
-                        },
-                        {
-                            "description": "Another test image",
-                            "path": "another_test_image.png"
-                        }
-                    ]
-                },
-                {
-                    "type": "pdf",
-                    "header": "PDF",
-                    "description": "Test PDF",
-                    "path": "test_pdf.pdf"
-                },
-                {
-                    "type": "svg",
-                    "header": "SVG",
-                    "description": "Test SVG",
-                    "path": "test_svg.svg"
-                },
-                {
-                    "type": "svg",
-                    "header": "SVG (embedded)",
-                    "description": "Test SVG",
-                    "path": "test_svg.svg",
-                    "embed": true
-                },
-                {
-                    "type": "plotly",
-                    "header": "Plotly",
-                    "description": "Plotly plot",
-                    "path": "plotly.json"
-                }
-            ]
+            }
         }
+  - model: Workflow
+    attributes:
+      name: "Snakemake Demo: Result rendering"
+      description: "Creates a variety of result types for testing the rendering of results using snakemake."
+      is_published: true
+      is_validated: true
+      definition: |
+        {
+            "engine": "snakemake",
+            "src": {
+                "type": "local",
+                "directory": "./demo_workflows/snakemake/result_demo",
+                "script": "Snakefile"
+            },
+            "engine_parameters": [],
+            "parameters": {
+                "dynamic": [],
+                "static": [
+                    {
+                        "type": "path",
+                        "name": "resultsFolder",
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false,
+                        "value": "./results"
+                    }
+                ]
+            }
+        }
+  - model: Workflow
+    attributes:
+      name: "Snakemake Demo: Input options"
+      description: "Snakemake workflow rendering all input options and prints the selected values into a file to show how they are given to the workflow call."
+      is_published: true
+      is_validated: true
+      definition: |
+        {
+            "engine": "snakemake",
+            "src": { 
+                "type": "local",
+                "directory": "./demo_workflows/snakemake/input_demo",
+                "script": "Snakefile"
+            },
+            "engine_parameters": [],
+            "parameters": {
+                "dynamic": [
+                    {
+                        "type": "path",
+                        "name": "inFile",
+                        "label": "Input file",
+                        "desc": "Single file",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "path",
+                        "name": "inFolder",
+                        "label": "Input folder",
+                        "desc": "Single folder",
+                        "selectable_files": false,
+                        "selectable_folders": true
+                    },
+                    {
+                        "type": "paths",
+                        "name": "inFiles",
+                        "label": "Multiple input files",
+                        "desc": "Multiple files",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "paths",
+                        "name": "inFolders",
+                        "label": "Multiple input folders",
+                        "desc": "Multiple folder",
+                        "selectable_files": false,
+                        "selectable_folders": true
+                    },
+                    {
+                        "type": "file-glob",
+                        "name": "txtFiles",
+                        "label": "Text files",
+                        "desc": "File \"regex\", e.g. *.txt"
+                    },
+                    {
+                        "type": "number",
+                        "name": "numberOfNewlines",
+                        "label": "Number of newlines",
+                        "desc": "Number input"
+                    },
+                    {
+                        "type": "text",
+                        "name": "singleLineText",
+                        "label": "Single line text",
+                        "desc": "Single line text"
+                    },
+                    {
+                        "type": "text",
+                        "name": "multilineText",
+                        "label": "Multiple line text",
+                        "desc": "Multiline text",
+                        "is_multiline": true
+                    },
+                    {
+                        "type": "separator",
+                        "label": "This separator is not a real input, but an element to structure the form"
+                    },
+                    {
+                        "type": "value-select",
+                        "name": "valueSelect",
+                        "label": "Selecting on of multiple values",
+                        "desc": "The value behind Yes is true, the value behind No is false",
+                        "options": [
+                            {
+                                "label": "Yes",
+                                "value": "true"
+                            },
+                            {
+                                "label": "No",
+                                "value": "false"
+                            }
+                        ],
+                        "value": "true"
+                    }
+                ],
+                "static": [
+                    {
+                        "type": "path",
+                        "name": "resultsFolder",
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false,
+                        "value": "./results"
+                    }
+                ]
+            }
+        }
+  

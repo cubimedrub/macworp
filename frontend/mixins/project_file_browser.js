@@ -31,6 +31,14 @@ export default {
             type: Boolean,
             required: true
         },
+        /**
+         * Event which sends the current directory path and content over the parent event bus
+         */
+        directory_change_event: {
+            type: String,
+            required: false,
+            default: null
+        }
     },
     data(){
         return {
@@ -42,6 +50,7 @@ export default {
     mounted(){
         this.getFolderContent()
         this.parent_event_bus.$on(this.reload_event, () => { this.getFolderContent() })
+        this.sendDirectoryChange()
     },
     activated(){
         this.getFolderContent()
@@ -57,10 +66,22 @@ export default {
             path_segments.push(path)
             this.current_directory = path_segments.length > 0 ? `/${path_segments.join("/")}` : "/"
         },
+        /**
+         * Sends the current directory path and content over the parent event bus
+         */
+        sendDirectoryChange(){
+            if (this.directory_change_event != null){
+                this.parent_event_bus.$emit(this.directory_change_event, {
+                    "current_directory": this.current_directory,
+                    "current_directory_folders": this.current_directory_folders,
+                    "current_directory_files": this.current_directory_files,
+                })
+            }
+        },
         getFolderContent(){
             var url_encoded_path = encodeURIComponent(this.current_directory)
             fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/files?dir=${url_encoded_path}`,
+                `${this.$config.macworp_base_url}/api/projects/${this.project_id}/files?dir=${url_encoded_path}`,
                 {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt
@@ -71,6 +92,7 @@ export default {
                     return response.json().then(response_data => {
                         this.current_directory_folders = response_data.folders
                         this.current_directory_files = response_data.files
+                        this.sendDirectoryChange()
                     })
                 } else if(response.status == 404) {
                     /**

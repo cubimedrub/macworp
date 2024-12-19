@@ -15,7 +15,7 @@ upstream frontend_handler {
 
 server {
     listen 16160 ssl;
-    server_name ${NF_HOSTNAME};
+    server_name ${MACWORP_HOSTNAME};
 
     ssl_certificate     /etc/custom_ssl/cert.pem;
     ssl_certificate_key /etc/custom_ssl/key.pem;
@@ -82,7 +82,7 @@ server {
 
 server {
     listen 16161 ssl;
-    server_name ${NF_HOSTNAME};
+    server_name ${MACWORP_HOSTNAME};
 
     ssl_certificate     /etc/custom_ssl/cert.pem;
     ssl_certificate_key /etc/custom_ssl/key.pem;

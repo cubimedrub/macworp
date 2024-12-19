@@ -1,0 +1,19 @@
+rule all:
+    input:
+        "healthexp.csv",
+        directory(config["resultsFolder"])
+
+rule download:
+    output:
+        "healthexp.csv"
+    shell:
+        "curl -s -o {output} https://raw.githubusercontent.com/mwaskom/seaborn-data/refs/heads/master/raw/healthexp.csv"
+
+rule generate_result_files:
+    input:
+        "healthexp.csv"
+    output:
+        directory(config["resultsFolder"])
+    script:
+        "scripts/gen_result_files.py" 
+

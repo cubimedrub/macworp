@@ -8,7 +8,7 @@
  */
 export default async function validateLogin(config, store){
     return fetch(
-        `${config.nf_cloud_backend_base_url}/api/users/logged-in`,
+        `${config.macworp_base_url}/api/users/logged-in`,
         {
             headers: {
                 "x-access-token": store.state.login.jwt

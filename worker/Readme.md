@@ -1,27 +1,33 @@
-# Nextflow workers
-Simple python module, which fetches the scheduled nextflow workflows from RabbitMQ and executes them.
+# Worker
+MAcWorP's worker component fetches the scheduled workflows and executes the using the given workflow engine.
 
 ## Dependencies
-* Python 3.x
-* Conda--derivate (conda, micromamba, ...)
+* Conda-derivate (conda, micromamba, ...)
 * Java (version depends on Nextflow)
 * [Nextflow](https://www.nextflow.io/)
+    * Version 24.09.2-edge until https://github.com/nextflow-io/nextflow/issues/5443#issuecomment-2445609593 us fixed
 
 ## Install
+1. Clone the repository
+2. `micromamba env create -f environment.yaml`
+3. `micromamba activte macworp`
+4. `python -m macworp_worker ...`
 
 
 ## Configuration
-Configuration is done by a command line interface, see: `python -m nf_cloud_worker --help`
+Configuration is done by a command line interface, see: `python -m macworp_worker --help`
+
 | Parameter | Description |
 | --- | --- |
-| --nf-cloud-url | Base-URL where the NF-Cloud instance is running: e.g. `http://localhost:3001` |
+| --nf-bin | Path to Nextflow binary |
+| --sm-bin | Path Snakemake binary. As Snakemake is installed using the Conda, it's path can be found with `$(which snakemake)` |
+| --macworp-url | Base-URL where the NF-Cloud instance is running: e.g. `http://localhost:3001` |
 | --rabbitmq-url | URL for accessing the RabbitMQ-Server, e.g. `ampq://user:password@host:port/url-encoded-namespace` |
-| --workflow-queue | Name of the RabbitMQ workflow queue |
-| --workflow-data-path | Path to the directory where NF-Cloud uploads the workflow data |
-| --workflows | Workflow configuration YAML-files (can be provided multiple times). Same as the [nf_cloud_backend configuration](../nf_cloud_backend/Readme.md#Configuration), only the `workflow` key is necessary. |
+| --project-queue-name | Name of the RabbitMQ workflow queue |
+| --projects-data-path | Path to the directory where user data is stored |
+| --number-of-workers |  Number of concurrent workers. |
 | --api-user | API user for the worker, set in in config.yaml |
-| --api-password | API passwor for the worker, set in in config.yaml |
-
-
-## Development
-For development put the nextflow binary into the root folder of the project before starting the application via `pipenv run dev`.
+| --api-password | API password for the worker, set in in config.yaml |
+| --verbose, -v | Verbosity. Can be used more than once. Every usage will increase thr log level. |
+| --keep-intermediate-files | Keeps intermediate file if set. Otherwise temporary workflow folder will be deleted after workflow execution is finished |
+| --skip-cert-verification | Skips certificate verification when talking to the API. |

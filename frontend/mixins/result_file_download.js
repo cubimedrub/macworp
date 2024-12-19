@@ -1,14 +1,3 @@
-const FILE_NOT_FOUND_MESSAGE = "Result file not ready yet."
-
-/**
- * Status of the result file download.
- */
-const RESULT_FILE_DOWNLOAD_STATUS_MAP = {
-    FETCHING: "fetching",
-    NOT_FOUND: "not_found",
-    FINISHED: "finished"
-}
-
 /**
  * Mixin for components that will render or downlaod results.
  */
@@ -19,31 +8,26 @@ export default {
             required: true
         },
     },
-    data() {
-        return {
-            result_file_download_status: RESULT_FILE_DOWNLOAD_STATUS_MAP.FETCHING,
-        }
-    },
     methods: {
         /**
          * Returns the download URL with a one-time-use token for downloading the file.
-         * Necessary for downloads that require authentication as the we can not send the JWT token in the body of a GET request.
+         * Necessary for downloads that require authentication as we can not send the JWT token in the body of a GET request.
          * 
          * @param {String} path Path to file in project directory
          * @returns {Promise} Preauthenticated download URL (can be used in a GET request to download the file)
          */
         async authenticateFileDownload(path) {
-            return fetch(`${this.$config.nf_cloud_backend_base_url}/api/users/one-time-use-token`, {
+            return fetch(`${this.$config.macworp_base_url}/api/users/one-time-use-token`, {
                 headers: {
                     "x-access-token": this.$store.state.login.jwt
                 }
             }).then(response => {
                 if(response.ok) {
                     return response.json().then(response_data => {
-                        return `${this.$config.nf_cloud_backend_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
+                        return `${this.$config.macworp_base_url}/api/projects/${this.project_id}/download?path=${path}&one-time-use-token=${response_data.token}`
                     })
                 } else {
-                    return this.handleUnknownResponse(response)
+                    return Promise.reject(response)
                 }
             })
         },
@@ -52,39 +36,47 @@ export default {
          * 
          * @param {String} path Path to file in project directory
          * @param {Boolean} is_inline Whether to download the file inline or as an attachment
+         * @param {Boolean} with_metadata Whether to return the metadata as headers
+         * @param {Boolean} is_table Whether the file is a table an should be returned in JSON format
          * @returns {Promise} Promise returning the response
          */
-        async downloadFile(path, is_inline) {
+        async downloadFile(path, is_inline, with_metadata, is_table) {
             return this.authenticateFileDownload(path).then(download_url => {
-                if(is_inline) {
-                    download_url += "&inline=true"
-                }
+                if (is_inline)
+                    download_url = download_url + "&is-inline=1"
+                if (with_metadata)
+                    download_url = download_url + "&with-metadata=1"
+                if (is_table)
+                    download_url = download_url + "&is-table=1"
+
                 return fetch(download_url).then(response => {
                     if(response.ok) {
-                        this.result_file_download_status = RESULT_FILE_DOWNLOAD_STATUS_MAP.FINISHED
                         return response
-                    } else if (response.status == 404) {
-                        this.result_file_download_status = RESULT_FILE_DOWNLOAD_STATUS_MAP.NOT_FOUND
-                        return Promise.reject()
                     } else {
-                        return this.handleUnknownResponse(response)
+                        return Promise.reject(response)
                     }
                 })
             })
-        }
-    },
-    computed: {
-        /**
-         * Returns a common message for result file not found.
-         */
-        result_file_not_found_message() {
-            return FILE_NOT_FOUND_MESSAGE
         },
         /**
-         * Returns the result_file_download_status_map
+         * Download metadata
+         * 
+         * @param {String} path Path to file in project directory
          */
-        result_file_download_status_map() {
-            return RESULT_FILE_DOWNLOAD_STATUS_MAP
+        async downloadResultFileMetadata(path) {
+            return fetch(`${this.$config.macworp_base_url}/api/projects/${this.project_id}/metadata?path=${path}`, {
+                headers: {
+                    "x-access-token": this.$store.state.login.jwt
+                }
+            }).then(response => {
+                if(response.ok) {
+                    return response.json().then(response_data => {
+                        return response_data
+                    })
+                } else {
+                    return Promise.reject(response)
+                }
+            })
         }
     }
 }

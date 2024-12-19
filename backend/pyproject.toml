@@ -1,22 +1,35 @@
 [build-system]
-requires = ["setuptools", "wheel", "Cython"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools", "wheel", "Cython", "hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [project]
-name = "nf_cloud_backend"
+name = "macworp_backend"
 requires-python = ">=3.9"
 version = "1.0.0"
+license = {file = "./LICENSE"}
+description = "Backend for Massive Accessible Workflow Platform (MAcWorP), which handles user authentication and workflow project management"
+authors = [
+    {name = "Core Unit Bioinformatic Ruhr University Bochum", email = "cubimed@rub.de"},
+]
+maintainers = [
+    {name = "Dirk Winkelhardt", email = "dirk.winkelhardt@rub.de"}
+]
+
 dependencies = [
     "dnspython <2.6",  # Once flask and eventlet is upgraded or we migrated to FastAPI this can be removed.
-    "eventlet  >=0.33, <0.34",
+    "eventlet  ~= 0.37.0",
     "Flask  >=2, <3",
     "Flask-Caching  >=2, <3",
-    "Flask-Cors  >=3, <4",
+    "Flask-Cors  ~= 4.0",
     "Flask-Login  >=0.6.1, <0.7.0",
     "flask-socketio  >=5, <6",
-    "gunicorn @ git+https://github.com/benoitc/gunicorn.git@ff58e0c6da83d5520916bc4cc109a529258d76e1#egg=gunicorn",
+    "gunicorn ~= 23.0",
     "jsonschema  >=4, <5",
     "kombu  >=5, <6",
+    "macworp_utils @ {root:parent:uri}/utils",
     "markupsafe  ==2.0.1",      # fix for `ImportError: cannot import name 'soft_unicode'
     "markdown ~=3.6",
     "mergedeep  >=1, <2",
@@ -29,6 +42,7 @@ dependencies = [
     "psycopg2-binary  >=2, <3",
     "pydantic ~= 2.9",
     "pyjwt  >=2, <3",
+    "openpyxl ~= 3.0",
     "PyYAML >=6, <7",
     "redis >=4, <5",
     "requests  >=2, <3",
@@ -40,7 +54,15 @@ dependencies = [
 dev = [
     "black",
     "honcho",
+    "kaleido", # for demo workflow
     "pandas-stubs",
     "pika-stubs",
-    "pylint"
+    "plotly", # for demo workflow
+    "pylint",
+    "types-jsonschema",
+    "types-PyYAML",
+    "types-Markdown"
 ]
+
+[project.urls]
+homepage = "https://github.com/cubimedrub/macworp"

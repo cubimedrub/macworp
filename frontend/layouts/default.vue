@@ -2,12 +2,16 @@
     <main v-if="$store.state.login.jwt != null" class="container-fluid mr-0">
         <div class="row application-content-row">
             <nav :class="{'extended-menu': show_menu}" class="col-12 col-lg-2 position-sticky d-flex flex-column py-3 application-nav-column collapsed-menu">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h1 class="brand text-break">
-                        <NuxtLink to="/">
-                            Nextflow Cloud
-                        </NuxtLink>
-                    </h1>
+                <div class="d-flex flex-column justify-content-center align-items-center">
+                    <NuxtLink to="/" class="d-flex flex-row flex-lg-column mb-2 mb-lg-0 text-decoration-none">
+                        <img class="w-100 logo" src="~/assets/images/logo.svg" alt="Massive Accessible Workflow Platform Logo"/>
+                        <div>
+                            <h1 class="brand text-break">
+                                MAcWorP
+                            </h1>
+                            <small>Massive Accessible Workflow Platform</small>
+                        </div>
+                    </NuxtLink>
                     <button @click="toggleMenu" type="button" class="btn btn-sm btn-outline-primary d-lg-none">
                         <i :class="{'fa-times': show_menu, 'fa-bars': !show_menu}" class="fas"></i>
                     </button>
@@ -64,7 +68,7 @@
                         </ul>
                         <div class="sponsors-logos">
                             <a href="https://www.ruhr-uni-bochum.de" target="_blank"><img class="w-25" src="~/assets/images/rub-logo-small.png" alt="Logo of the Ruhr University Bochum"/></a>
-                            <a href="https://www.ruhr-uni-bochum.de/mpc/" target="_blank"><img class="w-25" src="~/assets/images/mpc-logo-small.png" alt="Logo of the Medical Proteom Center"/></a>
+                            <a href="https://www.cubimed.ruhr-uni-bochum.de" target="_blank"><img class="w-50" src="~/assets/images/cubimed-logo.png" alt="Core Unit Bioinformatics Ruhr University Bochum"/></a>
                         </div>
                     </div>
                 </nav>
@@ -97,7 +101,7 @@ export default {
         },
         async logout(){
             return fetch(
-                `${this.$config.nf_cloud_backend_base_url}/api/users/logout`,
+                `${this.$config.macworp_base_url}/api/users/logout`,
                 {
                     headers: {
                         "x-access-token": this.$store.state.login.jwt

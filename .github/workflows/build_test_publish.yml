@@ -21,4 +21,4 @@ jobs:
       - name: Install dependencies and deploy
         run: |
           pip install -r requirements.txt
-          mkdocs gh-deploy --force
+          mike deploy ${{ github.ref_name }}

@@ -3,3 +3,7 @@ theme: readthedocs
 markdown_extensions:
   - pymdownx.snippets:
       base_path: !relative $config_dir
+plugins: 
+  - mike:
+      version_selector: true
+      canonical_version: null

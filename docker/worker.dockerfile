@@ -59,8 +59,9 @@ RUN sed -i 's;^.*./backend.*$;;g' environment.yml \
     && sed -i 's;yarn;git;' environment.yml \
     # Remove the optional development dependencies
     && sed -i 's;\[dev\];;' environment.yml \
-    # Remove the optional development dependencies
-    && sed -i 's;\[dev,demo\];\[demo\];' environment.yml
+    # Remove the optional dev and doc dependencies
+    && sed -i 's;\[dev,demo\];\[demo\];' environment.yml \
+    && sed -i 's;^.*requirements.txt.*$;;g' environment.yml
 
 RUN micromamba env create -y -f environment.yml \
     && micromamba clean --all --yes

@@ -15,4 +15,4 @@ dependencies:
   - pip:
     - -e ./backend[dev]
     - -e ./worker[dev,demo]
-    - -r requirements.txt
+    - -r ./requirements.txt

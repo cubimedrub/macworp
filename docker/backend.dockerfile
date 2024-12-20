@@ -43,7 +43,8 @@ ENV PATH=$PATH:$HOME/.cargo/bin
 RUN sed -i 's;^.*./worker.*$;;g' environment.yml \
     && sed -i 's;^.*- nodejs=.*$;;g' environment.yml \
     && sed -i 's;yarn;git;' environment.yml \
-    && sed -i 's;\[dev\];;' environment.yml
+    && sed -i 's;\[dev\];;' environment.yml \
+    && sed -i 's;^.*requirements.txt.*$;;g' environment.yml
 
 RUN micromamba env create -y -f environment.yml \
     && micromamba clean --all --yes

@@ -12,8 +12,16 @@ Interested and want to try MAcWorP as fast as possible?
 
 This will start the web interface on `https://<local-computer-name>:16160`, the complete URL is written to the file `PRODUCTION_TEST_URL`. It might change depending on your location (home, office, ...) as it includes the computers FQDN.
 
-From here your can login 
+From here you can login using one of the following accounts:
 
+| Name | Username | Password |
+| --- | --- | --- |
+| Dev: Login with local file | `developer` | `developer` |
+| Dev: Login with local Fusionauth | `developer@example.com` | `developer` |
+
+The next step is to create a project where data and results can be stored later.
+Without any data uploaded, start one of the preinstalled `Result rendering` workflows.
+This will generate a folder `results` with some example files which will be rendered in the browser once your go into the folder.
 
 ## Recommended full install
 

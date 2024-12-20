@@ -2,7 +2,7 @@
 name: macworp-deployment-test
 services:  
   backend_1: &migrating_backend
-    image: macworp/backend:dev
+    image: cubimedrub/macworp-backend:local
     volumes:
       - ./macworp:/home/mambauser/macworp
       - ./deploy_test_uploads:/home/mambauser/uploads
@@ -40,7 +40,7 @@ services:
   backend_3: *backend
   backend_4: *backend
   frontend:
-    image: macworp/frontend:dev
+    image: cubimedrub/macworp-frontend:local
     environment:
       MACWORP_BACKEND_BASE_URL: https://${MACWORP_HOSTNAME:-localhost}:16160
       MACWORP_BACKEND_WS_URL: https://${MACWORP_HOSTNAME:-localhost}:16160
@@ -72,7 +72,7 @@ services:
       - frontend
       - fusionauth
   worker:
-    image: macworp/worker:dev
+    image: cubimedrub/macworp-worker:local
     environment:
       PYTHONUNBUFFERED: "true"
     command: [

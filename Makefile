@@ -7,16 +7,16 @@ endif
 
 # Deal with unknown OSs
 ifeq ($(DETECTED_OS),Windows)
-$(error Sorry Windows ist not supportet as many parts of MAcWorP are not comatible with Windows. Please try WSL.)
+$(error Sorry Windows is not supported as many parts of MAcWorP are not compatible with Windows. Please try WSL.)
 else ifeq ($(DETECTED_OS),Unknown)
 $(error Unknown operating system.)
 endif
 
 # Set hostname depending on OS
 ifeq ($(DETECTED_OS),Darwin)
-MACWORP_HOSTNAME=$$(hostname)
+MACWORP_HOSTNAME=$$(hostname -s)
 else ifeq ($(DETECTED_OS),Linux)
-MACWORP_HOSTNAME=$$(hostnamectl hostname)
+MACWORP_HOSTNAME=$$(hostnamectl hostname | cut -d '.' -f 1)
 endif
 
 # CLI arguments
@@ -39,11 +39,11 @@ GROUP_ID=$$(id -g)
 # Production test
 production-test-up:
 	# Create separate upload directory
-	mkdir -p ${PROJECT_DIR_ABSOLUTE}
-	# Build docker container for backend, worker & frontend
-	env DOCKER_BUILDKIT=1 docker build -t "macworp/backend:dev" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/backend.dockerfile .
-	env DOCKER_BUILDKIT=1 docker build -t "macworp/worker:dev" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/worker.dockerfile .
-	env DOCKER_BUILDKIT=1 docker build -t "macworp/frontend:dev" -f docker/frontend.dockerfile .
+	mkdir -p ${PROJECT_DIR_ABSOLUTE}s
+	# Build docker container for backend, worker & frontend with the UID of the current user
+	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-backend:local" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/backend.dockerfile .
+	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-worker:local" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/worker.dockerfile .
+	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-frontend:local" -f docker/frontend.dockerfile .
 	# Write the link to the project directory
 	echo "https://${MACWORP_HOSTNAME}:16160" > PRODUCTION_TEST_URL
 	# Start docker-compose in separate docker-compose project called macworp-deploy-test, combining the two docker-compose files

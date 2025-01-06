@@ -1,1 +1,1 @@
-global-include *.schema.json
+global-include *.schema.json *.default.json

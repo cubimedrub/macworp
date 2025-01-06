@@ -14,8 +14,14 @@ from macworp_backend import db_wrapper as db
 
 class Workflow(db.Model):
     WORKFLOW_SCHEMA_PATH: ClassVar = Path(__file__).parent.parent.joinpath(
-        "json_schemes/workflow.schema.json"
+        "data/workflow.schema.json"
     )
+    """Path to the workflow schema for validation"""
+
+    DEFAULT_DEFINITION_PATH: ClassVar = Path(__file__).parent.parent.joinpath(
+        "data/workflow.default.json"
+    )
+    """Some default workflow definition"""
 
     id = BigAutoField(primary_key=True)
     name = CharField(max_length=512, null=False)

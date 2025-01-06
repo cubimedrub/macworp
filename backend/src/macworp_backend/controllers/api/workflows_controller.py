@@ -91,8 +91,14 @@ class WorkflowsControllers:
         if len(errors) > 0:
             return jsonify({"errors": errors}), error_status_code
 
+        # Read and store the default definition
+        default_definition: Dict[str, Any] = json.loads(
+            Workflow.DEFAULT_DEFINITION_PATH.read_text(encoding="utf-8")
+        )
         workflow: Workflow = Workflow.create(
-            name=name, description=data.get("description", None)
+            name=name,
+            description=data.get("description", None),
+            definition=default_definition,
         )
         return jsonify(workflow.to_dict())
 

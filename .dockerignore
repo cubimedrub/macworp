@@ -12,6 +12,7 @@ Procfile
 yarn-error.log
 .nuxt/
 uploads/
+deploy_test_uploads/
 
 # node modules
 node_modules/

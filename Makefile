@@ -14,9 +14,9 @@ endif
 
 # Set hostname depending on OS
 ifeq ($(DETECTED_OS),Darwin)
-MACWORP_HOSTNAME=$$(hostname -s)
+MACWORP_HOSTNAME=$$(hostname)
 else ifeq ($(DETECTED_OS),Linux)
-MACWORP_HOSTNAME=$$(hostnamectl hostname | cut -d '.' -f 1)
+MACWORP_HOSTNAME=$$(hostname --fqdn)
 endif
 
 # CLI arguments

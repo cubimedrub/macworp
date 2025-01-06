@@ -3,7 +3,6 @@
         <div class="row application-content-row">
             <nav class="col-12 col-lg-2 position-sticky d-flex flex-column py-3 application-nav-column collapsed-menu">
                 <div class="d-flex flex-column justify-content-center align-items-center">
-                    <img class="w-100 logo" src="~/assets/images/logo.svg" alt="Massive Accessible Workflow Platform Logo"/>
                     <NuxtLink to="/" class="d-flex flex-row flex-lg-column mb-2 mb-lg-0 text-decoration-none">
                         <img class="w-100 logo" src="~/assets/images/logo.svg" alt="Massive Accessible Workflow Platform Logo"/>
                         <div>

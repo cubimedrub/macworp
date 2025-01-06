@@ -119,56 +119,64 @@ The following JSON is the definition for the provided Nextflow variant of the in
 * `engine`: Workflow engine to use. Options: `nextflow` & `snakemake`
 * `src`: Source defines the location of the workflow, which can be a local directory or a remote repository. In case of Nextflow it is also possible to run workflows from `nf-core`
     * Local example:
-        ```json
-        "src": { 
-            "type": "local",
-            "directory": "<path to workflow>",
-            "script": "<filename of main script / Snakefile>"
-        }
-        ```
+
+            ```json
+            "src": { 
+                "type": "local",
+                "directory": "<path to workflow>",
+                "script": "<filename of main script / Snakefile>"
+            }
+            ```
 
         Workflow specifics:
+
         * Nextflow: Added as `<path to workflow>/<filename of main script>` to the `run` command.
         * Snakemake: Added to the Snakemake call as `--snakefile <path to workflow>/<Snakefile>`
 
     * Remote example:
-        ```json
-        "src": { 
-            "type": "remote",
-            "url": "<url to repository>",
-            "version": "<commit hash, branch or tag>"
-        }
-        ```
+
+            ```json
+            "src": { 
+                "type": "remote",
+                "url": "<url to repository>",
+                "version": "<commit hash, branch or tag>"
+            }
+            ```
 
         Workflow specifics:
+
         * Nextflow: `nextflow run ... <url to repository> -r <commit hash, branch or tag> ...`
         * Snakemake:
             1. Repository is cloned into a temporary folder in the users project directory.
             2. `snakemake ... --snakefile <temp folder>/<Snakefile> ...`
 
     * `nf-core` example
-        ```json
-        "src": { 
-            "type": "nf-core",
-            "pipeline": "<pipeline>"
-        }
-        ```
+
+            ```json
+            "src": { 
+                "type": "nf-core",
+                "pipeline": "<pipeline>"
+            }
+            ```
 
         Workflow specifics:
+
         * Nextflow: `nextflow run ... nf-core/<pipeline> ...`
     
 * `engine_parameters`: Array of parameters name and values for the engine. E.g.
 
-    ```json
-    [
-        {
-            "name": "profile",
-            "value": "docker"
-        },
-        ...
-    ]
-    ```
+        ```json
+        [
+            {
+                "name": "profile",
+                "value": "docker"
+            },
+            ...
+        ]
+        ```
+
     Workflow specifics:
+
     * Nextflow: `nextflow run ... -profile docker ...`
     * Snakemake: `snakemake ... --profile docker ...`
 
@@ -176,16 +184,18 @@ The following JSON is the definition for the provided Nextflow variant of the in
     * `dynamic`: Array of parameters selectable by the user in the frontend. This array can contain multiple of:
 
         * Single path selector:
-            ```json
-            {
-                "type": "path",
-                "name": "<parameter name>",
-                "label": "<frontend label>",
-                "desc": "<frontend description>",
-                "selectable_files": <true|false>,
-                "selectable_folders": <true|false>
-            }
-            ```
+
+                ```json
+                {
+                    "type": "path",
+                    "name": "<parameter name>",
+                    "label": "<frontend label>",
+                    "desc": "<frontend description>",
+                    "selectable_files": <true|false>,
+                    "selectable_folders": <true|false>
+                }
+                ```
+
             `selectable_files` and `selectable_folders` change if files and/or folders can be selected in the dialog.
 
             **Example**
@@ -193,16 +203,18 @@ The following JSON is the definition for the provided Nextflow variant of the in
             Like the multi path selector below with just one element to select.
 
         * Multi path selector
-            ```json
-            {
-                "type": "paths",
-                "name": "<parameter name>",
-                "label": "<frontend label>",
-                "desc": "<frontend description>",
-                "selectable_files": <true|false>,
-                "selectable_folders": <true|false>
-            }
-            ```
+
+                ```json
+                {
+                    "type": "paths",
+                    "name": "<parameter name>",
+                    "label": "<frontend label>",
+                    "desc": "<frontend description>",
+                    "selectable_files": <true|false>,
+                    "selectable_folders": <true|false>
+                }
+                ```
+
             `selectable_files` and `selectable_folders` change if files and/or folders can be selected in the dialog.
 
             **Example**
@@ -218,14 +230,15 @@ The following JSON is the definition for the provided Nextflow variant of the in
             Dialog to select (`selectable_files` enabled and `selectable_folders` disabled)
 
         * File glob, which is a file like \"regex\", e.g. *.txt
-            ```json
-            {
-                "type": "file-glob",
-                "name": "<parameter name>",
-                "label": "<frontend label>",
-                "desc": "<frontend description>"
-            }
-            ```
+
+                ```json
+                {
+                    "type": "file-glob",
+                    "name": "<parameter name>",
+                    "label": "<frontend label>",
+                    "desc": "<frontend description>"
+                }
+                ```
 
             The glob is not resolved by MAcWorP but added to the project path to be used by the workflow.
 
@@ -234,41 +247,45 @@ The following JSON is the definition for the provided Nextflow variant of the in
             ![file glob input](images/input_plain_text.png)
 
         * Number
-            ```json
-            {
-                "type": "number",
-                "name": "<parameter name>",
-                "label": "<frontend label>",
-                "desc": "<frontend description>"
-            }
-            ```
+
+                ```json
+                {
+                    "type": "number",
+                    "name": "<parameter name>",
+                    "label": "<frontend label>",
+                    "desc": "<frontend description>"
+                }
+                ```
 
             **Example**
 
             ![number input](images/input_number.png)
 
         * Plain text
-            ```json 
-            {
-                "type": "text",
-                "name": "<parameter name>",
-                "label": "<frontend label>",
-                "desc": "<frontend description>"
-                "is_multiline": <true|false>
-            }
-            ```
+
+                ```json 
+                {
+                    "type": "text",
+                    "name": "<parameter name>",
+                    "label": "<frontend label>",
+                    "desc": "<frontend description>"
+                    "is_multiline": <true|false>
+                }
+                ```
 
             **Example**
 
             ![plain text input](images/input_plain_text.png)
 
         * A separator
-            ```json
-            {
-                "type": "separator",
-                "label": "This separator is not a real input, but an element to structure the form"
-            }
-            ```
+
+                ```json
+                {
+                    "type": "separator",
+                    "label": "This separator is not a real input, but an element to structure the form"
+                }
+                ```
+
             Just a horizontal line for separation of input into groups.
 
             **Example**
@@ -276,25 +293,26 @@ The following JSON is the definition for the provided Nextflow variant of the in
             ![separator](images/separator.png)
         
         * Select of given value
-            ```json
-            {
-                "type": "value-select",
-                "name": "<parameter name>",
-                "label": "<frontend label>",
-                "desc": "<frontend description>",
-                "options": [
-                    {
-                        "label": "<option label 2>",
-                        "value": "<value 1>"
-                    },
-                    {
-                        "label": "<option label 2>",
-                        "value": "<value 2>"
-                    }
-                ],
-                "value": "<optional preselected value>"
-            }
-            ```
+
+                ```json
+                {
+                    "type": "value-select",
+                    "name": "<parameter name>",
+                    "label": "<frontend label>",
+                    "desc": "<frontend description>",
+                    "options": [
+                        {
+                            "label": "<option label 2>",
+                            "value": "<value 1>"
+                        },
+                        {
+                            "label": "<option label 2>",
+                            "value": "<value 2>"
+                        }
+                    ],
+                    "value": "<optional preselected value>"
+                }
+                ```
 
             **Example**
 
@@ -304,7 +322,8 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
 
         
-        Note: 
+        Note:
+        
         * Path and file glob parameters produce absolute paths within the project directory.
         * Each parameter can contain an optional `value` key with a default value.
         * The element's name is used as the workflow parameter for the actual executrion:
@@ -335,6 +354,7 @@ Each result file can be annotated with a header and description, by adding a JSO
 * Metadata file:  `./some_barplot.png.mmdata`
 
 The content would look like this:
+
 ```json
 {
     "header": "That some kind of a bar plot",

@@ -1,0 +1,11 @@
+# Ignore all
+*
+
+# Except
+!/frontend/
+!/./docker/entrypoints/frontend.sh
+
+# Ignore within frontend
+.nuxt/
+.yarn/
+node_modules/

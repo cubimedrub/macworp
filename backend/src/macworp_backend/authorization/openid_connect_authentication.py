@@ -38,10 +38,22 @@ class OpenIdConnectAuthentication(AbstractAuthentication):
         Dict[Any, Any]
             Provider config
         """
-        return requests.get(
+        response = requests.get(
             provider_client_config["discovery_url"],
             verify=provider_client_config.get("verify_ssl", True),
-        ).json()
+            timeout=60,
+        )
+        try:
+            return response.json()
+        except Exception as err:
+            raise ValueError(
+                (
+                    f"Could not decode JSON from OpenID connect provider discovery endpoint\n"
+                    f"\tURL: {provider_client_config['discovery_url']}\n"
+                    f"\tStatus code: {response.status_code}\n"
+                    f"\tBody: '{response.text}'"
+                )
+            ) from err
 
     @classmethod
     def login(cls, request: Request, provider: str) -> Response:

@@ -10,11 +10,11 @@
 local.env
 macworp.local.config.yaml
 /nextflow
-PRODUCTION_TEST_URL
+QUICKSTART_URL
 
 # uploads
 /uploads
-/deploy_test_uploads
+/quickstart_uploads
 
 # npm & yarn
 node_modules/

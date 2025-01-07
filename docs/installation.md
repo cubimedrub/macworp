@@ -8,9 +8,9 @@ Interested and want to try MAcWorP as fast as possible?
     * On Linux make sure your user is allowed to access the Docker service by adding the user to the Docker group `usermod -aG docker <your-user>` and reboot
 3. Install `make` & `git`
 4. Clone the repository
-5. `make production-test-up`
+5. `make quickstart-up`
 
-This will start the web interface on `https://<local-computer-name>:16160`, the complete URL is written to the file `PRODUCTION_TEST_URL`. It might change depending on your location (home, office, ...) as it includes the computers FQDN.
+This will start the web interface on `https://<local-computer-name>:16160`, the complete URL is written to the file `QUICKSTART_URL`. It might change depending on your location (home, office, ...) as it includes the computers FQDN.
 
 From here you can login using one of the following accounts:
 
@@ -25,7 +25,7 @@ This will generate a folder `results` with some example files which will be rend
 
 ## Recommended full install
 
-The installation instruction is a more detailed description of the quickstart setup. The prerequisites are located in `docker-compose.yaml` while the MAcWorP specific container are located in `deploy-test.docker-compose.yaml` 
+The installation instruction is a more detailed description of the quickstart setup. The prerequisites are located in `docker-compose.yml` while the MAcWorP specific container are located in `quickstart.docker-compose.yml` 
 
 ### Prerequisites
 1. RabbitMQ (=3)

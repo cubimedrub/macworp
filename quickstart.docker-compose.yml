@@ -5,9 +5,9 @@ services:
     image: cubimedrub/macworp-backend:local
     volumes:
       - ./macworp:/home/mambauser/macworp
-      - ./deploy_test_uploads:/home/mambauser/uploads
+      - ./quickstart_uploads:/home/mambauser/uploads
       # Pass the local config
-      - ./config.docker-compose.yaml:/home/mambauser/macworp.local.config.yaml:ro
+      - ./quickstart.config.yml:/home/mambauser/local.config.yaml:ro
       - ./dev_auth.yaml:/home/mambauser/dev_auth.yaml:ro
       - ./demo_workflows:/home/mambauser/demo_workflows:ro
     environment:
@@ -19,7 +19,7 @@ services:
       MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
       MIGRATION_DB_HOSTNAME: psql
       PYTHONUNBUFFERED: "true"
-      MACWORP_CONFIG: /home/mambauser/macworp.local.config.yaml
+      MACWORP_CONFIG: /home/mambauser/local.config.yaml
     command: ["serve", "--gunicorn"]
     depends_on:
       psql:
@@ -36,7 +36,7 @@ services:
       MACWORP_HOSTNAME: ${MACWORP_HOSTNAME:-localhost}
       MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
       PYTHONUNBUFFERED: "true"
-      MACWORP_CONFIG: /home/mambauser/macworp.local.config.yaml
+      MACWORP_CONFIG: /home/mambauser/local.config.yaml
     depends_on:
       - backend_1
   backend_3: *backend

@@ -3,9 +3,9 @@
 
 # Except
 !/frontend/
-!/./docker/entrypoints/frontend.sh
+!/docker/entrypoints/frontend.sh
 
 # Ignore within frontend
-.nuxt/
-.yarn/
-node_modules/
+**/.nuxt/
+**/.yarn/
+**/node_modules/

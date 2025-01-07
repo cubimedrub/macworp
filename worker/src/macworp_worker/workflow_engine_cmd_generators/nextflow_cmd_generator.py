@@ -4,6 +4,8 @@ from pathlib import Path
 import shutil
 from typing import Any, ClassVar, Dict, List
 
+from git import Repo as GitRepo
+
 from macworp_utils.exchange.queued_project import QueuedProject  # type: ignore[import-untyped]
 from macworp_utils.constants import SupportedWorkflowEngine  # type: ignore[import-untyped]
 from macworp_worker.workflow_engine_cmd_generators.cmd_generator import CmdGenerator
@@ -39,7 +41,7 @@ class NextflowCmdGenerator(CmdGenerator):
         command += self.__class__.get_workflow_engine_params(workflow_settings)
 
         # Add workflow source
-        command += self.get_workflow_source(workflow_settings)
+        command += self.get_workflow_source(workflow_settings, work_dir)
 
         # Add workflow dynamic parameters
         command += self.get_workflow_arguments(
@@ -53,7 +55,9 @@ class NextflowCmdGenerator(CmdGenerator):
 
         return command
 
-    def get_workflow_source(self, workflow_settings: Dict[str, Any]) -> List[str]:
+    def get_workflow_source(
+        self, workflow_settings: Dict[str, Any], work_dir: Path
+    ) -> List[str]:
         """Returns the workflow source as list of strings."""
 
         workflow_source = workflow_settings["src"]
@@ -63,11 +67,19 @@ class NextflowCmdGenerator(CmdGenerator):
                 directory = directory.joinpath(workflow_source["script"])
                 return [str(directory)]
             case "remote":
-                source = [workflow_source["url"]]
-                if "version" in workflow_source:
-                    source.append("-r")
-                    source.append(workflow_source["version"])
-                return source
+                local_repo_path = work_dir.joinpath("workflow_repo")
+                if not local_repo_path.exists():
+                    GitRepo.clone_from(
+                        workflow_source["url"],
+                        local_repo_path,
+                        multi_options=[f"--branch {workflow_source['version']}"],
+                    )
+                else:
+                    repo = GitRepo(local_repo_path)
+                    repo.remotes.origin.fetch()
+                    repo.git.checkout(workflow_source["version"])
+                directory = local_repo_path.joinpath("main.nf")
+                return [str(directory)]
             case "nf-core":
                 return [f"nf-core/{workflow_source['pipeline']}"]
             case _:

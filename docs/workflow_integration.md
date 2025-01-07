@@ -146,9 +146,11 @@ The following JSON is the definition for the provided Nextflow variant of the in
         Workflow specifics:
 
         * Nextflow: `nextflow run ... <url to repository> -r <commit hash, branch or tag> ...`
+            1. Repository is cloned into a temporary folder in the users project directory.
+            2. `nextflow run ... <temp folder>/main.nf ...`
         * Snakemake:
             1. Repository is cloned into a temporary folder in the users project directory.
-            2. `snakemake ... --snakefile <temp folder>/<Snakefile> ...`
+            2. `snakemake ... --snakefile <temp folder>/Snakefile ...`
 
     * `nf-core` example
 

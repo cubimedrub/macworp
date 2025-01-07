@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Installation - MAcWorP - Massive Accessible Workflow Platform</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../css/version-select.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Installation";
+        var mkdocs_page_input_path = "installation.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> MAcWorP - Massive Accessible Workflow Platform
+        </a>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">MAcWorP - Massive aCcessible Workflow Platform</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../development/">Development</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Installation</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#quickstart">Quickstart</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#recommended-full-install">Recommended full install</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#prerequisites">Prerequisites</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#install">Install</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../workflow_integration/">Workflow integration</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Components</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../components/backend/">Backend</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../components/frontend/">Frontend</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../components/worker/">Worker</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">MAcWorP - Massive Accessible Workflow Platform</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Installation</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="installation">Installation</h1>
+<h2 id="quickstart">Quickstart</h2>
+<p>Interested and want to try MAcWorP as fast as possible?   </p>
+<ol>
+<li>A Unix-like operating system is mandatory: You are good to go with any popular Linux distribution, Windows Subsystem for Linux or macOS</li>
+<li>Install <a href="https://docs.docker.com/get-started/get-docker/">Docker</a><ul>
+<li>On Linux make sure your user is allowed to access the Docker service by adding the user to the Docker group <code>usermod -aG docker &lt;your-user&gt;</code> and reboot</li>
+</ul>
+</li>
+<li>Install <code>make</code> &amp; <code>git</code></li>
+<li>Clone the repository</li>
+<li><code>make quickstart-up</code></li>
+</ol>
+<p>This will start the web interface on <code>https://&lt;local-computer-name&gt;:16160</code>, the complete URL is written to the file <code>QUICKSTART_URL</code>. It might change depending on your location (home, office, ...) as it includes the computers FQDN.</p>
+<p>From here you can login using one of the following accounts:</p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Username</th>
+<th>Password</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dev: Login with local file</td>
+<td><code>developer</code></td>
+<td><code>developer</code></td>
+</tr>
+<tr>
+<td>Dev: Login with local Fusionauth</td>
+<td><code>developer@example.com</code></td>
+<td><code>developer</code></td>
+</tr>
+</tbody>
+</table>
+<p>The next step is to create a project where data and results can be stored later.
+Without any data uploaded, start one of the preinstalled <code>Result rendering</code> workflows.
+This will generate a folder <code>results</code> with some example files which will be rendered in the browser once your go into the folder.</p>
+<h2 id="recommended-full-install">Recommended full install</h2>
+<p>The installation instruction is a more detailed description of the quickstart setup. The prerequisites are located in <code>docker-compose.yml</code> while the MAcWorP specific container are located in <code>quickstart.docker-compose.yml</code> </p>
+<h3 id="prerequisites">Prerequisites</h3>
+<ol>
+<li>RabbitMQ (=3)</li>
+<li>PostgreSQL (&gt;=14)</li>
+<li>Redis (=6)
+This can also be deployed using Docker images.</li>
+</ol>
+<p>If a distributed setup is intended, a shared file system is also needed. E.g. NFS seems to work quit good.</p>
+<h2 id="install">Install</h2>
+<p>The recommended way of deploying MAcWorP is via the provided Docker containers.
+1. Pull the images</p>
+<pre><code>    ```shell
+    docker pull ghcr.io/cubimedrub/macworp-backend:latest
+    docker pull ghcr.io/cubimedrub/macworp-worker:latest
+    docker pull ghcr.io/cubimedrub/macworp-frontend:latest
+    ```
+</code></pre>
+<ol>
+<li>
+<p>Create a new config</p>
+<pre><code>```shell
+docker pull --rm -ti ghcr.io/cubimedrub/macworp-backend utility config print &gt; config.yml
+```
+</code></pre>
+<p>Configure it to your needs. Make sure to use paths within the container!
+It is possible to use environment variables by <code>ENV['&lt;variable_name&gt;']</code>
+3. Create folder (on the shared filesystem) or volumes to persist projects files (uploads) and workflow sources
+4. Start some backend container to distribute the load</p>
+<pre><code>```shell
+docker run -d -it \
+    -n macworp-backend-&lt;some_unique_suffix&gt;
+    -v $(pwd)/config.yml:/home/mambauser/config.yml:ro \
+    -v &lt;persistent_workflow_source_folder&gt;:/home/mambauser/workflows:ro \
+    -v &lt;persistent_upload_folder&gt;:/home/mambauser/uploads \
+    -e MACWORP_CONFIG=/home/mambauser/config.yml
+    ghcr.io/cubimedrub/macworp-backend:latest \
+    serve --gunicorn
+```
+</code></pre>
+<p>The first container should also run database migrations and RabbitMQ preparation by setting the environment variable: <code>-e RUN_MIGRATION=true</code>.
+5. Next we need one frontend container</p>
+<pre><code>```shell
+docker run -d -it \
+    -n macworp-frontend \
+    -e MACWORP_BACKEND_BASE_URL"=&lt;YOUR_DOMAIN_WITH_PROTOCOL&gt;" \
+    -e MACWORP_BACKEND_WS_URL="&lt;YOUR_DOMAIN_WITH_PROTOCOL&gt;" \
+    -e MACWORP_FRONTEND_INTERFACE="0.0.0.0" \
+    -e MACWORP_UPLOAD_MAX_FILE_SITE=10737418240 \
+    -e MACWORP_DISABLE_SSL_VERIFICATION="true" \
+    docker pull ghcr.io/cubimedrub/macworp-frontend:latest
+```
+</code></pre>
+<p><code>&lt;YOUR_DOMAIN_WITH_PROTOCOL&gt;</code> could be something like <code>http://example.org</code> or with <code>https</code>.
+6. The last piece of the puzzle to start the web services is NginX to combine everything in one service accessible via a single domain and port</p>
+<pre><code>```
+# Define a couple of backend containers to handle the live updates
+upstream socketio_handler {
+    ip_hash;    # makes sure the same the channels are processed by the same proxy
+    server macworp-backend-&lt;some_unique_suffix&gt;:3001;
+    server ...;
+}
+
+# Depending on the expected user group add some backend container to handle file uploads,
+# log processing etc.
+upstream backend_handler {
+    server macworp-backend-&lt;some_other_unique_suffix&gt;:3001;
+    server ...;
+}
+
+# One frontend is sufficient
+upstream frontend_handler {
+    server macworp-frontend:5001;
+}
+
+server {
+    # http settings
+    listen 80;
+    server_name &lt;YOUR_DOMAIN&gt;;
+
+    # https 
+    #listen 443 ssl;
+    #server_name &lt;YOUR_DOMAIN&gt;;
+
+    #ssl_certificate     /etc/custom_ssl/cert.pem;
+    #ssl_certificate_key /etc/custom_ssl/key.pem;
+    #ssl_protocols       TLSv1 TLSv1.1 TLSv1.2;
+    #ssl_ciphers         HIGH:!aNULL:!MD5;
+    # end https
+
+    # Adjust handling of client body 
+    client_max_body_size 25G;
+    client_body_buffer_size 100M;
+
+    # Make files sending more efficient
+    sendfile on;
+    tcp_nopush on;
+
+    add_header Access-Control-Allow-Origin *;
+    add_header Access-Control-Allow-Methods *;
+    add_header Access-Control-Expose-Headers Content-Type;
+
+    # Deliver fast requests
+    location ~ ^/api {
+        # Disable buffering of upstream responses.
+        proxy_buffering             off;
+        # Set proxy headers for Flask
+        proxy_set_header X-Real-IP  $remote_addr;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto "https";
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_redirect off;
+        # Disable passing on to next upstreamserver
+        # proxy_next_upstream off;
+        # Adjust timeouts
+        proxy_connect_timeout       20s;
+        proxy_send_timeout          20s;
+        proxy_read_timeout          20s;
+        send_timeout                20s;
+        proxy_pass http://backend_handler;
+    }
+
+    location /socket.io {
+        add_header X-Debug "sock location";
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_redirect off;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_pass http://socketio_handler/socket.io;
+    }
+
+    # Deliver frontend
+    location / {
+        # Disable buffering of upstream responses.
+        proxy_buffering             off;
+        # Set proxy headers for Flask
+        proxy_set_header X-Real-IP  $remote_addr;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_redirect off;
+        proxy_pass http://frontend_handler;
+    }
+}
+```
+</code></pre>
+<p>Save this to a file and start a NginX container</p>
+<pre><code>```shell
+docker run -d -it \
+    -v &lt;path_to_conf_file&gt;:/etc/nginx/templates/default.conf.template:ro \
+    nginx/nginx 
+```
+</code></pre>
+</li>
+<li>
+<p>To start the worker run</p>
+<pre><code>```shell
+docker run -d -it \
+    -v &lt;persistent_workflow_source_folder&gt;:/home/mambauser/workflows:ro \
+    -v &lt;persistent_upload_folder&gt;:/home/mambauser/uploads \
+    ghcr.io/cubimedrub/macworp-worker:latest \
+    -vvvvvvvv \
+    --skip-cert-verification \
+    -n /usr/local/bin/nextflow \
+    -s /opt/conda/envs/macworp/bin/snakemake \
+    -c &lt;YOUR_DOMAIN&gt; \
+    -r amqp://admin:developer@&lt;IP_OF_RABBIT_HOST&gt;:5672/%2f \
+    -q project_workflow \
+    -d /home/mambauser/uploads \
+    -u worker \
+    -p developer \
+    --keep-intermediate-files \
+```
+</code></pre>
+</li>
+</ol>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../development/" class="btn btn-neutral float-left" title="Development"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../workflow_integration/" class="btn btn-neutral float-right" title="Workflow integration">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../development/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../workflow_integration/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../js/version-select.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

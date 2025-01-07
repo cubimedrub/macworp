@@ -21,7 +21,7 @@ endif
 
 # CLI arguments
 DOCKER_SOCKET_PATH ?= /var/run/docker.sock
-PROJECT_DIR ?= ./deploy_test_uploads
+PROJECT_DIR ?= ./quickstart_uploads
 
 
 # Set immutable variables
@@ -39,7 +39,7 @@ GROUP_ID=$$(id -g)
 # Production test
 quickstart-up:
 	# Create separate upload directory
-	mkdir -p ${PROJECT_DIR_ABSOLUTE}s
+	mkdir -p ${PROJECT_DIR_ABSOLUTE}
 	# Build docker container for backend, worker & frontend with the UID of the current user
 	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-backend:local" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/backend.dockerfile .
 	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-worker:local" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/worker.dockerfile .

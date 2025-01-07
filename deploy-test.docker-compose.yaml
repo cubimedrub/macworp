@@ -19,6 +19,7 @@ services:
       MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
       MIGRATION_DB_HOSTNAME: psql
       PYTHONUNBUFFERED: "true"
+      MACWORP_CONFIG: /home/mambauser/macworp.local.config.yaml
     command: ["serve", "--gunicorn"]
     depends_on:
       psql:
@@ -35,6 +36,7 @@ services:
       MACWORP_HOSTNAME: ${MACWORP_HOSTNAME:-localhost}
       MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
       PYTHONUNBUFFERED: "true"
+      MACWORP_CONFIG: /home/mambauser/macworp.local.config.yaml
     depends_on:
       - backend_1
   backend_3: *backend

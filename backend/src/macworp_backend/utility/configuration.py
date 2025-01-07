@@ -18,8 +18,8 @@ class Configuration:
     Application configuration
     """
 
-    LOCAL_CONFIG_NAME: ClassVar[str] = "macworp.local.config.yaml"
-    """ Name for local configuration
+    CONFIG_ENV_NAME: ClassVar[str] = "MACWORP_CONFIG"
+    """ Environment variable name for configuration
     """
 
     YAML_ENV_VAR_REG: ClassVar[re.Pattern] = re.compile(r"ENV\['(?P<env_name>.+?)'\]")
@@ -106,12 +106,14 @@ frontend_host_url: http://localhost:5001
         Initializes configuration
         """
         config = yaml_load(cls.DEFAULT_CONFIG, Loader=YamlLoader)
-        config_path = Path(f"./{cls.LOCAL_CONFIG_NAME}")
-        if config_path.is_file():
-            with config_path.open("r", encoding="utf-8") as config_file:
-                local_config_io = StringIO(cls.env_resolver(config_file.read()))
-                new_config = yaml_load(local_config_io, Loader=YamlLoader)
-                config = cls._merge_dicts_recursively(new_config, config)
+        config_path = os.getenv(cls.CONFIG_ENV_NAME, None)  #
+        if config_path is not None and config_path != "":
+            config_path = Path(config_path)
+            if config_path.is_file():
+                with config_path.open("r", encoding="utf-8") as config_file:
+                    local_config_io = StringIO(cls.env_resolver(config_file.read()))
+                    new_config = yaml_load(local_config_io, Loader=YamlLoader)
+                    config = cls._merge_dicts_recursively(new_config, config, [])
         cls._validate_config(config)
 
         cls.__values = config
@@ -265,7 +267,7 @@ frontend_host_url: http://localhost:5001
 
     @staticmethod
     def _merge_dicts_recursively(
-        source: Dict[str, Any], destination: Dict[str, Any], key_path: List[str] = []
+        source: Dict[str, Any], destination: Dict[str, Any], key_path: List[str]
     ) -> Dict[str, Any]:
         """
         Merges source dictionary into destination dictionary.
@@ -287,17 +289,20 @@ frontend_host_url: http://localhost:5001
         for key, value in source.items():
             new_key_path: List[str] = deepcopy(key_path)
             new_key_path.append(key)
-            if ".".join(
-                key_path
-            ) not in Configuration.KEY_PATHS_TO_OVERRIDE and isinstance(value, dict):
+            # plain override when value is not a dict or key is in KEY_PATHS_TO_OVERRIDE
+            if (
+                not isinstance(value, dict)
+                or key in Configuration.KEY_PATHS_TO_OVERRIDE
+            ):
+                destination[key] = value
+            else:
+                # recursive merge
                 node = destination.setdefault(key, {})
                 Configuration._merge_dicts_recursively(value, node, new_key_path)
-            else:
-                destination[key] = value
         return destination
 
     @classmethod
-    def create_default_config(cls, folder_path: Path):
+    def create_default_config(cls, path: Path):
         """
         Writes default config to file
 
@@ -306,14 +311,11 @@ frontend_host_url: http://localhost:5001
         config_path : Path
             Path to config file
         """
-        config_path: Path = folder_path.joinpath(cls.LOCAL_CONFIG_NAME)
-        if not config_path.is_file():
-            with config_path.open("w") as config_file:
+        if not path.is_file():
+            with path.open("w") as config_file:
                 config_file.write(cls.DEFAULT_CONFIG.strip())
         else:
-            raise ValueError(
-                f"path already contains a file named {cls.LOCAL_CONFIG_NAME}"
-            )
+            raise ValueError(f"{path} already exists")
 
     @classmethod
     def print_default_config(cls):

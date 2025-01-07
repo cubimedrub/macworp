@@ -1,0 +1,28 @@
+interface: 127.0.0.1
+debug: false
+upload_path: "./uploads"
+database:
+  url: postgresql://postgres:developer@127.0.0.1:5434/macworp
+  pool_size: 1
+matomo:
+  enabled: false
+  url: ""
+  site_id: 1
+  auth_token: "foobar"
+rabbit_mq:
+  url: "amqp://admin:developer@127.0.0.1:5674/%2f"
+  project_workflow_queue: project_workflow
+redis_url: redis://localhost:6380/0
+worker_credentials:
+  username: "worker"
+  password: "foobar"
+login_providers:
+  testoverride:
+    dev:
+        description: Override for testing
+        client_id: c63f35e8-66dc-4ec3-bb34-b29803ba72f1
+        client_secret: 8CLrA9gAVmlM7GKKCnMnT9MHNvUMqXNVWog2kWUuC7Y2iBOnFIh9X0rpCqfMcpfQkEZfCBfxMqfz5FYC6cduB20kxqV5Ysq
+        discovery_url: http://localhost:9011/e8a19b47-52ca-35c0-b34b-cc4ab0b4fa84/.well-known/openid-configuration 
+        scope: "offline_access"
+        verify_ssl: false
+frontend_host_url: http://localhost:5001

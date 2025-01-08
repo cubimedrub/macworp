@@ -1,5 +1,4 @@
 # Contains basic services for development.
-version: '2.2'
 services:
   psql:
     image: postgres:14

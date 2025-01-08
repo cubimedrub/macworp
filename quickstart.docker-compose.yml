@@ -5,7 +5,7 @@ services:
     image: cubimedrub/macworp-backend:local
     volumes:
       - ./macworp:/home/mambauser/macworp
-      - ./quickstart_uploads:/home/mambauser/uploads
+      - ${PROJECT_DIR_ABSOLUTE}:/home/mambauser/uploads
       # Pass the local config
       - ./quickstart.config.yml:/home/mambauser/local.config.yaml:ro
       - ./dev_auth.yaml:/home/mambauser/dev_auth.yaml:ro

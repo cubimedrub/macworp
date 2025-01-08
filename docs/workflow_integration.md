@@ -120,13 +120,13 @@ The following JSON is the definition for the provided Nextflow variant of the in
 * `src`: Source defines the location of the workflow, which can be a local directory or a remote repository. In case of Nextflow it is also possible to run workflows from `nf-core`
     * Local example:
 
-            ```json
-            "src": { 
-                "type": "local",
-                "directory": "<path to workflow>",
-                "script": "<filename of main script / Snakefile>"
-            }
-            ```
+        ```json
+        "src": { 
+            "type": "local",
+            "directory": "<path to workflow>",
+            "script": "<filename of main script / Snakefile>"
+        }
+        ```
 
         Workflow specifics:
 
@@ -135,13 +135,13 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
     * Remote example:
 
-            ```json
-            "src": { 
-                "type": "remote",
-                "url": "<url to repository>",
-                "version": "<commit hash, branch or tag>"
-            }
-            ```
+        ```json
+        "src": { 
+            "type": "remote",
+            "url": "<url to repository>",
+            "version": "<commit hash, branch or tag>"
+        }
+        ```
 
         Workflow specifics:
 
@@ -154,12 +154,12 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
     * `nf-core` example
 
-            ```json
-            "src": { 
-                "type": "nf-core",
-                "pipeline": "<pipeline>"
-            }
-            ```
+        ```json
+        "src": { 
+            "type": "nf-core",
+            "pipeline": "<pipeline>"
+        }
+        ```
 
         Workflow specifics:
 
@@ -167,15 +167,15 @@ The following JSON is the definition for the provided Nextflow variant of the in
     
 * `engine_parameters`: Array of parameters name and values for the engine. E.g.
 
-        ```json
-        [
-            {
-                "name": "profile",
-                "value": "docker"
-            },
-            ...
-        ]
-        ```
+    ```json
+    [
+        {
+            "name": "profile",
+            "value": "docker"
+        },
+        ...
+    ]
+    ```
 
     Workflow specifics:
 
@@ -187,16 +187,16 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
         * Single path selector:
 
-                ```json
-                {
-                    "type": "path",
-                    "name": "<parameter name>",
-                    "label": "<frontend label>",
-                    "desc": "<frontend description>",
-                    "selectable_files": <true|false>,
-                    "selectable_folders": <true|false>
-                }
-                ```
+            ```json
+            {
+                "type": "path",
+                "name": "<parameter name>",
+                "label": "<frontend label>",
+                "desc": "<frontend description>",
+                "selectable_files": <true|false>,
+                "selectable_folders": <true|false>
+            }
+            ```
 
             `selectable_files` and `selectable_folders` change if files and/or folders can be selected in the dialog.
 
@@ -206,16 +206,16 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
         * Multi path selector
 
-                ```json
-                {
-                    "type": "paths",
-                    "name": "<parameter name>",
-                    "label": "<frontend label>",
-                    "desc": "<frontend description>",
-                    "selectable_files": <true|false>,
-                    "selectable_folders": <true|false>
-                }
-                ```
+            ```json
+            {
+                "type": "paths",
+                "name": "<parameter name>",
+                "label": "<frontend label>",
+                "desc": "<frontend description>",
+                "selectable_files": <true|false>,
+                "selectable_folders": <true|false>
+            }
+            ```
 
             `selectable_files` and `selectable_folders` change if files and/or folders can be selected in the dialog.
 
@@ -233,14 +233,14 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
         * File glob, which is a file like \"regex\", e.g. *.txt
 
-                ```json
-                {
-                    "type": "file-glob",
-                    "name": "<parameter name>",
-                    "label": "<frontend label>",
-                    "desc": "<frontend description>"
-                }
-                ```
+            ```json
+            {
+                "type": "file-glob",
+                "name": "<parameter name>",
+                "label": "<frontend label>",
+                "desc": "<frontend description>"
+            }
+            ```
 
             The glob is not resolved by MAcWorP but added to the project path to be used by the workflow.
 
@@ -250,14 +250,14 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
         * Number
 
-                ```json
-                {
-                    "type": "number",
-                    "name": "<parameter name>",
-                    "label": "<frontend label>",
-                    "desc": "<frontend description>"
-                }
-                ```
+            ```json
+            {
+                "type": "number",
+                "name": "<parameter name>",
+                "label": "<frontend label>",
+                "desc": "<frontend description>"
+            }
+            ```
 
             **Example**
 
@@ -265,15 +265,15 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
         * Plain text
 
-                ```json 
-                {
-                    "type": "text",
-                    "name": "<parameter name>",
-                    "label": "<frontend label>",
-                    "desc": "<frontend description>"
-                    "is_multiline": <true|false>
-                }
-                ```
+            ```json 
+            {
+                "type": "text",
+                "name": "<parameter name>",
+                "label": "<frontend label>",
+                "desc": "<frontend description>"
+                "is_multiline": <true|false>
+            }
+            ```
 
             **Example**
 
@@ -281,12 +281,12 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
         * A separator
 
-                ```json
-                {
-                    "type": "separator",
-                    "label": "This separator is not a real input, but an element to structure the form"
-                }
-                ```
+            ```json
+            {
+                "type": "separator",
+                "label": "This separator is not a real input, but an element to structure the form"
+            }
+            ```
 
             Just a horizontal line for separation of input into groups.
 
@@ -296,25 +296,25 @@ The following JSON is the definition for the provided Nextflow variant of the in
         
         * Select of given value
 
-                ```json
-                {
-                    "type": "value-select",
-                    "name": "<parameter name>",
-                    "label": "<frontend label>",
-                    "desc": "<frontend description>",
-                    "options": [
-                        {
-                            "label": "<option label 2>",
-                            "value": "<value 1>"
-                        },
-                        {
-                            "label": "<option label 2>",
-                            "value": "<value 2>"
-                        }
-                    ],
-                    "value": "<optional preselected value>"
-                }
-                ```
+            ```json
+            {
+                "type": "value-select",
+                "name": "<parameter name>",
+                "label": "<frontend label>",
+                "desc": "<frontend description>",
+                "options": [
+                    {
+                        "label": "<option label 2>",
+                        "value": "<value 1>"
+                    },
+                    {
+                        "label": "<option label 2>",
+                        "value": "<value 2>"
+                    }
+                ],
+                "value": "<optional preselected value>"
+            }
+            ```
 
             **Example**
 
@@ -371,4 +371,5 @@ Have a look into the [results demo workflow](./demo_workflows/result_demo/)
 1. In general it is a good idea to use publicly available Docker container to manage your dependencies as most workflow engines can download containers by themselves. For help see:
     * [Nextflow](https://snakemake.readthedocs.io/en/stable/snakefiles/deployment.html#running-jobs-in-containers)
     * [Snakemake](https://snakemake.readthedocs.io/en/stable/snakefiles/deployment.html#running-jobs-in-containers)
-    However it is possible use dependencies installed via Conda or package managers, but it has to be done manually on each worker. 
+
+    However it is possible to use dependencies installed via Conda or package managers, but it has to be done manually on each worker. 

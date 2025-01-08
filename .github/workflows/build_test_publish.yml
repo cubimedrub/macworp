@@ -2,27 +2,68 @@ on:
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
+    branches:
+      - main
+
 permissions:
   contents: write
+  packages: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Fetch 
+
+      - name: Build Docker image
+        id: build
+        run: |
+          docker build -t ghcr.io/${{ github.repository }}:${{ github.ref_name }} .
+
+      # First we would need some tests
+      # - name: Run tests in Docker container
+      #   id: test
+      #   if: steps.build.outcome == 'success'
+      #   run: |
+      #     docker run --rm --entrypoint "" ghcr.io/${{ github.repository }}:${{ github.ref_name }} python -m unittest discover tests '*_test.py' 
+
+      - name: Log in to GitHub Container Registry
+        id: registry_login
+        if: steps.build.outcome == 'success' && github.event_name != 'pull_request'
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push Docker image
+        if: steps.registry_login.outcome == 'success' && github.event_name != 'pull_request'
+        run: |
+          docker tag ghcr.io/${{ github.repository }}:latest
+          docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          docker push ghcr.io/${{ github.repository }}:latest
+
+      - name: Fetch
+        if: steps.build.outcome == 'success' && github.event_name != 'pull_request'
         run: git fetch --prune --unshallow
+
       - name: Configure GIT
+        if: steps.build.outcome == 'success' && github.event_name != 'pull_request'
         run: |
             git config user.name github-actions[bot]
             git config user.email github-actions[bot]@users.noreply.github.com
+
       - name: Set up Python
+        if: steps.build.outcome == 'success' && github.event_name != 'pull_request'
         uses: actions/setup-python@v5
         with:
           python-version: 3.x
+
       - name: Install dependencies
+        if: steps.build.outcome == 'success' && github.event_name != 'pull_request'
         run: |
           pip install -r requirements.txt
+
       - name: Build site
+        if: steps.build.outcome == 'success' && github.event_name != 'pull_request'
         run: |
           mike deploy --push --update-aliases ${{ github.ref_name }} latest

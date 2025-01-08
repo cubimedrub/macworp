@@ -46,6 +46,9 @@ The recommended way of deploying MAcWorP is via the provided Docker containers.
     docker pull ghcr.io/cubimedrub/macworp-frontend:latest
     ```
 
+    **Note**: The `backend` and `worker` images are prebuild using the user and group ID 1000 for the user running the services in the container. This means that the upload/project folder as well as the local workflow folder need to have read and write permissions for this user.
+        If this is not possible due to permission conflicts, rebuild the images locally with with the argument `--build-arg USER_ID=<DESIRED_USER_ID> --build-arg GROUP_ID=<DESIRED_GROUP_ID>`.
+
 2. Create a new config
 
     ```shell

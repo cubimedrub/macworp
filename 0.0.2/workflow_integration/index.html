@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Workflow integration - MAcWorP - Massive Accessible Workflow Platform</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+        <link href="../css/version-select.css" rel="stylesheet" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Workflow integration";
+        var mkdocs_page_input_path = "workflow_integration.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> MAcWorP - Massive Accessible Workflow Platform
+        </a>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">MAcWorP - Massive aCcessible Workflow Platform</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../development/">Development</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../installation/">Installation</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Workflow integration</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#integration">Integration</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#definition-elements">Definition elements</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#file-rendering">File rendering</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#metadata-files">Metadata files</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#recommendation">Recommendation</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Components</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../components/backend/">Backend</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../components/frontend/">Frontend</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../components/worker/">Worker</a>
+                  </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">MAcWorP - Massive Accessible Workflow Platform</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Workflow integration</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="workflow-integration">Workflow integration</h1>
+<p>How to integrate workflows and what to consider.</p>
+<h2 id="integration">Integration</h2>
+<p>The workflow integration is done via the <code>workflow</code>-menu. A workflow needs a name and description (markdown support) which is presented to the users.</p>
+<p>The workflow itself is described by a JSON-document, called workflow definition. This definition tells MAcWorP which workflow engine is used for to execute the workflow, where the workflow is located and several other things.
+The following JSON is the definition for the provided Nextflow variant of the input demo workflow:</p>
+<pre><code class="language-json">{
+    &quot;engine&quot;: &quot;nextflow&quot;,
+    &quot;src&quot;: { 
+        &quot;type&quot;: &quot;local&quot;,
+        &quot;directory&quot;: &quot;./demo_workflows/nextflow/input_demo&quot;,
+        &quot;script&quot;: &quot;main.nf&quot;
+    },
+    &quot;engine_parameters&quot;: [],
+    &quot;parameters&quot;: {
+        &quot;dynamic&quot;: [
+            {
+                &quot;type&quot;: &quot;path&quot;,
+                &quot;name&quot;: &quot;inFile&quot;,
+                &quot;label&quot;: &quot;Input file&quot;,
+                &quot;desc&quot;: &quot;Single file&quot;,
+                &quot;selectable_files&quot;: true,
+                &quot;selectable_folders&quot;: false
+            },
+            {
+                &quot;type&quot;: &quot;path&quot;,
+                &quot;name&quot;: &quot;inFolder&quot;,
+                &quot;label&quot;: &quot;Input folder&quot;,
+                &quot;desc&quot;: &quot;Single folder&quot;,
+                &quot;selectable_files&quot;: false,
+                &quot;selectable_folders&quot;: true
+            },
+            {
+                &quot;type&quot;: &quot;paths&quot;,
+                &quot;name&quot;: &quot;inFiles&quot;,
+                &quot;label&quot;: &quot;Multiple input files&quot;,
+                &quot;desc&quot;: &quot;Multiple files&quot;,
+                &quot;selectable_files&quot;: true,
+                &quot;selectable_folders&quot;: false
+            },
+            {
+                &quot;type&quot;: &quot;paths&quot;,
+                &quot;name&quot;: &quot;inFolders&quot;,
+                &quot;label&quot;: &quot;Multiple input folders&quot;,
+                &quot;desc&quot;: &quot;Multiple folder&quot;,
+                &quot;selectable_files&quot;: false,
+                &quot;selectable_folders&quot;: true
+            },
+            {
+                &quot;type&quot;: &quot;file-glob&quot;,
+                &quot;name&quot;: &quot;txtFiles&quot;,
+                &quot;label&quot;: &quot;Text files&quot;,
+                &quot;desc&quot;: &quot;File \&quot;regex\&quot;, e.g. *.txt&quot;
+            },
+            {
+                &quot;type&quot;: &quot;number&quot;,
+                &quot;name&quot;: &quot;numberOfNewlines&quot;,
+                &quot;label&quot;: &quot;Number of newlines&quot;,
+                &quot;desc&quot;: &quot;Number input&quot;
+            },
+            {
+                &quot;type&quot;: &quot;text&quot;,
+                &quot;name&quot;: &quot;singleLineText&quot;,
+                &quot;label&quot;: &quot;Single line text&quot;,
+                &quot;desc&quot;: &quot;Single line text&quot;
+            },
+            {
+                &quot;type&quot;: &quot;text&quot;,
+                &quot;name&quot;: &quot;multilineText&quot;,
+                &quot;label&quot;: &quot;Multiple line text&quot;,
+                &quot;desc&quot;: &quot;Multiline text&quot;,
+                &quot;is_multiline&quot;: true
+            },
+            {
+                &quot;type&quot;: &quot;separator&quot;,
+                &quot;label&quot;: &quot;This separator is not a real input, but an element to structure the form&quot;
+            },
+            {
+                &quot;type&quot;: &quot;value-select&quot;,
+                &quot;name&quot;: &quot;valueSelect&quot;,
+                &quot;label&quot;: &quot;Selecting on of multiple values&quot;,
+                &quot;desc&quot;: &quot;The value behind Yes is true, the value behind No is false&quot;,
+                &quot;options&quot;: [
+                    {
+                        &quot;label&quot;: &quot;Yes&quot;,
+                        &quot;value&quot;: &quot;true&quot;
+                    },
+                    {
+                        &quot;label&quot;: &quot;No&quot;,
+                        &quot;value&quot;: &quot;false&quot;
+                    }
+                ],
+                &quot;value&quot;: &quot;true&quot;
+            }
+        ],
+        &quot;static&quot;: [
+            {
+                &quot;type&quot;: &quot;path&quot;,
+                &quot;name&quot;: &quot;resultsFolder&quot;,
+                &quot;label&quot;: &quot;&quot;,
+                &quot;desc&quot;: &quot;&quot;,
+                &quot;selectable_files&quot;: true,
+                &quot;selectable_folders&quot;: false,
+                &quot;value&quot;: &quot;./results&quot;,
+                &quot;is_relative&quot;: true
+            }
+        ]
+    }
+}
+</code></pre>
+<h3 id="definition-elements">Definition elements</h3>
+<ul>
+<li><code>engine</code>: Workflow engine to use. Options: <code>nextflow</code> &amp; <code>snakemake</code></li>
+<li>
+<p><code>src</code>: Source defines the location of the workflow, which can be a local directory or a remote repository. In case of Nextflow it is also possible to run workflows from <code>nf-core</code></p>
+<ul>
+<li>
+<p>Local example:</p>
+<pre><code>```json
+"src": { 
+    "type": "local",
+    "directory": "&lt;path to workflow&gt;",
+    "script": "&lt;filename of main script / Snakefile&gt;"
+}
+```
+</code></pre>
+<p>Workflow specifics:</p>
+<ul>
+<li>Nextflow: Added as <code>&lt;path to workflow&gt;/&lt;filename of main script&gt;</code> to the <code>run</code> command.</li>
+<li>Snakemake: Added to the Snakemake call as <code>--snakefile &lt;path to workflow&gt;/&lt;Snakefile&gt;</code></li>
+</ul>
+</li>
+<li>
+<p>Remote example:</p>
+<pre><code>```json
+"src": { 
+    "type": "remote",
+    "url": "&lt;url to repository&gt;",
+    "version": "&lt;commit hash, branch or tag&gt;"
+}
+```
+</code></pre>
+<p>Workflow specifics:</p>
+<ul>
+<li>Nextflow: <code>nextflow run ... &lt;url to repository&gt; -r &lt;commit hash, branch or tag&gt; ...</code><ol>
+<li>Repository is cloned into a temporary folder in the users project directory.</li>
+<li><code>nextflow run ... &lt;temp folder&gt;/main.nf ...</code></li>
+</ol>
+</li>
+<li>Snakemake:<ol>
+<li>Repository is cloned into a temporary folder in the users project directory.</li>
+<li><code>snakemake ... --snakefile &lt;temp folder&gt;/Snakefile ...</code></li>
+</ol>
+</li>
+</ul>
+</li>
+<li>
+<p><code>nf-core</code> example</p>
+<pre><code>```json
+"src": { 
+    "type": "nf-core",
+    "pipeline": "&lt;pipeline&gt;"
+}
+```
+</code></pre>
+<p>Workflow specifics:</p>
+<ul>
+<li>Nextflow: <code>nextflow run ... nf-core/&lt;pipeline&gt; ...</code></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p><code>engine_parameters</code>: Array of parameters name and values for the engine. E.g.</p>
+<pre><code>```json
+[
+    {
+        "name": "profile",
+        "value": "docker"
+    },
+    ...
+]
+```
+</code></pre>
+<p>Workflow specifics:</p>
+<ul>
+<li>Nextflow: <code>nextflow run ... -profile docker ...</code></li>
+<li>Snakemake: <code>snakemake ... --profile docker ...</code></li>
+</ul>
+</li>
+<li>
+<p><code>parameters</code>: Object containing the dynamic and static workflow parameters</p>
+<ul>
+<li>
+<p><code>dynamic</code>: Array of parameters selectable by the user in the frontend. This array can contain multiple of:</p>
+<ul>
+<li>
+<p>Single path selector:</p>
+<pre><code>```json
+{
+    "type": "path",
+    "name": "&lt;parameter name&gt;",
+    "label": "&lt;frontend label&gt;",
+    "desc": "&lt;frontend description&gt;",
+    "selectable_files": &lt;true|false&gt;,
+    "selectable_folders": &lt;true|false&gt;
+}
+```
+</code></pre>
+<p><code>selectable_files</code> and <code>selectable_folders</code> change if files and/or folders can be selected in the dialog.</p>
+<p><strong>Example</strong></p>
+<p>Like the multi path selector below with just one element to select.</p>
+</li>
+<li>
+<p>Multi path selector</p>
+<pre><code>```json
+{
+    "type": "paths",
+    "name": "&lt;parameter name&gt;",
+    "label": "&lt;frontend label&gt;",
+    "desc": "&lt;frontend description&gt;",
+    "selectable_files": &lt;true|false&gt;,
+    "selectable_folders": &lt;true|false&gt;
+}
+```
+</code></pre>
+<p><code>selectable_files</code> and <code>selectable_folders</code> change if files and/or folders can be selected in the dialog.</p>
+<p><strong>Example</strong></p>
+<p><img alt="multiple path selector" src="../images/input_paths_closed.png" /></p>
+<p>Multiple path selector, blue button opens dialog</p>
+<p><br><br></p>
+<p><img alt="multiple path selector dialog" src="../images/input_paths_opened.png" /></p>
+<p>Dialog to select (<code>selectable_files</code> enabled and <code>selectable_folders</code> disabled)</p>
+</li>
+<li>
+<p>File glob, which is a file like \"regex\", e.g. *.txt</p>
+<pre><code>```json
+{
+    "type": "file-glob",
+    "name": "&lt;parameter name&gt;",
+    "label": "&lt;frontend label&gt;",
+    "desc": "&lt;frontend description&gt;"
+}
+```
+</code></pre>
+<p>The glob is not resolved by MAcWorP but added to the project path to be used by the workflow.</p>
+<p><strong>Example</strong></p>
+<p><img alt="file glob input" src="../images/input_plain_text.png" /></p>
+</li>
+<li>
+<p>Number</p>
+<pre><code>```json
+{
+    "type": "number",
+    "name": "&lt;parameter name&gt;",
+    "label": "&lt;frontend label&gt;",
+    "desc": "&lt;frontend description&gt;"
+}
+```
+</code></pre>
+<p><strong>Example</strong></p>
+<p><img alt="number input" src="../images/input_number.png" /></p>
+</li>
+<li>
+<p>Plain text</p>
+<pre><code>```json 
+{
+    "type": "text",
+    "name": "&lt;parameter name&gt;",
+    "label": "&lt;frontend label&gt;",
+    "desc": "&lt;frontend description&gt;"
+    "is_multiline": &lt;true|false&gt;
+}
+```
+</code></pre>
+<p><strong>Example</strong></p>
+<p><img alt="plain text input" src="../images/input_plain_text.png" /></p>
+</li>
+<li>
+<p>A separator</p>
+<pre><code>```json
+{
+    "type": "separator",
+    "label": "This separator is not a real input, but an element to structure the form"
+}
+```
+</code></pre>
+<p>Just a horizontal line for separation of input into groups.</p>
+<p><strong>Example</strong></p>
+<p><img alt="separator" src="../images/separator.png" /></p>
+</li>
+<li>
+<p>Select of given value</p>
+<pre><code>```json
+{
+    "type": "value-select",
+    "name": "&lt;parameter name&gt;",
+    "label": "&lt;frontend label&gt;",
+    "desc": "&lt;frontend description&gt;",
+    "options": [
+        {
+            "label": "&lt;option label 2&gt;",
+            "value": "&lt;value 1&gt;"
+        },
+        {
+            "label": "&lt;option label 2&gt;",
+            "value": "&lt;value 2&gt;"
+        }
+    ],
+    "value": "&lt;optional preselected value&gt;"
+}
+```
+</code></pre>
+<p><strong>Example</strong></p>
+<p><img alt="value select" src="../images/input_value_select_closed.png" /></p>
+<p><img alt="value select opened" src="../images/input_value_select_opened.png" /></p>
+</li>
+</ul>
+<p>Note:</p>
+<ul>
+<li>Path and file glob parameters produce absolute paths within the project directory.</li>
+<li>Each parameter can contain an optional <code>value</code> key with a default value.</li>
+<li>The element's name is used as the workflow parameter for the actual executrion:<ul>
+<li>Nextflow: <code>nextflow run ... --&lt;parameter name&gt; &lt;selected parameter value&gt; ...</code></li>
+<li>Snakemake: <code>snakemake ... --config &lt;parameter name&gt;=&lt;selected parameter value&gt; ...</code>#</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p><code>static</code>: Array of the same elements as <code>dynamic</code>. Not rendered in the frontend nor changeable by the user.</p>
+<ul>
+<li><code>path</code>-element can contain the optional <code>is_relative</code>-key (<code>&lt;true|false&gt;</code>) which makes the path relative to the project/work directory</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="file-rendering">File rendering</h2>
+<p>MAcWorP is able to render a couple of file formats directly in the browser. The file extension tells the renderer how the element should be rendered. <br />
+Below is a list of supported elements:</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th> File extension</th>
+<th> Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Raster graphics</td>
+<td><code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.gif</code>, <code>.webp</code>, <code>.bmp</code></td>
+<td>Images are display using <a href="https://fengyuanchen.github.io/viewerjs/">Viewer.js</a>. This gives the user some useful features, like zooming</td>
+</tr>
+<tr>
+<td> Vector graphics</td>
+<td><code>.svg</code>, <code>.image.svg</code></td>
+<td> SVG files can be rendered iun two ways, embedded into the DOM (<code>.svg</code>) which automatically scales it, or within an img-Tag (<code>.image.svg</code>)</td>
+</tr>
+<tr>
+<td>PDF</td>
+<td> <code>.pdf</code></td>
+<td> PDFs are shown using the browser integrated PDF viewer</td>
+</tr>
+<tr>
+<td>Table</td>
+<td><code>.csv</code>, <code>.tsv</code>, <code>.xlsx</code></td>
+<td>Tables are rendered using the HTML-table elements. As two many cells will make browser unresponsive, tables with to many elements will be paginated</td>
+</tr>
+<tr>
+<td>Interactive plots</td>
+<td> <code>.plolty.json</code></td>
+<td> To generate Plolty conform JSON files, have a look into the <a href="https://plotly.com/python-api-reference/generated/plotly.io.to_json.html#plotly.io.to_json">documentation</a>. These kind of plots have few advantages for the user, like the ability to enable/disable traces and zoom. MAcWorP is also adding a JSON editor to change the plot layout or colors.</td>
+</tr>
+<tr>
+<td>Plain text</td>
+<td><code>.txt</code></td>
+<td>Show the content of the text file</td>
+</tr>
+</tbody>
+</table>
+<h3 id="metadata-files">Metadata files</h3>
+<p>Each result file can be annotated with a header and description, by adding a JSON formatted MAcWorP metadata file next to the result file. It should have the same name as the result file plus the extension <code>.mmdata</code>, e.g.:
+* File to annotate file: <code>./some_barplot.png</code>
+* Metadata file:  <code>./some_barplot.png.mmdata</code></p>
+<p>The content would look like this:</p>
+<pre><code class="language-json">{
+    &quot;header&quot;: &quot;That some kind of a bar plot&quot;,
+    &quot;description&quot;: &quot;Some very lengthy description, telling users what the barplot is showing.&quot;
+}
+</code></pre>
+<p>Header and description are then rendered in the frontend. If no metadata is given, the header is replaced by the filename and the description skipped.</p>
+<p>Have a look into the <a href="./demo_workflows/result_demo/">results demo workflow</a></p>
+<h2 id="recommendation">Recommendation</h2>
+<ol>
+<li>In general it is a good idea to use publicly available Docker container to manage your dependencies as most workflow engines can download containers by themselves. For help see:<ul>
+<li><a href="https://snakemake.readthedocs.io/en/stable/snakefiles/deployment.html#running-jobs-in-containers">Nextflow</a></li>
+<li><a href="https://snakemake.readthedocs.io/en/stable/snakefiles/deployment.html#running-jobs-in-containers">Snakemake</a>
+However it is possible use dependencies installed via Conda or package managers, but it has to be done manually on each worker. </li>
+</ul>
+</li>
+</ol>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../installation/" class="btn btn-neutral float-left" title="Installation"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../components/backend/" class="btn btn-neutral float-right" title="Backend">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href="../installation/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../components/backend/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../js/version-select.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>

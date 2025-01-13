@@ -3,6 +3,7 @@ port: 3001
 secret: "developmentindocker"
 use_reverse_proxy: true
 debug: false
+upload_path: ENV['PROJECTS_DIR']
 database:
   url: postgresql://postgres:developer@psql:5432/macworp
   pool_size: 4 # In development mode, more than one connections are supported

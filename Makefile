@@ -41,16 +41,16 @@ quickstart-up:
 	# Create separate upload directory
 	mkdir -p ${PROJECT_DIR_ABSOLUTE}
 	# Build docker container for backend, worker & frontend with the UID of the current user
-	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-backend:local" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/backend.dockerfile .
-	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-worker:local" --build-arg USER_ID=${USER_ID} --build-arg GROUP_ID=${GROUP_ID} -f docker/worker.dockerfile .
+	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-backend:local" -f docker/backend.dockerfile .
+	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-worker:local" -f docker/worker.dockerfile .
 	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-frontend:local" -f docker/frontend.dockerfile .
 	# Write the link to the project directory
 	echo "https://${MACWORP_HOSTNAME}:16160" > QUICKSTART_URL
 	# Start docker-compose in separate docker-compose project called macworp-quickstart, combining the two docker-compose files
-	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} USER_ID=${USER_ID} GROUP_ID=${GROUP_ID} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-quickstart -f docker-compose.yml -f quickstart.docker-compose.yml up ${args}
 
 quickstart-down:
 	# Destroy production test
-	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} USER_ID=${USER_ID} GROUP_ID=${GROUP_ID} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-quickstart -f docker-compose.yml -f quickstart.docker-compose.yml down

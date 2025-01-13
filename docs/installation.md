@@ -46,9 +46,6 @@ The recommended way of deploying MAcWorP is via the provided Docker containers.
     docker pull ghcr.io/cubimedrub/macworp-frontend:latest
     ```
 
-    **Note**: The `backend` and `worker` images are prebuild using the user and group ID 1000 for the user running the services in the container. This means that the upload/project folder as well as the local workflow folder need to have read and write permissions for this user.
-        If this is not possible due to permission conflicts, rebuild the images locally with with the argument `--build-arg USER_ID=<DESIRED_USER_ID> --build-arg GROUP_ID=<DESIRED_GROUP_ID>`.
-
 2. Create a new config
 
     ```shell
@@ -65,14 +62,22 @@ The recommended way of deploying MAcWorP is via the provided Docker containers.
     docker run -d -it \
         -n macworp-backend-<some_unique_suffix>
         -v $(pwd)/config.yml:/home/mambauser/config.yml:ro \
-        -v <persistent_workflow_source_folder>:/home/mambauser/workflows:ro \
-        -v <persistent_upload_folder>:/home/mambauser/uploads \
+        -v <persistent_workflow_source_folder>:/workflows:ro \
+        -v <persistent_upload_folder>:/projects \
         -e MACWORP_CONFIG=/home/mambauser/config.yml
         ghcr.io/cubimedrub/macworp-backend:latest \
         serve --gunicorn
     ```
 
     The first container should also run database migrations and RabbitMQ preparation by setting the environment variable: `-e RUN_MIGRATION=true`.
+
+    **Note:** Mount your uploads/project directory at `/uploads`. During start the container tries to adjust the user within the container (executing user) to use use the same UID/GID as on the host.
+    The container does *not* change the permission of the host folder itself.   
+    For this to work a few things need to be considered:
+
+    1. Recommended: Change the ownership to `non-root:non-root` and make the folder writable to the user and/or the group.
+    2. Not recommended: If the ownership of the folder is `root:root`, the folder needs to be writable by the group `root` as the executing user cannot get the UID 0 but can be added to the root group. This is for example the case when using Docker Desktop or Docker for Mac as the background Linux VM is running the containers using root.
+    3. Set the ownership of the config and the workflow folder to the same ownerships on the hosts
 
 5. Next we need one frontend container
 
@@ -197,8 +202,9 @@ The recommended way of deploying MAcWorP is via the provided Docker containers.
 
     ```shell
     docker run -d -it \
-        -v <persistent_workflow_source_folder>:/home/mambauser/workflows:ro \
-        -v <persistent_upload_folder>:/home/mambauser/uploads \
+        -v <persistent_workflow_source_folder>:/workflows:ro \
+        -v <persistent_upload_folder>:<same_path_as_persistent_upload_folder_on_host> \
+        -e PROJECTS_PATH=<same_path_as_persistent_upload_folder_on_host> \
         ghcr.io/cubimedrub/macworp-worker:latest \
         -vvvvvvvv \
         --skip-cert-verification \
@@ -207,8 +213,13 @@ The recommended way of deploying MAcWorP is via the provided Docker containers.
         -c <YOUR_DOMAIN> \
         -r amqp://admin:developer@<IP_OF_RABBIT_HOST>:5672/%2f \
         -q project_workflow \
-        -d /home/mambauser/uploads \
+        -d <same_path_as_persistent_upload_folder_on_host> \
         -u worker \
-        -p developer \
-        --keep-intermediate-files \
+        -p <change-to-the-same-password-as-in-the-backend-config> \
+        --keep-intermediate-files
     ```
+
+    **Note:**
+
+    1. Like the backend, the worker container tries to adjust the executing user to use the same UID/GID as the owner of the the project directory. You have to consider the same rules.
+    2. To be able to use Docker containers during the workflow execution the uploads/projects folder needs to be mounted at the exact same path as on the host and the environment variable `PROJECTS_DIR` needs to have the same path.

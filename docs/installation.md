@@ -29,6 +29,7 @@ The installation instruction is a more detailed description of the quickstart se
 
 ### Prerequisites
 1. RabbitMQ (=3)
+    * **Attention**: By default RabbitMQ's is setup to expect a message to be processed in a few seconds. As MAcWorP will probably run much longer jobs set `consumer_timeout` (ms) to something high e.g. one week. 
 2. PostgreSQL (>=14)
 3. Redis (=6)
 This can also be deployed using Docker images.

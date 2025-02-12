@@ -6,6 +6,8 @@
 !/utils/
 !/environment.yml
 !/docker/entrypoints/backend.sh
+!/docker/entrypoints/change_mambauser.sh
+!/docker/entrypoints/set_projects_dir_permissions.sh
 
 # Ignore following patterns in exceptions
 

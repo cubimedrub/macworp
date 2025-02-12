@@ -5,7 +5,7 @@ services:
     image: cubimedrub/macworp-backend:local
     volumes:
       - ./macworp:/home/mambauser/macworp
-      - ${PROJECT_DIR_ABSOLUTE}:/home/mambauser/uploads
+      - ${PROJECT_DIR_ABSOLUTE}:/projects
       # Pass the local config
       - ./quickstart.config.yml:/home/mambauser/local.config.yaml:ro
       - ./dev_auth.yaml:/home/mambauser/dev_auth.yaml:ro
@@ -77,6 +77,7 @@ services:
     image: cubimedrub/macworp-worker:local
     environment:
       PYTHONUNBUFFERED: "true"
+      PROJECTS_DIR: ${PROJECT_DIR_ABSOLUTE}
     command: [
       "-vvvvvvvv",
       "--skip-cert-verification",

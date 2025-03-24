@@ -92,6 +92,7 @@ openid_clients = {
 }
 
 # Load all file based authentication 'databases'
+# TODO: defined method for loading file based authentication databases and at least print error if file is not found
 file_auth_databases = {
     provider: yaml.load(
         Path(provider_data["file"]).read_text(encoding="utf-8"), Loader=yaml.FullLoader
@@ -99,6 +100,7 @@ file_auth_databases = {
     for provider, provider_data in Configuration.values()["login_providers"]
     .get(ProviderType.FILE.value, {})
     .items()
+    if Path(provider_data["file"]).is_file()
 }
 
 

@@ -50,7 +50,7 @@ The recommended way of deploying MAcWorP is via the provided Docker containers.
 2. Create a new config
 
     ```shell
-    docker pull --rm -ti ghcr.io/cubimedrub/macworp-backend utility config print > config.yml
+    docker run --rm -ti ghcr.io/cubimedrub/macworp-backend utility config print > config.yml
     ```
 
     Configure it to your needs. Make sure to use paths within the container!

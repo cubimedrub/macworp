@@ -9,14 +9,14 @@ endif
 ifeq ($(DETECTED_OS),Windows)
 $(error Sorry Windows is not supported as many parts of MAcWorP are not compatible with Windows. Please try WSL.)
 else ifeq ($(DETECTED_OS),Unknown)
-$(error Unknown operating system.)
+$(error Unknown operating system.)q
 endif
 
 # Set hostname depending on OS
 ifeq ($(DETECTED_OS),Darwin)
-MACWORP_HOSTNAME=$$(hostname)
+MACWORP_HOSTNAME ?= $$(hostname)
 else ifeq ($(DETECTED_OS),Linux)
-MACWORP_HOSTNAME=$$(hostname --fqdn)
+MACWORP_HOSTNAME ?= $$(hostname --fqdn)
 endif
 
 # CLI arguments

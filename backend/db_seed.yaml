@@ -279,4 +279,154 @@ seeds:
                 ]
             }
         }
-  
+  - model: Workflow
+    attributes:
+      name: "Nexflow Demo: Genomics Workflow"
+      description: |
+        Tasks included in this workflow:
+
+        Generate genome index (optional)
+
+        * Input: download link for reference genome fasta file
+        * Tool: STAR (workflow downloads dockerized STAR)
+        * Output: reference genome index
+
+
+        Align reads to a reference genome
+
+        * Input: reference genome index, fastq files, sample sheet
+        * Tool: STAR (workflow downloads dockerized STAR)
+        * Output: Aligned reads from fastq files as .bam files
+
+        You can find a example data in the repository: https://github.com/cubimedrub/macworp-genomics-demo-workflow-nextflow
+
+        Need at least 34 GB of RAM to run the workflow with the example data.
+        
+      is_published: true
+      is_validated: true
+      definition: |
+        {
+            "engine": "nextflow",
+            "src": {
+                "type": "remote",
+                "url": "https://github.com/cubimedrub/macworp-genomics-demo-workflow-nextflow.git",
+                "version": "main"
+            },
+            "engine_parameters": [
+                {
+                    "name": "profile",
+                    "value": "docker"
+                }
+            ],
+            "parameters": {
+                "dynamic": [
+                    {
+                        "type": "path",
+                        "name": "sampleSheet",
+                        "label": "Sample sheet",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "text",
+                        "name": "refGenomePathOrUrl",
+                        "label": "Reference genome URL",
+                        "desc": "E.g. https://ftp.ensembl.org/pub/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz",
+                        "value": "https://ftp.ensembl.org/pub/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
+                    }
+                ],
+                "static": [
+                    {
+                        "type": "text",
+                        "name": "docker",
+                        "label": "",
+                        "desc": "",
+                        "value": "true"
+                    },
+                    {
+                        "type": "path",
+                        "name": "outdir",
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": false,
+                        "selectable_folders": true,
+                        "value": "results"
+                    }
+                ]
+            }
+        }
+  - model: Workflow
+    attributes:
+      name: "Snakemake Demo: Genomics Workflow"
+      description: |
+        Tasks included in this workflow:
+
+        Generate genome index (optional)
+
+        * Input: download link for reference genome fasta file
+        * Tool: STAR (workflow downloads dockerized STAR)
+        * Output: reference genome index
+
+
+        Align reads to a reference genome
+
+        * Input: reference genome index, fastq files, sample sheet
+        * Tool: STAR (workflow downloads dockerized STAR)
+        * Output: Aligned reads from fastq files as .bam files
+
+        You can find a example data in the repository: https://github.com/cubimedrub/macworp-genomics-demo-workflow-snakemake
+
+        Need at least 34 GB of RAM to run the workflow with the example data.
+
+      is_published: true
+      is_validated: true
+      definition: |
+        {
+            "engine": "snakemake",
+            "src": {
+                "type": "remote",
+                "url": "https://github.com/cubimedrub/macworp-genomics-demo-workflow-snakemake.git",
+                "version": "main"
+            },
+            "engine_parameters": [
+                {
+                    "name": "sdm",
+                    "value": "apptainer"
+                },
+                {
+                    "name": "cores",
+                    "value": "all"
+                }
+            ],
+            "parameters": {
+                "dynamic": [
+                    {
+                        "type": "path",
+                        "name": "sample_sheet",
+                        "label": "Sample sheet",
+                        "desc": "",
+                        "selectable_files": true,
+                        "selectable_folders": false
+                    },
+                    {
+                        "type": "text",
+                        "name": "refGenomePathOrUrl",
+                        "label": "Reference genome URL",
+                        "desc": "E.g. https://ftp.ensembl.org/pub/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz",
+                        "value": "https://ftp.ensembl.org/pub/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
+                    }
+                ],
+                "static": [
+                    {
+                        "type": "path",
+                        "name": "outdir",
+                        "label": "",
+                        "desc": "",
+                        "selectable_files": false,
+                        "selectable_folders": true,
+                        "value": "results"
+                    }
+                ]
+            }
+        }

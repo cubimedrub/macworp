@@ -10,7 +10,9 @@
 local.env
 macworp.local.config.yaml
 /nextflow
-QUICKSTART_URL
+/quickstart/ssl
+/quickstart/uploads
+/quickstart/URL
 
 # uploads
 /uploads

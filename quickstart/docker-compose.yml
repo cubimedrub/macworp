@@ -7,7 +7,7 @@ services:
       - ./macworp:/home/mambauser/macworp
       - ${PROJECT_DIR_ABSOLUTE}:/projects
       # Pass the local config
-      - ./quickstart.config.yml:/home/mambauser/local.config.yaml:ro
+      - ./quickstart/config.yml:/home/mambauser/local.config.yaml:ro
       - ./dev_auth.yaml:/home/mambauser/dev_auth.yaml:ro
       - ./demo_workflows:/home/mambauser/demo_workflows:ro
     environment:
@@ -57,8 +57,8 @@ services:
     environment:
       MACWORP_HOSTNAME: ${MACWORP_HOSTNAME}
     volumes:
-      - ./docker/nginx/certificate-creation.sh:/docker-entrypoint.d/99-certificates.sh:ro
       - ./docker/nginx/high-available.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./quickstart/ssl:/etc/custom_ssl:ro
     depends_on:
       - backend_1
       - backend_2

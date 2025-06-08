@@ -10,7 +10,7 @@ Interested and want to try MAcWorP as fast as possible?
 4. Clone the repository
 5. `make quickstart-up`
 
-This will start the web interface on `https://<local-computer-name>:16160`, the complete URL is written to the file `QUICKSTART_URL`. It might change depending on your location (home, office, ...) as it includes the computers FQDN. If you need a consistent domain name to be used, add `MACWORP_HOSTNAME=<domain-name-of-your-choice>` after the make command.
+This will start the web interface on `https://<local-computer-name>:16160`, the complete URL is written to the file `./quickstart/URL`. It might change depending on your location (home, office, ...) as it includes the computers FQDN. If you need a consistent domain name to be used, add `MACWORP_HOSTNAME=<domain-name-of-your-choice>` after the make command.
 
 From here you can login using one of the following accounts:
 

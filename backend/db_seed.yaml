@@ -285,7 +285,7 @@ seeds:
       description: |
         Tasks included in this workflow:
 
-        Generate genome index (optional)
+        Generate genome index
 
         * Input: download link for reference genome fasta file
         * Tool: STAR (workflow downloads dockerized STAR)
@@ -360,12 +360,12 @@ seeds:
     attributes:
       name: "Snakemake Demo: Genomics Workflow"
       description: |
-        ** Attention **: This workflow will not run on an ARM architecture, e.g. Apple Silicon Macs, due to utilization of Apptainer by Snakemake and the STAR container which is only available for x86_64 architecture.   
+        **Attention**: This workflow will not run on an ARM architecture, e.g. Apple Silicon Macs, due to utilization of Apptainer by Snakemake and the STAR container which is only available for x86_64 architecture.   
         If you are on Apple Silicon Mac you can still use the Nextflow version of this workflow, as Docker-Desktop is able to run x86_64 containers though Rosetta.
 
         Tasks included in this workflow:
 
-        Generate genome index (optional)
+        Generate genome index
 
         * Input: download link for reference genome fasta file
         * Tool: STAR (workflow downloads dockerized STAR)

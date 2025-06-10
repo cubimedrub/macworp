@@ -10,12 +10,11 @@
 
 # Container var
 MKCERT_CONTAINER=alpine/mkcert:latest
-CONTAINER_MNT=/mnt
-CERT_FILE=${CONTAINER_MNT}/cert.pem
-KEY_FILE=${CONTAINER_MNT}/key.pem
 
 # Host var
 CUSTOM_SSL_DIR=$(realpath $1)
+CERT_FILE=${CUSTOM_SSL_DIR}/cert.pem
+KEY_FILE=${CUSTOM_SSL_DIR}/key.pem
 LAST_MACWORP_HOSTNAME_FILE=${CUSTOM_SSL_DIR}/last_macworp_hostname
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
@@ -50,9 +49,9 @@ fi
 if [ -f $LAST_MACWORP_HOSTNAME_FILE ]; 
 then
     last_macworp_hostname=$(cat $LAST_MACWORP_HOSTNAME_FILE)
-    if [ "$last_macworp_hostname" = "$DOMAIN" ]; 
+    if [ "$last_macworp_hostname" != "$DOMAIN" ]; 
     then
-        echo 'Domain changed, recreating certificates'
+        echo "Domain changed from ${last_macworp_hostname} to ${DOMAIN}, recreating certificates"
         create_certificate=true
     fi
 fi
@@ -65,7 +64,7 @@ then
     # Run mccer container without entrypoint to create certificates and correct permissions in one step.
     docker run \
         --rm -it --entrypoint "" \
-        -v ${CUSTOM_SSL_DIR}:${CONTAINER_MNT} \
+        -v ${CUSTOM_SSL_DIR}:${CUSTOM_SSL_DIR} \
         $MKCERT_CONTAINER \
         sh -c "mkcert -key-file $KEY_FILE -cert-file $CERT_FILE $DOMAIN localhost; chown $USER_ID:$GROUP_ID $CERT_FILE $KEY_FILE"
     echo $DOMAIN > $LAST_MACWORP_HOSTNAME_FILE

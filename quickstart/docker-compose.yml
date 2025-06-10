@@ -74,7 +74,7 @@ services:
       - ./docker/nginx/high-available.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./quickstart/ssl:/etc/custom_ssl:ro
     healthcheck:
-      test: ["CMD", "curl", "-k", "-f", "https://${MACWORP_HOSTNAME}:16160/api/ping"]
+      test: ["CMD", "curl", "-k", "-f", "--user-agent", "curl/healthcheck", "https://${MACWORP_HOSTNAME}:16160/api/ping"]
       interval: 10s
       timeout: 10s
       retries: 10

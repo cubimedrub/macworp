@@ -6,10 +6,12 @@ LABEL maintainer="dirk.winkelhardt@rub.de"
 # making the package less maintainable.
 
 USER root
+ENV DEBIAN_FRONTEND=noninteractive 
+ENV TZ=Etc/UTC
 
 # Native installs
 RUN apt-get update -y \
-    && apt-get install -y ca-certificates curl zip unzip openjdk-17-jre-headless software-properties-common \
+    && apt-get install -y ca-certificates curl zip unzip openjdk-17-jre-headless software-properties-common tzdata \
     && add-apt-repository -y ppa:apptainer/ppa \
     && apt-get update -y \
     && apt-get install -y apptainer \

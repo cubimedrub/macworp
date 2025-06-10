@@ -63,3 +63,12 @@ quickstart-down:
 	# Destroy production test
 	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-quickstart -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml down --remove-orphans
+
+
+quickstart-bash:
+	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+		docker compose -p macworp-quickstart -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml exec -it $(CONTAINER) bash
+
+quickstart-logs:
+	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+		docker compose -p macworp-quickstart -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml logs -f $(CONTAINER)

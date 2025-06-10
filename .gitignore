@@ -25,6 +25,9 @@ node_modules/
 # Docs
 _site/
 
+# OS
+.DS_Store
+
 # Copy from https://github.com/github/gitignore/blob/master/Python.gitignore with some additions
 # Byte-compiled / optimized / DLL files
 __pycache__/

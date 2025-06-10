@@ -21,6 +21,11 @@ services:
       PYTHONUNBUFFERED: "true"
       MACWORP_CONFIG: /home/mambauser/local.config.yaml
     command: ["serve", "--gunicorn"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
     depends_on:
       psql:
         condition: service_healthy
@@ -38,7 +43,8 @@ services:
       PYTHONUNBUFFERED: "true"
       MACWORP_CONFIG: /home/mambauser/local.config.yaml
     depends_on:
-      - backend_1
+      backend_1:
+        condition: service_healthy
   backend_3: *backend
   backend_4: *backend
   frontend:
@@ -49,6 +55,14 @@ services:
       MACWORP_FRONTEND_INTERFACE: 0.0.0.0
       MACWORP_UPLOAD_MAX_FILE_SITE: 10737418240
       MACWORP_DISABLE_SSL_VERIFICATION: "true"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    depends_on:
+      backend_1:
+        condition: service_healthy
   nginx:
     image: nginx:stable
     ports:
@@ -59,13 +73,24 @@ services:
     volumes:
       - ./docker/nginx/high-available.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./quickstart/ssl:/etc/custom_ssl:ro
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://${MACWORP_HOSTNAME}:16160/api/ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
     depends_on:
-      - backend_1
-      - backend_2
-      - backend_3
-      - backend_4
-      - frontend
-      - fusionauth
+      backend_1:
+        condition: service_healthy
+      backend_2:
+        condition: service_healthy
+      backend_3:
+        condition: service_healthy
+      backend_4:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+      fusionauth:
+        condition: service_started
     links:
       - backend_1
       - backend_2
@@ -100,5 +125,7 @@ services:
       - ${DOCKER_SOCKET_PATH}:/var/run/docker.sock:ro
       - ${PROJECT_DIR_ABSOLUTE}:${PROJECT_DIR_ABSOLUTE}
     depends_on:
-      - nginx
-      - rabbitmq
+      nginx:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy

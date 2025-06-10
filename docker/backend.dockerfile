@@ -10,7 +10,7 @@ ENV PROJECTS_DIR=/projects
 
 # Native installs
 RUN apt-get update -y \
-    && apt-get install -y postgresql-client-14 \
+    && apt-get install -y postgresql-client-14 curl \
     # Remove caches
     && rm -rf /var/lib/apt/lists/* 
 

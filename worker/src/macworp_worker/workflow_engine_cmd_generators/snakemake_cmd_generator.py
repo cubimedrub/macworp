@@ -2,14 +2,12 @@
 
 from pathlib import Path
 import shutil
+from time import sleep
 from typing import Any, ClassVar, Dict, List
-
-from git import Repo as GitRepo
 
 from macworp_utils.exchange.queued_project import QueuedProject  # type: ignore[import-untyped]
 from macworp_utils.constants import SupportedWorkflowEngine  # type: ignore[import-untyped]
 from macworp_worker.workflow_engine_cmd_generators.cmd_generator import CmdGenerator
-
 
 class SnakemakeCmdGenerator(CmdGenerator):
     """Executes a workflow on a project."""
@@ -72,6 +70,22 @@ class SnakemakeCmdGenerator(CmdGenerator):
         """
         Returns the snakefile option.
         If the workflow source is remote, the repository is cloned to the work directory.
+        
+        Parameters
+        ----------
+        workflow_settings : Dict[str, Any]
+            Workflow settings containing the source informatio
+        work_dir : Path
+            Path to the work directory where the workflow source will be cloned if remote
+        
+        Returns
+        -------
+        List[str]
+            List containing the snakefile option and its path
+
+        Raises
+        ------
+        GitCommandError
         """
 
         workflow_source = workflow_settings["src"]
@@ -83,15 +97,13 @@ class SnakemakeCmdGenerator(CmdGenerator):
             case "remote":
                 local_repo_path = work_dir.joinpath("workflow_repo")
                 if not local_repo_path.exists():
-                    GitRepo.clone_from(
-                        workflow_source["url"],
+                    self.__class__.clone_git_repository(
                         local_repo_path,
-                        multi_options=[f"--branch {workflow_source['version']}"],
+                        workflow_source["url"],
+                        workflow_source["version"],
                     )
                 else:
-                    repo = GitRepo(local_repo_path)
-                    repo.remotes.origin.fetch()
-                    repo.git.checkout(workflow_source["version"])
+                    self.__class__.update_git_repository(local_repo_path, workflow_source["version"])
                 return [
                     "--snakefile",
                     str(local_repo_path.joinpath("Snakefile")),

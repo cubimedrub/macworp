@@ -1,5 +1,8 @@
 """Interface for command generators for workflow runs."""
 
+from time import sleep
+from git import Repo as GitRepo
+from git.exc import GitCommandError
 import logging
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List
@@ -7,7 +10,6 @@ from typing import Any, ClassVar, Dict, List
 from macworp_utils.exchange.queued_project import QueuedProject
 from macworp_utils.path import make_relative_to, secure_joinpath
 from macworp_worker.web.backend_web_api_client import BackendWebApiClient
-
 
 class CmdGenerator:
     """Interface for command generators for workflow runs."""
@@ -17,6 +19,9 @@ class CmdGenerator:
     Prefix for workflow engine parameters, e.g. `--` for Nextflow's run command (`-work-dir`) #
     or `--` for Snakemake execution (`--cores`).
     """
+
+    GIT_CMD_RETRIES: ClassVar[int] = 3
+    """Number of retries for cloning a git repository."""
 
     def __init__(
         self,
@@ -163,3 +168,43 @@ class CmdGenerator:
             If the intermediate files should be kept
         """
         raise NotImplementedError("Need to implement this method in a subclass.")
+    
+    @classmethod
+    def clone_git_repository(
+        cls,
+        local_repo_path: Path,
+        url: str,
+        version: str,
+    ) -> GitRepo:
+        for attempt in range(cls.GIT_CMD_RETRIES + 1):
+            try:
+                GitRepo.clone_from(
+                    url,
+                    local_repo_path,
+                    multi_options=[f"--branch {version}"],
+                )
+                break
+            except GitCommandError as e:
+                if attempt == cls.GIT_CMD_RETRIES:
+                    raise e
+                sleep(10)
+
+    @classmethod
+    def update_git_repository(
+        cls,
+        local_repo_path: Path,
+        version: str
+    ) -> GitRepo:
+        repo = GitRepo(local_repo_path)
+        for attempt in range(cls.GIT_CMD_RETRIES + 1):
+            try:
+                repo.remotes.origin.fetch()
+            except GitCommandError as e:
+                if attempt == cls.GIT_CMD_RETRIES:
+                    raise e
+                sleep(10)
+        try:
+            repo.git.checkout(version)
+        except GitCommandError as e:
+            raise e
+        return repo

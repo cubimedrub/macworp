@@ -69,15 +69,13 @@ class NextflowCmdGenerator(CmdGenerator):
             case "remote":
                 local_repo_path = work_dir.joinpath("workflow_repo")
                 if not local_repo_path.exists():
-                    GitRepo.clone_from(
-                        workflow_source["url"],
+                    self.__class__.clone_git_repository(
                         local_repo_path,
-                        multi_options=[f"--branch {workflow_source['version']}"],
+                        workflow_source["url"],
+                        workflow_source["version"],
                     )
                 else:
-                    repo = GitRepo(local_repo_path)
-                    repo.remotes.origin.fetch()
-                    repo.git.checkout(workflow_source["version"])
+                    self.__class__.update_git_repository(local_repo_path, workflow_source["version"])
                 directory = local_repo_path.joinpath("main.nf")
                 return [str(directory)]
             case "nf-core":

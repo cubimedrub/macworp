@@ -167,25 +167,34 @@ class Executor(Process):
                 self.communication_channel.send((delivery_tag, False))
                 continue
 
-            match workflow_engine:
-                case SupportedWorkflowEngine.NEXTFLOW:
-                    command = NextflowCmdGenerator(
-                        self.nextflow_executable,
-                        self.backend_web_api_client,
-                        logger,
-                        self.weblog_proxy_port,
-                    ).generate_command(
-                        project_dir, work_dir, project_params, workflow["definition"]
-                    )
-                case SupportedWorkflowEngine.SNAKEMAKE:
-                    command = SnakemakeCmdGenerator(
-                        self.snakemake_executable,
-                        self.backend_web_api_client,
-                        logger,
-                        self.weblog_proxy_port,
-                    ).generate_command(
-                        project_dir, work_dir, project_params, workflow["definition"]
-                    )
+            try: 
+                match workflow_engine:
+                    case SupportedWorkflowEngine.NEXTFLOW:
+                        command = NextflowCmdGenerator(
+                            self.nextflow_executable,
+                            self.backend_web_api_client,
+                            logger,
+                            self.weblog_proxy_port,
+                        ).generate_command(
+                            project_dir, work_dir, project_params, workflow["definition"]
+                        )
+                    case SupportedWorkflowEngine.SNAKEMAKE:
+                        command = SnakemakeCmdGenerator(
+                            self.snakemake_executable,
+                            self.backend_web_api_client,
+                            logger,
+                            self.weblog_proxy_port,
+                        ).generate_command(
+                            project_dir, work_dir, project_params, workflow["definition"]
+                        )
+            except Exception as e:
+                logger.error(
+                    "[WORKER / PROJECT %i] Error generating command for workflow: %s",
+                    project_params.id,
+                    e,
+                )
+                self.communication_channel.send((delivery_tag, False))
+                continue
 
             logger.debug(
                 "[WORKER / PROJECT %i] %s",

@@ -17,7 +17,7 @@ BUILD_NEW_DOCKER_GROUP=0
 if cat /etc/group | grep -q docker;
 then
     DOCKER_GID=$(cat /etc/group | grep docker | awk -F: '{print $4}')
-    if [ "$DOCKER_GID" != "$DOCKER_SOCKET_GID" ]
+    if [ "$DOCKER_GID" == "$DOCKER_SOCKET_GID" ]
     then
         usermod -aG docker mambauser
     else

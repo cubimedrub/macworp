@@ -1,5 +1,6 @@
-
+from pathlib import Path
 from typing import TYPE_CHECKING
+
 from sqlalchemy import JSON, Column, ForeignKey, Integer
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -40,3 +41,37 @@ class Project(SQLModel, table=True):
     is_published: bool = False
 
     shares: list["ProjectShare"] = Relationship(back_populates="project")
+    
+    def get_base_directory(self) -> Path:
+        """Get the base directory for this project's files"""
+        base_path = Path.cwd() / "projects" / str(self.id)
+        base_path.mkdir(parents=True, exist_ok=True)
+        return base_path
+    
+    def get_path(self, relative_path: Path) -> Path:
+        """Get absolute path for a relative path within the project"""
+        base_dir = self.get_base_directory()
+        
+        if str(relative_path) == "/" or str(relative_path) == ".":
+            return base_dir
+        
+        path_str = str(relative_path).lstrip("/")
+        if not path_str:
+            return base_dir
+            
+        return base_dir / path_str
+    
+    def in_file_directory(self, path: Path) -> bool:
+        """Check if the given path is within the project's file directory"""
+        try:
+            base_dir = self.get_base_directory().resolve()
+            target_path = path.resolve()
+            
+            try:
+                target_path.relative_to(base_dir)
+                return True
+            except ValueError:
+                return False
+                
+        except Exception:
+            return False

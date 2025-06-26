@@ -1,23 +1,22 @@
 """
 API Endpoints with the prefix `/project`.
 """
-
+from pathlib import Path
 from typing import List, Literal
-from fastapi import APIRouter, HTTPException, status
+from urllib.parse import unquote
+
+from fastapi import APIRouter, HTTPException, Query, File, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Field, Session, select
+from typing_extensions import Buffer
 
+from .depends import Authenticated, ExistingProject, ExistingUser, ExistingUsers, OptionallyAuthenticated
+from .workflow import ensure_read_access as ensure_workflow_read_access
 from ..database import DbSession
-
-from .depends import Authenticated, ExistingProject, ExistingUser, ExistingUsers
-
 from ..models.project import Project
 from ..models.project_share import ProjectShare
 from ..models.user import User, UserRole
 from ..models.workflow import Workflow
-
-from .workflow import ensure_read_access as ensure_workflow_read_access
-
 
 # ---------------------------------------------------------
 # HELPERS
@@ -27,6 +26,21 @@ from .workflow import ensure_read_access as ensure_workflow_read_access
 router = APIRouter(
     prefix="/project"
 )
+
+def add_file(self, target_file_path: Path, file: Buffer) -> Path:
+    """
+    Add file to directory
+    """
+    target_directory = self.get_path(target_file_path.parent)
+    if not target_directory.is_dir():
+        target_directory.mkdir(parents=True, exist_ok=True)
+    with target_directory.joinpath(target_file_path.name).open(
+        "wb"
+    ) as project_file:
+        project_file.write(file)
+
+        return target_directory
+
 
 
 def get_project_share(user: User, project: Project, session: Session) -> ProjectShare | None:
@@ -99,7 +113,7 @@ def ensure_owner(user: User, project: Project) -> None:
 
 @router.get("/",
             summary="List Projects")
-async def list(auth: Authenticated, session: DbSession) -> list[int]:
+async def list(auth: OptionallyAuthenticated, session: DbSession) -> list[int]:
     """
     Lists the IDs of all projects visible to this user. Requires authentication.
     """
@@ -109,6 +123,17 @@ async def list(auth: Authenticated, session: DbSession) -> list[int]:
         for i in session.exec(select(Project)).all()
         if i.id is not None and can_access_project(auth, i, False, session)
     ]
+@router.get("/count",
+            summary="Count Projects")
+async def count(auth: Authenticated, session: DbSession) -> int:
+    """
+    Returns numbers of Project
+    """
+    return sum(
+        1
+        for i in session.exec(select(Project)).all()
+        if i.id is not None and can_access_project(auth, i, False, session)
+    )
 
 
 class ProjectCreateParams(BaseModel):
@@ -242,6 +267,131 @@ async def delete(project: ExistingProject, auth: Authenticated, session: DbSessi
     ensure_owner(auth, project)
 
     session.delete(project)
+
+
+@router.get("/{project_id}/files")
+def list_files(
+    project: ExistingProject,
+    auth: Authenticated,
+    directory_path: str = Query("/", description="Directory path", alias="dir")
+):
+    """
+    List files
+    """
+    try:
+        ensure_owner(auth, project)
+
+        directory = project.get_path(Path(unquote(directory_path)))
+
+        if not project.in_file_directory(directory):
+            raise HTTPException(
+                status_code=403,
+                detail={"errors": {"general": "not in filedirectory"}}
+            )
+
+        if not directory.exists() or not directory.is_dir():
+            raise HTTPException(
+                status_code=404,
+                detail={"errors": {"general": "directory not found"}}
+            )
+
+        files = []
+        folders = []
+
+        for entry in directory.iterdir():
+            if entry.is_dir():
+                folders.append(entry.name)
+            elif entry.is_file():
+                files.append(entry.name)
+
+        folders.sort()
+        files.sort()
+        return {"folders": folders, "files": files}
+
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail={"errors": {"general": "access denied"}}
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"errors": {"general": f"file system error: {str(e)}"}}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"errors": {"general": "internal server error: {str(e)}"}}
+        )
+
+
+@router.post('/{project_id}/upload-file',
+             summary="Upload files to the project directory")
+async def upload_file(project: ExistingProject,
+                      auth: Authenticated,
+                      session: DbSession,
+                      file: UploadFile = File(..., description="File to upload"),
+                      directory_path: str = Query("/", description="Directory path")):
+
+    ensure_write_access(auth, project, session)
+
+    if not file.filename or file.filename.strip() == "":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid filename"
+        )
+
+    safe_filename = file.filename.replace('/', '_').replace('\\', '_').replace('..', '_')
+
+    try:
+        target_directory = project.get_path(Path(unquote(directory_path)))
+
+        if not project.in_file_directory(target_directory):
+            raise HTTPException(
+                status_code=403,
+                detail="Directory path is outside project directory"
+            )
+
+        target_path = target_directory / safe_filename
+
+        if not project.in_file_directory(target_path):
+            raise HTTPException(
+                status_code=403,
+                detail="Target file path is outside project directory"
+            )
+
+        file_content = await file.read()
+
+        if len(file_content) > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail="File too large (max 10MB)"
+            )
+
+        with target_path.open("wb") as f:
+            f.write(file_content)
+
+        return {
+            "message": "File uploaded successfully",
+            "filename": safe_filename,
+            "path": str(target_path.relative_to(project.get_base_directory()))
+        }
+
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail="Permission denied"
+        )
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"File system error: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
+        )
 
 
 @router.post("/{project_id}/share/add",

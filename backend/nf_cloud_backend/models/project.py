@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Column, ForeignKey, Integer
+from sqlalchemy import JSON, Column, ForeignKey, Integer, Boolean
 from sqlmodel import Field, Relationship, SQLModel
 
 from .user import User
@@ -41,7 +41,20 @@ class Project(SQLModel, table=True):
     is_published: bool = False
 
     shares: list["ProjectShare"] = Relationship(back_populates="project")
-    
+
+    """
+    Ignored Projects will be ignored by the API.
+    """
+    ignore: bool = Field(default=False, nullable=False)
+
+    """
+    submission status
+    """
+    submitted_processes: int = Field(default=0, nullable=False)
+    completed_processes: int = Field(default=0, nullable=False)
+
+    is_scheduled: bool = Field(default=False, nullable=False)
+
     def get_base_directory(self) -> Path:
         """Get the base directory for this project's files"""
         base_path = Path.cwd() / "projects" / str(self.id)
@@ -60,7 +73,7 @@ class Project(SQLModel, table=True):
             return base_dir
             
         return base_dir / path_str
-    
+
     def in_file_directory(self, path: Path) -> bool:
         """Check if the given path is within the project's file directory"""
         try:
@@ -75,3 +88,14 @@ class Project(SQLModel, table=True):
                 
         except Exception:
             return False
+
+    def is_ignored(self) -> bool:
+        """Check if this project is ignored"""
+        return self.ignore
+
+    def finish(self) -> bool:
+        """Finish the project submission"""
+        self.is_scheduled = False
+        self.submitted_processes = 0
+        self.completed_processes = 0
+        return True

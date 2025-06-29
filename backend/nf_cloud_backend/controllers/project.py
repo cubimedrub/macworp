@@ -2,10 +2,11 @@
 API Endpoints with the prefix `/project`.
 """
 from pathlib import Path
-from typing import List, Literal
+from typing import List, Literal, Any, Coroutine
 from urllib.parse import unquote
 
 from fastapi import APIRouter, HTTPException, Query, File, UploadFile
+from fastapi.openapi.models import Response
 from pydantic import BaseModel
 from sqlmodel import Field, Session, select
 from typing_extensions import Buffer
@@ -392,6 +393,28 @@ async def upload_file(project: ExistingProject,
             status_code=500,
             detail="Internal server error"
         )
+@router.post("/{project_id}/create-folder",
+             summary="Create Folder")
+async def create_folder(project: ExistingProject,user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
+    """create folder"""
+    ensure_owner(auth, project)
+    #todo create folder machen
+
+@router.get("/{project_id}/is-ignored",
+            summary="Check if Project is Ignored")
+async def is_ignored(project: ExistingProject, auth: Authenticated, session: DbSession) -> bool:
+    ensure_read_access(auth, project, session)
+    return project.is_ignored()
+
+@router.post("/{project_id}/finished",
+            summary= "Set Project as Finished")
+async def is_finished(project: ExistingProject, auth: Authenticated, session: DbSession) -> None:
+    ensure_write_access(auth, project, session)
+    if project.finish():
+        session.add(project)
+        session.commit()
+    else:
+        raise HTTPException(status_code=500, detail="Project couldn't be finished")
 
 
 @router.post("/{project_id}/share/add",

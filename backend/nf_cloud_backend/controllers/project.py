@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Literal, Any, Coroutine
 from urllib.parse import unquote
 
-from fastapi import APIRouter, HTTPException, Query, File, UploadFile
+from fastapi import APIRouter, HTTPException, Query, File, UploadFile, Request
 from fastapi.openapi.models import Response
 from pydantic import BaseModel
 from sqlmodel import Field, Session, select
@@ -414,7 +414,23 @@ async def is_finished(project: ExistingProject, auth: Authenticated, session: Db
         session.add(project)
         session.commit()
     else:
-        raise HTTPException(status_code=500, detail="Project couldn't be finished")
+        raise HTTPException(status_code=500, detail="PFroject couldn't be finished")
+
+@router.get("/{project_id}/file-size",
+            summary="Get Project File Size")
+async def get_file_size(project: ExistingProject, auth: Authenticated, session: DbSession, file_path: Path = Query(..., description="File path")) -> int:
+    ensure_read_access(auth, project, session)
+    return project.get_file_size(file_path)
+
+@router.get("/{project_id}/metadata",
+            summary="Get Project Metadata of a File")
+async def get_metadata(project: ExistingProject,
+                       auth: Authenticated,
+                       session: DbSession,
+                       file_path: Path = Query(..., description="File path")
+                       ) -> dict:
+    ensure_read_access(auth, project, session)
+    return project.get_metadata(file_path)
 
 
 @router.post("/{project_id}/share/add",

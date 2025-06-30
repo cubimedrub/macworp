@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -99,3 +100,24 @@ class Project(SQLModel, table=True):
         self.submitted_processes = 0
         self.completed_processes = 0
         return True
+
+    def create_folder(self, new_folder_path: Path) -> bool:
+        """Create a new folder in the new work directory"""
+        new_folder_path = self.get_path(new_folder_path)
+        if not new_folder_path.is_dir():
+            new_folder_path.mkdir(parents=True, exist_ok=True)
+            return True
+        return False
+
+    def get_file_size(self, file_path: Path) -> int:
+        """Get the size of a file in the project"""
+        file_path = self.get_path(file_path)
+        return file_path.stat().st_size
+
+    def get_metadata(self, file_path: Path) -> dict:
+        """Returns the metadata of a file"""
+        file_path = self.get_path(file_path)
+        metadata_file_path = file_path.with_suffix(
+            f"{file_path.suffix}.mmdata"
+        )
+        return json.load(metadata_file_path.open("r"))

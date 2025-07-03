@@ -432,6 +432,12 @@ async def get_metadata(project: ExistingProject,
     ensure_read_access(auth, project, session)
     return project.get_metadata(file_path)
 
+@router.get("/{project_id}/cached-workflow-parameters/{workflow_id}",
+            summary="Returns the cached workflow parameters of a Project")
+async def cached_workflow_parameters(project: ExistingProject, workflow_id: int, auth: Authenticated, session: DbSession) -> dict:
+    ensure_read_access(auth, project, session)
+
+    return project.get_cached_workflow_parameters(workflow_id)
 
 @router.post("/{project_id}/share/add",
              summary="Share Project")

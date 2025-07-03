@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -121,3 +122,24 @@ class Project(SQLModel, table=True):
             f"{file_path.suffix}.mmdata"
         )
         return json.load(metadata_file_path.open("r"))
+
+    def get_cached_workflow_parameters(self, workflow_id: int) -> dict:
+        """ returns the cached workflow parameters for this project """
+        workflow_parameters_file = self.get_history_directory().joinpath(f"{workflow_id}.json")
+        if workflow_parameters_file.is_file():
+            return json.load(workflow_parameters_file.open('r'))
+        return {"error": "Project or workflow not found"}
+
+    def get_history_directory(self) -> Path:
+        """Returns the history dir for MAcWorP specific files"""
+        history_dir = self.get_cache_directory().joinpath("history")
+        if not history_dir.is_dir():
+            history_dir.mkdir(parents=True, exist_ok=True)
+        return history_dir
+
+    def get_cache_directory(self) -> Path:
+        """Returns the cache dir for MAcWorP specific files"""
+        cache_dir = self.get_path(Path(".macworp_cache"))
+        if not cache_dir.is_dir():
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir

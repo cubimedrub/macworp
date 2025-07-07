@@ -1,16 +1,49 @@
 import json
 import logging
+import shutil
+from enum import unique, Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, IO, List, Dict, Any, Optional
 
+import pika
+from pydantic import BaseModel
 from sqlalchemy import JSON, Column, ForeignKey, Integer, Boolean
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship, SQLModel, Session
 
+from .supportedWorkflowEngine import SupportedWorkflowEngine
 from .user import User
 from .workflow import Workflow
+from ..configuration import Configuration
 
 if TYPE_CHECKING:
     from .project_share import ProjectShare
+
+
+@unique
+class LogProcessingResultType(Enum):
+    """Type of log which was processed"""
+
+    PROGRESS = 1
+    MESSAGE = 2
+    ERROR = 3
+    NONE = 4
+
+
+class ProjectSchedulingError(Exception):
+    """Custom exception for project scheduling errors"""
+
+
+pass
+
+
+class LogProcessingResult(BaseModel):
+    """Result of processing a log entry"""
+
+    type: LogProcessingResultType
+    """True if processing log was not an error"""
+
+    message: str
+    """Log message"""
 
 
 class Project(SQLModel, table=True):
@@ -62,18 +95,18 @@ class Project(SQLModel, table=True):
         base_path = Path.cwd() / "projects" / str(self.id)
         base_path.mkdir(parents=True, exist_ok=True)
         return base_path
-    
+
     def get_path(self, relative_path: Path) -> Path:
         """Get absolute path for a relative path within the project"""
         base_dir = self.get_base_directory()
-        
+
         if str(relative_path) == "/" or str(relative_path) == ".":
             return base_dir
-        
+
         path_str = str(relative_path).lstrip("/")
         if not path_str:
             return base_dir
-            
+
         return base_dir / path_str
 
     def in_file_directory(self, path: Path) -> bool:
@@ -81,13 +114,13 @@ class Project(SQLModel, table=True):
         try:
             base_dir = self.get_base_directory().resolve()
             target_path = path.resolve()
-            
+
             try:
                 target_path.relative_to(base_dir)
                 return True
             except ValueError:
                 return False
-                
+
         except Exception:
             return False
 
@@ -107,6 +140,17 @@ class Project(SQLModel, table=True):
         new_folder_path = self.get_path(new_folder_path)
         if not new_folder_path.is_dir():
             new_folder_path.mkdir(parents=True, exist_ok=True)
+            return True
+        return False
+
+    def remove_path(self, folder_path: Path) -> bool:
+        """Deletes Path"""
+        full_path = self.get_path(folder_path)
+        if full_path.is_file():
+            full_path.unlink()
+            return True
+        elif full_path.is_dir():
+            shutil.rmtree(full_path)
             return True
         return False
 
@@ -143,3 +187,193 @@ class Project(SQLModel, table=True):
         if not cache_dir.is_dir():
             cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir
+
+    def get_last_executed_cache_file(self) -> dict:
+        return json.loads(self.get_cache_directory().joinpath("last_executed_workflow.json").read_text())
+
+    def get_last_executed_cache_file_path(self) -> Path:
+        return self.get_cache_directory().joinpath("last_executed_workflow.json")
+
+    def add_file_chunk(self, target_file_path: Path, chunk_offset: int, file_chunk: IO[bytes]) -> Path:
+        target_directory = self.get_path(target_file_path.parent)
+        if not target_directory.is_dir():
+            target_directory.mkdir(parents=True, exist_ok=True)
+
+        full_file_path = target_directory / target_file_path.name
+
+        with full_file_path.open("ab") as project_file:
+            project_file.seek(chunk_offset)
+            project_file.write(file_chunk.read())
+
+        return target_file_path
+
+    async def schedule_for_execution(
+        self,
+        session: Session,
+        workflow,
+        workflow_parameters: List[Dict[str, Any]]
+    ) -> bool:
+        """
+        Schedule this project for execution.
+        """
+        from .queued_project import QueuedProject
+
+        # Save cache files
+        self.save_workflow_params_cache(workflow, workflow_parameters)
+        self.save_last_executed_workflow_cache(workflow)
+
+        # Create queued project
+        queued_project = QueuedProject(
+            id=self.id,
+            workflow_id=workflow.id,
+            workflow_arguments=workflow_parameters,
+        )
+        # Database transaction with RabbitMQ
+        try:
+            self.is_scheduled = True
+            session.add(self)
+
+            try:
+                await self.publish_to_rabbitmq(queued_project)
+            except Exception as e:
+                logging.error(f"Failed to publish to RabbitMQ: {e}")
+                raise ProjectSchedulingError("Failed to schedule project while publishing to QM") from e
+        except ProjectSchedulingError:
+            raise
+        except Exception as e:
+            logging.error(f"Database transaction failed: {e}")
+            raise ProjectSchedulingError("Failed to schedule project") from e
+
+        return self.is_scheduled
+
+
+    def save_workflow_params_cache(self, workflow, workflow_parameters: List[Dict[str, Any]]):
+        """
+        Save workflow parameters to cache file
+        """
+        params_cache_file_path = workflow.get_workflow_params_cache_file()
+        params_cache_data = {
+            param["name"]: param["value"]
+            for param in workflow_parameters
+            if param.get("type") != "separator"
+        }
+        params_cache_file_path.write_text(json.dumps(params_cache_data))
+
+
+    def save_last_executed_workflow_cache(self, workflow):
+        """
+        Save last executed workflow to cache file
+        """
+        last_executed_workflow_cache_file_path = self.get_last_executed_cache_file_path()
+        last_executed_workflow_cache_file_path.write_text(
+            json.dumps({"id": workflow.id})
+        )
+
+
+    def publish_to_rabbitmq(self, queued_project):
+        """
+        Publish project to RabbitMQ queue
+        """
+        connection = pika.BlockingConnection(
+            pika.URLParameters(Configuration.values()["rabbit_mq"]["url"])
+        )
+        channel = connection.channel()
+        channel.basic_publish(
+            exchange="",
+            routing_key=Configuration.values()["rabbit_mq"]["project_workflow_queue"],
+            body=queued_project.model_dump_json().encode(),
+        )
+        connection.close()
+
+
+    def process_workflow_log(
+        self, log: Dict[str, Any], workflow_engine: SupportedWorkflowEngine
+    ) -> LogProcessingResult:
+        """
+        Processes the workflow log and sends it to the web log proxy.
+
+        Parameters
+        ----------
+        log : Dict[str, Any]
+            Log
+        workflow_engine : SupportedWorkflowEngine
+            Workflow engine
+        """
+        match workflow_engine:
+            case SupportedWorkflowEngine.NEXTFLOW:
+                return self.process_nextflow_log(log)
+            case SupportedWorkflowEngine.SNAKEMAKE:
+                return self.process_snakemake_log(log)
+        return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
+
+
+    def process_nextflow_log(self, log: Dict[str, Any]) -> LogProcessingResult:
+        """
+        Processes the Nextflow log and sends it to the web log proxy.
+
+        Parameters
+        ----------
+        log : Dict[str, Any]
+            Log
+        """
+        if "trace" in log and "event" in log:
+            match log["event"]:
+                case "process_submitted":
+                    self.submitted_processes += 1  # type: ignore[assignment]
+                case "process_completed":
+                    self.completed_processes += 1  # type: ignore[assignment]
+            self.save()
+            return LogProcessingResult(
+                type=LogProcessingResultType.PROGRESS,
+                message=(
+                    f"Task {log['trace']['task_id']}: "
+                    f"{log['trace']['name']} - {log['trace']['status']}"
+                ),
+            )
+        elif "metadata" in log and "event" in log:
+            error_report: Optional[str] = log["metadata"]["workflow"].get(
+                "errorReport", None
+            )
+            if error_report is not None:
+                return LogProcessingResult(
+                    type=LogProcessingResultType.ERROR, message=error_report
+                )
+        return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
+
+
+    def process_snakemake_log(self, log: Dict[str, Any]) -> LogProcessingResult:
+        """
+        Processes the Nextflow log and sends it to the web log proxy.
+
+        Parameters
+        ----------
+        log : Dict[str, Any]
+            Log
+        """
+        if "level" in log:
+            match log["level"]:
+                case "progress":
+                    self.submitted_processes += log["done"]  # type: ignore[assignment]
+                    self.completed_processes += log["total"]  # type: ignore[assignment]
+                    self.save()
+                    return LogProcessingResult(
+                        type=LogProcessingResultType.PROGRESS,
+                        message="",
+                    )
+                case "job_info":
+                    msg = f"- {log['msg']}" if log["msg"] is not None else ""
+                    return LogProcessingResult(
+                        type=LogProcessingResultType.MESSAGE,
+                        message=(f"Task {log['jobid']}: " f"{log['name']}{msg}"),
+                    )
+                case "run_info" | "info":
+                    return LogProcessingResult(
+                        type=LogProcessingResultType.MESSAGE,
+                        message=log["msg"],
+                    )
+                case "error":
+                    return LogProcessingResult(
+                        type=LogProcessingResultType.ERROR,
+                        message=log["msg"],
+                    )
+        return LogProcessingResult(type=LogProcessingResultType.NONE, message="")

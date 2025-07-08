@@ -6,7 +6,7 @@ from typing import List, Literal, Any, Coroutine, Optional, Dict
 from urllib.parse import unquote
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query, File, UploadFile, Request, Form, Header
+from fastapi import APIRouter, HTTPException, Query, File, UploadFile, Form, Header
 from pydantic import BaseModel, errors, json
 from sqlmodel import Field, Session, select
 from starlette.responses import JSONResponse, FileResponse
@@ -15,6 +15,8 @@ from typing_extensions import Buffer
 from .depends import Authenticated, ExistingProject, ExistingUser, ExistingUsers, OptionallyAuthenticated, \
     ExistingWorkflow
 from .workflow import ensure_read_access as ensure_workflow_read_access
+from .. import connectionManager
+from ..connectionManager import ConnectionManager
 from ..database import DbSession
 from ..models.project import Project, LogProcessingResultType, ProjectSchedulingError
 from ..models.project_share import ProjectShare
@@ -22,7 +24,8 @@ from ..models.user import User, UserRole
 from ..models.workflow import Workflow
 
 from ..models.supportedWorkflowEngine import SupportedWorkflowEngine
-
+import zipfile
+import tempfile
 # ---------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------
@@ -157,9 +160,6 @@ def folder_download(path: Path, is_inline: bool) -> FileResponse:
     """
     Downloads a folder as ZIP file
     """
-    import zipfile
-    import tempfile
-
     with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
         with zipfile.ZipFile(tmp_file.name, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             # Add all files from directory to ZIP
@@ -578,7 +578,7 @@ async def schedule(project: ExistingProject, workflow: ExistingWorkflow, auth: A
                    session: DbSession, workflow_parameters: List[Dict[str, Any]]) -> JSONResponse:
     # auth checkup
     ensure_write_access(auth, project, session)
-    # ensure_workflow_read_access(auth, workflow, session)
+    ensure_workflow_read_access(auth, workflow, session)
 
     # Project checks
     if project.ignore:
@@ -634,25 +634,28 @@ async def workflow_log(project: ExistingProject, auth: Authenticated, session: D
 
     log_processing_result = project.process_workflow_log(workflow_log, engine)
 
+    manager = ConnectionManager()
     match log_processing_result.type:
         case LogProcessingResultType.PROGRESS | LogProcessingResultType.MESSAGE:
             print(f"WOULD EMIT: new-progress to project {project.id}")
-            #  socketio.emit(
-            #     "new-progress",
-            #     {
-            #         "submitted_processes": project.submitted_processes,
-            #         "completed_processes": project.completed_processes,
-            #         "details": log_processing_result.message,
-            #     },
-            #     to=f"project{project.id}",
-            # )
+            await manager.send_message(
+                project.id,
+                {
+                    "event": "new-progress",
+                    "submitted_processes": project.submitted_processes,
+                    "completed_processes": project.completed_processes,
+                    "details": log_processing_result.message,
+                }
+            )
         case LogProcessingResultType.ERROR:
             print(f"WOULD EMIT: error to project {project.id}")
-            # socketio.emit(
-            #     "error",
-            #     {"error_report": log_processing_result.message},
-            #     to=f"project{project.id}",
-            # )
+            await manager.send_message(
+                project.id,
+                {
+                    "event": "error",
+                    "error_report": log_processing_result.message,
+                }
+            )
 
     return JSONResponse(content="", status_code=200)
 

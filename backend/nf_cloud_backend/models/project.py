@@ -7,13 +7,14 @@ from typing import TYPE_CHECKING, IO, List, Dict, Any, Optional
 
 import pika
 from pydantic import BaseModel
-from sqlalchemy import JSON, Column, ForeignKey, Integer, Boolean
+from sqlalchemy import JSON, Column, ForeignKey, Integer
 from sqlmodel import Field, Relationship, SQLModel, Session
 
 from .supportedWorkflowEngine import SupportedWorkflowEngine
 from .user import User
 from .workflow import Workflow
 from ..configuration import Configuration
+from ..utils.src.macworp_utils.path import secure_joinpath
 
 if TYPE_CHECKING:
     from .project_share import ProjectShare
@@ -169,14 +170,14 @@ class Project(SQLModel, table=True):
 
     def get_cached_workflow_parameters(self, workflow_id: int) -> dict:
         """ returns the cached workflow parameters for this project """
-        workflow_parameters_file = self.get_history_directory().joinpath(f"{workflow_id}.json")
+        workflow_parameters_file = secure_joinpath(self.get_history_directory(), f"{workflow_id}.json")
         if workflow_parameters_file.is_file():
             return json.load(workflow_parameters_file.open('r'))
         return {"error": "Project or workflow not found"}
 
     def get_history_directory(self) -> Path:
         """Returns the history dir for MAcWorP specific files"""
-        history_dir = self.get_cache_directory().joinpath("history")
+        history_dir = secure_joinpath(self.get_cache_directory(),"history")
         if not history_dir.is_dir():
             history_dir.mkdir(parents=True, exist_ok=True)
         return history_dir
@@ -189,10 +190,10 @@ class Project(SQLModel, table=True):
         return cache_dir
 
     def get_last_executed_cache_file(self) -> dict:
-        return json.loads(self.get_cache_directory().joinpath("last_executed_workflow.json").read_text())
+        return json.loads(secure_joinpath(self.get_cache_directory(),"last_executed_workflow.json").read_text())
 
     def get_last_executed_cache_file_path(self) -> Path:
-        return self.get_cache_directory().joinpath("last_executed_workflow.json")
+        return secure_joinpath(self.get_cache_directory(),"last_executed_workflow.json")
 
     def add_file_chunk(self, target_file_path: Path, chunk_offset: int, file_chunk: IO[bytes]) -> Path:
         target_directory = self.get_path(target_file_path.parent)
@@ -246,7 +247,6 @@ class Project(SQLModel, table=True):
 
         return self.is_scheduled
 
-
     def save_workflow_params_cache(self, workflow, workflow_parameters: List[Dict[str, Any]]):
         """
         Save workflow parameters to cache file
@@ -259,7 +259,6 @@ class Project(SQLModel, table=True):
         }
         params_cache_file_path.write_text(json.dumps(params_cache_data))
 
-
     def save_last_executed_workflow_cache(self, workflow):
         """
         Save last executed workflow to cache file
@@ -268,7 +267,6 @@ class Project(SQLModel, table=True):
         last_executed_workflow_cache_file_path.write_text(
             json.dumps({"id": workflow.id})
         )
-
 
     def publish_to_rabbitmq(self, queued_project):
         """
@@ -284,7 +282,6 @@ class Project(SQLModel, table=True):
             body=queued_project.model_dump_json().encode(),
         )
         connection.close()
-
 
     def process_workflow_log(
         self, log: Dict[str, Any], workflow_engine: SupportedWorkflowEngine
@@ -305,7 +302,6 @@ class Project(SQLModel, table=True):
             case SupportedWorkflowEngine.SNAKEMAKE:
                 return self.process_snakemake_log(log)
         return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
-
 
     def process_nextflow_log(self, log: Dict[str, Any]) -> LogProcessingResult:
         """
@@ -339,7 +335,6 @@ class Project(SQLModel, table=True):
                     type=LogProcessingResultType.ERROR, message=error_report
                 )
         return LogProcessingResult(type=LogProcessingResultType.NONE, message="")
-
 
     def process_snakemake_log(self, log: Dict[str, Any]) -> LogProcessingResult:
         """

@@ -93,13 +93,13 @@ def make_relative_to(parent_path: Path, child_path: Path) -> Path:
     if not child_path.is_absolute():
         raise ValueError("child_path must be an absolute path")
     if not is_within_path(parent_path, child_path):
-        return Path(".")
+        return Path("")
 
     parent_parts = list(parent_path.parts)
     child_parts = list(child_path.parts)
 
     if len(parent_parts) > len(child_parts):
-        return Path(".")
+        return Path("")
 
     relative_path = child_parts[len(parent_parts) :]
     return Path(*relative_path)

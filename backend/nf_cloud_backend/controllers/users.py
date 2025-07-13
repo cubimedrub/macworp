@@ -4,6 +4,8 @@ import requests
 from pydantic import BaseModel
 
 from nf_cloud_backend.auth.abstract_authorization import AbstractAuthorization
+from starlette.responses import JSONResponse
+
 from ..auth.login_request import LoginRequest
 from ..models.user import User, UserRole
 from ..auth.file_based_authorization import FileBasedAuthorization
@@ -11,7 +13,7 @@ from ..auth.database_authorization import DatabaseAuthorization
 from ..auth.openid_authorization import OpenIDAuthorization
 from ..auth.jwt import JWT
 from ..auth.provider_type import ProviderType
-from ..configuration import SECRET_KEY
+from ..configuration import SECRET_KEY, Configuration
 from ..controllers.depends import DbSession
 from nf_cloud_backend import openid_clients
 
@@ -24,8 +26,10 @@ router = APIRouter(
     prefix="/users"
 )
 
+
 class LoginResponse(BaseModel):
     jwt: str
+
 
 # @router.post("/register/{provider_type}/{provider}", tags=["user"])
 # def register_user(user: UserRegisterSchema, provider_type: str, provider: str, db = Depends(get_db)):
@@ -43,20 +47,38 @@ class LoginResponse(BaseModel):
 #             detail="User is already in registered!",
 #             headers={"WWW-Authenticate": "Bearer"},
 #             )
-        
+
 #     if provider_type == ProviderType.FILE.value:
 #             #Todo
 #             pass
-    
+
 #     else:
 #         raise HTTPException(status_code=404, detail="Provider Type not found")
 
+@router.get("/login-providers",
+            summary="provides the login Providers")
+def login_providers():
+    return JSONResponse(
+        {
+            provider_type: {
+                provider: values.get("description", "No desription provided")
+                for provider, values in Configuration.values()["login_providers"][
+                    provider_type
+                ].items()
+            }
+            for provider_type in Configuration.values()["login_providers"]
+        }
+    )
+
+
 @router.post("/login/{provider_type}/{provider}")
-def login_user(request: Request, provider_type: str, provider: str, login_request: LoginRequest, session: DbSession): # -> LoginResponse | RedirectResponse:
+def login_user(request: Request, provider_type: str, provider: str, login_request: LoginRequest,
+               session: DbSession):  # -> LoginResponse | RedirectResponse:
     try:
         type = ProviderType.from_str(provider_type)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Provider Type not found.") from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Provider Type not found.") from exc
 
     user = None
     match type:
@@ -75,7 +97,7 @@ def login_user(request: Request, provider_type: str, provider: str, login_reques
         #     )
         case ProviderType.OPENID_CONNECT:
             return OpenIDAuthorization.get_redirect(request.app, provider, login_request, session)
-            
+
         case ProviderType.FILE:
             user = FileBasedAuthorization.login(request.app, provider, login_request, session)
 
@@ -87,16 +109,17 @@ def login_user(request: Request, provider_type: str, provider: str, login_reques
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not login, user is still none, please check the provider type and provider name.",
         )
-    
+
     jwt = JWT.create_auth_token(SECRET_KEY, user, ACCESS_TOKEN_EXPIRE_SEC)
 
     return LoginResponse(jwt=jwt)
 
 
 @router.get("/login/{provider_type}/{provider}/callback")
-def user_auth_callback(request: Request, provider_type: str, provider: str, error: str | None, code: str, session: DbSession):
+def user_auth_callback(request: Request, provider_type: str, provider: str, error: str | None, code: str,
+                       session: DbSession):
     print("CALLBACK REACHED")
-    
+
     provider_client_config = AbstractAuthorization.get_provider_client_config(
         provider
     )
@@ -105,14 +128,14 @@ def user_auth_callback(request: Request, provider_type: str, provider: str, erro
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Provider not supported."
         )
-        
+
     #  /api/users/openid/dev/callback?error=unauthorized_client&error_reason=grant_type_disabled&error_description=The+%5Bauthorization_code%5D+Authorization+Code+grant+has+been+disabled+for+this+client
     if error is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=error
         )
-    
+
     provider_config = OpenIDAuthorization.get_autodiscovery(provider_client_config)
     provider_client = openid_clients[provider]
 
@@ -154,7 +177,7 @@ def user_auth_callback(request: Request, provider_type: str, provider: str, erro
     userinfo = requests.get(
         uri,
         headers=headers,
-        data= body,
+        data=body,
         verify=provider_client_config.get("verify_ssl", True)
     ).json()
 
@@ -173,7 +196,6 @@ def user_auth_callback(request: Request, provider_type: str, provider: str, erro
 
         return user
 
-        
 # @router.post()
 # def callback(provider_type: str, provider: str):
 #         """
@@ -194,4 +216,3 @@ def user_auth_callback(request: Request, provider_type: str, provider: str, erro
 #                     "general": "Provider type not found."
 #                 }
 #             }), 404
-

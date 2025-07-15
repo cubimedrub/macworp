@@ -1,5 +1,5 @@
 from nicegui import ui
-from services.auth_service import AuthService
+from ..services.auth_service import AuthService
 
 
 def show():
@@ -51,12 +51,9 @@ def show():
                     status_label.text = f'Fehler: {str(e)}'
 
                 finally:
-                    # Loading-State zurücksetzen
                     login_button.text = 'Login'
                     login_button.enable()
 
-            # Event-Handler
             login_button.on('click', handle_login)
 
-            # Enter-Key im Password-Feld
             password_input.on('keydown.enter', handle_login)

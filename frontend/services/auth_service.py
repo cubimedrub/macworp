@@ -1,8 +1,10 @@
-import httpx
 import json
 from typing import Optional, Dict, Any
+
+import httpx
 from nicegui import ui
-from config.settings import Settings
+
+from ..config.settings import Settings
 
 
 class AuthService:
@@ -15,8 +17,6 @@ class AuthService:
     def _get_session_storage(self, key: str) -> Optional[str]:
         """Hole Daten aus dem Browser Session Storage"""
         try:
-            # NiceGUI hat keinen direkten Zugriff auf sessionStorage
-            # Wir verwenden ein Dictionary im Memory als Workaround
             if not hasattr(self, '_session_data'):
                 self._session_data = {}
             return self._session_data.get(key)
@@ -74,11 +74,9 @@ class AuthService:
                 if response.status_code == 200:
                     data = response.json()
 
-                    # JWT Token speichern (dein Backend gibt "jwt" zurück)
                     if "jwt" in data:
                         self._set_session_storage(self.token_key, data["jwt"])
 
-                        # User-Daten aus JWT extrahieren (optional)
                         try:
                             user_data = self._decode_jwt_payload(data["jwt"])
                             if user_data:
@@ -104,14 +102,11 @@ class AuthService:
         """Decode JWT Payload (ohne Verifikation, nur für User-Daten)"""
         try:
             import base64
-            # JWT hat 3 Teile: header.payload.signature
             parts = token.split('.')
             if len(parts) != 3:
                 return None
 
-            # Payload dekodieren
             payload = parts[1]
-            # Base64 Padding hinzufügen falls nötig
             padding = len(payload) % 4
             if padding:
                 payload += '=' * (4 - padding)
@@ -126,15 +121,12 @@ class AuthService:
     async def logout(self) -> Dict[str, Any]:
         """Logout - nur lokale Session löschen"""
         try:
-            # Dein Backend hat keinen expliziten Logout-Endpoint
-            # JWT ist stateless, also einfach lokale Daten löschen
             self._remove_session_storage(self.token_key)
             self._remove_session_storage(self.user_key)
 
             return {"success": True}
 
         except Exception as e:
-            # Auch bei Fehler lokale Daten löschen
             self._remove_session_storage(self.token_key)
             self._remove_session_storage(self.user_key)
             return {"success": False, "error": str(e)}
@@ -165,18 +157,15 @@ class AuthService:
             return False
 
         try:
-            # JWT Token dekodieren und Ablaufzeit prüfen
             payload = self._decode_jwt_payload(token)
             if not payload:
                 return False
 
-            # Ablaufzeit prüfen
             import time
             current_time = time.time()
             exp = payload.get('exp')
 
             if exp and current_time > exp:
-                # Token abgelaufen
                 await self.logout()
                 return False
 
@@ -197,7 +186,6 @@ class AuthService:
         try:
             headers = await self.get_headers()
 
-            # Merge mit bestehenden Headers
             if 'headers' in kwargs:
                 headers.update(kwargs['headers'])
             kwargs['headers'] = headers
@@ -206,7 +194,6 @@ class AuthService:
                 response = await client.request(method, f"{self.base_url}{endpoint}", **kwargs)
 
                 if response.status_code == 401:
-                    # Token abgelaufen
                     await self.logout()
                     return {"success": False, "error": "Session abgelaufen"}
 
@@ -232,7 +219,6 @@ class AuthService:
                     ui.navigate.to(redirect_to)
                     return None
 
-                # Token verifizieren
                 if not await self.verify_token():
                     ui.navigate.to(redirect_to)
                     return None

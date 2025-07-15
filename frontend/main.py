@@ -1,8 +1,7 @@
 from nicegui import ui
 
-from config.routes import setup_routes
-from config.settings import Settings
-
+from .config.settings import Settings
+from .config.routes import setup_routes
 
 def create_app():
     settings = Settings()
@@ -18,6 +17,6 @@ def create_app():
         show=False
     )
 
-
-if __name__ == "__main__":
+if __name__ in {"__main__", "__mp_main__"}:
+    ui.run()
     create_app()

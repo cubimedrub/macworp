@@ -5,11 +5,6 @@ from ..services.auth_service import AuthService
 def show():
     """Login Page"""
     auth_service = AuthService()
-
-    if auth_service.is_authenticated():
-        ui.navigate.to('/')
-        return
-
     with ui.card().classes('w-96 mx-auto mt-20'):
         ui.label('Login').classes('text-2xl font-bold mb-4')
 
@@ -42,7 +37,7 @@ def show():
 
                     if result['success']:
                         # Erfolg - redirect to home
-                        ui.navigate.to('/')
+                        ui.navigate.to('/dashboard')
                     else:
                         # Fehler anzeigen
                         status_label.text = result.get('error', 'Login fehlgeschlagen')

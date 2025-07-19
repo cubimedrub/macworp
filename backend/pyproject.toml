@@ -22,3 +22,7 @@ dev = [
     "pylint",
 	"sphinx",
 ]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nf_cloud_backend*"]
+exclude = ["projects*"]

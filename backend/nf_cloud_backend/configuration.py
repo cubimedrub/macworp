@@ -70,6 +70,9 @@ worker_credentials:
   username: "worker"
   password: "developer"
 login_providers:    # Will be completely overridden by local config
+  database:
+    dev:
+        description: Login with local database
   openid:
     dev:
         description: Login with local Fusionauth

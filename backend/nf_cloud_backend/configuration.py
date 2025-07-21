@@ -71,7 +71,7 @@ worker_credentials:
   password: "developer"
 login_providers:    # Will be completely overridden by local config
   database:
-    dev:
+    local:
         description: Login with local database
   openid:
     dev:

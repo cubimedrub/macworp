@@ -1,54 +1,223 @@
-from nicegui import ui
-from ..services.auth_service import AuthService
+import asyncio
+from typing import Dict
+from nicegui import ui, app
+import logging
+
+from frontend.components.login.credentials_form import create_credentials_form
+from frontend.components.login.oauth_form import create_oauth_form
+from frontend.components.login.provider_selection import create_provider_card, create_provider_selection
+from frontend.services.login_service import LoginService
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def show():
-    """Login Page"""
-    auth_service = AuthService()
-    with ui.card().classes('w-96 mx-auto mt-20'):
-        ui.label('Login').classes('text-2xl font-bold mb-4')
+class LoginPage:
+    """Main login page component"""
 
-        with ui.column().classes('w-full gap-4'):
-            username_input = ui.input('Username').classes('w-full')
-            password_input = ui.input('Password', password=True).classes('w-full')
+    def __init__(self):
+        self.login_service = LoginService()
+        self.providers = {}
+        self.selected_provider_type = None
+        self.selected_provider = None
+        self.username_input = None
+        self.password_input = None
+        self.login_button = None
+        self.error_message = None
+        self.loading_spinner = None
+        self.provider_cards = None
 
-            login_button = ui.button('Login').classes('w-full')
+        # Initialize containers
+        self.form_container = None
+        self.main_container = None
+        self.provider_container = None
 
-            # Status-Anzeige
-            status_label = ui.label('').classes('text-red-500 text-sm')
+    async def load_providers(self):
+        """Load available login providers"""
+        self.providers = await self.login_service.get_login_providers()
+        logger.info(f"Loaded providers: {self.providers}")
 
-            async def handle_login():
-                """Login-Handler"""
-                username = username_input.value
-                password = password_input.value
+    def select_provider(self, provider_type: str, provider: str):
+        """Handle provider selection"""
+        self.selected_provider_type = provider_type
+        self.selected_provider = provider
 
-                if not username or not password:
-                    status_label.text = 'Bitte Username und Password eingeben'
-                    return
+        logger.info(f"Selected provider: {provider_type}/{provider}")
 
-                # Loading-State
-                login_button.text = 'Logging in...'
-                login_button.disable()
-                status_label.text = ''
+        # Clear previous error messages
+        if self.error_message:
+            self.error_message.set_text('')
 
-                try:
-                    # Login beim Backend
-                    result = await auth_service.login(username, password)
+        # Show appropriate login form
+        self.show_login_form()
 
-                    if result['success']:
-                        # Erfolg - redirect to home
-                        ui.navigate.to('/dashboard')
-                    else:
-                        # Fehler anzeigen
-                        status_label.text = result.get('error', 'Login fehlgeschlagen')
+    def show_login_form(self):
+        """Display the appropriate login form based on provider type"""
+        # Clear previous form if exists
+        if self.form_container:
+            self.form_container.clear()
+        else:
+            # Create form container within main container
+            with self.main_container:
+                self.form_container = ui.column().classes('w-full max-w-md mx-auto space-y-4')
 
-                except Exception as e:
-                    status_label.text = f'Fehler: {str(e)}'
+        # Clear provider selection
+        if self.provider_container:
+            self.provider_container.clear()
 
-                finally:
-                    login_button.text = 'Login'
-                    login_button.enable()
+        with self.form_container:
+            # Provider info
+            ui.label(f"Login with {self.selected_provider.title()}").classes('text-xl font-bold text-center')
+            ui.label(f"Provider type: {self.selected_provider_type}").classes('text-sm text-gray-600 text-center')
 
-            login_button.on('click', handle_login)
+            if self.selected_provider_type in ['database', 'file']:
+                # Create and store credentials form references with fixed callback
+                credentials_form = create_credentials_form(self.handle_credential_login)
+                self.username_input = credentials_form['username_input']
+                self.password_input = credentials_form['password_input']
+                self.login_button = credentials_form['login_button']
+                self.loading_spinner = credentials_form['loading_spinner']
 
-            password_input.on('keydown.enter', handle_login)
+            elif self.selected_provider_type == 'openid':
+                # Create OAuth form
+                create_oauth_form(self.selected_provider, self.handle_oauth_login)
+
+            # Add back button
+            ui.button('← Back to Provider Selection',
+                     on_click=self.show_provider_selection).classes('mt-4 w-full').props('outlined')
+
+    async def handle_credential_login(self, username=None, password=None):
+        """Handle username/password login - fixed to accept parameters from form callback"""
+        # If called with parameters from the form callback, use those
+        if username is not None and password is not None:
+            username_value = username
+            password_value = password
+        else:
+            # If called directly (e.g., from button click), get values from inputs
+            username_value = self.username_input.value if self.username_input else None
+            password_value = self.password_input.value if self.password_input else None
+
+        if not username_value or not password_value:
+            self.show_error("Please enter both username and password")
+            return
+
+        # Show loading state
+        if self.login_button:
+            self.login_button.set_text('Logging in...')
+            self.login_button.disable()
+        if self.loading_spinner:
+            self.loading_spinner.set_visibility(True)
+
+        try:
+            result = await self.login_service.login_with_credentials(
+                self.selected_provider_type,
+                self.selected_provider,
+                username_value,
+                password_value
+            )
+
+            if 'error' in result:
+                self.show_error(result['error'])
+            else:
+                # Login successful
+                await self.handle_login_success(result)
+
+        except Exception as e:
+            self.show_error(f"Login failed: {str(e)}")
+        finally:
+            # Reset loading state
+            if self.login_button:
+                self.login_button.set_text('Login')
+                self.login_button.enable()
+            if self.loading_spinner:
+                self.loading_spinner.set_visibility(False)
+
+    async def handle_oauth_login(self):
+        """Handle OAuth login initiation"""
+        try:
+            redirect_url = await self.login_service.initiate_oauth_login(
+                self.selected_provider_type,
+                self.selected_provider
+            )
+
+            if redirect_url:
+                # Redirect to OAuth provider
+                ui.navigate.to(redirect_url, new_tab=False)
+            else:
+                self.show_error("Failed to initiate OAuth login")
+
+        except Exception as e:
+            self.show_error(f"OAuth login failed: {str(e)}")
+
+    async def handle_login_success(self, login_result: Dict):
+        """Handle successful login"""
+        logger.info("Login successful")
+
+        # todo use secure storage
+        app.storage.user['jwt_token'] = login_result.get('jwt')
+        app.storage.user['user_id'] = login_result.get('user_id')
+        app.storage.user['email'] = login_result.get('email')
+        app.storage.user['role'] = login_result.get('role')
+
+        # Show success message
+        ui.notify('Login successful!', type='positive')
+
+        # Redirect to dashboard or main app
+        await asyncio.sleep(1)  # Brief delay to show success message
+        ui.navigate.to('/dashboard')
+
+    def show_error(self, message: str):
+        """Display error message"""
+        ui.notify(message, type='negative')
+        if hasattr(self, 'error_label') and self.error_label:
+            self.error_label.set_text(message)
+
+    def show_provider_selection(self):
+        """Reset to provider selection view"""
+        self.selected_provider_type = None
+        self.selected_provider = None
+
+        # Clear form container
+        if self.form_container:
+            self.form_container.clear()
+            self.form_container = None
+
+        # Clear error message
+        if hasattr(self, 'error_label') and self.error_label:
+            self.error_label.set_text('')
+
+        # Recreate provider selection
+        if self.main_container:
+            with self.main_container:
+                self.provider_container = ui.column().classes('w-full')
+                with self.provider_container:
+                    create_provider_selection(
+                        providers=self.providers,
+                        on_select=self.select_provider
+                    )
+
+    async def show(self):
+        """Display the main login page"""
+        await self.load_providers()
+
+        with ui.column().classes('min-h-screen bg-gray-50 py-12 px-4') as self.page_container:
+            # Header area
+            with ui.card().classes('w-full max-w-md mx-auto p-8 text-center mb-6'):
+                ui.label('NF Cloud Login').style('color: #6E93D6; font-size: 200%; font-weight: 300')
+                ui.label('Welcome back! Please sign in to continue.').classes('text-gray-600 mt-2')
+
+            # Error message area
+            self.error_label = ui.label('').classes('text-red-500 text-center')
+
+            # Main container for dynamic content
+            self.main_container = ui.column().classes('w-full max-w-md mx-auto')
+
+            # Show provider selection if no provider is selected
+            if not self.selected_provider_type:
+                with self.main_container:
+                    self.provider_container = ui.column().classes('w-full')
+                    with self.provider_container:
+                        create_provider_selection(
+                            providers=self.providers,
+                            on_select=self.select_provider
+                        )

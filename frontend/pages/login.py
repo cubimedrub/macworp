@@ -29,7 +29,6 @@ class LoginPage:
 
         # Initialize containers
         self.form_container = None
-        self.main_container = None
         self.provider_container = None
 
     async def load_providers(self):
@@ -44,21 +43,17 @@ class LoginPage:
 
         logger.info(f"Selected provider: {provider_type}/{provider}")
 
-        # Clear previous error messages
         if self.error_message:
             self.error_message.set_text('')
 
-        # Show appropriate login form
         self.show_login_form()
 
     def show_login_form(self):
         """Display the appropriate login form based on provider type"""
-        # Clear previous form if exists
         if self.form_container:
             self.form_container.clear()
         else:
-            # Create form container within main container
-            with self.main_container:
+            with self.page_container:
                 self.form_container = ui.column().classes('w-full max-w-md mx-auto space-y-4')
 
         # Clear provider selection
@@ -84,7 +79,7 @@ class LoginPage:
 
             # Add back button
             ui.button('← Back to Provider Selection',
-                     on_click=self.show_provider_selection).classes('mt-4 w-full').props('outlined')
+                      on_click=self.show_provider_selection).classes('mt-4 w-full').props('outlined')
 
     async def handle_credential_login(self, username=None, password=None):
         """Handle username/password login - fixed to accept parameters from form callback"""
@@ -187,8 +182,8 @@ class LoginPage:
             self.error_label.set_text('')
 
         # Recreate provider selection
-        if self.main_container:
-            with self.main_container:
+        if self.page_container:
+            with self.page_container:
                 self.provider_container = ui.column().classes('w-full')
                 with self.provider_container:
                     create_provider_selection(
@@ -200,24 +195,16 @@ class LoginPage:
         """Display the main login page"""
         await self.load_providers()
 
-        with ui.column().classes('min-h-screen bg-gray-50 py-12 px-4') as self.page_container:
-            # Header area
+        with ui.column().classes('w-full items-center'):
             with ui.card().classes('w-full max-w-md mx-auto p-8 text-center mb-6'):
-                ui.label('NF Cloud Login').style('color: #6E93D6; font-size: 200%; font-weight: 300')
-                ui.label('Welcome back! Please sign in to continue.').classes('text-gray-600 mt-2')
+                 ui.label('NF Cloud Login').style('color: #6E93D6; font-size: 200%; font-weight: 300')
+                 ui.label('Welcome back! Please sign in to continue.').classes('text-gray-600 mt-2')
 
-            # Error message area
-            self.error_label = ui.label('').classes('text-red-500 text-center')
+            with ui.column().classes('text-center min-h-screen bg-white-50 py-12 px-4') as self.page_container:
+                self.error_label = ui.label('').classes('text-red-500 text-center')
+                if not self.selected_provider_type:
+                    create_provider_selection(
+                        providers=self.providers,
+                        on_select=self.select_provider
+                    )
 
-            # Main container for dynamic content
-            self.main_container = ui.column().classes('w-full max-w-md mx-auto')
-
-            # Show provider selection if no provider is selected
-            if not self.selected_provider_type:
-                with self.main_container:
-                    self.provider_container = ui.column().classes('w-full')
-                    with self.provider_container:
-                        create_provider_selection(
-                            providers=self.providers,
-                            on_select=self.select_provider
-                        )

@@ -60,3 +60,11 @@ python -m nf_cloud_backend seed ./backend/db_seed.yaml
 ```sh
 source test.env && touch $MACWORP_TEST_LOG && rm $MACWORP_TEST_LOG && python -m unittest discover nf_cloud_backend
 ```
+
+### Start frontend 
+```sh
+#dev mode
+./frontend/entrypoint.sh dev
+#production
+./frontend/entrypoint.sh prod
+```

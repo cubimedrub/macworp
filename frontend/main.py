@@ -7,8 +7,8 @@ def create_app():
     settings = Settings()
 
     setup_routes()
-
     ui.run(
+        storage_secret="lol",
         host=settings.host,
         port=settings.port,
         title=settings.app_name,
@@ -18,5 +18,5 @@ def create_app():
     )
 
 if __name__ in {"__main__", "__mp_main__"}:
-    ui.run()
+
     create_app()

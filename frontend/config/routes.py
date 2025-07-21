@@ -10,8 +10,8 @@ def setup_routes():
     @ui.page('/')
     async def login_page():
         render_header()
-        login_page = LoginPage()
-        await login_page.show()
+        login = LoginPage()
+        await login.show()
 
     @ui.page('/dashboard')
     def dashboard_page():

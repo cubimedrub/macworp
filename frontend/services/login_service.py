@@ -61,4 +61,8 @@ class LoginService:
             logger.error(f"Unexpected login error: {e}")
             return {"error": "An unexpected error occurred"}
 
+    async def initiate_oauth_login(self, selected_provider_type, selected_provider):
+        #todo big uff much wow
+        pass
+
 

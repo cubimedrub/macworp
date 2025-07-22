@@ -77,10 +77,6 @@ class LoginPage:
                 # Create OAuth form
                 create_oauth_form(self.selected_provider, self.handle_oauth_login)
 
-            # Add back button
-            ui.button('← Back to Provider Selection',
-                      on_click=self.show_provider_selection).classes('mt-4 w-full').props('outlined')
-
     async def handle_credential_login(self, username=None, password=None):
         """Handle username/password login - fixed to accept parameters from form callback"""
         # If called with parameters from the form callback, use those
@@ -149,10 +145,10 @@ class LoginPage:
         logger.info("Login successful")
 
         # todo use secure storage
-        app.storage.user['jwt_token'] = login_result.get('jwt')
-        app.storage.user['user_id'] = login_result.get('user_id')
-        app.storage.user['email'] = login_result.get('email')
-        app.storage.user['role'] = login_result.get('role')
+        app.storage.browser['jwt_token'] = login_result.get('jwt')
+        app.storage.browser['user_id'] = login_result.get('user_id')
+        app.storage.browser['email'] = login_result.get('email')
+        app.storage.browser['role'] = login_result.get('role')
 
         # Show success message
         ui.notify('Login successful!', type='positive')

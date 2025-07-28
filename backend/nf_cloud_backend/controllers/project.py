@@ -207,13 +207,7 @@ async def list(auth: Authenticated, session: DbSession,
 
     projects = session.exec(query).all()
 
-    return {
-        "projects": [
-            project
-            for project in projects
-            if project.id is not None
-        ]
-    }
+    return projects
 
 
 @router.get("/count",

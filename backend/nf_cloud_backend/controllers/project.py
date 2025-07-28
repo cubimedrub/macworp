@@ -26,6 +26,7 @@ from ..models.workflow import Workflow
 from ..models.supportedWorkflowEngine import SupportedWorkflowEngine
 import zipfile
 import tempfile
+
 # ---------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------
@@ -185,16 +186,34 @@ def folder_download(path: Path, is_inline: bool) -> FileResponse:
 
 @router.get("/",
             summary="List Projects")
-async def list(auth: OptionallyAuthenticated, session: DbSession) -> list[int]:
+async def list(auth: Authenticated, session: DbSession,
+               offset: int = Query(0, ge=0, description="Number of items to skip"),
+               limit: int = Query(50, ge=1, le=1000, description="Number of items to return")
+               ):
     """
-    Lists the IDs of all projects visible to this user. Requires authentication.
-    """
+     Parameters:
+    - offset: Number of projects to skip (default: 0)
+    - limit: Maximum number of projects to return (default: 50, max: 1000)
 
-    return [
-        i.id
-        for i in session.exec(select(Project)).all()
-        if i.id is not None and can_access_project(auth, i, False, session)
-    ]
+    Returns:
+    - List of projects ordered by ID (descending) and then by name
+    """
+    query = (
+        select(Project)
+        .order_by(Project.id.desc(), Project.name)
+        .offset(offset)
+        .limit(limit)
+    )
+
+    projects = session.exec(query).all()
+
+    return {
+        "projects": [
+            project
+            for project in projects
+            if project.id is not None
+        ]
+    }
 
 
 @router.get("/count",

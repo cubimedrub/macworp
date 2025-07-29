@@ -9,6 +9,7 @@ AUTH_TYPE = os.getenv("AUTH_TYPE")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class ProjectService:
     PROJECTS_PER_PAGE = 50
 
@@ -46,9 +47,26 @@ class ProjectService:
             else:
                 raise RuntimeError(f"Error loading Projects count: {response.status_code}{API_TOKEN}")
 
-
+    async def load_project(self, project_id: int):
+        """
+        load a single Project from API
+        """
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{BACKEND_URL}/project/{project_id}",
+                                        headers=headers)
+            if response.status_code == 200:
+                self.projects = response.json()
+                return self.projects
+            else:
+                raise RuntimeError(f"Error while loading Project: {response.status_code}")
 
     async def load_projects(self, page: int) -> dict:
+        """
+        load a set of Projects from API
+        """
         headers = {}
         if API_TOKEN:
             headers[f"{AUTH_TYPE}"] = API_TOKEN

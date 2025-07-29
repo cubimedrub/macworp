@@ -79,3 +79,19 @@ class ProjectService:
                 return self.projects
             else:
                 raise RuntimeError(f"Error while loading Projects: {response.status_code}")
+
+    async def delete_project(self, project_id):
+        """
+        delete project
+        """
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(f"{BACKEND_URL}/project/{project_id}/delete",
+                                        headers=headers)
+            if response.status_code == 200:
+                self.projects = response.json()
+                return self.projects
+            else:
+                raise RuntimeError(f"Error while loading Projects: {response.status_code}")

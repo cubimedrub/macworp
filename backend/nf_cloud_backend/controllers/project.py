@@ -348,7 +348,7 @@ async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth:
     project.owner = user
 
 
-@router.post("/{project_id}/delete",
+@router.delete("/{project_id}/delete",
              summary="Delete Project")
 async def delete(project: ExistingProject, auth: Authenticated, session: DbSession) -> None:
     """

@@ -156,3 +156,31 @@ class ProjectService:
                     print(f"Error text: {error_detail}")
 
                 raise RuntimeError(f"Error while editing project: {response.status_code} - {error_detail}")
+
+    async def get_file_path(self, project_id):
+        """returns files and Path"""
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{BACKEND_URL}/project/{project_id}/files",
+                                        headers=headers)
+
+            if response.status_code == 200:
+                data = response.json()
+                files = data.get("files", [])
+                file_paths = []
+                for filename in files:
+                    file_paths.append(filename)  # Für die API reicht der Dateiname
+                return file_paths
+            else:
+                error_detail = response.text
+            try:
+                error_json = response.json()
+                print(f"Error details: {error_json}")
+            except:
+                print(f"Error text: {error_detail}")
+
+            raise RuntimeError(f"Error while editing project: {response.status_code} - {error_detail}")
+
+

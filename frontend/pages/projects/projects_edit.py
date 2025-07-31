@@ -1,5 +1,6 @@
 from nicegui import ui
 
+from frontend.components.project.file_viewer import FileViewer
 from frontend.services.project_service import ProjectService
 
 
@@ -8,9 +9,14 @@ class ProjectPageEdit:
         self.project_service = ProjectService()
         self.project_id = project_id
         self.project = None
+        self.file_viewer = FileViewer(project_id)
+        self.project_path = None
 
-    async def load_project(self):
+    async def load_project_data(self):
         self.project = await self.project_service.load_project(self.project_id)
+
+    async def load_project_path(self):
+        self.project_path = await self.project_service.get_file_path(self.project_id)
 
     def start_workflow(self):
         pass
@@ -57,9 +63,6 @@ class ProjectPageEdit:
 
     async def create_editable_table(self):
         """Create an editable table for project properties"""
-        if not self.project:
-            ui.label("No project data available")
-            return
 
         # Create editable rows
         with (ui.dialog().props('backdrop-filter="blur(8px) brightness(40%)"') as dialog, ui.card().classes('w-full')):
@@ -100,12 +103,18 @@ class ProjectPageEdit:
             ui.notify(f'Error saving project: {str(e)}', color='negative')
 
     async def show(self):
-        await self.load_project()
+        await self.load_project_data()
+        await self.load_project_path()
+        if not self.project:
+            ui.label('Project not found').classes('text-h6 text-center text-red')
+            return
 
         with ui.row().classes("w-full justify-between items-center"):
             ui.label(f' {self.project["name"]}').classes('text-h4')
             ui.button("delete", on_click=self.delete_project, color='red')
             ui.button("Edit", on_click=self.create_editable_table)
+            files = await self.project_service.get_file_path(self.project_id)
+            self.file_viewer.show_files(files)
             # todo ignore als eigenschaft fehlt
             # if self.project['ignore']:
             #     ui.badge('Currently ignored', color='warning')

@@ -397,7 +397,7 @@ def list_files(
 
         folders.sort()
         files.sort()
-        return {"folders": folders, "files": files}
+        return {"path": directory,"folders": folders, "files": files}
 
     except PermissionError:
         raise HTTPException(

@@ -47,9 +47,7 @@ def setup_routes():
         if not project_id:
             ui.label("project required").classes("test-danger")
             return None
-
         edit_projects = projects_edit.ProjectPageEdit(project_id)
-
         await edit_projects.show()
 
 

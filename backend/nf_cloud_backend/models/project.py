@@ -144,16 +144,88 @@ class Project(SQLModel, table=True):
             return True
         return False
 
-    def remove_path(self, folder_path: Path) -> bool:
-        """Deletes Path"""
-        full_path = self.get_path(folder_path)
-        if full_path.is_file():
-            full_path.unlink()
-            return True
-        elif full_path.is_dir():
-            shutil.rmtree(full_path)
-            return True
-        return False
+    def remove_path(self, folder_path) -> bool:
+        """
+        Deletes Path - handles dict, str, Path objects
+
+        Args:
+            folder_path: Can be:
+                - dict: {'path': '/some/path'}
+                - str: '/some/path' or 'relative/path'
+                - Path: Path('/some/path') or Path('relative/path')
+        """
+        try:
+            if isinstance(folder_path, dict):
+                if 'path' in folder_path:
+                    path_str = folder_path['path']
+                    print(f"DEBUG: Extracted path from dict: {path_str}")
+                else:
+                    print("ERROR: Dictionary missing 'path' key")
+                    return False
+            elif isinstance(folder_path, (str, Path)):
+                path_str = str(folder_path)
+                print(f"DEBUG: Using direct path: {path_str}")
+            else:
+                print(f"ERROR: Unsupported path type: {type(folder_path)}")
+                return False
+            input_path = Path(path_str)
+            print(f"DEBUG: Input path object: {input_path}")
+
+        except Exception as e:
+            print(f"ERROR: Failed to parse input path: {e}")
+            return False
+
+        if input_path.is_absolute():
+            base_dir = self.get_base_directory()
+
+            try:
+                input_path.relative_to(base_dir.parent)
+                full_path = input_path
+                print(f"DEBUG: Using absolute path: {full_path}")
+            except ValueError:
+                print(f"WARNING: Absolute path {input_path} is outside project area")
+                print(f"         Project base: {base_dir}")
+
+                return False
+
+        else:
+            full_path = self.get_path(input_path)
+            print(f"DEBUG: Resolved relative path to: {full_path}")
+
+        print(f"=== DELETION ATTEMPT ===")
+        print(f"Target path: {full_path}")
+        print(f"Exists: {full_path.exists()}")
+
+        if not full_path.exists():
+            print("ERROR: Path does not exist!")
+            return False
+
+        print(f"Is file: {full_path.is_file()}")
+        print(f"Is directory: {full_path.is_dir()}")
+
+        try:
+            if full_path.is_file():
+                print("Deleting file...")
+                full_path.unlink()
+                print("SUCCESS: File deleted")
+                return True
+
+            elif full_path.is_dir():
+                print("Deleting directory...")
+                shutil.rmtree(full_path)
+                print("SUCCESS: Directory deleted")
+                return True
+
+            else:
+                print("ERROR: Path is neither file nor directory")
+                return False
+
+        except PermissionError as e:
+            print(f"ERROR: Permission denied: {e}")
+            return False
+        except Exception as e:
+            print(f"ERROR: Failed to delete: {e}")
+            return False
 
     def get_file_size(self, file_path: Path) -> int:
         """Get the size of a file in the project"""
@@ -177,7 +249,7 @@ class Project(SQLModel, table=True):
 
     def get_history_directory(self) -> Path:
         """Returns the history dir for MAcWorP specific files"""
-        history_dir = secure_joinpath(self.get_cache_directory(),"history")
+        history_dir = secure_joinpath(self.get_cache_directory(), "history")
         if not history_dir.is_dir():
             history_dir.mkdir(parents=True, exist_ok=True)
         return history_dir
@@ -190,10 +262,10 @@ class Project(SQLModel, table=True):
         return cache_dir
 
     def get_last_executed_cache_file(self) -> dict:
-        return json.loads(secure_joinpath(self.get_cache_directory(),"last_executed_workflow.json").read_text())
+        return json.loads(secure_joinpath(self.get_cache_directory(), "last_executed_workflow.json").read_text())
 
     def get_last_executed_cache_file_path(self) -> Path:
-        return secure_joinpath(self.get_cache_directory(),"last_executed_workflow.json")
+        return secure_joinpath(self.get_cache_directory(), "last_executed_workflow.json")
 
     def add_file_chunk(self, target_file_path: Path, chunk_offset: int, file_chunk: IO[bytes]) -> Path:
         target_directory = self.get_path(target_file_path.parent)

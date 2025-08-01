@@ -80,6 +80,56 @@ class ProjectService:
             else:
                 raise RuntimeError(f"Error while loading Projects: {response.status_code}")
 
+    async def full_delete_project(self, project_id):
+        project_path = await self.get_project_root_path(project_id)
+        await self.delete_project_path(project_id, project_path)
+        await self.delete_project(project_id)
+
+    async def get_project_root_path(self, project_id):
+        """Fetches the root path of the given project"""
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{BACKEND_URL}/project/{project_id}/files?dir=/",  # Root-Verzeichnis
+                                        headers=headers)
+
+            if response.status_code == 200:
+                data = response.json()
+                root_path = data.get("path")
+                return [{"path": root_path}]
+            else:
+                error_detail = response.text
+                try:
+                    error_json = response.json()
+                    print(f"Error details: {error_json}")
+                except:
+                    print(f"Error text: {error_detail}")
+
+                raise RuntimeError(f"Error while fetching root path: {response.status_code} - {error_detail}")
+
+    async def delete_project_path(self, project_id, project_path):
+        """
+        delete a project path
+        """
+        path_payload = [p for p in project_path]
+        print(type(path_payload))     # z.B. list
+        for i, entry in enumerate(path_payload):
+            print(f"Entry {i} type: {type(entry)}, value: {entry}")
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{BACKEND_URL}/project/{project_id}/delete-path",
+                                            headers=headers,
+                                            json=path_payload)
+            if response.status_code == 200:
+                self.projects = response.json()
+                return self.projects
+            else:
+                print(response)
+                raise RuntimeError(f"Error while loading Projects: {response.status_code}")
+
     async def delete_project(self, project_id):
         """
         delete project
@@ -182,5 +232,3 @@ class ProjectService:
                 print(f"Error text: {error_detail}")
 
             raise RuntimeError(f"Error while editing project: {response.status_code} - {error_detail}")
-
-

@@ -22,7 +22,7 @@ class ProjectPageEdit:
         pass
 
     async def delete_project(self):
-        await self.project_service.delete_project(self.project_id)
+        await self.project_service.full_delete_project(self.project_id)
         ui.navigate.back()
 
     def create_project_table(self):

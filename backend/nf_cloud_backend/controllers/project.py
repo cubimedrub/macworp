@@ -6,7 +6,7 @@ from typing import List, Literal, Any, Coroutine, Optional, Dict
 from urllib.parse import unquote
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query, File, UploadFile, Form, Header
+from fastapi import APIRouter, HTTPException, Query, File, UploadFile, Form, Header, Request
 from pydantic import BaseModel, errors, json
 from sqlmodel import Field, Session, select
 from starlette.responses import JSONResponse, FileResponse
@@ -531,12 +531,14 @@ async def create_folder(project: ExistingProject, auth: Authenticated, session: 
 
 @router.post("/{project_id}/delete-path",
              summary="Deletes a path")
-async def delete_path(project: ExistingProject, auth: Authenticated, session: DbSession, path: Path) -> JSONResponse:
+async def delete_path(project: ExistingProject, auth: Authenticated, session: DbSession, paths: List[dict]) -> JSONResponse:
     ensure_write_access(auth, project, session)
-    if not path:
+    if not paths:
         raise HTTPException(status_code=422, detail={"errors": {"request body": ["path cannot be empty"]}})
-    project.remove_path(path)
+    for path in paths:
+        project.remove_path(path)
     return JSONResponse(content="", status_code=200)
+
 
 
 @router.get("/{project_id}/is-ignored",

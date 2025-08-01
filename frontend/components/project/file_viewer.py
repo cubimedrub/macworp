@@ -1,5 +1,8 @@
+import json
+import os
 from pathlib import Path
 
+import pandas as pd
 from nicegui import ui
 from typing import List
 
@@ -55,13 +58,13 @@ class FileViewer:
         """Create image viewer"""
         with ui.expansion(f'{filename}', icon='image').classes('w-full'):
             with ui.row().classes('w-full justify-center'):
-                ui.image(f'/api/projects/{self.project_id}/files/{filepath}').classes('max-w-full max-h-96')
+                ui.image(f'projects/{self.project_id}/results/{filepath}').classes('max-w-full max-h-96')
 
     def _create_pdf_viewer(self, filepath: str, filename: str):
         """Create PDF viewer"""
         with ui.expansion(f'{filename}', icon='picture_as_pdf').classes('w-full'):
             ui.html(f'''
-                <embed src="/api/projects/{self.project_id}/files/{filepath}" 
+                <embed src="{self.project_id}/results/{filepath}" 
                        type="application/pdf" 
                        width="100%" 
                        height="600px"
@@ -72,13 +75,11 @@ class FileViewer:
         """Create SVG viewer"""
         with ui.expansion(f'{filename}', icon='code').classes('w-full'):
             if filepath.endswith('.image.svg'):
-                # Treat as image
-                ui.image(f'/api/projects/{self.project_id}/files/{filepath}').classes('max-w-full max-h-96')
+                ui.image(f'projects/{self.project_id}/results/{filepath}').classes('max-w-full max-h-96')
             else:
-                # Embed directly in DOM
                 ui.html(f'''
                     <div style="text-align: center; border: 1px solid #ccc; padding: 10px;">
-                        <object data="/api/projects/{self.project_id}/files/{filepath}" 
+                        <object data="{self.project_id}/results/{filepath}" 
                                 type="image/svg+xml" 
                                 style="max-width: 100%; max-height: 400px;">
                             SVG not supported
@@ -87,54 +88,64 @@ class FileViewer:
                 ''')
 
     def _create_plotly_viewer(self, filepath: str, filename: str):
-        """Create Plotly viewer"""
-        # Create a safe ID by removing problematic characters
-        safe_id = filename.replace('.', '_').replace('-', '_').replace(' ', '_')
-
         with ui.expansion(f'{filename}', icon='analytics').classes('w-full'):
-            ui.add_body_html(f'''
-                <div id="plotly-{safe_id}" style="width: 100%; height: 400px;"></div>
-                <script>
-                    fetch('/api/projects/{self.project_id}/files/{filepath}')
-                        .then(response => response.json())
-                        .then(data => {{
-                            Plotly.newPlot('plotly-{safe_id}', data.data, data.layout);
-                        }})
-                        .catch(error => console.error('Error loading Plotly data:', error));
-                </script>
-            ''')
+            try:
+                full_path = os.path.join('projects', str(self.project_id), 'results', filepath)
+                with open(full_path, 'r') as f:
+                    plotly_json = json.load(f)
+
+                ui.plotly(plotly_json)
+            except Exception as e:
+                ui.label(f'Fehler beim Laden der Plotly-Daten: {e}').classes('text-red-500')
 
     def _create_table_viewer(self, filepath: str, filename: str):
         """Create table viewer"""
         with ui.expansion(f'{filename}', icon='table_chart').classes('w-full'):
-            # This would need to be implemented based on your backend API
             ui.label(f'Table viewer for {filename}').classes('text-center p-4')
+
+            full_path = os.path.join('projects', str(self.project_id), 'results', filepath)
+
+            try:
+                # Dateityp erkennen
+                if filepath.endswith('.csv'):
+                    df = pd.read_csv(full_path)
+                elif filepath.endswith('.tsv'):
+                    df = pd.read_csv(full_path, sep='\t')
+                elif filepath.endswith('.xlsx'):
+                    df = pd.read_excel(full_path)
+                else:
+                    ui.label('Unsupported file type').classes('text-red-500')
+                    return
+
+                # Tabelle anzeigen
+                ui.table(
+                    columns=[{'name': col, 'label': col, 'field': col} for col in df.columns],
+                    rows=df.to_dict(orient='records'),
+                    row_key='index',
+                ).classes('w-full')
+
+            except Exception as e:
+                ui.label(f'Error reading file: {e}').classes('text-red-500')
+
             ui.button(
                 'Download',
                 icon='download',
-                on_click=lambda: ui.download(f'/api/projects/{self.project_id}/files/{filepath}')
+                on_click=lambda: ui.download(f'projects/{self.project_id}/results/{filepath}')
             )
 
     def _create_text_viewer(self, filepath: str, filename: str):
-        """Create text viewer"""
-        # Create a safe ID by removing problematic characters
-        safe_id = filename.replace('.', '_').replace('-', '_').replace(' ', '_')
-
         with ui.expansion(f'{filename}', icon='text_snippet').classes('w-full'):
-            ui.add_body_html(f'''
-                <div style="background: #f5f5f5; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
-                    <pre id="text-content-{safe_id}">Loading...</pre>
+            try:
+                full_path = f'projects/{self.project_id}/results/{filepath}'
+                with open(full_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except Exception as e:
+                content = f'Fehler beim Laden der Datei: {e}'
+
+            ui.html(f'''
+                <div style="background: #000000; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto; white-space: pre-wrap;">
+                    {content}
                 </div>
-                <script>
-                    fetch('/api/projects/{self.project_id}/files/{filepath}')
-                        .then(response => response.text())
-                        .then(data => {{
-                            document.getElementById('text-content-{safe_id}').textContent = data;
-                        }})
-                        .catch(error => {{
-                            document.getElementById('text-content-{safe_id}').textContent = 'Error loading file: ' + error;
-                        }});
-                </script>
             ''')
 
     def _create_generic_viewer(self, filepath: str, filename: str):
@@ -145,7 +156,7 @@ class FileViewer:
                 ui.button(
                     'Download',
                     icon='download',
-                    on_click=lambda: ui.download(f'/api/projects/{self.project_id}/files/{filepath}')
+                    on_click=lambda: ui.download(f'projects/{self.project_id}/results/{filepath}')
                 )
 
     def _is_image_file(self, filepath: str) -> bool:

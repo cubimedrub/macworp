@@ -29,4 +29,4 @@ def create_provider_card(provider_type, provider, description, on_select):
             ui.label(provider.title()).classes('text-lg font-semibold')
             ui.label(description).classes('text-sm text-gray-600')
 
-        ui.button('Select', on_click=lambda: on_select(provider_type, provider)).classes('self-start')
+        ui.button('Select', on_click=lambda: on_select(provider_type, provider)).props(f'data-testid=select-{provider_type}-{provider}').classes('self-start')

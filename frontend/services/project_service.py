@@ -113,7 +113,7 @@ class ProjectService:
         delete a project path
         """
         path_payload = [p for p in project_path]
-        print(type(path_payload))     # z.B. list
+        print(type(path_payload))  # z.B. list
         for i, entry in enumerate(path_payload):
             print(f"Entry {i} type: {type(entry)}, value: {entry}")
         headers = {}
@@ -121,8 +121,8 @@ class ProjectService:
             headers[f"{AUTH_TYPE}"] = API_TOKEN
         async with httpx.AsyncClient() as client:
             response = await client.post(f"{BACKEND_URL}/project/{project_id}/delete-path",
-                                            headers=headers,
-                                            json=path_payload)
+                                         headers=headers,
+                                         json=path_payload)
             if response.status_code == 200:
                 self.projects = response.json()
                 return self.projects
@@ -232,3 +232,22 @@ class ProjectService:
                 print(f"Error text: {error_detail}")
 
             raise RuntimeError(f"Error while editing project: {response.status_code} - {error_detail}")
+
+    async def create_project(self, project):
+        """create a new Project"""
+        headers = {"Content-Type": "application/json"}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        print(f"Sending project data: {project}")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{BACKEND_URL}/project/new",
+                                        headers=headers,
+                                         json=project)
+        print(f"Response status: {response.status_code}")
+        print(f"Response text: {response.text}")
+
+        if response.status_code == 200:
+            data = response.json()
+            return data
+        raise RuntimeError(f"Error while creating new project: {response.status_code}")
+

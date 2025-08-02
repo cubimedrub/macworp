@@ -1,6 +1,7 @@
 from nicegui import ui
 import asyncio
 
+from frontend.components.project.project_editor_table import ProjectEditTable
 from frontend.services.project_service import ProjectService
 
 
@@ -10,6 +11,7 @@ class ProjectsIndex:
         self.current_projects_page = 1
         self.projects_list = None
         self.pagination = None
+        self.new_project_dialog = ProjectEditTable(None,None)
         self.show()
         asyncio.create_task(self.load_data())
 
@@ -47,10 +49,14 @@ class ProjectsIndex:
         self.current_projects_page = e.value
         asyncio.create_task(self.load_projects())
 
+    async def new_project(self):
+        await self.new_project_dialog.create_editable_table()
+        ui.navigate.reload()
+
     async def show(self):
         with ui.row().classes("w-full justify-between items-center"):
             ui.label("Projects").classes("text-2xl")
-            ui.link("Start new project", "/projects/new").classes("btn btn-primary btn-sm")
+            ui.button("Start new project",on_click=self.new_project).classes("btn btn-primary btn-sm")
 
         self.projects_list = ui.column().classes("w-full")
         self.pagination = ui.pagination(

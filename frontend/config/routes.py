@@ -3,7 +3,7 @@ from nicegui import ui, app
 from ..components.common.header import render_header
 from ..pages import login, workflows, docs, dashboard
 from ..pages.login import LoginPage
-from ..pages.projects import projects_index, projects_new, projects_edit
+from ..pages.projects import projects_index, projects_edit
 from nicegui import context
 
 
@@ -28,11 +28,11 @@ def setup_routes():
         projects = projects_index.ProjectsIndex()
         await projects.show()
 
-    @ui.page('/projects/new')
-    def projects_page_new():
-        render_header()
-        new_projects = projects_new.ProjectPageNew()
-        return new_projects.show()
+    # @ui.page('/projects/new')
+    # def projects_page_new():
+    #     render_header()
+    #     new_projects = projects_new.ProjectPageNew()
+    #     return new_projects.show()
 
     @ui.page('/projects/edit')
     async def projects_page_edit():

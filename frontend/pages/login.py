@@ -78,7 +78,8 @@ class LoginPage:
                 create_oauth_form(self.selected_provider, self.handle_oauth_login)
 
     async def handle_credential_login(self, username=None, password=None):
-        """Handle username/password login - fixed to accept parameters from form callback"""
+        """Handle username/password login"""
+
         # If called with parameters from the form callback, use those
         if username is not None and password is not None:
             username_value = username
@@ -142,19 +143,14 @@ class LoginPage:
 
     async def handle_login_success(self, login_result: Dict):
         """Handle successful login"""
-        logger.info("Login successful")
 
         # todo use secure storage
-        app.storage.browser['jwt_token'] = login_result.get('jwt')
-        app.storage.browser['user_id'] = login_result.get('user_id')
-        app.storage.browser['email'] = login_result.get('email')
-        app.storage.browser['role'] = login_result.get('role')
+        app.storage.user['authenticated'] = True
+        app.storage.user['x-token'] = login_result.get('x-token')
+        app.storage.user['user_id'] = login_result.get('user_id')
+        app.storage.user['email'] = login_result.get('email')
+        app.storage.user['role'] = login_result.get('role')
 
-        # Show success message
-        ui.notify('Login successful!', type='positive')
-
-        # Redirect to dashboard or main app
-        await asyncio.sleep(1)  # Brief delay to show success message
         ui.navigate.to('/dashboard')
 
     def show_error(self, message: str):
@@ -193,8 +189,8 @@ class LoginPage:
 
         with ui.column().classes('w-full items-center'):
             with ui.card().classes('w-full max-w-md mx-auto p-8 text-center mb-6'):
-                 ui.label('NF Cloud Login').style('color: #6E93D6; font-size: 200%; font-weight: 300')
-                 ui.label('Welcome back! Please sign in to continue.').classes('text-gray-600 mt-2')
+                ui.label('NF Cloud Login').style('color: #6E93D6; font-size: 200%; font-weight: 300')
+                ui.label('Welcome back! Please sign in to continue.').classes('text-gray-600 mt-2')
 
             with ui.column().classes('text-center min-h-screen bg-white-50 py-12 px-4') as self.page_container:
                 self.error_label = ui.label('').classes('text-red-500 text-center')
@@ -203,4 +199,3 @@ class LoginPage:
                         providers=self.providers,
                         on_select=self.select_provider
                     )
-

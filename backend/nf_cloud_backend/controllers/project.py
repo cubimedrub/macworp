@@ -336,7 +336,7 @@ async def edit(params: ProjectUpdateParams, project: ExistingProject, auth: Auth
 async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth: Authenticated,
                              session: DbSession) -> None:
     """
-    Makes another user the project owner. Requires ownership or admin rights.
+    Makes another Existinguser the project owner. Requires ownership or admin rights.
     The former owner will be given write access.
     """
 

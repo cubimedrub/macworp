@@ -95,6 +95,24 @@ class ProjectPageEdit:
             ui.markdown(f"```\n{error_report}\n```").classes("text-red")
             ui.label("Hint: The error report is not persisted yet...").classes("text-caption text-grey")
 
+    async def change_owner(self):
+        with (ui.dialog().props('backdrop-filter="blur(8px) brightness(40%)"') as dialog, ui.card().classes('w-full')):
+            ui.label("funny change widow")
+            with ui.card().classes('w-full'):
+                new_owner = ui.input('New Owner ID').classes('w-full').props('outlined')
+
+            async def confirm_change():
+                response = await self.project_service.change_user(new_owner.value, self.project, self.project_id)
+                if response:
+                    ui.notify(f"Owner changed to {new_owner}")
+                    dialog.close()
+                else:
+                    ui.notify("Owner not found")
+
+            ui.button("Confirm", on_click=confirm_change).props("color=primary")
+            ui.button("Cancel", on_click=dialog.close)
+
+        await dialog
 
     async def show(self):
         await self.load_project_data()
@@ -110,6 +128,7 @@ class ProjectPageEdit:
             ui.button("delete", on_click=self.delete_project, color='red')
             ui.button("Edit", on_click=self.editable_table)
             ui.button("Start Workflow", on_click=self.start_workflow(), color='green')
+            ui.button("Change Owner", on_click=lambda:self.change_owner())
             files = await self.project_service.get_file_path(self.project_id)
             self.file_viewer.show_files(files)
             # todo ignore als eigenschaft fehlt

@@ -241,13 +241,26 @@ class ProjectService:
         print(f"Sending project data: {project}")
         async with httpx.AsyncClient() as client:
             response = await client.post(f"{BACKEND_URL}/project/new",
-                                        headers=headers,
+                                         headers=headers,
                                          json=project)
-        print(f"Response status: {response.status_code}")
-        print(f"Response text: {response.text}")
 
         if response.status_code == 200:
             data = response.json()
             return data
         raise RuntimeError(f"Error while creating new project: {response.status_code}")
 
+    async def change_user(self, new_owner: int, project, project_id) -> bool:
+        """changes the User to new User"""
+        if int(new_owner) == int(project['owner_id']):
+            return False
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{BACKEND_URL}/project/{project_id}/transfer_ownership",
+                                         headers=headers,
+                                         params={"user_id": new_owner})
+
+        if response.status_code == 200:
+            return True
+        return False

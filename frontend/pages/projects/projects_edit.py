@@ -21,6 +21,7 @@ class ProjectPageEdit:
         self.project_path = await self.project_service.get_file_path(self.project_id)
 
     def start_workflow(self):
+        self.show_progress()
         pass
 
     async def delete_project(self):
@@ -69,10 +70,37 @@ class ProjectPageEdit:
             return
         await self.project_edit_table.create_editable_table()
 
+    def show_progress(self):
+        if self.project.get('is_scheduled'):
+            completed = self.project.get('completed_processes', 0)
+            submitted = self.project.get('submitted_processes', 1)
+            progress = completed / submitted if submitted else 0
+
+            with ui.card().classes('w-full'):
+                ui.label("Progress").classes("text-h6")
+                ui.linear_progress(value=progress).props("color=green")
+                ui.label("Hint: Progress may decrease during the run...").classes("text-caption text-grey")
+
+    def show_logs(self):
+        logs = self.project.get('logs', [])
+        if logs:
+            ui.label("Logs").classes("text-h6")
+            ui.textarea(value="\n".join(logs)).classes("w-full").props("rows=10")
+            ui.label("Hint: Logs are not persisted yet...").classes("text-caption text-grey")
+
+    def show_error_report(self):
+        error_report = self.project.get("error_report")
+        if error_report:
+            ui.label("Error report").classes("text-h6")
+            ui.markdown(f"```\n{error_report}\n```").classes("text-red")
+            ui.label("Hint: The error report is not persisted yet...").classes("text-caption text-grey")
+
 
     async def show(self):
         await self.load_project_data()
         await self.load_project_path()
+        self.show_logs()
+        self.show_error_report()
         if not self.project:
             ui.label('Project not found').classes('text-h6 text-center text-red')
             return
@@ -81,6 +109,7 @@ class ProjectPageEdit:
             ui.label(f' {self.project["name"]}').classes('text-h4')
             ui.button("delete", on_click=self.delete_project, color='red')
             ui.button("Edit", on_click=self.editable_table)
+            ui.button("Start Workflow", on_click=self.start_workflow(), color='green')
             files = await self.project_service.get_file_path(self.project_id)
             self.file_viewer.show_files(files)
             # todo ignore als eigenschaft fehlt

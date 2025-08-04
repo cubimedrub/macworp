@@ -4,6 +4,7 @@ from ..components.common.header import render_header
 from ..pages import login, workflows, docs, dashboard
 from ..pages.login import LoginPage
 from ..pages.projects import projects_index, projects_edit
+from ..pages.workflows import workflow_index
 from nicegui import context
 
 
@@ -51,10 +52,11 @@ def setup_routes():
         await edit_projects.show()
 
 
-@ui.page('/workflows')
-def workflows_page():
-    render_header()
-    return workflows.show()
+    @ui.page('/workflows')
+    async def workflows_page():
+        render_header()
+        workflows = workflow_index.WorkflowIndex()
+        return workflows.show()
 
 
 @ui.page('/docs')

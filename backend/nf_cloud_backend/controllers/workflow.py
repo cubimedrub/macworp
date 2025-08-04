@@ -15,7 +15,6 @@ from ..models.workflow_share import WorkflowShare
 
 from ..database import DbSession
 
-
 # ---------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------
@@ -31,7 +30,7 @@ def get_workflow_share(user: User, workflow: Workflow, session: Session) -> Work
     Gets the WorkflowShare identified by the provided `user` and `workflow`,
     or None if this workflow is not shared with the user.
     """
-    
+
     return session.exec(
         select(WorkflowShare).where(WorkflowShare.user_id == user.id, WorkflowShare.workflow_id == workflow.id)
     ).one_or_none()
@@ -41,7 +40,7 @@ def can_access_workflow(user: User, workflow: Workflow, for_writing: bool, sessi
     """
     Helper method for common logic between `ensure_read_access` and `ensure_write_access`.
     """
-    
+
     match user.role:
         case UserRole.admin:
             return True
@@ -57,7 +56,7 @@ def ensure_read_access(user: User, workflow: Workflow, session: Session) -> None
     """
     Throws a `HTTPException` if `user` doesn't have the right to read from `workflow`.
     """
-    
+
     if not can_access_workflow(user, workflow, False, session):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -93,14 +92,14 @@ def ensure_owner(user: User, workflow: Workflow) -> None:
             summary="List Workflows")
 async def list(auth: Authenticated, session: DbSession) -> list[int]:
     """
-    Lists the IDs of all workflows visible to this user. Requires authentication.
+    Lists the Workflows
     """
-
-    return [
-        i.id
-        for i in session.exec(select(Workflow)).all()
-        if i.id is not None and can_access_workflow(auth, i, False, session)
-    ]
+    query = (
+        select(Workflow)
+        .order_by(Workflow.id.desc(), Workflow.name)
+    )
+    workflows = session.exec(query).all()
+    return workflows
 
 
 class WorkflowCreateParams(BaseModel):
@@ -108,6 +107,7 @@ class WorkflowCreateParams(BaseModel):
     description: str = ""
     definition: dict = Field(default_factory=dict)
     is_published: bool = False
+
 
 @router.post("/new",
              summary="Create Workflow")
@@ -128,10 +128,10 @@ async def new(params: WorkflowCreateParams, auth: Authenticated, session: DbSess
 
     session.commit()
     # response.status_code = status.HTTP_201_CREATED
-    
+
     # Can't be None since commit will make the DB assign an ID
     assert workflow.id is not None
-    
+
     return workflow.id
 
 
@@ -143,6 +143,7 @@ class WorkflowShown(BaseModel):
     is_published: bool
     read_shared: List[int]
     write_shared: List[int]
+
 
 @router.get("/{workflow_id}",
             summary="Show Single Workflow")
@@ -170,9 +171,11 @@ class WorkflowUpdateParams(BaseModel):
     definition: dict | None = None
     is_published: bool | None = None
 
+
 @router.post("/{workflow_id}/edit",
              summary="Edit Workflow")
-async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: Authenticated, session: DbSession) -> None:
+async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: Authenticated,
+               session: DbSession) -> None:
     """
     Edits the attributes of a workflow. Requires write access.
     """
@@ -191,7 +194,8 @@ async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: A
 
 @router.post("/{workflow_id}/transfer_ownership",
              summary="Transfer Ownership")
-async def transfer_ownership(workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated, session: DbSession) -> None:
+async def transfer_ownership(workflow: ExistingWorkflow, user: ExistingUser, auth: Authenticated,
+                             session: DbSession) -> None:
     """
     Makes another user the workflow owner. Requires ownership or admin rights.
     The former owner will be given write access.
@@ -219,7 +223,8 @@ async def delete(workflow: ExistingWorkflow, auth: Authenticated, session: DbSes
 
 @router.post("/{workflow_id}/share/add",
              summary="Share Workflow")
-async def add_share(write: bool, workflow: ExistingWorkflow, users: ExistingUsers, auth: Authenticated, session: DbSession) -> None:
+async def add_share(write: bool, workflow: ExistingWorkflow, users: ExistingUsers, auth: Authenticated,
+                    session: DbSession) -> None:
     """
     Gives read/write rights to a user, or changes the user's current rights. Requires write access.
     """
@@ -241,7 +246,8 @@ async def add_share(write: bool, workflow: ExistingWorkflow, users: ExistingUser
 
 @router.post("/{workflow_id}/share/remove",
              summary="Un-Share Workflow")
-async def remove_share(workflow: ExistingWorkflow, users: ExistingUsers, auth: Authenticated, session: DbSession) -> None:
+async def remove_share(workflow: ExistingWorkflow, users: ExistingUsers, auth: Authenticated,
+                       session: DbSession) -> None:
     """
     Revokes the right of a user to read from / write to this workflow. Requires write access.
 

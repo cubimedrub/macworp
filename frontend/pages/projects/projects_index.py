@@ -11,7 +11,7 @@ class ProjectsIndex:
         self.current_projects_page = 1
         self.projects_list = None
         self.pagination = None
-        self.new_project_dialog = ProjectEditTable(None,None)
+        self.new_project_dialog = ProjectEditTable(None, None)
         self.show()
         asyncio.create_task(self.load_data())
 
@@ -40,6 +40,7 @@ class ProjectsIndex:
                     with ui.card().classes("w-full mb-2"):
                         ui.link(project_name, f"/projects/edit?id={project['id']}").classes(
                             "text-decoration-none fw-bold text-lg")
+                        ui.button("Share", on_click=lambda: self.share(project))
 
                         if isinstance(project, dict):
                             if 'description' in project:
@@ -53,10 +54,36 @@ class ProjectsIndex:
         await self.new_project_dialog.create_editable_table()
         ui.navigate.reload()
 
+    async def share(self, project):
+        with (ui.dialog().props('backdrop-filter="blur(8px) brightness(40%)"') as dialog, ui.card().classes('w-full')):
+            ui.label("Add Authors to your Projects")
+            with ui.card().classes('w-full'):
+                added_owner = ui.input('Owner ID').classes('w-full').props('outlined')
+                access_rights = ui.select(
+                    label='Access rights',
+                    options=['read','write'],
+                    value= 'read'
+                )
+
+            async def confirm_change():
+                write_access = access_rights.value == 'write'
+                response = await self.project_service.add_share_project(added_owner.value, project, project['id'],
+                                                                        write_access)
+                if response:
+                    ui.notify(f"User added")
+                    dialog.close()
+                else:
+                    ui.notify("Owner not found")
+
+            ui.button("Confirm", on_click=confirm_change).props("color=primary")
+            ui.button("Cancel", on_click=dialog.close)
+
+        await dialog
+
     async def show(self):
         with ui.row().classes("w-full justify-between items-center"):
             ui.label("Projects").classes("text-2xl")
-            ui.button("Start new project",on_click=self.new_project).classes("btn btn-primary btn-sm")
+            ui.button("Start new project", on_click=self.new_project).classes("btn btn-primary btn-sm")
 
         self.projects_list = ui.column().classes("w-full")
         self.pagination = ui.pagination(

@@ -264,3 +264,20 @@ class ProjectService:
         if response.status_code == 200:
             return True
         return False
+
+    async def add_share_project(self, new_user: int, project, project_id, write_access: bool):
+        """share project with user"""
+        if int(new_user) == int(project['owner_id']):
+            return False
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{BACKEND_URL}/project/{project_id}/share/add",
+                                         headers=headers,
+                                         params={"write": f"{write_access}"},
+                                         json=[int(new_user)])
+
+            if response.status_code == 200:
+                return True
+        return False

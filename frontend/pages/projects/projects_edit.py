@@ -97,7 +97,7 @@ class ProjectPageEdit:
 
     async def change_owner(self):
         with (ui.dialog().props('backdrop-filter="blur(8px) brightness(40%)"') as dialog, ui.card().classes('w-full')):
-            ui.label("funny change widow")
+            ui.label("Transfer Ownership of Project")
             with ui.card().classes('w-full'):
                 new_owner = ui.input('New Owner ID').classes('w-full').props('outlined')
 

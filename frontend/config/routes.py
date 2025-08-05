@@ -8,26 +8,26 @@ from ..pages.projects import projects_index, projects_edit
 from ..pages.workflows import workflow_index
 from nicegui import context
 
-def render_common_components():
-    render_header()
+def render_common_components(location: str):
+    render_header(subtitle=location)
     create_cookie_banner()
 
 def setup_routes():
     @ui.page('/')
     async def login_page():
-        render_common_components()
+        render_common_components("login")
         login = LoginPage()
         await login.show()
 
     @ui.page('/dashboard')
     def dashboard_page():
-        render_common_components()
+        render_common_components("dashboard")
         render_header()
         return dashboard.show()
 
     @ui.page('/projects')
     async def projects_page():
-        render_common_components()
+        render_common_components("Projekts Index")
         if not app.storage.user.get('authenticated', False):
             ui.navigate.to('/')
             return
@@ -43,7 +43,7 @@ def setup_routes():
 
     @ui.page('/projects/edit')
     async def projects_page_edit():
-        render_common_components()
+        render_common_components("Projekt Details")
         project_id = None
         try:
             if hasattr(context, 'client') and hasattr(context.client, 'request'):
@@ -60,7 +60,7 @@ def setup_routes():
 
     @ui.page('/workflows')
     async def workflows_page():
-        render_common_components()
+        render_common_components("Workflows")
         render_header()
         workflows = workflow_index.WorkflowIndex()
         return workflows.show()

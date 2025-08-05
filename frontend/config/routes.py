@@ -2,6 +2,7 @@ from nicegui import ui, app
 
 from ..components.common.cookie import create_cookie_banner
 from ..components.common.header import render_header
+from ..components.common.navigation import navigation_dashboard
 from ..pages import login, workflows, docs, dashboard
 from ..pages.login import LoginPage
 from ..pages.projects import projects_index, projects_edit
@@ -11,6 +12,7 @@ from nicegui import context
 def render_common_components(location: str):
     render_header(subtitle=location)
     create_cookie_banner()
+    navigation_dashboard()
 
 def setup_routes():
     @ui.page('/')

@@ -5,6 +5,11 @@
 # Navigate to project root (one level up from frontend/)
 cd "$(dirname "$0")/.."
 
+PROJECTS_DIR="$(dirname "$0")/../projects"
+if [ ! -d "$PROJECTS_DIR" ]; then
+    mkdir -p "$PROJECTS_DIR"
+    echo "Created directory: $PROJECTS_DIR"
+fi
 # Add project root to Python path
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 

@@ -45,7 +45,7 @@ class ProjectService:
                 self.total_project_count = response.json()
                 return self.total_project_count
             else:
-                raise RuntimeError(f"Error loading Projects count: {response.status_code}{API_TOKEN}")
+                raise RuntimeError(f"Error loading Projects count: {response.status_code}")
 
     async def load_project(self, project_id: int):
         """

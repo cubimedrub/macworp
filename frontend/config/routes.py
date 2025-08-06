@@ -56,7 +56,7 @@ def setup_routes():
             ui.label("project required").classes("test-danger")
             return None
         edit_projects = projects_edit.ProjectPageEdit(project_id)
-        await edit_projects.show()
+        return await edit_projects.show()
 
     @ui.page('/workflows')
     async def workflows_page():

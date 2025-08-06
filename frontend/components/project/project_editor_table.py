@@ -15,8 +15,7 @@ class ProjectEditTable:
         """Create an editable table for project properties"""
 
         # Check if this is for creating a new project
-        is_new_project = self.project_id is None or self.project is None
-
+        is_new_project = self.project_id is None and self.project is None
         # Load project data if editing existing project
         if not is_new_project and not self.project:
             try:
@@ -118,7 +117,7 @@ class ProjectEditTable:
                     try:
                         import json
                         project_data['workflow_arguments'] = json.loads(project_data['workflow_arguments']) if \
-                        project_data['workflow_arguments'].strip() else {}
+                            project_data['workflow_arguments'].strip() else {}
                     except:
                         project_data['workflow_arguments'] = {}
 

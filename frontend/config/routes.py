@@ -9,10 +9,15 @@ from ..pages.projects import projects_index, projects_edit
 from ..pages.workflows import workflow_index
 from nicegui import context
 
+
 def render_common_components(location: str):
     render_header(subtitle=location)
-    create_cookie_banner()
+    if not app.storage.user.get('accepted_cookie'):
+        create_cookie_banner()
+        app.storage.user['accepted_cookie'] = True
+
     navigation_dashboard()
+
 
 def setup_routes():
     @ui.page('/')
@@ -37,12 +42,6 @@ def setup_routes():
         projects = projects_index.ProjectsIndex()
         await projects.show()
 
-    # @ui.page('/projects/new')
-    # def projects_page_new():
-    #     render_header()
-    #     new_projects = projects_new.ProjectPageNew()
-    #     return new_projects.show()
-
     @ui.page('/projects/edit')
     async def projects_page_edit():
         render_common_components("Projekt Details")
@@ -58,7 +57,6 @@ def setup_routes():
             return None
         edit_projects = projects_edit.ProjectPageEdit(project_id)
         await edit_projects.show()
-
 
     @ui.page('/workflows')
     async def workflows_page():

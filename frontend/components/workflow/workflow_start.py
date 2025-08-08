@@ -25,6 +25,8 @@ class WorkflowStart:
                         ui.item(workflow["name"] or workflow["id"],
                                 on_click=lambda w=workflow: self.show_workflow_params(w))
 
+            ui.button("New Workflow")
+
         await dialog
 
     async def show_workflow_params(self, selected_workflow):
@@ -65,6 +67,7 @@ class WorkflowStart:
                     multiple = param["desc"] in ["Multiple files", "Multiple folders"]
                     ui.upload(multiple=multiple).props(f'label="{param["label"]}"')
 
+            ui.button("Delete Workflow", on_click=lambda:self.workflows_service.delete_workflow(selected_workflow))
 
 def show_logs(self):
     logs = self.project.get('logs', [])

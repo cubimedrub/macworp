@@ -38,3 +38,16 @@ class WorkflowService:
                 return self.workflows
             else:
                 raise RuntimeError(f"Error while loading Projects: {response.status_code}")
+
+    async def delete_workflow(self, workflow):
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(f"{BACKEND_URL}/workflow/{workflow["id"]}/delete",
+                                        headers=headers
+                                           )
+            if response.status_code == 200:
+                return True
+            else:
+                raise RuntimeError(f"Error while loading Projects: {response.status_code}")

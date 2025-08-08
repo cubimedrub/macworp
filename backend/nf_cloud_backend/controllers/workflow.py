@@ -209,7 +209,7 @@ async def transfer_ownership(workflow: ExistingWorkflow, user: ExistingUser, aut
     workflow.owner = user
 
 
-@router.post("/{workflow_id}/delete",
+@router.delete("/{workflow_id}/delete",
              summary="Delete Workflow")
 async def delete(workflow: ExistingWorkflow, auth: Authenticated, session: DbSession) -> None:
     """

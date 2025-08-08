@@ -113,7 +113,6 @@ class ProjectService:
         delete a project path
         """
         path_payload = [p for p in project_path]
-        print(type(path_payload))  # z.B. list
         for i, entry in enumerate(path_payload):
             print(f"Entry {i} type: {type(entry)}, value: {entry}")
         headers = {}
@@ -148,7 +147,7 @@ class ProjectService:
 
     def clean_project_data(self, project):
         """
-        cleanse poroject data
+        cleanse project data
         """
         cleaned = {}
         for key, value in project.items():

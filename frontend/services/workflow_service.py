@@ -24,3 +24,17 @@ class WorkflowService:
                 return self.workflows
             else:
                 raise RuntimeError(f"Error while loading Projects: {response.status_code}")
+
+    async def get_workflow(self, workflow):
+        """loads a single workflow from server"""
+        headers = {}
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{BACKEND_URL}/workflow/{workflow["id"]}",
+                                        headers=headers)
+            if response.status_code == 200:
+                self.workflows = response.json()
+                return self.workflows
+            else:
+                raise RuntimeError(f"Error while loading Projects: {response.status_code}")

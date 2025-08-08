@@ -90,7 +90,7 @@ def ensure_owner(user: User, workflow: Workflow) -> None:
 
 @router.get("/",
             summary="List Workflows")
-async def list(auth: Authenticated, session: DbSession) -> list[int]:
+async def list(auth: Authenticated, session: DbSession) -> list[Workflow]:
     """
     Lists the Workflows
     """

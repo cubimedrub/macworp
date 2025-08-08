@@ -2,6 +2,7 @@ from nicegui import ui
 
 from frontend.components.project.file_viewer import FileViewer
 from frontend.components.project.project_editor_table import ProjectEditTable
+from frontend.components.workflow.workflow_start import WorkflowStart
 from frontend.services.project_service import ProjectService
 
 
@@ -13,6 +14,7 @@ class ProjectPageEdit:
         self.file_viewer = FileViewer(project_id)
         self.project_path = None
         self.project_edit_table = ProjectEditTable(self.project, self.project_id)
+        self.workflow_start = WorkflowStart(self.project)
 
     async def load_project_data(self):
         self.project = await self.project_service.load_project(self.project_id)
@@ -20,9 +22,9 @@ class ProjectPageEdit:
     async def load_project_path(self):
         self.project_path = await self.project_service.get_file_path(self.project_id)
 
-    def start_workflow(self):
-        self.show_progress()
-        pass
+    async def start_workflow(self):
+        await self.workflow_start.workflow_selection()
+
 
     async def delete_project(self):
         await self.project_service.full_delete_project(self.project_id)
@@ -81,12 +83,6 @@ class ProjectPageEdit:
                 ui.linear_progress(value=progress).props("color=green")
                 ui.label("Hint: Progress may decrease during the run...").classes("text-caption text-grey")
 
-    def show_logs(self):
-        logs = self.project.get('logs', [])
-        if logs:
-            ui.label("Logs").classes("text-h6")
-            ui.textarea(value="\n".join(logs)).classes("w-full").props("rows=10")
-            ui.label("Hint: Logs are not persisted yet...").classes("text-caption text-grey")
 
     def show_error_report(self):
         error_report = self.project.get("error_report")
@@ -117,7 +113,6 @@ class ProjectPageEdit:
     async def show(self):
         await self.load_project_data()
         await self.load_project_path()
-        self.show_logs()
         self.show_error_report()
         if not self.project:
             ui.label('Project not found').classes('text-h6 text-center text-red')
@@ -127,7 +122,7 @@ class ProjectPageEdit:
             ui.label(f' {self.project["name"]}').classes('text-h4')
             ui.button("delete", on_click=self.delete_project, color='red')
             ui.button("Edit", on_click=self.editable_table)
-            ui.button("Start Workflow", on_click=self.start_workflow(), color='green')
+            ui.button("Start Workflow", on_click=self.start_workflow, color='green')
             ui.button("Change Owner", on_click=lambda:self.change_owner())
             files = await self.project_service.get_file_path(self.project_id)
             self.file_viewer.show_files(files)

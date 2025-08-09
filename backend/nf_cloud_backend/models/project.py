@@ -76,7 +76,8 @@ class Project(SQLModel, table=True):
     """
     is_published: bool = False
 
-    shares: list["ProjectShare"] = Relationship(back_populates="project")
+    shares: list["ProjectShare"] = Relationship(back_populates="project",
+                                                sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
     """
     Ignored Projects will be ignored by the API.

@@ -185,34 +185,34 @@ def folder_download(path: Path, is_inline: bool) -> FileResponse:
 @router.get("/",
             summary="List Projects")
 async def list(auth: Authenticated, session: DbSession,
-                offset: int = Query(0, ge=0, description="Number of items to skip"),
-                limit: int = Query(50, ge=1, le=1000, description="Number of items to return")
-                ):
-        """
-         Parameters:
-        - offset: Number of projects to skip (default: 0)
-        - limit: Maximum number of projects to return (default: 50, max: 1000)
+               offset: int = Query(0, ge=0, description="Number of items to skip"),
+               limit: int = Query(50, ge=1, le=1000, description="Number of items to return")
+               ):
+    """
+     Parameters:
+    - offset: Number of projects to skip (default: 0)
+    - limit: Maximum number of projects to return (default: 50, max: 1000)
 
-        Returns:
-        - List of projects ordered by ID (descending) and then by name
-        """
-        user_id = auth.id
-        query = (
-            select(Project)
-            .where(
-                (Project.owner_id == user_id) |
-                (
-                    Project.shares.any(user_id=user_id)
-                )
+    Returns:
+    - List of projects ordered by ID (descending) and then by name
+    """
+    user_id = auth.id
+    query = (
+        select(Project)
+        .where(
+            (Project.owner_id == user_id) |
+            (
+                Project.shares.any(user_id=user_id)
             )
-            .order_by(Project.id.desc(), Project.name)
-            .offset(offset)
-            .limit(limit)
         )
+        .order_by(Project.id.desc(), Project.name)
+        .offset(offset)
+        .limit(limit)
+    )
 
-        projects = session.exec(query).all()
+    projects = session.exec(query).all()
 
-        return projects
+    return projects
 
 
 @router.get("/count",
@@ -354,14 +354,13 @@ async def transfer_ownership(project: ExistingProject, user: ExistingUser, auth:
 
 
 @router.delete("/{project_id}/delete",
-             summary="Delete Project")
+               summary="Delete Project")
 async def delete(project: ExistingProject, auth: Authenticated, session: DbSession) -> None:
     """
     Deletes a project. Requires ownership or admin rights.
     """
 
     ensure_owner(auth, project)
-
     session.delete(project)
 
 
@@ -402,7 +401,7 @@ def list_files(
 
         folders.sort()
         files.sort()
-        return {"path": directory,"folders": folders, "files": files}
+        return {"path": directory, "folders": folders, "files": files}
 
     except PermissionError:
         raise HTTPException(
@@ -536,14 +535,14 @@ async def create_folder(project: ExistingProject, auth: Authenticated, session: 
 
 @router.post("/{project_id}/delete-path",
              summary="Deletes a path")
-async def delete_path(project: ExistingProject, auth: Authenticated, session: DbSession, paths: List[dict]) -> JSONResponse:
+async def delete_path(project: ExistingProject, auth: Authenticated, session: DbSession,
+                      paths: List[dict]) -> JSONResponse:
     ensure_write_access(auth, project, session)
     if not paths:
         raise HTTPException(status_code=422, detail={"errors": {"request body": ["path cannot be empty"]}})
     for path in paths:
         project.remove_path(path)
     return JSONResponse(content="", status_code=200)
-
 
 
 @router.get("/{project_id}/is-ignored",

@@ -45,21 +45,21 @@ class ProjectEditTable:
                     ui.label(key.replace('_', ' ').title()).classes('text-left font-medium')
 
                     if isinstance(value, bool):
-                        ui.checkbox(value=value).bind_value_to(self.project, key)
+                        ui.checkbox(value=value).bind_value_to(self.project, key)  # ispublished
                     elif isinstance(value, int):
-                        ui.number(value=value).bind_value_to(self.project, key)
+                        ui.number(value=value).bind_value_to(self.project, key)  # workflowId
                     elif isinstance(value, float):
                         ui.number(value=value, format='%.2f').bind_value_to(self.project, key)
                     elif isinstance(value, list):
                         list_str = ', '.join(str(item) for item in value) if value else ''
                         list_input = ui.input(value=list_str, placeholder='Comma-separated values')
                         list_input.on('blur', lambda e, k=key: self.update_list_field(k, e.sender.value))
-                    elif isinstance(value, dict):
+                    elif isinstance(value, dict):  # workflow arguments
                         dict_input = ui.textarea(value=str(value), placeholder='JSON format')
                         dict_input.on('blur', lambda e, k=key: self.update_dict_field(k, e.sender.value))
                     elif value is None:
                         ui.input(value='', placeholder='Empty').bind_value_to(self.project, key)
-                    else:
+                    else:  # name and description
                         ui.input(value=str(value)).bind_value_to(self.project, key)
 
             save_button_text = 'Create Project' if is_new_project else 'Save Changes'
@@ -95,9 +95,35 @@ class ProjectEditTable:
         except:
             ui.notify(f'Invalid JSON format for {key}', color='warning')
 
+    def validate_project_before_save(self):
+        """Validate project data before saving"""
+        errors = []
+
+        # Check name
+        name = self.project.get('name', '')
+        if not name or name == "":
+            errors.append("Name cannot be empty")
+        elif len(name) > 100:
+            errors.append("Name too long (max 100 characters)")
+
+        # Check description
+        description = self.project.get('description', '')
+        if not description or description == "":
+            errors.append("Description cannot be empty")
+        elif len(description) > 100:
+            errors.append("Description too long (max 100 characters)")
+
+        return errors
+
     async def save_project(self, dialog, is_new_project):
         """Save the edited project data"""
         try:
+            validation_errors = self.validate_project_before_save()
+            if validation_errors:
+                error_message = "Please fix these errors:\n" + "\n".join(validation_errors)
+                ui.notify(error_message, color='negative')
+                return  # Don't save if validation fails
+
             if is_new_project:
                 # Clean up data before sending
                 project_data = self.project.copy()

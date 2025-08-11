@@ -120,10 +120,11 @@ class ProjectPageEdit:
 
         with ui.row().classes("w-full justify-between items-center"):
             ui.label(f' {self.project["name"]}').classes('text-h4')
-            ui.button("delete", on_click=self.delete_project, color='red')
-            ui.button("Edit", on_click=self.editable_table)
-            ui.button("Start Workflow", on_click=self.start_workflow, color='green')
-            ui.button("Change Owner", on_click=lambda:self.change_owner())
+            with ui.button_group():
+                ui.button("delete", on_click=self.delete_project, color='red')
+                ui.button("Edit", on_click=self.editable_table)
+                ui.button("Start Workflow", on_click=self.start_workflow, color='green')
+                ui.button("Change Owner", on_click=lambda:self.change_owner())
             files = await self.project_service.get_file_path(self.project_id)
             self.file_viewer.show_files(files)
             # todo ignore als eigenschaft fehlt

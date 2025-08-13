@@ -11,14 +11,20 @@ class WorkflowService:
     def __init__(self):
         self.workflows = []
 
-    async def load_workflows(self):
+    async def load_workflows(self, project_id: int | None = None):
         """loads the workflows"""
         headers = {}
         if API_TOKEN:
             headers[f"{AUTH_TYPE}"] = API_TOKEN
+
+        params = {}
+        if project_id:
+            params['project_id'] = project_id
+
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{BACKEND_URL}/workflow/",
-                                        headers=headers)
+                                        headers=headers,
+                                        params=params)
             if response.status_code == 200:
                 self.workflows = response.json()
                 return self.workflows

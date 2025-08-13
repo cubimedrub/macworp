@@ -11,7 +11,7 @@ class WorkflowStart:
         self.uploaded_files = {}  # Stores uploaded files per parameter
 
     async def get_workflows(self):
-        self.workflows = await self.workflows_service.load_workflows()
+        self.workflows = await self.workflows_service.load_workflows(project_id=self.project_id)
         return self.workflows
 
     async def workflow_selection(self):

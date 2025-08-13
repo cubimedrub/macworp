@@ -5,9 +5,11 @@ API Endpoints with the prefix `/workflow`.
 from typing import Annotated, List
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import and_
 from sqlmodel import SQLModel, Session, select
 
 from .depends import Authenticated, ExistingUser, ExistingUsers, ExistingWorkflow
+from ..models.project import Project
 
 from ..models.user import User, UserRole
 from ..models.workflow import Workflow
@@ -90,12 +92,26 @@ def ensure_owner(user: User, workflow: Workflow) -> None:
 
 @router.get("/",
             summary="List Workflows")
-async def list(auth: Authenticated, session: DbSession) -> list[Workflow]:
+async def list(auth: Authenticated, session: DbSession, project_id: int | None = None) -> list[Workflow]:
     """
     Lists the Workflows
     """
+    user_id = auth.id
+
+    base_conditions = [
+        (Workflow.owner_id == user_id) |
+        (Workflow.shares.any(user_id=user_id))
+    ]
+
+    # Wenn project_id gegeben ist, nur Workflows für dieses Projekt
+    if project_id:
+        base_conditions.append(
+            Workflow.dependent_projects.any(Project.id == project_id)
+        )
+
     query = (
         select(Workflow)
+        .where(and_(*base_conditions))
         .order_by(Workflow.id.desc(), Workflow.name)
     )
     workflows = session.exec(query).all()
@@ -210,7 +226,7 @@ async def transfer_ownership(workflow: ExistingWorkflow, user: ExistingUser, aut
 
 
 @router.delete("/{workflow_id}/delete",
-             summary="Delete Workflow")
+               summary="Delete Workflow")
 async def delete(workflow: ExistingWorkflow, auth: Authenticated, session: DbSession) -> None:
     """
     Deletes a workflow. Requires ownership or admin rights.

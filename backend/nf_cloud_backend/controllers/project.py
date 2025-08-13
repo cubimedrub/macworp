@@ -1,12 +1,14 @@
 """
 API Endpoints with the prefix `/project`.
 """
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Literal, Any, Coroutine, Optional, Dict
 from urllib.parse import unquote
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query, File, UploadFile, Form, Header, Request
+import pika
+from fastapi import APIRouter, HTTPException, Query, File, UploadFile, Form, Header, Request, Body
 from pydantic import BaseModel, errors, json
 from sqlmodel import Field, Session, select
 from starlette.responses import JSONResponse, FileResponse
@@ -16,10 +18,12 @@ from .depends import Authenticated, ExistingProject, ExistingUser, ExistingUsers
     ExistingWorkflow
 from .workflow import ensure_read_access as ensure_workflow_read_access
 from .. import connectionManager
+from ..configuration import Configuration
 from ..connectionManager import ConnectionManager
 from ..database import DbSession
 from ..models.project import Project, LogProcessingResultType, ProjectSchedulingError
 from ..models.project_share import ProjectShare
+from ..models.queued_project import QueuedProject
 from ..models.user import User, UserRole
 from ..models.workflow import Workflow
 
@@ -593,13 +597,18 @@ async def cached_workflow_parameters(project: ExistingProject, workflow_id: int,
 
 @router.post("/{project_id}/schedule/{workflow_id}",
              summary="Endpoint to schedule project for execution in RabbitMQ")
-async def schedule(project: ExistingProject, workflow: ExistingWorkflow, auth: Authenticated,
-                   session: DbSession, workflow_parameters: List[Dict[str, Any]]) -> JSONResponse:
-    # auth checkup
+async def schedule(
+    project: ExistingProject,
+    workflow: ExistingWorkflow,
+    auth: Authenticated,
+    session: DbSession,
+    workflow_parameters: Optional[List[Dict[str, Any]]] = Body(None)
+) -> JSONResponse:
     ensure_write_access(auth, project, session)
     ensure_workflow_read_access(auth, workflow, session)
 
-    # Project checks
+    errors = {}
+
     if project.ignore:
         raise HTTPException(
             status_code=409,
@@ -612,17 +621,98 @@ async def schedule(project: ExistingProject, workflow: ExistingWorkflow, auth: A
             detail={"errors": {"general": "project is already scheduled"}}
         )
 
-    # Parameter validation
-    workflow.validate_workflow_parameters(workflow_parameters)
+    if workflow_parameters is None:
+        raise HTTPException(
+            status_code=422,
+            detail={"errors": {"general": "workflow parameters cannot be none"}}
+        )
+
+    present_params = {
+        param["name"]
+        for param in workflow_parameters
+        if param.get("type") != "separator"
+    }
+    for expected_argument in workflow.definition["parameters"]["dynamic"]:
+        if expected_argument["type"] == "separator":
+            continue
+        label = expected_argument["label"]
+        if expected_argument["name"] not in present_params:
+            if label not in errors:
+                errors[label] = []
+            errors[label].append("is missing")
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
+
+    for param in workflow_parameters:
+        if param.get("type") == "separator":
+            continue
+        label = param["label"]
+        if "value" not in param or param["value"] is None:
+            if label not in errors:
+                errors[label] = []
+            errors[label].append("cannot be empty")
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
+
+    # Save params to cache
+    workflow_params_to_cache = {
+        param["name"]: param["value"]
+        for param in workflow_parameters
+        if param.get("type") != "separator"
+    }
+
+    # Store workflow arguments in project
+    project.workflow_arguments = workflow_params_to_cache
+
+    # Cache the last executed workflow ID
 
     try:
-        is_scheduled = await project.schedule_for_execution(session, workflow, workflow_parameters)
-        return JSONResponse(status_code=200, content={"is_scheduled": is_scheduled})
-    except ProjectSchedulingError as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"errors": {"general": str(e)}}
+        # Create cache directory if it doesn't exist
+        cache_dir = project.get_path(Path(".cache"))
+        cache_dir.mkdir(exist_ok=True)
+
+        # Save workflow parameters cache
+        params_cache_file = cache_dir / f"workflow_{workflow.id}_parameters.json"
+        with params_cache_file.open('w') as f:
+            json.dump(workflow_params_to_cache, f)
+
+        # Save last executed workflow cache
+        last_workflow_cache_file = cache_dir / "last_executed_workflow.json"
+        with last_workflow_cache_file.open('w') as f:
+            json.dump({"id": workflow.id}, f)
+
+    except Exception as cache_error:
+        print(f"Warning: Could not update cache: {cache_error}")
+
+    queued_project = QueuedProject(
+        id=project.id,
+        workflow_id=workflow.id,
+        workflow_arguments=workflow_parameters,
+    )
+
+    try:
+        project.is_scheduled = True
+        session.add(project)
+        session.commit()
+
+        connection = pika.BlockingConnection(
+            pika.URLParameters(Configuration.values()["rabbit_mq"]["url"])
         )
+        channel = connection.channel()
+        channel.basic_publish(
+            exchange="",
+            routing_key=Configuration.values()["rabbit_mq"]["project_workflow_queue"],
+            body=queued_project.model_dump_json().encode(),
+        )
+        connection.close()
+
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail={"errors": {"general": str(e)}})
+
+    return JSONResponse(status_code=200, content={"is_scheduled": project.is_scheduled})
 
 
 @router.get("/{project_id}/last-executed-workflow",

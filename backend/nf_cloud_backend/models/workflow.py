@@ -44,44 +44,43 @@ class Workflow(SQLModel, table=True):
 
     dependent_projects: list["Project"] = Relationship(back_populates="workflow")
 
-    def validate_workflow_parameters(self, workflow_parameters: List[Dict[str, Any]]):
-        """
-        Validate workflow parameters against workflow definition.
-        """
-        errors = defaultdict(list)
-
-        # Check if workflow definition has the expected structure
-        if "parameters" not in self.definition or "dynamic" not in self.definition["parameters"]:
-            raise HTTPException(
-                status_code=422,
-                detail={"errors": {"general": "workflow definition is invalid"}}
-            )
-
-        # Check if arguments are present
-        present_params = {
-            param["name"]
-            for param in workflow_parameters
-            if param.get("type") != "separator"
-        }
-
-        for expected_argument in self.definition["parameters"]["dynamic"]:
-            if expected_argument["type"] == "separator":
-                continue
-            if expected_argument["name"] not in present_params:
-                errors[expected_argument["label"]].append("is missing")
-
-        if len(errors) > 0:
-            raise HTTPException(status_code=422, detail={"errors": dict(errors)})
-
-        # Check for empty values
-        for param in workflow_parameters:
-            if param.get("type") == "separator":
-                continue
-            if "value" not in param or param["value"] is None:
-                errors[param["label"]].append("cannot be empty")
-
-        if len(errors) > 0:
-            raise HTTPException(status_code=422, detail={"errors": dict(errors)})
+    # def validate_workflow_parameters(self, workflow_parameters: List[Dict[str, Any]]):
+    #     """
+    #     Validate workflow parameters against workflow definition.
+    #     """
+    #     errors = defaultdict(list)
+    #
+    #     if "parameters" not in self.definition or "dynamic" not in self.definition["parameters"]:
+    #         raise HTTPException(
+    #             status_code=422,
+    #             detail={"errors": {"general": "workflow definition is invalid"}}
+    #         )
+    #
+    #     # Check if arguments are present
+    #     present_params = {
+    #         param["name"]
+    #         for param in workflow_parameters
+    #         if param.get("type") != "separator"
+    #     }
+    #
+    #     for expected_argument in self.definition["parameters"]["dynamic"]:
+    #         if expected_argument["type"] == "separator":
+    #             continue
+    #         if expected_argument["name"] not in present_params:
+    #             errors[expected_argument["label"]].append("is missing")
+    #
+    #     if len(errors) > 0:
+    #         raise HTTPException(status_code=422, detail={"errors": dict(errors)})
+    #
+    #     # Check for empty values
+    #     for param in workflow_parameters:
+    #         if param.get("type") == "separator":
+    #             continue
+    #         if "value" not in param or param["value"] is None:
+    #             errors[param["label"]].append("cannot be empty")
+    #
+    #     if len(errors) > 0:
+    #         raise HTTPException(status_code=422, detail={"errors": dict(errors)})
 
     def validate_engine(self, engine: SupportedWorkflowEngine) -> None:
         """

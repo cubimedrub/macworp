@@ -23,6 +23,7 @@ class ProjectPageEdit:
         self.project_path = await self.project_service.get_file_path(self.project_id)
 
     async def start_workflow(self):
+        self.workflow_start.project_id = self.project_id
         await self.workflow_start.workflow_selection()
 
 

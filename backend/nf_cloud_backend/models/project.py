@@ -193,16 +193,10 @@ class Project(SQLModel, table=True):
             full_path = self.get_path(input_path)
             print(f"DEBUG: Resolved relative path to: {full_path}")
 
-        print(f"=== DELETION ATTEMPT ===")
-        print(f"Target path: {full_path}")
-        print(f"Exists: {full_path.exists()}")
 
         if not full_path.exists():
             print("ERROR: Path does not exist!")
             return False
-
-        print(f"Is file: {full_path.is_file()}")
-        print(f"Is directory: {full_path.is_dir()}")
 
         try:
             if full_path.is_file():

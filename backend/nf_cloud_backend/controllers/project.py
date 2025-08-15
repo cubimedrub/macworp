@@ -223,7 +223,7 @@ async def list(auth: Authenticated, session: DbSession,
             summary="Count Projects")
 async def count(auth: Authenticated, session: DbSession) -> int:
     """
-    Returns numbers of Project
+    Returns count of Project
     """
     return sum(
         1
@@ -425,7 +425,16 @@ def list_files(
 
 
 @router.post('/{project_id}/upload-file',
-             summary="Upload files to the project directory")
+             summary="Upload files to the project directory",
+             description="""
+             Uploads a file to a specified directory within a project's file system.
+             
+             **Parameters:**
+             - `file`: Binary file data (max 10MB)
+             - `directory_path`: Target directory (URL-encoded, defaults to root)
+             
+             **Returns:** Success message with sanitized filename and relative path
+             """)
 async def upload_file(project: ExistingProject,
                       auth: Authenticated,
                       session: DbSession,
@@ -438,7 +447,6 @@ async def upload_file(project: ExistingProject,
             status_code=400,
             detail="Invalid filename"
         )
-
     safe_filename = file.filename.replace('/', '_').replace('\\', '_').replace('..', '_')
 
     try:
@@ -493,7 +501,23 @@ async def upload_file(project: ExistingProject,
 
 
 @router.post("/{project_id}/upload-file-chunk",
-             summary="Upload file chunks to the project directory. Useful for uploading large files.")
+             summary="Upload file chunks to the project directory. Useful for uploading large files.",
+             description="""
+             Enables chunked/resumable uploads for large files by uploading individual chunks.
+             
+             **Use Cases:**
+             - Large file uploads (>10MB)
+             - Resumable uploads after network interruptions
+             - Integration with dropzone.js and similar libraries
+             
+             **Parameters:**
+             - `file`: Chunk binary data
+             - `file_path`: Target file path (as file upload containing UTF-8 text)
+             - `chunk-offset` or `dzchunkbyteoffset`: Byte offset for chunk positioning
+             - `is-dropzone`: Flag for dropzone.js compatibility (uses dzchunkbyteoffset when >0)
+             
+             **Workflow:** Client splits large file into chunks, uploads each with its byte offset
+             """)
 async def upload_file_chunk(project: ExistingProject, auth: Authenticated, session: DbSession,
                             is_dropzone: Optional[int] = Query(0, alias="is-dropzone"), file: UploadFile = File(...),
                             file_path: UploadFile = File(...), dzchunkbyteoffset: Optional[int] = Form(None),
@@ -527,7 +551,17 @@ async def upload_file_chunk(project: ExistingProject, auth: Authenticated, sessi
 
 
 @router.post("/{project_id}/create-folder",
-             summary="Create Folder")
+             summary="Create Folder",
+             description="""
+             Creates a new directory within the project's file system.
+             
+             **Features:**
+             - Creates parent directories automatically (mkdir -p behavior)
+             - Idempotent operation (succeeds if folder already exists)
+             - Supports relative and absolute paths within project scope
+             
+             **Request Body:** Path string (e.g., "/src/components/ui")
+             """)
 async def create_folder(project: ExistingProject, auth: Authenticated, session: DbSession, path: Path) -> JSONResponse:
     ensure_write_access(auth, project, session)
     if not path:
@@ -538,7 +572,23 @@ async def create_folder(project: ExistingProject, auth: Authenticated, session: 
 
 
 @router.post("/{project_id}/delete-path",
-             summary="Deletes a path")
+             summary="Deletes a path",
+             description="""
+             Performs bulk deletion of files and/or directories from the project.
+    
+             **Features:**
+             - Bulk deletion of multiple paths in single request
+             - Supports both files and directories
+             - Sequential processing (partial failures possible)
+             
+             **Request Body:** Array of path dictionaries
+             ```json
+             [
+               {"path": "/src/unused.txt"},
+               {"path": "/temp/cache", "type": "directory"}
+             ]
+             ```
+             """)
 async def delete_path(project: ExistingProject, auth: Authenticated, session: DbSession,
                       paths: List[dict]) -> JSONResponse:
     ensure_write_access(auth, project, session)
@@ -550,14 +600,25 @@ async def delete_path(project: ExistingProject, auth: Authenticated, session: Db
 
 
 @router.get("/{project_id}/is-ignored",
-            summary="Check if Project is Ignored")
+            summary="Check if Project is Ignored",
+            description="""
+            Returns the ignore status of a project.
+            
+            **Returns:** Boolean indicating if the project is currently ignored
+            """)
 async def is_ignored(project: ExistingProject, auth: Authenticated, session: DbSession) -> bool:
     ensure_read_access(auth, project, session)
     return project.is_ignored()
 
 
 @router.post("/{project_id}/finished",
-             summary="Set Project as Finished")
+             summary="Set Project as Finished",
+             description="""
+             Sets the project status to finished and persists the change.
+             
+             **Effect:** Updates project status in database
+             **Returns:** No content on success
+             """)
 async def is_finished(project: ExistingProject, auth: Authenticated, session: DbSession) -> None:
     ensure_write_access(auth, project, session)
     if project.finish():
@@ -568,7 +629,15 @@ async def is_finished(project: ExistingProject, auth: Authenticated, session: Db
 
 
 @router.get("/{project_id}/file-size",
-            summary="Get Project File Size")
+            summary="Get Project File Size in bytes",
+            description="""
+            Returns the size of a specific file within the project.
+            
+            **Parameters:**
+            - `file_path`: Path to the file within the project
+            
+            **Returns:** File size in bytes as integer
+            """)
 async def get_file_size(project: ExistingProject, auth: Authenticated, session: DbSession,
                         file_path: Path = Query(..., description="File path")) -> int:
     ensure_read_access(auth, project, session)
@@ -576,7 +645,15 @@ async def get_file_size(project: ExistingProject, auth: Authenticated, session: 
 
 
 @router.get("/{project_id}/metadata",
-            summary="Get Project Metadata of a File")
+            summary="Get Project Metadata of a File",
+            description="""
+            Returns metadata information for a specific file within the project.
+            
+            **Parameters:**
+            - `file_path`: Path to the file within the project
+            
+            **Returns:** Dictionary containing file metadata (format depends on file type)
+            """)
 async def get_metadata(project: ExistingProject,
                        auth: Authenticated,
                        session: DbSession,
@@ -587,16 +664,35 @@ async def get_metadata(project: ExistingProject,
 
 
 @router.get("/{project_id}/cached-workflow-parameters/{workflow_id}",
-            summary="Returns the cached workflow parameters of a Project")
+            summary="Get the cached workflow parameters",
+            description="""
+            Returns the cached parameters for a specific workflow within the project.
+            
+            **Parameters:**
+            - `workflow_id`: ID of the workflow to retrieve cached parameters for
+            
+            **Returns:** Dictionary containing the cached workflow parameters
+            """)
 async def cached_workflow_parameters(project: ExistingProject, workflow_id: int, auth: Authenticated,
                                      session: DbSession) -> dict:
     ensure_read_access(auth, project, session)
-
     return project.get_cached_workflow_parameters(workflow_id)
 
 
 @router.post("/{project_id}/schedule/{workflow_id}",
-             summary="Endpoint to schedule project for execution in RabbitMQ")
+             summary="Schedule Project for execution",
+             description="""
+             Schedules a project for workflow execution in the RabbitMQ queue.
+             
+             **Requirements:**
+             - Project must not be ignored or already scheduled
+             - All required workflow parameters must be provided
+             - User needs write access to project and read access to workflow
+             
+             **Request Body:** Array of workflow parameter objects with name, value, and type
+             
+             **Returns:** Scheduling status confirmation
+             """)
 async def schedule(
     project: ExistingProject,
     workflow: ExistingWorkflow,
@@ -716,7 +812,12 @@ async def schedule(
 
 
 @router.get("/{project_id}/last-executed-workflow",
-            summary="Returns the last cached workflow parameters of a project")
+            summary="Get last executed workflow info",
+            description="""
+            Returns information about the last workflow executed on this project.
+            
+            **Returns:** Dictionary containing the last executed workflow details and cached parameters
+            """)
 async def last_cached_workflow_parameters(project: ExistingProject, auth: Authenticated, session: DbSession) -> dict:
     ensure_read_access(auth, project, session)
     return project.get_last_executed_cache_file()
@@ -726,7 +827,19 @@ WEBLOG_WORKFLOW_ENGINE_HEADER = "X-Workflow-Engine"
 
 
 @router.post("/{project_id}/workflow-log",
-             summary=" Endpoint for Nextflow to report log. If log is received, a event is send to the browser with submitted and completed processes.")
+             summary="Receive workflow execution logs",
+             description="""
+             Endpoint for workflow engines (like Nextflow) to report execution logs.
+             
+             **Features:**
+             - Processes workflow execution progress and status updates
+             - Sends real-time events to connected browser clients
+             - Supports multiple workflow engines via header identification
+             
+             **Headers:** X-Workflow-Engine header required to identify the workflow engine
+             
+             **Request Body:** Workflow log data (format depends on workflow engine)
+             """)
 async def workflow_log(project: ExistingProject, auth: Authenticated, session: DbSession,
                        workflow_log: dict,
                        workflow_engine_header: str = Header(alias=WEBLOG_WORKFLOW_ENGINE_HEADER)) -> JSONResponse:
@@ -770,7 +883,16 @@ async def workflow_log(project: ExistingProject, auth: Authenticated, session: D
 
 
 @router.post("/{project_id}/share/add",
-             summary="Share Project")
+             summary="Share Project",
+             description="""
+             Gives read or write access to specified users for this project.
+             
+             **Parameters:**
+             - `write`: Boolean indicating if users should get write access (false = read-only)
+             - Request body: List of user objects to grant access to
+             
+             **Behavior:** Updates existing permissions or creates new ones
+             """)
 async def add_share(write: bool, project: ExistingProject, users: ExistingUsers, auth: Authenticated,
                     session: DbSession) -> None:
     """
@@ -793,7 +915,14 @@ async def add_share(write: bool, project: ExistingProject, users: ExistingUsers,
 
 
 @router.post("/{project_id}/share/remove",
-             summary="Un-Share Project")
+             summary="Un-Share Project",
+             description="""
+             Removes access permissions for specified users from this project.
+             
+             **Request Body:** List of user objects to revoke access from
+             
+             **Note:** Ownership and admin rights override shared rights and cannot be revoked
+             """)
 async def remove_share(project: ExistingProject, users: ExistingUsers, auth: Authenticated, session: DbSession) -> None:
     """
     Revokes the right of selected users to read from / write to this project. Requires write access.
@@ -811,7 +940,18 @@ async def remove_share(project: ExistingProject, users: ExistingUsers, auth: Aut
 
 
 @router.get("/{project_id}/download",
-            summary="Downloads a file or folder")
+            summary="Downloads a file or folder",
+            description="""
+            Downloads a file or folder from the project as a response stream.
+            
+            **Parameters:**
+            - `path`: File or folder path to download (defaults to root)
+            - `is-inline`: If true, forces inline display instead of download
+            - `with-metadata`: Include custom metadata headers in response
+            - `is-table`: Return table data as JSON instead of raw file
+            
+            **Returns:** File stream, folder archive, or JSON data depending on parameters
+            """)
 async def download(project: ExistingProject, auth: Authenticated, session: DbSession,
                    path: str = Query("", description="Path to download"),
                    is_inline: bool = Query(False, alias="is-inline", description="If true, inline download"),

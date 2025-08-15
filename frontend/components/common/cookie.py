@@ -1,9 +1,11 @@
 from nicegui import ui
 
-"""
-Dirks funny Cookie Banner
-"""
-def create_cookie_banner():
+
+
+def create_cookie_banner()->None:
+    """
+    Renders the generic Cookie Banner
+    """
     with ui.card().classes('fixed bottom-0 left-0 m-4 z-50') as banner:
         with ui.row().classes('items-center'):
             ui.label('Dirk will deine Cookies du hast da keine wahl').classes('text-sm')

@@ -1,7 +1,10 @@
 from nicegui import ui
 
 
-def navigation_dashboard():
+def navigation_dashboard()->None:
+    """
+    todo Navigation bar
+    """
     with ui.row().classes("w-full justify-end p-4"):
         with ui.card().classes('bg-primary text-white'):
             ui.label("Dev Dashboard").classes("text-xl font-bold")

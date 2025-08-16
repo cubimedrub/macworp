@@ -3,7 +3,7 @@ from nicegui import ui, app
 from ..components.common.cookie import create_cookie_banner
 from ..components.common.header import render_header
 from ..components.common.navigation import navigation_dashboard
-from ..pages import login, workflows, docs, dashboard
+from ..pages import login, workflows, docs
 from ..pages.login import LoginPage
 from ..pages.projects import projects_index, projects_edit
 from ..pages.workflows import workflow_index
@@ -26,11 +26,6 @@ def setup_routes():
         login = LoginPage()
         await login.show()
 
-    @ui.page('/dashboard')
-    def dashboard_page():
-        render_common_components("dashboard")
-        render_header()
-        return dashboard.show()
 
     @ui.page('/projects')
     async def projects_page():

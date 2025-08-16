@@ -151,7 +151,7 @@ class LoginPage:
         app.storage.user['email'] = login_result.get('email')
         app.storage.user['role'] = login_result.get('role')
 
-        ui.navigate.to('/dashboard')
+        ui.navigate.to('/projects')
 
     def show_error(self, message: str):
         """Display error message"""

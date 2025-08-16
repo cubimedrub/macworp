@@ -63,7 +63,7 @@ def setup_routes():
         render_common_components("Workflows")
         render_header()
         workflows = workflow_index.WorkflowIndex()
-        return workflows.show()
+        return await workflows.show()
 
 
 @ui.page('/docs')

@@ -1,8 +1,24 @@
+from typing import Callable, Any
 from nicegui import ui
 
 
-def create_oauth_form(provider, on_click):
-    """Create OAuth login form"""
+def create_oauth_form(provider: str, on_click: Callable[[], Any]):
+    """
+    Create an OAuth login form UI.
+
+    This form displays:
+        - A title and description
+        - A login button labeled with the OAuth provider name
+        - An icon indicating a redirect
+
+    Args:
+        provider (str): The name of the OAuth provider.
+        on_click (Callable[[], Any]): A callback function executed when
+            the login button is clicked.
+
+    Returns:
+        Any: A NiceGUI column container (`ui.column`) that holds the form elements.
+    """
     with ui.column().classes('w-full') as container:
         with ui.card().classes('w-full p-6 text-center'):
             ui.label('OAuth Login').classes('text-lg font-semibold mb-4')

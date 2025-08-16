@@ -1,8 +1,27 @@
+from typing import Callable, Any
+
 from nicegui import ui
 
 
-def create_credentials_form(on_submit):
-    """Create username/password login form"""
+def create_credentials_form(on_submit: Callable[[str, str], Any]) -> dict:
+    """
+    Create username/password login form UI
+
+    Args:
+        on_submit (Callable[[str,str], Any]): A callback function that will be
+            called when the login form is submitted, either by pressing "Enter"
+            in the password field or by clicking the login button.
+            Receives the entered username and password as arguments.
+
+    Returns:
+        dict: A dictionary containing references to the UI elements:
+            - 'container': Column container holding the form
+            - 'username_input': Username input element
+            - 'password_input': Password input element
+            - 'login_button': Login button element
+            - 'loading_spinner': Spinner element for loading indication
+
+    """
     form_container = ui.column().classes('w-full')
 
     with form_container:

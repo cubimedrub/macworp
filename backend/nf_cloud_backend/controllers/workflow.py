@@ -99,11 +99,14 @@ async def list(auth: Authenticated, session: DbSession, project_id: int | None =
     user_id = auth.id
 
     base_conditions = [
-        (Workflow.owner_id == user_id) |
-        (Workflow.shares.any(user_id=user_id))
+        Workflow.owner_id.is_not(None),
+        (
+            (Workflow.owner_id == user_id) |
+            (Workflow.shares.any(WorkflowShare.user_id == user_id))
+        )
     ]
 
-    # Wenn project_id gegeben ist, nur Workflows für dieses Projekt
+
     if project_id:
         base_conditions.append(
             Workflow.dependent_projects.any(Project.id == project_id)

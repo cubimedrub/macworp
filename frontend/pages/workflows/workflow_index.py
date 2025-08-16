@@ -4,37 +4,81 @@ from frontend.services.workflow_service import WorkflowService
 
 
 class WorkflowIndex:
-    def __init__(self):
-        self.workflow_service = WorkflowService()
-        self.workflow_list = None
+    """
+    A class for managing and displaying workflow indexes in a UI.
+
+    This class provides functionality to load, display, and manage workflows
+    through a user interface. It handles the rendering of workflow tables
+    and provides actions like deletion.
+
+    Attributes:
+        workflow_service: Service instance for workflow operations.
+        workflows: List of loaded workflows.
+    """
+
+    def __init__(self, workflow_service: WorkflowService = None):
+        """
+        Initialize the WorkflowIndex.
+
+        Args:
+            workflow_service: Optional workflow service instance. If not provided,
+                            a new WorkflowService instance will be created.
+        """
+        self.workflow_service = workflow_service or WorkflowService()
+        self.workflows = []
+        self._workflow_list = None
 
     async def load_workflows(self):
-        """Load workflows from service and return them"""
-        workflows = await self.workflow_service.load_workflows()
-        return workflows
+        """
+        Load workflows from the service and store them in self.workflows.
+
+        This method fetches workflows from the service and updates the internal
+        workflows list. It doesn't return anything as the workflows are stored
+        as an instance variable.
+
+        Raises:
+            Exception: If the workflow service fails to load workflows.
+        """
+        self.workflows = await self.workflow_service.load_workflows() or []
 
     async def delete_workflow(self, workflow_id):
-        # todo delete
+        """
+        Delete a workflow by ID.
+
+        Args:
+            workflow_id: The ID of the workflow to delete.
+
+        Todo:
+            Implement workflow deletion functionality.
+        """
         pass
 
-    async def workflow_table(self):
-        if self.workflow_list is None:
-            self.workflow_list = ui.column().classes("w-full")
+    async def _render_workflow_table(self):
+        """
+        Render the workflow table in the UI.
 
-        workflows = await self.load_workflows()
+        This private method handles the rendering of workflows in a table format.
+        It clears existing content and rebuilds the workflow list based on
+        the stored workflows.
 
-        if workflows is None or len(workflows) == 0:
-            self.workflow_list.clear()
-            with self.workflow_list:
+        Note:
+            This method modifies the UI directly and should only be called
+            from within the show() method or other UI rendering contexts.
+        """
+        if self._workflow_list is None:
+            self._workflow_list = ui.column().classes("w-full")
+
+        if not self.workflows:
+            self._workflow_list.clear()
+            with self._workflow_list:
                 ui.label("No workflows found").classes("text-center mt-3")
             return
 
-        self.workflow_list.clear()
+        self._workflow_list.clear()
 
-        for workflow in workflows:
-            with self.workflow_list:
-                workflow_name = workflow.get('name') if isinstance(workflow, dict) else getattr(workflow, 'name',
-                                                                                                str(workflow))
+        for workflow in self.workflows:
+            with self._workflow_list:
+                workflow_name = self._get_workflow_name(workflow)
 
                 with ui.card().classes("w-full mb-2"):
                     ui.label(workflow_name).classes("text-decoration-none fw-bold text-lg")
@@ -51,11 +95,33 @@ class WorkflowIndex:
 
                     ui.button("Delete", on_click=lambda w=workflow: self.delete_workflow(w))
 
+    def _get_workflow_name(self, workflow):
+        """
+        Extract the workflow name from a workflow object or dictionary.
+
+        Args:
+            workflow: The workflow object (dict or object with name attribute).
+
+        Returns:
+            str: The workflow name, or string representation if name cannot be found.
+        """
+        if isinstance(workflow, dict):
+            return workflow.get('name', 'Unnamed Workflow')
+        return getattr(workflow, 'name', str(workflow))
+
     async def show(self):
+        """
+        Display the workflow index UI.
+
+        This method creates and renders the complete workflow index interface,
+        including the title and the workflow table. It first loads the workflows
+        and then renders the UI.
+        """
         with ui.column().classes("w-full"):
             with ui.row().classes("w-full justify-between items-center mb-4"):
                 ui.label("Workflows").classes("text-2xl")
 
-            self.workflow_list = ui.column().classes("w-full")
+            self._workflow_list = ui.column().classes("w-full")
 
-            await self.workflow_table()
+            await self.load_workflows()
+            await self._render_workflow_table()

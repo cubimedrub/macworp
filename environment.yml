@@ -1,4 +1,4 @@
-name: nf_cloud_v2
+name: macworp2
 channels:
   - defaults
 dependencies:

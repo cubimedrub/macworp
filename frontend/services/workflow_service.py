@@ -8,6 +8,7 @@ AUTH_TYPE = os.getenv("AUTH_TYPE")
 
 
 class WorkflowService:
+
     def __init__(self):
         self.workflows = []
 
@@ -73,3 +74,37 @@ class WorkflowService:
                 return True
             else:
                 raise RuntimeError(f"Error while Scheduling Workflow: {response.status_code} - {response.text}")
+
+    async def edit_workflow(self, workflow, user_parameter_values):
+        headers = {}
+
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{BACKEND_URL}/workflow/{workflow['id']}/edit",
+                headers=headers,
+                json=user_parameter_values
+            )
+            if response.status_code == 200:
+                return True
+            else:
+                raise RuntimeError(f"Error while Editing Workflow: {response.status_code} - {response.text}")
+
+    async def save_workflow(self, user_parameter_values):
+        headers = {}
+
+        if API_TOKEN:
+            headers[f"{AUTH_TYPE}"] = API_TOKEN
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{BACKEND_URL}/workflow/new",
+                headers=headers,
+                json=user_parameter_values
+            )
+            if response.status_code == 200:
+                return True
+            else:
+                raise RuntimeError(f"Error while Saving Workflow: {response.status_code} - {response.text}")

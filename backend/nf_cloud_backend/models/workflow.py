@@ -1,7 +1,9 @@
+import json
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Dict, Any
+from typing import TYPE_CHECKING, List, Dict, Any, ClassVar
 
+import jsonschema
 from fastapi import HTTPException
 from sqlalchemy import JSON, Column, ForeignKey, Integer
 from sqlmodel import Field, Relationship, SQLModel, Session, select
@@ -15,6 +17,13 @@ if TYPE_CHECKING:
 
 
 class Workflow(SQLModel, table=True):
+    WORKFLOW_SCHEMA_PATH: ClassVar = Path(__file__).parent.parent.joinpath(
+        "data/workflow.schema.json"
+    )
+    DEFAULT_DEFINITION_PATH: ClassVar = Path(__file__).parent.parent.joinpath(
+        "data/workflow.default.json"
+    )
+
     id: int | None = Field(default=None, primary_key=True)
 
     """
@@ -100,3 +109,27 @@ class Workflow(SQLModel, table=True):
         cache_dir = Path("cache") / f"project_{self.id}"
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / f"workflow_{self.id}_params.json"
+
+    async def validate_workflow_definition(self,
+                                     definition: Any
+                                     ) -> dict[Any, Any]:
+        """
+        Validates workflow description
+        :param definition: Definition of the workflow
+        :return: dict[Any, Any] with errors if any, otherwise an empty dict
+        """
+        errors = {}
+        print(type(definition))
+
+        if not isinstance(definition, dict):
+            errors["definition"].append("is not a dictionary")
+            return errors
+        try:
+            schema: Dict[Any, Any] = {}
+            with self.WORKFLOW_SCHEMA_PATH.open("r", encoding="utf-8") as schema_file:
+                schema = json.loads(schema_file.read())
+            jsonschema.validate(instance=definition, schema=schema)
+        except jsonschema.exceptions.ValidationError as error:
+            errors["definition"].append(error.message)
+
+        return errors

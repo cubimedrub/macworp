@@ -28,7 +28,7 @@ class ProjectEditTable:
         # Check if this is for creating a new project
         is_new_project = self.project_id is None and self.project is None
         # Load project data if editing existing project
-        if not is_new_project and not self.project:
+        if not is_new_project:
             try:
                 self.project = await self.project_service.load_project(self.project_id)
             except Exception as e:

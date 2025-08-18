@@ -1,5 +1,6 @@
 from nicegui import ui
 
+from frontend.components.workflow.workflow_editor_table import WorkflowEditorTable
 from frontend.services.workflow_service import WorkflowService
 
 
@@ -27,6 +28,7 @@ class WorkflowIndex:
         self.workflow_service = workflow_service or WorkflowService()
         self.workflows = []
         self._workflow_list = None
+        self.new_workflow_dialog = WorkflowEditorTable(None)
 
     async def load_workflows(self):
         """
@@ -40,18 +42,6 @@ class WorkflowIndex:
             Exception: If the workflow service fails to load workflows.
         """
         self.workflows = await self.workflow_service.load_workflows() or []
-
-    async def delete_workflow(self, workflow_id):
-        """
-        Delete a workflow by ID.
-
-        Args:
-            workflow_id: The ID of the workflow to delete.
-
-        Todo:
-            Implement workflow deletion functionality.
-        """
-        pass
 
     async def _render_workflow_table(self):
         """
@@ -81,7 +71,8 @@ class WorkflowIndex:
                 workflow_name = self._get_workflow_name(workflow)
 
                 with ui.card().classes("w-full mb-2"):
-                    ui.label(workflow_name).classes("text-decoration-none fw-bold text-lg")
+                    ui.link(workflow_name, f"/workflows/edit?id={workflow['id']}").classes(
+                        "text-decoration-none fw-bold text-lg")
 
                     if isinstance(workflow, dict):
                         if 'description' in workflow:
@@ -92,8 +83,9 @@ class WorkflowIndex:
                             ui.icon("lock_open")
                         else:
                             ui.icon("lock")
-
-                    ui.button("Delete", on_click=lambda w=workflow: self.delete_workflow(w))
+                    ui.button("Delete", on_click=lambda w=workflow: self.workflow_service.delete_workflow(w))
+                    ui.button("Publish Workflow", on_click=lambda
+                        w=workflow: self.publish_workflow(w))
 
     def _get_workflow_name(self, workflow):
         """
@@ -109,6 +101,23 @@ class WorkflowIndex:
             return workflow.get('name', 'Unnamed Workflow')
         return getattr(workflow, 'name', str(workflow))
 
+    async def _new_workflow(self) -> None:
+        """
+        Create a new workflow dialog and reload page after creation.
+
+        Returns:
+            None
+        """
+        await self.new_workflow_dialog.create_editable_table()
+        ui.navigate.reload()
+
+    async def publish_workflow(self, workflow) -> None:
+        """
+        publishes workflow for execution capability
+        :return:
+        """
+        await self.workflow_service.edit_workflow(workflow, "is_published=True")
+
     async def show(self):
         """
         Display the workflow index UI.
@@ -120,7 +129,7 @@ class WorkflowIndex:
         with ui.column().classes("w-full"):
             with ui.row().classes("w-full justify-between items-center mb-4"):
                 ui.label("Workflows").classes("text-2xl")
-
+                ui.button("Create new Workflow", on_click=self._new_workflow).classes("bg-blue-500 text-white")
             self._workflow_list = ui.column().classes("w-full")
 
             await self.load_workflows()

@@ -196,7 +196,6 @@ class ProjectService:
             if response.status_code == 200:
                 return True
             else:
-                # Detaillierte Fehlerinformationen ausgeben
                 error_detail = response.text
                 try:
                     error_json = response.json()
@@ -220,7 +219,7 @@ class ProjectService:
                 files = data.get("files", [])
                 file_paths = []
                 for filename in files:
-                    file_paths.append(filename)  # Für die API reicht der Dateiname
+                    file_paths.append(filename)
                 return file_paths
             else:
                 error_detail = response.text
@@ -237,7 +236,6 @@ class ProjectService:
         headers = {"Content-Type": "application/json"}
         if API_TOKEN:
             headers[f"{AUTH_TYPE}"] = API_TOKEN
-        print(f"Sending project data: {project}")
         async with httpx.AsyncClient() as client:
             response = await client.post(f"{BACKEND_URL}/project/new",
                                          headers=headers,

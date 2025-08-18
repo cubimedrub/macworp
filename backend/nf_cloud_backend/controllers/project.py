@@ -285,7 +285,6 @@ async def show(project: ExistingProject, auth: Authenticated, session: DbSession
     """
 
     ensure_read_access(auth, project, session)
-
     return ProjectShown(
         name=project.name,
         owner_id=project.owner_id,

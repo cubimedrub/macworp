@@ -40,63 +40,6 @@ class AuthService:
         except:
             pass
 
-    async def get_login_providers(self) -> Dict[str, Any]:
-        """Hole verfügbare Login-Provider"""
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{self.base_url}/users/login-providers")
-
-                if response.status_code == 200:
-                    return {"success": True, "data": response.json()}
-                else:
-                    return {"success": False, "error": "Konnte Provider nicht laden"}
-
-        except Exception as e:
-            return {"success": False, "error": f"Verbindungsfehler: {str(e)}"}
-
-    async def login(self, username: str, password: str, provider_type: str = "database", provider: str = "default") -> \
-    Dict[str, Any]:
-        """Login beim Backend mit Provider-System"""
-        try:
-            async with httpx.AsyncClient() as client:
-                # Login-Request nach deinem Backend-Format
-                login_data = {
-                    "username": username,
-                    "password": password
-                }
-
-                response = await client.post(
-                    f"{self.base_url}/users/login/{provider_type}/{provider}",
-                    json=login_data,
-                    headers={"Content-Type": "application/json"}
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-
-                    if "jwt" in data:
-                        self._set_session_storage(self.token_key, data["jwt"])
-
-                        try:
-                            user_data = self._decode_jwt_payload(data["jwt"])
-                            if user_data:
-                                self._set_session_storage(self.user_key, json.dumps(user_data))
-                        except:
-                            pass
-
-                    return {"success": True, "data": data}
-                else:
-                    error_detail = "Login fehlgeschlagen"
-                    try:
-                        error_data = response.json()
-                        error_detail = error_data.get("detail", error_detail)
-                    except:
-                        pass
-
-                    return {"success": False, "error": error_detail}
-
-        except Exception as e:
-            return {"success": False, "error": f"Verbindungsfehler: {str(e)}"}
 
     def _decode_jwt_payload(self, token: str) -> Optional[Dict[str, Any]]:
         """Decode JWT Payload (ohne Verifikation, nur für User-Daten)"""

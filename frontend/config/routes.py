@@ -1,13 +1,12 @@
+from nicegui import context
 from nicegui import ui, app
 
 from ..components.common.cookie import create_cookie_banner
 from ..components.common.header import render_header
 from ..components.common.navigation import navigation_dashboard
-from ..pages import login, workflows, docs
 from ..pages.login import LoginPage
 from ..pages.projects import projects_index, projects_edit
 from ..pages.workflows import workflow_index
-from nicegui import context
 
 
 def render_common_components(location: str):
@@ -26,14 +25,12 @@ def setup_routes():
         login = LoginPage()
         await login.show()
 
-
     @ui.page('/projects')
     async def projects_page():
         render_common_components("Projekts Index")
         if not app.storage.user.get('authenticated', False):
             ui.navigate.to('/')
             return
-        render_header()
         projects = projects_index.ProjectsIndex()
         await projects.show()
 
@@ -56,12 +53,5 @@ def setup_routes():
     @ui.page('/workflows')
     async def workflows_page():
         render_common_components("Workflows")
-        render_header()
         workflows = workflow_index.WorkflowIndex()
         return await workflows.show()
-
-
-@ui.page('/docs')
-def docs_page():
-    render_header()
-    return docs.show()

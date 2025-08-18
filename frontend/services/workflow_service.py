@@ -37,7 +37,7 @@ class WorkflowService:
         if API_TOKEN:
             headers[f"{AUTH_TYPE}"] = API_TOKEN
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{BACKEND_URL}/workflow/{workflow["id"]}",
+            response = await client.get(f"{BACKEND_URL}/workflow/{workflow['id']}",
                                         headers=headers)
             if response.status_code == 200:
                 self.workflows = response.json()
@@ -50,7 +50,7 @@ class WorkflowService:
         if API_TOKEN:
             headers[f"{AUTH_TYPE}"] = API_TOKEN
         async with httpx.AsyncClient() as client:
-            response = await client.delete(f"{BACKEND_URL}/workflow/{workflow["id"]}/delete",
+            response = await client.delete(f"{BACKEND_URL}/workflow/{workflow['id']}/delete",
                                            headers=headers)
             if response.status_code == 200:
                 return True

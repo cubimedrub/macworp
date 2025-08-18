@@ -50,7 +50,7 @@ class ProjectEditTable:
 
             with ui.column(wrap=True).classes('w-full gap-4 border p-1'):
                 for key, value in self.project.items():
-                    if key in ['id', 'created_at', 'updated_at']:  # Skip non-editable fields
+                    if key in ['id', 'created_at', 'updated_at', 'workflow_id','workflow_arguments']:  # Skip non-editable fields
                         continue
 
                     ui.label(key.replace('_', ' ').title()).classes('text-left font-medium')
@@ -58,20 +58,11 @@ class ProjectEditTable:
                     # "ispublished" checkbox
                     if isinstance(value, bool):
                         ui.checkbox(value=value).bind_value_to(self.project, key)
-                        # workflowId
-                    elif isinstance(value, int):
-                        ui.number(value=value).bind_value_to(self.project, key)
-                    elif isinstance(value, float):
-                        ui.number(value=value, format='%.2f').bind_value_to(self.project, key)
                     # share with users
                     elif isinstance(value, list):
                         list_str = ', '.join(str(item) for item in value) if value else ''
                         list_input = ui.input(value=list_str, placeholder='Comma-separated values')
                         list_input.on('blur', lambda e, k=key: self._update_list_field(k, e.sender.value))
-                    # workflow arguments
-                    elif isinstance(value, dict):
-                        dict_input = ui.textarea(value=str(value), placeholder='JSON format')
-                        dict_input.on('blur', lambda e, k=key: self._update_dict_field(k, e.sender.value))
                     elif value is None:
                         ui.input(value='', placeholder='Empty').bind_value_to(self.project, key)
                     # name and description
@@ -92,8 +83,6 @@ class ProjectEditTable:
         """
         return {
             'name': '',
-            'workflow_id': None,
-            'workflow_arguments': {},
             'description': '',
             'is_published': False
         }
@@ -184,25 +173,6 @@ class ProjectEditTable:
             if is_new_project:
                 # Clean up data before sending
                 project_data = self.project.copy()
-
-                # Convert workflow_id: empty string -> None, valid string -> int
-                workflow_id = project_data.get('workflow_id')
-                if workflow_id == '' or workflow_id is None:
-                    project_data['workflow_id'] = None
-                elif isinstance(workflow_id, str):
-                    try:
-                        project_data['workflow_id'] = int(workflow_id)
-                    except ValueError:
-                        project_data['workflow_id'] = None
-
-                # Ensure workflow_arguments is a dict
-                if isinstance(project_data.get('workflow_arguments'), str):
-                    try:
-                        import json
-                        project_data['workflow_arguments'] = json.loads(project_data['workflow_arguments']) if \
-                            project_data['workflow_arguments'].strip() else {}
-                    except:
-                        project_data['workflow_arguments'] = {}
 
                 # Create new project
                 new_project = await self.project_service.create_project(project_data)

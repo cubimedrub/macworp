@@ -1,0 +1,166 @@
+"""
+This module contains FastAPI dependencies used by multiple controllers.
+"""
+
+from hashlib import sha256
+from typing import Annotated
+from fastapi import Depends, Header, HTTPException, status
+
+from macworp.configuration import Configuration as ActualConfiguration
+from macworp.utils.authentication.worker_credentials import hash_worker_credentials
+
+from ..auth.jwt import JWT
+from ..database import DbSession
+from ..models.project import Project
+from ..models.user import User
+from ..models.workflow import Workflow
+
+
+def get_configuration() -> ActualConfiguration:
+    """
+    Returns the base configuration.
+    """
+    return Configuration()
+
+
+Configuration = Annotated[ActualConfiguration, Depends(get_configuration)]
+
+
+async def get_workflow(workflow_id: int, session: DbSession) -> Workflow:
+    workflow = session.get(Workflow, workflow_id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Workflow not found",
+        )
+    return workflow
+
+
+ExistingWorkflow = Annotated[Workflow, Depends(get_workflow)]
+"""
+Retrieves a workflow via the `workflow_id` URL parameter. Throws an HTTPException if the workflow doesn't exist.
+"""
+
+
+async def get_project(project_id: int, session: DbSession) -> Project:
+    project = session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project not found"
+        )
+    return project
+
+
+ExistingProject = Annotated[Project, Depends(get_project)]
+"""
+Retrieves a project via the `project_id` URL parameter. Throws an HTTPException if the project doesn't exist.
+"""
+
+
+async def get_user(user_id: int, session: DbSession) -> User:
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="User not found"
+        )
+    return user
+
+
+ExistingUser = Annotated[User, Depends(get_user)]
+"""
+Retrieves a user via the `user_id` URL parameter. Throws an HTTPException if the user doesn't exist.
+"""
+
+
+async def get_users(user_ids: list[int], session: DbSession) -> list[User]:
+    result = []
+    for user_id in user_ids:
+        result.append(await get_user(user_id, session))
+    return result
+
+
+ExistingUsers = Annotated[list[User], Depends(get_users)]
+"""
+Retrieves multiple users via the `user_ids` URL parameter. Throws an HTTPException if any of those users doesn't exist.
+"""
+
+
+async def get_optionally_authenticated_user(
+    session: DbSession,
+    config: Configuration,
+    authorization: Annotated[str | None, Header()] = None,
+) -> User | None:
+    if authorization is None:
+        return None
+
+    try:
+        auth_schema, auth_token = authorization.strip(" ").split(" ", 1)
+        print(f"Authorization schema: {auth_schema}, token: {auth_token}")
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Authorization header malformed",
+        )
+
+    match auth_schema.lower():
+        case "token":
+            try:
+                user, expired = JWT.decode_auth_token_to_user(
+                    config.secret, auth_token, session
+                )
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Token invalid",
+                )
+        case "basic":
+            # special case for worker credentials authentication
+            expected_hashed_password = hash_worker_credentials(
+                config.backend.worker_credentials.username,
+                config.backend.worker_credentials.password,
+            )
+            if expected_hashed_password == auth_token:
+                user = User(
+                    id=0,  # Worker credentials do not correspond to a real user
+                    username=config.backend.worker_credentials.username,
+                    role="admin",
+                )
+                expired = False
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Basic authentication failed",
+                )
+        case _:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Authorization schema not supported",
+            )
+
+    if expired:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired"
+        )
+
+    return user
+
+
+OptionallyAuthenticated = Annotated[
+    User | None, Depends(get_optionally_authenticated_user)
+]
+"""
+Returns the authenticated user, or None if no authentication is present.
+Throws an HTTPException if authentication was attempted, but failed.
+"""
+
+
+async def get_authenticated_user(maybe_auth: OptionallyAuthenticated) -> User:
+    if maybe_auth is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    return maybe_auth
+
+
+Authenticated = Annotated[User, Depends(get_authenticated_user)]
+"""
+Returns the authenticated user. Throws an HTTPException if no or incorrect authentication was provided.
+"""

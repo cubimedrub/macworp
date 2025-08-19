@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools", "wheel", "Cython"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "macworp"
+version = "2.0.0"
+requires-python = ">=3.12"
+license = {file = "./LICENSE"}
+description = "Shared code for Massive Accessible Workflow Platform (MAcWorP) backend and worker"
+authors = [
+    {name = "Core Unit Bioinformatic Ruhr University Bochum", email = "cubimed@rub.de"},
+]
+maintainers = [
+    {name = "Dirk Winkelhardt", email = "dirk.winkelhardt@rub.de"}
+]
+
+dependencies = [
+	"fastapi >= 0.110.2",
+	"nicegui",
+	"oauthlib",
+	"pandas",
+	"parameterized ~= 0.9",
+	"passlib ~= 1.7",
+	"pika",
+	"psycopg ~= 3.1",
+	"pydantic-yaml",
+	"pyjwt ~= 2.8",
+	"python-jose[cryptography]",
+	"python-multipart",
+	"pyyaml ~= 6.0",
+	"requests",
+	"sqlmodel >= 0.0.24",
+	"uvicorn[standard] >= 0.29.0",
+	"typing_extensions",
+	"zipfile"
+]
+
+[project.optional-dependencies]
+dev = [
+	"black",
+    "honcho",
+    "pylint",
+	"sphinx",
+]

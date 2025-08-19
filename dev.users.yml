@@ -1,10 +1,9 @@
-provider: dev
 users:
-  devadmin:
-    password: developer
+  - password: developer
     role: admin
     email: devadmin@example.com
-  devuser:
-    password: developer
+    login_id: devadmin
+  - password: developer
     role: default
     email: devuser@example.com
+    login_id: devuser

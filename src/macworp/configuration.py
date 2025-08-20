@@ -213,6 +213,9 @@ class FrontendConfiguration(BaseModel):
 class Configuration(BaseModel):
     """MAcWorP configuration"""
 
+    development: bool = True
+    """Development mode, enables hot reloading of the backend and frontend"""
+
     backend: BackendConfiguration = BackendConfiguration()
     """Configuration for the backend"""
 

@@ -28,6 +28,7 @@ def start_app(config: Configuration):
         port=config.frontend.port,
         title=config.frontend.app_name,
         dark=config.frontend.dark_mode,
-        reload=config.debug,
+        reload=config.development,
+        uvicorn_reload_dirs=",".join([str(Path(__file__).parent.parent.as_posix())]),
         show=False,
     )

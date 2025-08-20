@@ -1,4 +1,5 @@
-/testlog.csv
+# NiceGUI
+.nicegui/
 
 # IDE files
 .vscode
@@ -7,6 +8,8 @@
 # Tempfiles for workflows
 /tmp
 *.tmp
+/testlog.csv
+
 # Local development files like database files
 /.db
 local.env

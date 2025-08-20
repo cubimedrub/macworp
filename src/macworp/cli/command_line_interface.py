@@ -1,6 +1,7 @@
 """Command line interface for access backend, frontend and tools"""
 
 import argparse
+from logging import CRITICAL, INFO, NOTSET, WARNING, ERROR, DEBUG
 from pathlib import Path
 from typing import ClassVar
 
@@ -8,6 +9,8 @@ from macworp.configuration import Configuration
 from macworp.backend.database import init_database_schema, seed_database
 from macworp.backend.app import start_app as start_backend_app
 from macworp.frontend.app import start_app as start_frontend_app
+from macworp.utils.rabbitmq import RabbitMQ
+from macworp.worker.app import start_app as start_worker_app
 from macworp.utils.authentication.worker_credentials import hash_worker_credentials
 
 
@@ -43,6 +46,12 @@ class CommandLineInterface:
     HASH_WORKER_CREDENTIALS_COMMAND: ClassVar[str] = "worker:hash-credentials"
     """Command to hash worker credentials."""
 
+    WORKER_START_COMMAND: ClassVar[str] = "worker:start"
+    """Command to start the worker."""
+
+    RABBITMQ_INIT_COMMAND: ClassVar[str] = "rabbitmq:init"
+    """Command to initialize the RabbitMQ queues."""
+
     def __init__(self):
         self.parser = argparse.ArgumentParser(description="MacWorP")
         subparsers = self.parser.add_subparsers(dest="command")
@@ -50,6 +59,7 @@ class CommandLineInterface:
         self.add_utility_arguments(subparsers)
         self.add_backend_arguments(subparsers)
         self.add_frontend_arguments(subparsers)
+        self.add_worker_arguments(subparsers)
 
         self.args = self.parser.parse_args()
 
@@ -66,6 +76,14 @@ class CommandLineInterface:
             action=ConfigurationLoadAction,
         )
         self.parser.set_defaults(func=self.parser.print_help)
+
+        self.parser.add_argument(
+            "--verbose",
+            "-v",
+            default=0,
+            action="count",
+            help="Increase verbosity of the output. Can be used multiple times.",
+        )
 
     def add_utility_arguments(self, subparsers: argparse._SubParsersAction):
         """Adds utility arguments, e.g. printing of default config, database initialization, ...
@@ -101,16 +119,13 @@ class CommandLineInterface:
         )
         print_config_parser.set_defaults(func=lambda args: print(str(Configuration())))
 
-        hash_worker_credentials_parser = subparsers.add_parser(
-            self.HASH_WORKER_CREDENTIALS_COMMAND,
-            help="Prints the hashed worker credentials to use with e.g. cURL",
+        rabbitmq_init_parser = subparsers.add_parser(
+            self.RABBITMQ_INIT_COMMAND, help="Initializes the RabbitMQ queues"
         )
-        hash_worker_credentials_parser.set_defaults(
-            func=lambda args: print(
-                hash_worker_credentials(
-                    args.config.backend.worker_credentials.username,
-                    args.config.backend.worker_credentials.password,
-                )
+        rabbitmq_init_parser.set_defaults(
+            func=lambda args: RabbitMQ.init_queues(
+                args.config.rabbitmq.url,
+                args.config.rabbitmq.project_workflow_queue,
             )
         )
 
@@ -143,3 +158,56 @@ class CommandLineInterface:
         start_frontend_parser.set_defaults(
             func=lambda args: start_frontend_app(args.config)
         )
+
+    def add_worker_arguments(self, subparsers: argparse._SubParsersAction):
+        """Adds worker controls
+
+        Parameters
+        ----------
+        subparsers : argparse._SubParsersAction
+            Subparsers to add new parser
+        """
+        start_frontend_parser = subparsers.add_parser(
+            self.WORKER_START_COMMAND, help="Starts the worker"
+        )
+        start_frontend_parser.set_defaults(
+            func=lambda args: start_worker_app(
+                args.config, self.verbosity_to_log_level(args.verbose)
+            )
+        )
+
+        hash_worker_credentials_parser = subparsers.add_parser(
+            self.HASH_WORKER_CREDENTIALS_COMMAND,
+            help="Prints the hashed worker credentials to use with e.g. cURL",
+        )
+        hash_worker_credentials_parser.set_defaults(
+            func=lambda args: print(
+                hash_worker_credentials(
+                    args.config.worker_credentials.username,
+                    args.config.worker_credentials.password,
+                )
+            )
+        )
+
+    @classmethod
+    def verbosity_to_log_level(cls, verbosity: int) -> int:
+        """Returns the log level based on the verbosity argument.
+
+        Returns
+        -------
+        int
+            Log level corresponding to the verbosity argument.
+        """
+        match verbosity:
+            case 0:
+                return NOTSET
+            case 1:
+                return CRITICAL
+            case 2:
+                return ERROR
+            case 4:
+                return WARNING
+            case 3:
+                return INFO
+            case _:
+                return DEBUG

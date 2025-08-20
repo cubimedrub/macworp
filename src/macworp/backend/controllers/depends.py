@@ -116,8 +116,8 @@ async def get_optionally_authenticated_user(
         case "basic":
             # special case for worker credentials authentication
             expected_hashed_password = hash_worker_credentials(
-                config.backend.worker_credentials.username,
-                config.backend.worker_credentials.password,
+                config.worker_credentials.username,
+                config.worker_credentials.password,
             )
             if expected_hashed_password == auth_token:
                 user = User(

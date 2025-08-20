@@ -174,9 +174,6 @@ class BackendConfiguration(BaseModel):
     redis_url: str = "redis://localhost:6380/0"
     """Redis URL, e.g. redis://host:port/db"""
 
-    worker_credentials: Credential = Credential()
-    """Credentials for worker"""
-
     login_providers: LoginProviderCollection = LoginProviderCollection()
     """Collection of login providers"""
 
@@ -210,11 +207,36 @@ class FrontendConfiguration(BaseModel):
     session_timeout: int = 3600
 
 
+class WorkerConfiguration(BaseModel):
+    nextflow_binary: Optional[Path] = Path("./nextflow")
+    """Path to the Nextflow binary"""
+
+    snakemake_binary: Optional[Path] = Path("./snakemake")
+    """Path to the Snakemake binary"""
+
+    macworp_url: str = "http://localhost:3001"
+    """URL of the MAcWorP backend"""
+
+    projects_path: Path = Path("./uploads")
+    """Root folder of the project data folders."""
+
+    number_of_workers: int = 1
+    """Number of concurrent workers"""
+
+    keep_intermediate_files: bool = False
+    """Keep work folder, workflow engine logs and cache folder after workflow execution."""
+
+    skip_cert_verification: bool = False
+    """Skip SSL certificate verification for the backend API"""
+
+
 class Configuration(BaseModel):
     """MAcWorP configuration"""
 
     development: bool = True
-    """Development mode, enables hot reloading of the backend and frontend"""
+    """
+    Development mode, enables hot reloading of the backend and frontend.
+    """
 
     backend: BackendConfiguration = BackendConfiguration()
     """Configuration for the backend"""
@@ -222,11 +244,20 @@ class Configuration(BaseModel):
     frontend: FrontendConfiguration = FrontendConfiguration()
     """Configuration for the frontend"""
 
+    worker: WorkerConfiguration = WorkerConfiguration()
+    """Configuration for the worker"""
+
     debug: bool = True
     """Debug outputs"""
 
     secret: str = "development"
     """An arbitrary ascii string to sign sessions etc. Make sure to back it up!"""
+
+    worker_credentials: Credential = Credential()
+    """Credentials for the worker to access the backend API"""
+
+    rabbitmq: RabbitMQConfiguration = RabbitMQConfiguration()
+    """RabbitMQ configuration"""
 
     def __str__(self) -> str:
         return to_yaml_str(self, indent=2, exclude_none=False, add_comments=True)

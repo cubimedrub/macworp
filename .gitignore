@@ -4,8 +4,9 @@
 .vscode
 .idea
 
-# TEmpfiles for workflows
+# Tempfiles for workflows
 /tmp
+*.tmp
 # Local development files like database files
 /.db
 local.env

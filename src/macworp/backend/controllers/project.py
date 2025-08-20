@@ -29,13 +29,13 @@ import zipfile
 
 
 from macworp.utils.constants import SupportedWorkflowEngine
-from macworp.configuration import Configuration
 from .depends import (
     Authenticated,
     ExistingProject,
     ExistingUser,
     ExistingUsers,
     ExistingWorkflow,
+    Configuration,
 )
 from .workflow import ensure_read_access as ensure_workflow_read_access
 from ..connectionManager import ConnectionManager
@@ -752,6 +752,7 @@ async def schedule(
     workflow: ExistingWorkflow,
     auth: Authenticated,
     session: DbSession,
+    config: Configuration,
     workflow_parameters: Optional[List[Dict[str, Any]]] = Body(None),
 ) -> JSONResponse:
     ensure_write_access(auth, project, session)
@@ -849,13 +850,11 @@ async def schedule(
         session.add(project)
         session.commit()
 
-        connection = pika.BlockingConnection(
-            pika.URLParameters(Configuration.values()["rabbit_mq"]["url"])
-        )
+        connection = pika.BlockingConnection(pika.URLParameters(config.rabbitmq.url))
         channel = connection.channel()
         channel.basic_publish(
             exchange="",
-            routing_key=Configuration.values()["rabbit_mq"]["project_workflow_queue"],
+            routing_key=config.rabbitmq.project_workflow_queue,
             body=queued_project.model_dump_json().encode(),
         )
         connection.close()

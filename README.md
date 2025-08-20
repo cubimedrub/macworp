@@ -22,11 +22,13 @@ conda activate macworp2
 # Initialize the database
 python -m macworp db:init
 
-# Add some data
+# Optional: Add some data
 python python -m macworp db:seed
 
 honcho start
 ```
+The last command will launch the backend, frontend & worker.
+
 
 ### Database access
 ```sh
@@ -65,6 +67,12 @@ for development
 python src/macworp/__main__.py
 ```
 otherwise NiceGUI is unhappy about spawning new processes when hot reloading
+
+
+### Start worker
+```sh
+python -m macworp worker:start
+```
 
 
 ### Test Backend

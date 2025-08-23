@@ -1,0 +1,311 @@
+import logging
+import os
+import httpx
+
+from macworp.configuration import Configuration
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class ProjectService:
+    PROJECTS_PER_PAGE = 50
+
+    def __init__(self, config: Configuration, auth_token: str):
+        self.config = config
+        self.auth_token = auth_token
+        self.projects = []
+        self.total_project_count = 0
+
+    async def get_project_ids(self) -> list[int]:
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.config.frontend.backend_url}/project/", headers=headers
+            )
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise RuntimeError(
+                    f"Error while loading any Projects: {response.status_code}"
+                )
+
+    async def get_project_descriptions(self, project_id: int) -> list[dict[str, str]]:
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.config.frontend.backend_url}/project/{project_id}",
+                headers=headers,
+            )
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise RuntimeError(
+                    f"Error loading Projects description: {response.status_code}"
+                )
+
+    async def load_count(self):
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.config.frontend.backend_url}/project/count", headers=headers
+            )
+            if response.status_code == 200:
+                self.total_project_count = response.json()
+                return self.total_project_count
+            else:
+                raise RuntimeError(
+                    f"Error loading Projects count: {response.status_code}"
+                )
+
+    async def load_project(self, project_id: int) -> dict:
+        """
+        load a single Project from API
+        """
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.config.frontend.backend_url}/project/{project_id}",
+                headers=headers,
+            )
+            if response.status_code == 200:
+                self.projects = response.json()
+                return self.projects
+            else:
+                raise RuntimeError(
+                    f"Error while loading Project: {response.status_code}"
+                )
+
+    async def load_projects(self, page: int) -> dict:
+        """
+        load a set of Projects from API
+        """
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        offset = (page - 1) * self.PROJECTS_PER_PAGE
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.config.frontend.backend_url}/project/?offset={offset}&limit={self.PROJECTS_PER_PAGE}",
+                headers=headers,
+            )
+            if response.status_code == 200:
+                self.projects = response.json()
+                return self.projects
+            else:
+                raise RuntimeError(
+                    f"Error while loading Projects: {response.status_code}"
+                )
+
+    async def full_delete_project(self, project_id):
+        project_path = await self.get_project_root_path(project_id)
+        await self.delete_project_path(project_id, project_path)
+        await self.delete_project(project_id)
+
+    async def get_project_root_path(self, project_id):
+        """Fetches the root path of the given project"""
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.config.frontend.backend_url}/project/{project_id}/files?dir=/",  # Root-Verzeichnis
+                headers=headers,
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                root_path = data.get("path")
+                return [{"path": root_path}]
+            else:
+                error_detail = response.text
+                try:
+                    error_json = response.json()
+                    print(f"Error details: {error_json}")
+                except:
+                    print(f"Error text: {error_detail}")
+
+                raise RuntimeError(
+                    f"Error while fetching root path: {response.status_code} - {error_detail}"
+                )
+
+    async def delete_project_path(self, project_id, project_path):
+        """
+        delete a project path
+        """
+        path_payload = [p for p in project_path]
+        for i, entry in enumerate(path_payload):
+            print(f"Entry {i} type: {type(entry)}, value: {entry}")
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.config.frontend.backend_url}/project/{project_id}/delete-path",
+                headers=headers,
+                json=path_payload,
+            )
+            if response.status_code == 200:
+                self.projects = response.json()
+                return self.projects
+            else:
+                print(response)
+                raise RuntimeError(
+                    f"Error while loading Projects: {response.status_code}"
+                )
+
+    async def delete_project(self, project_id):
+        """
+        delete project
+        """
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{self.config.frontend.backend_url}/project/{project_id}/delete",
+                headers=headers,
+            )
+            if response.status_code == 200:
+                self.projects = response.json()
+                return self.projects
+            else:
+                raise RuntimeError(
+                    f"Error while loading Projects: {response.status_code}"
+                )
+
+    def clean_project_data(self, project):
+        """
+        cleanse project data
+        """
+        cleaned = {}
+        for key, value in project.items():
+            if value == "":
+                continue
+
+            if key == "workflow_id":
+                if value == "" or value is None:
+                    continue
+                elif value == "unset":
+                    cleaned[key] = "unset"
+                else:
+                    try:
+                        cleaned[key] = int(value)
+                    except (ValueError, TypeError):
+                        continue
+
+            elif key == "is_published":
+                if isinstance(value, bool):
+                    cleaned[key] = value
+                elif isinstance(value, str):
+                    cleaned[key] = value.lower() in ("true", "1", "yes", "on")
+
+            elif key in ["name", "description"]:
+                if value and value.strip():
+                    cleaned[key] = value.strip()
+
+            else:
+                cleaned[key] = value
+
+        return cleaned
+
+    async def update_project(self, project, project_id):
+        """
+        edits project data
+        """
+        cleaned_data = self.clean_project_data(project)
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.config.frontend.backend_url}/project/{project_id}/edit",
+                headers=headers,
+                json=cleaned_data,
+            )
+            if response.status_code == 200:
+                return True
+            else:
+                # Detaillierte Fehlerinformationen ausgeben
+                error_detail = response.text
+                try:
+                    error_json = response.json()
+                    print(f"Error details: {error_json}")
+                except:
+                    print(f"Error text: {error_detail}")
+
+                raise RuntimeError(
+                    f"Error while editing project: {response.status_code} - {error_detail}"
+                )
+
+    async def get_file_path(self, project_id):
+        """returns files and Path"""
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.config.frontend.backend_url}/project/{project_id}/files",
+                headers=headers,
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                files = data.get("files", [])
+                file_paths = []
+                for filename in files:
+                    file_paths.append(filename)  # Für die API reicht der Dateiname
+                return file_paths
+            else:
+                error_detail = response.text
+            try:
+                error_json = response.json()
+                print(f"Error details: {error_json}")
+            except:
+                print(f"Error text: {error_detail}")
+
+            raise RuntimeError(
+                f"Error while editing project: {response.status_code} - {error_detail}"
+            )
+
+    async def create_project(self, project):
+        """create a new Project"""
+        headers = {
+            "Authorization": f"Token {self.auth_token}",
+            "Content-Type": "application/json",
+        }
+        print(f"Sending project data: {project}")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.config.frontend.backend_url}/project/new",
+                headers=headers,
+                json=project,
+            )
+
+        if response.status_code == 200:
+            data = response.json()
+            return data
+        raise RuntimeError(f"Error while creating new project: {response.status_code}")
+
+    async def change_user(self, new_owner: int, project, project_id) -> bool:
+        """changes the User to new User"""
+        if int(new_owner) == int(project["owner_id"]):
+            return False
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.config.frontend.backend_url}/project/{project_id}/transfer_ownership",
+                headers=headers,
+                params={"user_id": new_owner},
+            )
+
+        if response.status_code == 200:
+            return True
+        return False
+
+    async def add_share_project(
+        self, new_user: int, project, project_id, write_access: bool
+    ):
+        """share project with user"""
+        if int(new_user) == int(project["owner_id"]):
+            return False
+        headers = {"Authorization": f"Token {self.auth_token}"}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.config.frontend.backend_url}/project/{project_id}/share/add",
+                headers=headers,
+                params={"write": f"{write_access}"},
+                json=[int(new_user)],
+            )
+
+            if response.status_code == 200:
+                return True
+        return False

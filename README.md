@@ -1,9 +1,14 @@
 # NF-Cloud v2 based on FastAPI
 
-## How to
+## Development
 
-### Prepare
+### Getting started
+First shell
+```sh
+docker-compose up
+```
 
+Second shell
 ```sh
 # Create environment
 conda env create -f environment.yml
@@ -11,60 +16,68 @@ conda env create -f environment.yml
 # Already created the environment and need updates?
 conda env update -f environment.yml --prune
 
-# Activate environment
-conda activate nf_cloud_v2
+# Activate the new environment name might change in the future
+conda activate macworp2 
+
+# Initialize the database
+python -m macworp db:init
+
+# Optional: Add some data
+python python -m macworp db:seed
+
+honcho start
 ```
+The last command will launch the backend, frontend & worker.
 
-### Start
 
-```
-# (Shell 1)
-# Start PostgreSQL
-docker-compose up
-
-# (Shell 2)
-# Start server
-honcho -e dev.env start
-```
-
-### Access DB
-
+### Database access
 ```sh
-psql postgresql://postgres:developer@127.0.0.1:5434/nf_cloud
+psql postgresql://postgres:developer@127.0.0.1:5434/macworp
 
 # ...or the test database
-psql postgresql://postgres:developer@127.0.0.1:5434/nf_cloud_test
+psql postgresql://postgres:developer@127.0.0.1:5434/macworp_test
 ```
 
-Migration has been implemented through model imports in database.py and main.py
 
+## Other CLI options
+
+### Initialize database
 ```sh
-# Removes the NF cloud container
-docker rm $(docker ps -f "name=nf-cloud" -qa)
+python -m macworp db:init
+```
+This is not a migration tool!
+
+### Seed
+```sh
+python python -m macworp db:seed
 ```
 
 ### Start Backend
-
 ```sh
-uvicorn nf_cloud_backend.main:app --app-dir backend --reload
+python -m macworp backend:start
 ```
 
-### Seed DB
+### Start frontend
+If debug is set to false, e.g. for production
+```sh
+python -m macworp frontend:start
+```
+for development
+```sh
+python src/macworp/__main__.py
+```
+otherwise NiceGUI is unhappy about spawning new processes when hot reloading
 
+
+### Start worker
+```sh
+python -m macworp worker:start
 ```
-python -m nf_cloud_backend seed ./backend/db_seed.yaml
-```
+
 
 ### Test Backend
+This is a big ToDo after the a major code revision
 
 ```sh
-source test.env && touch $MACWORP_TEST_LOG && rm $MACWORP_TEST_LOG && python -m unittest discover nf_cloud_backend
-```
-
-### Start frontend 
-```sh
-#dev mode
-./frontend/entrypoint.sh dev
-#production
-./frontend/entrypoint.sh prod
+source test.env && touch $MACWORP_TEST_LOG && rm $MACWORP_TEST_LOG && python -m unittest discover macworp
 ```

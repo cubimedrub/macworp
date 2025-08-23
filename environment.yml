@@ -1,19 +1,12 @@
-name: nf_cloud_v2
+name: macworp2
 channels:
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.12
   - pip
   - setuptools
   - cython
   - yaml
   - libpq
   - pip:
-    - -e ./backend[dev]
-    - fastapi
-    - uvicorn[standard]
-    - python-multipart
-    - python-jose[cryptography]
-    - passlib[bcrypt]
-    - requests
-    - oauthlib
+    - -e ./[dev]

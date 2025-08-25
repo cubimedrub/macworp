@@ -37,12 +37,30 @@ class LoginPage:
         self.provider_container = None
 
     async def load_providers(self):
-        """Load available login providers"""
+        """
+        Load available login providers from the login service.
+
+        Fetches all configured authentication providers and stores them in the
+        providers attribute. Logs the loaded providers for debugging purposes.
+
+        Raises:
+            Exception: If there's an error loading providers from the service.
+        """
         self.providers = await self.login_service.get_login_providers()
         logger.info(f"Loaded providers: {self.providers}")
 
     def select_provider(self, provider_type: str, provider: str):
-        """Handle provider selection"""
+        """
+        Handle provider selection and display appropriate login form.
+
+        Called when a user selects an authentication provider from the available
+        options. Updates the selected provider information and displays the
+        corresponding login form.
+
+        Args:
+            provider_type (str): Type of provider ('database', 'file', or 'openid').
+            provider (str): Name/identifier of the specific provider.
+        """
         self.selected_provider_type = provider_type
         self.selected_provider = provider
 
@@ -54,7 +72,13 @@ class LoginPage:
         self.show_login_form()
 
     def show_login_form(self):
-        """Display the appropriate login form based on provider type"""
+        """
+        Display the appropriate login form based on the selected provider type.
+
+        Creates and displays either a credentials form (for database/file providers)
+        or an OAuth form (for OpenID providers). Clears any existing forms and
+        provider selection UI before showing the new form.
+        """
         if self.form_container:
             self.form_container.clear()
         else:
@@ -89,7 +113,21 @@ class LoginPage:
                 create_oauth_form(self.selected_provider, self.handle_oauth_login)
 
     async def handle_credential_login(self, username=None, password=None):
-        """Handle username/password login"""
+        """
+        Handle username/password authentication for database and file providers.
+
+        Processes credential-based login attempts, manages UI loading states,
+        and handles both successful and failed authentication attempts.
+
+        Args:
+            username (str, optional): Username for authentication. If not provided,
+                will attempt to get value from username_input UI element.
+            password (str, optional): Password for authentication. If not provided,
+                will attempt to get value from password_input UI element.
+
+        Raises:
+            Exception: If authentication service encounters an error during login.
+        """
 
         # If called with parameters from the form callback, use those
         if username is not None and password is not None:
@@ -136,7 +174,16 @@ class LoginPage:
                 self.loading_spinner.set_visibility(False)
 
     async def handle_oauth_login(self):
-        """Handle OAuth login initiation"""
+        """
+        Handle OAuth login initiation for OpenID providers.
+
+        Initiates the OAuth authentication flow by requesting a redirect URL
+        from the login service and navigating the user to the OAuth provider's
+        authentication page.
+
+        Raises:
+            Exception: If there's an error initiating the OAuth login flow.
+        """
         try:
             redirect_url = await self.login_service.initiate_oauth_login(
                 self.selected_provider_type, self.selected_provider
@@ -152,22 +199,48 @@ class LoginPage:
             self.show_error(f"OAuth login failed: {str(e)}")
 
     async def handle_login_success(self, login_result: Dict):
-        """Handle successful login"""
+        """
+        Handle successful authentication and redirect to main application.
 
-        # todo use secure storage
+        Processes successful login results by storing authentication tokens
+        and redirecting the user to the projects page.
+
+        Args:
+            login_result (Dict): Dictionary containing login result data including
+                JWT token and other authentication information.
+
+        Note:
+            Currently uses app.storage.user for token storage. This should be
+            replaced with secure storage in future implementations.
+        """
+
         app.storage.user["authenticated"] = True
         app.storage.user["auth-token"] = login_result.get("jwt")
 
         ui.navigate.to("/projects")
 
     def show_error(self, message: str):
-        """Display error message"""
+        """
+        Display error message to the user.
+
+        Shows error messages both as notifications and in the error label
+        if available. Used for authentication failures and validation errors.
+
+        Args:
+            message (str): Error message to display to the user.
+        """
         ui.notify(message, type="negative")
         if hasattr(self, "error_label") and self.error_label:
             self.error_label.set_text(message)
 
     def show_provider_selection(self):
-        """Reset to provider selection view"""
+        """
+        Reset the UI to display provider selection screen.
+
+        Clears any existing login forms and provider selections, then
+        recreates the provider selection interface. Used to allow users
+        to go back and choose a different authentication provider.
+        """
         self.selected_provider_type = None
         self.selected_provider = None
 

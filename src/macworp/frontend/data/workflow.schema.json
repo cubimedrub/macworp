@@ -10,11 +10,11 @@
       "oneOf": [
         {
           "type": "string",
-          "const": "nextflow" 
+          "const": "nextflow"
         },
         {
           "type": "string",
-          "const": "snakemake" 
+          "const": "snakemake"
         }
       ]
     },
@@ -26,7 +26,7 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "local" 
+              "const": "local"
             },
             "directory": {
               "description": "Workflow directory",
@@ -48,7 +48,7 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "remote" 
+              "const": "remote"
             },
             "url": {
               "description": "Repository URL, e.g. https://github.com/cubimedrub/macdii",
@@ -69,7 +69,7 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "nf-core" 
+              "const": "nf-core"
             },
             "pipeline": {
               "description": "nf-core pipeline name (w/ `nf-core/`-.part) e.g. `rnaseq`",
@@ -133,7 +133,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "path" 
+                "const": "path"
               },
               "name": {
                 "type": "string"
@@ -171,7 +171,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "paths" 
+                "const": "paths"
               },
               "name": {
                 "type": "string"
@@ -205,7 +205,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "file-glob" 
+                "const": "file-glob"
               },
               "name": {
                 "type": "string"
@@ -231,7 +231,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "number" 
+                "const": "number"
               },
               "name": {
                 "type": "string"
@@ -257,7 +257,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "text" 
+                "const": "text"
               },
               "name": {
                 "type": "string"
@@ -287,7 +287,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "value-select" 
+                "const": "value-select"
               },
               "name": {
                 "type": "string"
@@ -334,7 +334,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "separator" 
+                "const": "separator"
               },
               "label": {
                 "description": "Human readable label",

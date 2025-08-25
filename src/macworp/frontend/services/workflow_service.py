@@ -76,3 +76,31 @@ class WorkflowService:
                 raise RuntimeError(
                     f"Error while Scheduling Workflow: {response.status_code} - {response.text}"
                 )
+
+    async def edit_workflow(self, workflow, user_parameter_values):
+        headers = {"Authorization": f"Token {self.auth_token}"}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.config.frontend.backend_url}/workflow/{workflow['id']}/edit",
+                headers=headers,
+                json=user_parameter_values
+            )
+            if response.status_code == 200:
+                return True
+            else:
+                raise RuntimeError(f"Error while Editing Workflow: {response.status_code} - {response.text}")
+
+    async def save_workflow(self, user_parameter_values):
+        headers = {"Authorization": f"Token {self.auth_token}"}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.config.frontend.backend_url}/workflow/new",
+                headers=headers,
+                json=user_parameter_values
+            )
+            if response.status_code == 200:
+                return True
+            else:
+                raise RuntimeError(f"Error while Saving Workflow: {response.status_code} - {response.text}")

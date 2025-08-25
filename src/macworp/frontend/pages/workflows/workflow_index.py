@@ -1,6 +1,6 @@
 from nicegui import ui
 
-from frontend.components.workflow.workflow_editor_table import WorkflowEditorTable
+from macworp.frontend.components.workflow.workflow_editor_table import WorkflowEditorTable
 from macworp.configuration import Configuration
 from macworp.frontend.services.workflow_service import WorkflowService
 

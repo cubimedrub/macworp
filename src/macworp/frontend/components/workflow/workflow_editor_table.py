@@ -3,7 +3,7 @@ from typing import Any
 
 from nicegui import ui
 
-from frontend.services.workflow_service import WorkflowService
+from macworp.frontend.services.workflow_service import WorkflowService
 
 
 class WorkflowEditorTable:

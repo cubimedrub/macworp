@@ -152,12 +152,13 @@ class ProjectEditTable:
         """
         try:
             import json
+
             if value_str.strip():
                 self.project[key] = json.loads(value_str)
             else:
                 self.project[key] = {}
         except:
-            ui.notify(f'Invalid JSON format for {key}', color='warning')
+            ui.notify(f"Invalid JSON format for {key}", color="warning")
 
     def _validate_project_before_save(self) -> list[str]:
         """

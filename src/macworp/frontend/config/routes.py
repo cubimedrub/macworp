@@ -2,6 +2,8 @@ from nicegui import ui, app, context
 
 from macworp.configuration import Configuration
 
+from macworp.configuration import Configuration
+
 from ..components.common.cookie import create_cookie_banner
 from ..components.common.header import render_header
 from ..components.common.navigation import navigation_dashboard

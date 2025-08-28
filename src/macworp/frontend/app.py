@@ -20,8 +20,10 @@ def start_app(config: Configuration):
 
     setup_routes(config)
 
-    static_dir = os.path.abspath("projects")
-    app.add_static_files("/projects", static_dir)
+    static_project_dir = os.path.abspath("projects")
+    static_image_dir = os.path.abspath("images")
+    app.add_static_files("/projects", static_project_dir)
+    app.add_static_files("/images", static_image_dir)
 
     ui.run(
         storage_secret=config.secret,

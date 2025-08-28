@@ -4,12 +4,13 @@ from typing import Any
 from nicegui import ui
 
 from macworp.frontend.services.workflow_service import WorkflowService
+from macworp.configuration import Configuration
 
 
 class WorkflowEditorTable:
-    def __init__(self, workflow: any, workflow_id: int | None = None):
+    def __init__(self, workflow: any, config: Configuration, auth_token: str, workflow_id: int | None = None):
         self.workflow = workflow
-        self.workflow_service = WorkflowService()
+        self.workflow_service = WorkflowService(config, auth_token)
         self.workflow_id = workflow_id
 
     async def create_editable_table(self):
@@ -39,7 +40,7 @@ class WorkflowEditorTable:
 
                     if key == 'definition':
                         ui.textarea(
-                                    placeholder='Workflow definition').bind_value_to(self.workflow, key)
+                            placeholder='Workflow definition').bind_value_to(self.workflow, key)
 
                     elif isinstance(value, list):
                         list_str = ', '.join(str(item) for item in value) if value else ''
@@ -53,7 +54,6 @@ class WorkflowEditorTable:
                           on_click=lambda: self._save_workflow(dialog, is_new_workflow))
 
             await dialog
-
 
     def _get_workflow_template(self) -> dict[str, str | None | dict[Any, Any] | bool]:
         """

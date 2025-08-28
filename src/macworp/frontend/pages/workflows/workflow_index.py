@@ -34,7 +34,7 @@ class WorkflowIndex:
         self.workflow_service = workflow_service or WorkflowService(config, auth_token)
         self.workflows = []
         self._workflow_list = None
-        self.new_workflow_dialog = WorkflowEditorTable(None)
+        self.new_workflow_dialog = WorkflowEditorTable(None, config, auth_token, None)
 
     async def load_workflows(self):
         """

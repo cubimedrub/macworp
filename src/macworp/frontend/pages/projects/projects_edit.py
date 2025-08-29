@@ -94,6 +94,7 @@ class ProjectPageEdit:
             ui.notify("Project data not loaded", color="negative")
             return
         await self.project_edit_table.create_editable_table()
+        ui.navigate.reload()
 
     async def change_owner(self) -> None:
         """
@@ -157,9 +158,6 @@ class ProjectPageEdit:
         files = await self.project_service.get_file_path(self.project_id)
         self.file_viewer.show_files(files)
 
-        # TODO: Add ignore property handling
-        # if self.project.get('ignore'):
-        #     ui.badge('Currently ignored', color='warning')
 
     def _render_header(self) -> None:
         """

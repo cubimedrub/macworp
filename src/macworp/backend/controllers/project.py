@@ -2,12 +2,14 @@
 API Endpoints with the prefix `/project`.
 """
 
-from pathlib import Path
 import tempfile
+import zipfile
+from pathlib import Path
 from typing import List, Literal, Any, Optional, Dict
 from urllib.parse import unquote
 
-
+import pandas as pd
+import pika
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -19,14 +21,10 @@ from fastapi import (
     Body,
     status,
 )
-import pandas as pd
-import pika
 from pydantic import BaseModel, errors, json
 from sqlmodel import Field, Session, select
 from starlette.responses import JSONResponse, FileResponse
 from typing_extensions import Buffer
-import zipfile
-
 
 from macworp.utils.constants import SupportedWorkflowEngine
 from .depends import (
@@ -45,7 +43,6 @@ from ..models.project_share import ProjectShare
 from ..models.queued_project import QueuedProject
 from ..models.user import User, UserRole
 from ..models.workflow import Workflow
-
 
 # ---------------------------------------------------------
 # HELPERS
@@ -342,7 +339,6 @@ async def edit(
     """
 
     ensure_write_access(auth, project, session)
-
     if params.name is not None:
         project.name = params.name
     if params.workflow_id is not None:
@@ -363,6 +359,7 @@ async def edit(
         project.description = params.description
     if params.is_published is not None:
         project.is_published = params.is_published
+    session.commit()
 
 
 @router.post("/{project_id}/transfer_ownership", summary="Transfer Ownership")
@@ -383,6 +380,7 @@ async def transfer_ownership(
         await add_share(True, project, [project.owner], auth, session)
 
     project.owner = user
+    session.commit()
 
 
 @router.delete("/{project_id}/delete", summary="Delete Project")

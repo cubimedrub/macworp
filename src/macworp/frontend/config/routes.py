@@ -6,7 +6,6 @@ from macworp.configuration import Configuration
 
 from ..components.common.cookie import create_cookie_banner
 from ..components.common.header import render_header
-from ..components.common.navigation import navigation_dashboard
 from ..pages.login import LoginPage
 from ..pages.projects import projects_index, projects_edit
 from ..pages.workflows import workflow_index
@@ -18,7 +17,6 @@ def render_common_components(location: str):
         create_cookie_banner()
         app.storage.user["accepted_cookie"] = True
 
-    navigation_dashboard()
 
 
 def setup_routes(config: Configuration):

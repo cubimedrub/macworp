@@ -1,7 +1,7 @@
 from nicegui import ui
 
-from macworp.frontend.components.workflow.workflow_editor_table import WorkflowEditorTable
 from macworp.configuration import Configuration
+from macworp.frontend.components.workflow.workflow_editor_table import WorkflowEditorTable
 from macworp.frontend.services.workflow_service import WorkflowService
 
 
@@ -93,7 +93,7 @@ class WorkflowIndex:
                         else:
                             ui.icon("lock")
                     ui.button(
-                        "Delete", on_click=lambda w=workflow: self.workflow_service.delete_workflow(w)
+                        "Delete", on_click=lambda w=workflow: self._confirm_delete(w)
                     )
                     ui.button("Publish Workflow", on_click=lambda
                         w=workflow: self.publish_workflow(w))
@@ -127,7 +127,17 @@ class WorkflowIndex:
         publishes workflow for execution capability
         :return:
         """
-        await self.workflow_service.edit_workflow(workflow, "is_published=True")
+        try:
+            publish = await self.workflow_service.publish_workflow(workflow)
+            if publish:
+                ui.navigate.reload()
+                ui.notify("Workflow published successfully", type='positive')
+        except RuntimeError as e:
+            error_message = str(e)
+            ui.notify(f"Publish failed. Please check definition. {error_message}", type='negative')
+        except Exception as e:
+            ui.notify(f"Unexpected error during publishing: {str(e)}", type='negative')
+
 
     async def show(self):
         """
@@ -145,3 +155,24 @@ class WorkflowIndex:
 
             await self.load_workflows()
             await self._render_workflow_table()
+
+    async def _confirm_delete(self, workflow):
+        with ui.dialog() as dialog, ui.card():
+            ui.label(f'Are you sure you want to delete "{workflow.get("name", "this workflow")}"?')
+            with ui.row():
+                ui.button('Cancel', on_click=dialog.close)
+                ui.button('Delete', color='negative',
+                         on_click=lambda: self._execute_delete(workflow, dialog))
+        dialog.open()
+
+    async def _execute_delete(self, workflow, dialog):
+        try:
+            await self.workflow_service.delete_workflow(workflow)
+            dialog.close()
+            ui.notify('Workflow deleted successfully', color='positive')
+
+            await self.load_workflows()
+            await self._render_workflow_table()
+
+        except Exception as e:
+            ui.notify(f'Error deleting workflow: {str(e)}', color='negative')

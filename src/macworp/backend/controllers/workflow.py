@@ -2,20 +2,19 @@
 API Endpoints with the prefix `/workflow`.
 """
 
-from typing import Annotated, List
-from fastapi import APIRouter, Body, Depends, HTTPException, Header, Response, status
+from typing import List, Any, Coroutine
+
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import and_
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import Session, select
 
 from .depends import Authenticated, ExistingUser, ExistingUsers, ExistingWorkflow
+from ..database import DbSession
 from ..models.project import Project
-
 from ..models.user import User, UserRole
 from ..models.workflow import Workflow
 from ..models.workflow_share import WorkflowShare
-
-from ..database import DbSession
 
 # ---------------------------------------------------------
 # HELPERS
@@ -106,7 +105,6 @@ async def list(auth: Authenticated, session: DbSession, project_id: int | None =
         )
     ]
 
-
     if project_id:
         base_conditions.append(
             Workflow.dependent_projects.any(Project.id == project_id)
@@ -129,7 +127,8 @@ class WorkflowCreateParams(BaseModel):
 
 
 @router.post("/new",
-             summary="Create Workflow")
+             summary="Create Workflow",
+             status_code=status.HTTP_201_CREATED)
 async def new(params: WorkflowCreateParams, auth: Authenticated, session: DbSession) -> int:
     """
     Creates a new workflow with the provided parameters. Requires authentication.
@@ -207,8 +206,8 @@ async def edit(params: WorkflowUpdateParams, workflow: ExistingWorkflow, auth: A
         workflow.description = params.description
     if params.definition is not None:
         workflow.definition = params.definition
-    if params.is_published is not None:
-        workflow.is_published = params.is_published
+
+    session.commit()
 
 
 @router.post("/{workflow_id}/transfer_ownership",
@@ -238,6 +237,8 @@ async def delete(workflow: ExistingWorkflow, auth: Authenticated, session: DbSes
     ensure_owner(auth, workflow)
 
     session.delete(workflow)
+
+    session.commit()
 
 
 @router.post("/{workflow_id}/share/add",
@@ -280,3 +281,37 @@ async def remove_share(workflow: ExistingWorkflow, users: ExistingUsers, auth: A
 
         if share is not None:
             session.delete(share)
+
+
+@router.post("/{workflow_id}/publish",
+             summary="Publish the given workflow",
+             description=
+             """
+             changes the db entry to published if workflow definition is complete and correct
+             """)
+async def publish_workflow(workflow: ExistingWorkflow, auth: Authenticated,
+                           session: DbSession) -> dict[str, str]:
+
+    ensure_write_access(auth, workflow, session)
+
+    validation_errors = await workflow.validate_workflow_definition(workflow.definition)
+    if validation_errors:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "errors": {
+                    "publish": ["Cannot publish workflow with invalid definition"],
+                    **validation_errors
+                }
+            }
+        )
+    if workflow.is_published:
+        raise HTTPException(
+            status_code=409,
+            detail={"errors": {"publish": ["Workflow is already published"]}}
+        )
+
+    workflow.is_published = True
+    session.commit()
+
+    return {"message": "Workflow published successfully"}

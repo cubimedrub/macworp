@@ -1,5 +1,6 @@
+from typing import Dict, List, Optional, Any
+
 import httpx
-from typing import Dict, List, Optional, Union, Any
 
 from macworp.configuration import Configuration
 
@@ -138,7 +139,7 @@ class WorkflowService:
                 )
 
     async def start_workflow(self, project_id: int, workflow: Dict[str, Any],
-                           user_parameter_values: Dict[str, Any]) -> bool:
+                             user_parameter_values: Dict[str, Any]) -> bool:
         """
         Schedule and start a workflow execution within a project.
 
@@ -178,7 +179,7 @@ class WorkflowService:
                 )
 
     async def edit_workflow(self, workflow: Dict[str, Any],
-                          user_parameter_values: Dict[str, Any]) -> bool:
+                            user_parameter_values: Dict[str, Any]) -> bool:
         """
         Update an existing workflow's configuration and parameters.
 
@@ -215,37 +216,53 @@ class WorkflowService:
                     f"Error while Editing Workflow: {response.status_code} - {response.text}"
                 )
 
-    async def save_workflow(self, user_parameter_values: Dict[str, Any]) -> bool:
-        """
-        Create a new workflow with the provided configuration.
-
-        Creates a new workflow in the system with the specified parameters
-        and configuration. The workflow will be assigned a new unique ID.
-
-        Args:
-            user_parameter_values (Dict[str, Any]): Dictionary containing the
-                workflow configuration, including name, description, parameters,
-                and any other required workflow metadata.
-
-        Returns:
-            bool: True if the workflow was successfully created.
-
-        Raises:
-            RuntimeError: If the API request fails with a non-200 status code.
-                The error message includes both the HTTP status code and response
-                text for detailed debugging information.
-        """
+    async def save_workflow(self, workflow_data: Dict[str, Any]) -> bool:
         headers = {"Authorization": f"Token {self.auth_token}"}
+
+        # Parse the definition if it's a JSON string
+        definition = workflow_data.get("definition")
+        if isinstance(definition, str) and definition.strip():
+            try:
+                import json
+                definition = json.loads(definition)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in definition field: {str(e)}")
+        elif not definition:
+            definition = {}  # Default to empty dict if no definition
+
+        payload = {
+            "name": workflow_data.get("name"),
+            "description": workflow_data.get("description", ""),
+            "definition": definition,
+            "is_published": workflow_data.get("is_published", False)
+        }
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.config.frontend.backend_url}/workflow/new",
                 headers=headers,
-                json=user_parameter_values
+                json=payload
             )
-            if response.status_code == 200:
+
+            if response.status_code == 201:
                 return True
             else:
                 raise RuntimeError(
                     f"Error while Saving Workflow: {response.status_code} - {response.text}"
                 )
+
+    async def publish_workflow(self, workflow):
+        headers = {"Authorization": f"Token {self.auth_token}"}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.config.frontend.backend_url}/workflow/{workflow['id']}/publish",
+                headers=headers,
+                json=workflow
+            )
+        if response.status_code == 201:
+            return True
+        else:
+            raise RuntimeError(
+                f"Error while publishing Workflow: {response.status_code} - {response.text}"
+            )

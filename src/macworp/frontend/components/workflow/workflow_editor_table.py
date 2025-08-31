@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Dict
 
 from nicegui import ui
 
@@ -40,7 +40,7 @@ class WorkflowEditorTable:
 
                     if key == 'definition':
                         ui.textarea(
-                            placeholder='Workflow definition').bind_value_to(self.workflow, key)
+                                    placeholder='Workflow definition').bind_value_to(self.workflow, key)
 
                     elif isinstance(value, list):
                         list_str = ', '.join(str(item) for item in value) if value else ''
@@ -51,7 +51,7 @@ class WorkflowEditorTable:
 
                 save_button_text = 'Create Workflow' if is_new_workflow else 'Save Changes'
                 ui.button(save_button_text, color='primary',
-                          on_click=lambda: self._save_workflow(dialog, is_new_workflow))
+                          on_click=lambda: self._save_workflow(dialog, self.workflow))
 
             await dialog
 
@@ -65,7 +65,7 @@ class WorkflowEditorTable:
         return {
             'name': '',
             'description': '',
-            'definition': ''
+            'definition': {}
         }
 
     def _update_list_field(self, key: str, value_str: str) -> None:
@@ -84,10 +84,10 @@ class WorkflowEditorTable:
         else:
             self.workflow[key] = []
 
-    async def _save_workflow(self, dialog, is_new_workflow) -> None:
+    async def _save_workflow(self, dialog, workflow_data: Dict[str, Any]) -> None:
 
         try:
-            await self.workflow_service.save_workflow(is_new_workflow)
+            await self.workflow_service.save_workflow(workflow_data)
             dialog.close()
         except Exception as e:
             ui.notify(f'Error saving workflow: {str(e)}', color='negative')

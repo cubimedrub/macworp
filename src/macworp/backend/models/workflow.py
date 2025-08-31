@@ -1,7 +1,6 @@
 import json
-from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Dict, Any, ClassVar
+from typing import TYPE_CHECKING, Dict, Any, ClassVar
 
 import jsonschema
 from fastapi import HTTPException
@@ -115,19 +114,19 @@ class Workflow(SQLModel, table=True):
         return cache_dir / f"workflow_{self.id}_params.json"
 
     async def validate_workflow_definition(self,
-                                     definition: Any
-                                     ) -> dict[Any, Any]:
+                                           definition: Any
+                                           ) -> dict[Any, Any]:
         """
         Validates workflow description
         :param definition: Definition of the workflow
         :return: dict[Any, Any] with errors if any, otherwise an empty dict
         """
-        errors = {}
-        print(type(definition))
+        errors = {"definition": []}
 
         if not isinstance(definition, dict):
             errors["definition"].append("is not a dictionary")
             return errors
+
         try:
             schema: Dict[Any, Any] = {}
             with self.WORKFLOW_SCHEMA_PATH.open("r", encoding="utf-8") as schema_file:

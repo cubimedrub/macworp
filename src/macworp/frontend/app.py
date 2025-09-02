@@ -18,11 +18,12 @@ def start_app(config: Configuration):
         MAcWorP Configuration
     """
 
+    config.projects_path.mkdir(parents=True, exist_ok=True)
+
     setup_routes(config)
 
-    static_project_dir = os.path.abspath("projects")
-    static_image_dir = os.path.abspath("images")
-    app.add_static_files("/projects", static_project_dir)
+    static_image_dir = Path(__file__).parent / "static"
+    app.add_static_files("/projects", config.projects_path.absolute())
     app.add_static_files("/images", static_image_dir)
 
     ui.run(

@@ -68,6 +68,8 @@ dev_global_app: Optional[FastAPI] = (
 def start_app(config: Configuration):
     """Starts the FastAPI application with the given configuration."""
 
+    config.projects_path.mkdir(parents=True, exist_ok=True)
+
     log_level = DEBUG if config.debug else INFO
 
     app_or_mod: Union[FastAPI, str] = "macworp.backend.app:dev_global_app"

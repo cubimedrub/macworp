@@ -11,6 +11,8 @@ def start_app(config: Configuration, log_level: int) -> None:
     """
     Main function which parses CLI-commands and starts worker.
     """
+    config.projects_path.mkdir(parents=True, exist_ok=True)
+
     stop_event = Event()
 
     def handle_stop_signals(_signum, _frame):

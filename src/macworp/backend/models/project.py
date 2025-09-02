@@ -287,7 +287,11 @@ class Project(SQLModel, table=True):
         return target_file_path
 
     async def schedule_for_execution(
-        self, session: Session, workflow, workflow_parameters: List[Dict[str, Any]]
+        self,
+        config: Configuration,
+        session: Session,
+        workflow,
+        workflow_parameters: List[Dict[str, Any]],
     ) -> bool:
         """
         Schedule this project for execution.
@@ -349,17 +353,15 @@ class Project(SQLModel, table=True):
             json.dumps({"id": workflow.id})
         )
 
-    def publish_to_rabbitmq(self, queued_project):
+    def publish_to_rabbitmq(self, config: Configuration, queued_project):
         """
         Publish project to RabbitMQ queue
         """
-        connection = pika.BlockingConnection(
-            pika.URLParameters(Configuration.values()["rabbit_mq"]["url"])
-        )
+        connection = pika.BlockingConnection(pika.URLParameters(config.rabbitmq.url))
         channel = connection.channel()
         channel.basic_publish(
             exchange="",
-            routing_key=Configuration.values()["rabbit_mq"]["project_workflow_queue"],
+            routing_key=config.rabbitmq.project_workflow_queue,
             body=queued_project.model_dump_json().encode(),
         )
         connection.close()

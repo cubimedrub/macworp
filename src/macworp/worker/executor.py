@@ -97,7 +97,7 @@ class Executor(Process):
                 continue
 
             # Project work dir
-            project_dir = self.config.worker.projects_path.absolute().joinpath(
+            project_dir = self.config.projects_path.absolute().joinpath(
                 f"{project_params.id}/"
             )
             # Get workflow settings

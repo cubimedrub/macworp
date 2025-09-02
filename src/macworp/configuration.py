@@ -217,9 +217,6 @@ class WorkerConfiguration(BaseModel):
     macworp_url: str = "http://localhost:3001"
     """URL of the MAcWorP backend"""
 
-    projects_path: Path = Path("./uploads")
-    """Root folder of the project data folders."""
-
     number_of_workers: int = 1
     """Number of concurrent workers"""
 
@@ -258,6 +255,9 @@ class Configuration(BaseModel):
 
     rabbitmq: RabbitMQConfiguration = RabbitMQConfiguration()
     """RabbitMQ configuration"""
+
+    projects_path: Path = Path("./projects")
+    """Root folder of the project data folders."""
 
     def __str__(self) -> str:
         return to_yaml_str(self, indent=2, exclude_none=False, add_comments=True)

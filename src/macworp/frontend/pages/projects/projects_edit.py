@@ -40,7 +40,7 @@ class ProjectPageEdit:
         self.project_edit_table = ProjectEditTable(
             self.project, self.project_id, config, auth_token
         )
-        self.workflow_start = WorkflowStart(self.project, config, auth_token)
+        self.workflow_start = WorkflowStart(self.project_id, config, auth_token)
 
     async def load_project_data(self) -> None:
         """

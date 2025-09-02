@@ -45,3 +45,9 @@ dev = [
     "pylint",
 	"sphinx",
 ]
+
+[tool.setuptools.package-data]
+macworp = [
+    "frontend/static/**/*.*",
+	"backend/data/*.*"
+]

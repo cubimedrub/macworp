@@ -31,6 +31,7 @@ def init_database(database_url: str):
 def get_db_session():
     with Session(global_db_engine) as session:
         yield session
+        session.commit()
 
 
 DbSession = Annotated[Session, Depends(get_db_session)]

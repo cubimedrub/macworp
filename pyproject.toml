@@ -43,8 +43,10 @@ dependencies = [
 dev = [
 	"black",
     "honcho",
+	"pandas-stubs",
     "pylint",
 	"sphinx",
+	"types-PyYAML",
 ]
 
 [tool.setuptools.package-data]

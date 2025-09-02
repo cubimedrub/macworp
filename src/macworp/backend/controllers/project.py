@@ -399,6 +399,7 @@ async def delete(
 def list_files(
     project: ExistingProject,
     auth: Authenticated,
+    config: Configuration,
     directory_path: str = Query("/", description="Directory path", alias="dir"),
 ):
     """
@@ -407,9 +408,9 @@ def list_files(
     try:
         ensure_owner(auth, project)
 
-        directory = project.get_path(Path(unquote(directory_path)))
+        directory = project.get_path(config, Path(unquote(directory_path)))
 
-        if not project.in_file_directory(directory):
+        if not project.in_file_directory(config, directory):
             raise HTTPException(
                 status_code=403, detail={"errors": {"general": "not in filedirectory"}}
             )
@@ -465,6 +466,7 @@ async def upload_file(
     project: ExistingProject,
     auth: Authenticated,
     session: DbSession,
+    config: Configuration,
     file: UploadFile = File(..., description="File to upload"),
     directory_path: str = Query("/", description="Directory path"),
 ):
@@ -477,16 +479,16 @@ async def upload_file(
     )
 
     try:
-        target_directory = project.get_path(Path(unquote(directory_path)))
+        target_directory = project.get_path(config, Path(unquote(directory_path)))
 
-        if not project.in_file_directory(target_directory):
+        if not project.in_file_directory(config, target_directory):
             raise HTTPException(
                 status_code=403, detail="Directory path is outside project directory"
             )
 
         target_path = target_directory / safe_filename
 
-        if not project.in_file_directory(target_path):
+        if not project.in_file_directory(config, target_path):
             raise HTTPException(
                 status_code=403, detail="Target file path is outside project directory"
             )
@@ -502,7 +504,7 @@ async def upload_file(
         return {
             "message": "File uploaded successfully",
             "filename": safe_filename,
-            "path": str(target_path.relative_to(project.get_base_directory())),
+            "path": str(target_path.relative_to(project.get_base_directory(config))),
         }
 
     except PermissionError:
@@ -537,6 +539,7 @@ async def upload_file_chunk(
     project: ExistingProject,
     auth: Authenticated,
     session: DbSession,
+    config: Configuration,
     is_dropzone: Optional[int] = Query(0, alias="is-dropzone"),
     file: UploadFile = File(...),
     file_path: UploadFile = File(...),
@@ -560,7 +563,7 @@ async def upload_file_chunk(
         chunk_offset_value = chunk_offset or 0
 
     result_file_path = project.add_file_chunk(
-        file_path_obj, chunk_offset_value, file.file
+        config, file_path_obj, chunk_offset_value, file.file
     )
 
     return JSONResponse(content={"file_path": str(result_file_path)}, status_code=200)
@@ -581,7 +584,11 @@ async def upload_file_chunk(
              """,
 )
 async def create_folder(
-    project: ExistingProject, auth: Authenticated, session: DbSession, path: Path
+    project: ExistingProject,
+    auth: Authenticated,
+    session: DbSession,
+    config: Configuration,
+    path: Path,
 ) -> JSONResponse:
     ensure_write_access(auth, project, session)
     if not path:
@@ -589,7 +596,7 @@ async def create_folder(
             status_code=422,
             detail={"errors": {"request body": ["path cannot be empty"]}},
         )
-    project.create_folder(path)
+    project.create_folder(config, path)
 
     return JSONResponse(content="", status_code=200)
 
@@ -615,7 +622,11 @@ async def create_folder(
              """,
 )
 async def delete_path(
-    project: ExistingProject, auth: Authenticated, session: DbSession, paths: List[dict]
+    project: ExistingProject,
+    auth: Authenticated,
+    session: DbSession,
+    config: Configuration,
+    paths: List[dict],
 ) -> JSONResponse:
     ensure_write_access(auth, project, session)
     if not paths:
@@ -624,7 +635,7 @@ async def delete_path(
             detail={"errors": {"request body": ["path cannot be empty"]}},
         )
     for path in paths:
-        project.remove_path(path)
+        project.remove_path(config, path)
     return JSONResponse(content="", status_code=200)
 
 
@@ -681,10 +692,11 @@ async def get_file_size(
     project: ExistingProject,
     auth: Authenticated,
     session: DbSession,
+    config: Configuration,
     file_path: Path = Query(..., description="File path"),
 ) -> int:
     ensure_read_access(auth, project, session)
-    return project.get_file_size(file_path)
+    return project.get_file_size(config, file_path)
 
 
 @router.get(
@@ -703,10 +715,11 @@ async def get_metadata(
     project: ExistingProject,
     auth: Authenticated,
     session: DbSession,
+    config: Configuration,
     file_path: Path = Query(..., description="File path"),
 ) -> dict:
     ensure_read_access(auth, project, session)
-    return project.get_metadata(file_path)
+    return project.get_metadata(config, file_path)
 
 
 @router.get(
@@ -820,7 +833,7 @@ async def schedule(
 
     try:
         # Create cache directory if it doesn't exist
-        cache_dir = project.get_path(Path(".cache"))
+        cache_dir = project.get_path(config, Path(".cache"))
         cache_dir.mkdir(exist_ok=True)
 
         # Save workflow parameters cache
@@ -873,10 +886,13 @@ async def schedule(
             """,
 )
 async def last_cached_workflow_parameters(
-    project: ExistingProject, auth: Authenticated, session: DbSession
+    project: ExistingProject,
+    auth: Authenticated,
+    session: DbSession,
+    config: Configuration,
 ) -> dict:
     ensure_read_access(auth, project, session)
-    return project.get_last_executed_cache_file()
+    return project.get_last_executed_cache_file(config)
 
 
 WEBLOG_WORKFLOW_ENGINE_HEADER = "X-Workflow-Engine"
@@ -1042,6 +1058,7 @@ async def download(
     project: ExistingProject,
     auth: Authenticated,
     session: DbSession,
+    config: Configuration,
     path: str = Query("", description="Path to download"),
     is_inline: bool = Query(
         False, alias="is-inline", description="If true, inline download"
@@ -1054,7 +1071,7 @@ async def download(
     ensure_write_access(auth, project, session)
 
     decoded_path = Path(unquote(path))
-    path_to_download = project.get_path(decoded_path)
+    path_to_download = project.get_path(config, decoded_path)
     if path_to_download.is_file():
         response = None
 

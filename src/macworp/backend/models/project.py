@@ -96,15 +96,15 @@ class Project(SQLModel, table=True):
 
     is_scheduled: bool = Field(default=False, nullable=False)
 
-    def get_base_directory(self) -> Path:
+    def get_base_directory(self, config: Configuration) -> Path:
         """Get the base directory for this project's files"""
-        base_path = Path.cwd() / "projects" / str(self.id)
+        base_path = config.projects_path.joinpath(str(self.id))
         base_path.mkdir(parents=True, exist_ok=True)
         return base_path
 
-    def get_path(self, relative_path: Path) -> Path:
+    def get_path(self, config: Configuration, relative_path: Path) -> Path:
         """Get absolute path for a relative path within the project"""
-        base_dir = self.get_base_directory()
+        base_dir = self.get_base_directory(config)
 
         if str(relative_path) == "/" or str(relative_path) == ".":
             return base_dir
@@ -115,10 +115,10 @@ class Project(SQLModel, table=True):
 
         return base_dir / path_str
 
-    def in_file_directory(self, path: Path) -> bool:
+    def in_file_directory(self, config: Configuration, path: Path) -> bool:
         """Check if the given path is within the project's file directory"""
         try:
-            base_dir = self.get_base_directory().resolve()
+            base_dir = self.get_base_directory(config).resolve()
             target_path = path.resolve()
 
             try:
@@ -141,15 +141,15 @@ class Project(SQLModel, table=True):
         self.completed_processes = 0
         return True
 
-    def create_folder(self, new_folder_path: Path) -> bool:
+    def create_folder(self, config: Configuration, new_folder_path: Path) -> bool:
         """Create a new folder in the new work directory"""
-        new_folder_path = self.get_path(new_folder_path)
+        new_folder_path = self.get_path(config, new_folder_path)
         if not new_folder_path.is_dir():
             new_folder_path.mkdir(parents=True, exist_ok=True)
             return True
         return False
 
-    def remove_path(self, folder_path) -> bool:
+    def remove_path(self, config: Configuration, folder_path) -> bool:
         """
         Deletes Path - handles dict, str, Path objects
 
@@ -181,7 +181,7 @@ class Project(SQLModel, table=True):
             return False
 
         if input_path.is_absolute():
-            base_dir = self.get_base_directory()
+            base_dir = self.get_base_directory(config)
 
             try:
                 input_path.relative_to(base_dir.parent)
@@ -194,7 +194,7 @@ class Project(SQLModel, table=True):
                 return False
 
         else:
-            full_path = self.get_path(input_path)
+            full_path = self.get_path(config, input_path)
             print(f"DEBUG: Resolved relative path to: {full_path}")
 
         if not full_path.exists():
@@ -225,14 +225,14 @@ class Project(SQLModel, table=True):
             print(f"ERROR: Failed to delete: {e}")
             return False
 
-    def get_file_size(self, file_path: Path) -> int:
+    def get_file_size(self, config: Configuration, file_path: Path) -> int:
         """Get the size of a file in the project"""
-        file_path = self.get_path(file_path)
+        file_path = self.get_path(config, file_path)
         return file_path.stat().st_size
 
-    def get_metadata(self, file_path: Path) -> dict:
+    def get_metadata(self, config: Configuration, file_path: Path) -> dict:
         """Returns the metadata of a file"""
-        file_path = self.get_path(file_path)
+        file_path = self.get_path(config, file_path)
         metadata_file_path = file_path.with_suffix(f"{file_path.suffix}.mmdata")
         return json.load(metadata_file_path.open("r"))
 
@@ -252,29 +252,33 @@ class Project(SQLModel, table=True):
             history_dir.mkdir(parents=True, exist_ok=True)
         return history_dir
 
-    def get_cache_directory(self) -> Path:
+    def get_cache_directory(self, config: Configuration) -> Path:
         """Returns the cache dir for MAcWorP specific files"""
-        cache_dir = self.get_path(Path(".macworp_cache"))
+        cache_dir = self.get_path(config, Path(".macworp_cache"))
         if not cache_dir.is_dir():
             cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir
 
-    def get_last_executed_cache_file(self) -> dict:
+    def get_last_executed_cache_file(self, config: Configuration) -> dict:
         return json.loads(
             secure_joinpath(
-                self.get_cache_directory(), "last_executed_workflow.json"
+                self.get_cache_directory(config), "last_executed_workflow.json"
             ).read_text()
         )
 
-    def get_last_executed_cache_file_path(self) -> Path:
+    def get_last_executed_cache_file_path(self, config: Configuration) -> Path:
         return secure_joinpath(
-            self.get_cache_directory(), "last_executed_workflow.json"
+            self.get_cache_directory(config), "last_executed_workflow.json"
         )
 
     def add_file_chunk(
-        self, target_file_path: Path, chunk_offset: int, file_chunk: IO[bytes]
+        self,
+        config: Configuration,
+        target_file_path: Path,
+        chunk_offset: int,
+        file_chunk: IO[bytes],
     ) -> Path:
-        target_directory = self.get_path(target_file_path.parent)
+        target_directory = self.get_path(config, target_file_path.parent)
         if not target_directory.is_dir():
             target_directory.mkdir(parents=True, exist_ok=True)
 
@@ -314,7 +318,7 @@ class Project(SQLModel, table=True):
             session.add(self)
 
             try:
-                await self.publish_to_rabbitmq(queued_project)
+                await self.publish_to_rabbitmq(config, queued_project)
             except Exception as e:
                 logging.error(f"Failed to publish to RabbitMQ: {e}")
                 raise ProjectSchedulingError(
@@ -342,12 +346,12 @@ class Project(SQLModel, table=True):
         }
         params_cache_file_path.write_text(json.dumps(params_cache_data))
 
-    def save_last_executed_workflow_cache(self, workflow):
+    def save_last_executed_workflow_cache(self, config: Configuration, workflow):
         """
         Save last executed workflow to cache file
         """
-        last_executed_workflow_cache_file_path = (
-            self.get_last_executed_cache_file_path()
+        last_executed_workflow_cache_file_path = self.get_last_executed_cache_file_path(
+            config
         )
         last_executed_workflow_cache_file_path.write_text(
             json.dumps({"id": workflow.id})

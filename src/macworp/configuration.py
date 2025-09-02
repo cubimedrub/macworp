@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Self, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Self, Tuple
 
 from pydantic import BaseModel
 from pydantic_yaml import parse_yaml_raw_as, to_yaml_str
@@ -258,6 +258,9 @@ class Configuration(BaseModel):
 
     projects_path: Path = Path("./projects")
     """Root folder of the project data folders."""
+
+    def model_post_init(self, __context: Any) -> None:
+        self.projects_path = self.projects_path.absolute()
 
     def __str__(self) -> str:
         return to_yaml_str(self, indent=2, exclude_none=False, add_comments=True)

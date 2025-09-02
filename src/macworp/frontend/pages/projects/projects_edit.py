@@ -35,7 +35,7 @@ class ProjectPageEdit:
         self.project_service = ProjectService(config, auth_token)
         self.project_id = project_id
         self.project: Optional[Dict[str, Any]] = None
-        self.file_viewer = FileViewer(project_id)
+        self.file_viewer = FileViewer(config, project_id)
         self.project_path: Optional[str] = None
         self.project_edit_table = ProjectEditTable(
             self.project, self.project_id, config, auth_token
@@ -157,7 +157,6 @@ class ProjectPageEdit:
         self._render_header()
         files = await self.project_service.get_file_path(self.project_id)
         self.file_viewer.show_files(files)
-
 
     def _render_header(self) -> None:
         """

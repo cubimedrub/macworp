@@ -19,6 +19,7 @@ nextflow
 # uploads
 /uploads
 /deploy_test_uploads
+/projects
 
 # npm
 node_modules/

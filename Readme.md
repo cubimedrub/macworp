@@ -16,3 +16,5 @@ MaCWorP is a web application to give workflow developers a simple way to make th
         * Fine grained access control to projects and workflows including sharing with others.
 * What it **does not** for you
     * Scaling - This is still the job of the workflow engine. E.g. you can configure Nextflow to use K8s or Slurm when started by MAcWorP workers but setting these executors up is still a separate job for an admin.
+* Installation
+    * For installation instructions, see the [MacWorP Installation Guide](https://cubimedrub.github.io/macworp/latest/installation/).

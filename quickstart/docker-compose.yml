@@ -2,7 +2,7 @@
 name: macworp-deployment-test
 services:  
   backend_1: &migrating_backend
-    image: cubimedrub/macworp-backend:local
+    image: ${CONTAINER_REGISTRY}/macworp-backend:${CONTAINER_VERSION}
     volumes:
       - ./macworp:/home/mambauser/macworp
       - ${PROJECT_DIR_ABSOLUTE}:/projects
@@ -48,7 +48,7 @@ services:
   backend_3: *backend
   backend_4: *backend
   frontend:
-    image: cubimedrub/macworp-frontend:local
+    image: ${CONTAINER_REGISTRY}/macworp-frontend:${CONTAINER_VERSION}
     environment:
       MACWORP_BACKEND_BASE_URL: https://${MACWORP_HOSTNAME:-localhost}:16160
       MACWORP_BACKEND_WS_URL: https://${MACWORP_HOSTNAME:-localhost}:16160
@@ -75,9 +75,9 @@ services:
       - ./quickstart/ssl:/etc/custom_ssl:ro
     healthcheck:
       test: ["CMD", "curl", "-k", "-f", "--user-agent", "curl/healthcheck", "https://${MACWORP_HOSTNAME}:16160/api/ping"]
-      interval: 10s
+      interval: 5s
       timeout: 10s
-      retries: 10
+      retries: 40
     depends_on:
       backend_1:
         condition: service_healthy
@@ -99,7 +99,7 @@ services:
       - frontend
       - fusionauth
   worker:
-    image: cubimedrub/macworp-worker:local
+    image: ${CONTAINER_REGISTRY}/macworp-worker:${CONTAINER_VERSION}
     cap_add:
       - SYS_ADMIN
     devices:

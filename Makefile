@@ -1,3 +1,6 @@
+PUBLIC_REGISTRY := ghcr.io/cubimedrub
+MACWORP_VERSION := 0.0.6
+
 # Detect the operating system
 ifeq ($(OS),Windows_NT)
 DETECTED_OS := Windows
@@ -7,9 +10,9 @@ endif
 
 # Deal with unknown OSs
 ifeq ($(DETECTED_OS),Windows)
-$(error Sorry Windows is not supported as many parts of MAcWorP are not compatible with Windows. Please try WSL.)
+$(error Sorry Windows is not supported as many parts of MAcWorP are only usable on UNIX-like systems. Please try WSL.)
 else ifeq ($(DETECTED_OS),Unknown)
-$(error Unknown operating system.)q
+$(error Unknown operating system.)
 endif
 
 # Set hostname depending on OS
@@ -38,37 +41,83 @@ PROJECT_DIR_ABSOLUTE:=$(shell realpath ${PROJECT_DIR})
 endif
 
 
+NIGHTLY_REGISTRY := cubimedrub
+NIGHTLY_VERSION := nightly
+
 .SILENT:
+
+#ghcr.io/cubimedrub/macworp-backend
 
 # Production test
 quickstart-up:
 	# Create directories
 	mkdir -p ${PROJECT_DIR_ABSOLUTE}
 	mkdir -p ${SSL_DIR}
+
 	# Download prebuild containers
 	docker pull alpine/mkcert:latest
-	# Build docker container for backend, worker & frontend with the UID of the current user
-	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-backend:local" -f docker/backend.dockerfile .
-	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-worker:local" -f docker/worker.dockerfile .
-	env DOCKER_BUILDKIT=1 docker build -t "cubimedrub/macworp-frontend:local" -f docker/frontend.dockerfile .
+	docker pull "${PUBLIC_REGISTRY}/macworp-backend:${MACWORP_VERSION}"
+	docker pull "${PUBLIC_REGISTRY}/macworp-worker:${MACWORP_VERSION}"
+	docker pull "${PUBLIC_REGISTRY}/macworp-frontend:${MACWORP_VERSION}"
+
 	# Generate SSL certificates for the hostname
 	${QUICKSTART_DIR}/certificate-creation.sh ${SSL_DIR} ${MACWORP_HOSTNAME} 
+
 	# Write the link to the project directory
 	echo "https://${MACWORP_HOSTNAME}:16160" > ${QUICKSTART_DIR}/URL
+
 	# Start docker-compose in separate docker-compose project called macworp-quickstart, combining the two docker-compose files
-	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+	env CONTAINER_REGISTRY=${PUBLIC_REGISTRY} CONTAINER_VERSION=${MACWORP_VERSION} DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-quickstart -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml up
 
 quickstart-down:
 	# Destroy production test
-	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+	env CONTAINER_REGISTRY=${PUBLIC_REGISTRY} CONTAINER_VERSION=${MACWORP_VERSION} DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-quickstart -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml down --remove-orphans
 
-
 quickstart-bash:
-	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+	env CONTAINER_REGISTRY=${PUBLIC_REGISTRY} CONTAINER_VERSION=${MACWORP_VERSION} DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-quickstart -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml exec -it $(CONTAINER) bash
 
 quickstart-logs:
-	env DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+	env CONTAINER_REGISTRY=${PUBLIC_REGISTRY} CONTAINER_VERSION=${MACWORP_VERSION} DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
 		docker compose -p macworp-quickstart -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml logs -f $(CONTAINER)
+
+
+# Quickstart using nightly containers
+quickstart-nightly-up:
+	# Create directories
+	mkdir -p ${PROJECT_DIR_ABSOLUTE}
+	mkdir -p ${SSL_DIR}
+
+	# Download prebuild containers
+	docker pull alpine/mkcert:latest
+
+	# Build docker container for backend, worker & frontend with the UID of the current user
+	env DOCKER_BUILDKIT=1 docker build -t "${NIGHTLY_REGISTRY}/macworp-backend:${NIGHTLY_VERSION}" -f docker/backend.dockerfile .
+	env DOCKER_BUILDKIT=1 docker build -t "${NIGHTLY_REGISTRY}/macworp-worker:${NIGHTLY_VERSION}" -f docker/worker.dockerfile .
+	env DOCKER_BUILDKIT=1 docker build -t "${NIGHTLY_REGISTRY}/macworp-frontend:${NIGHTLY_VERSION}" -f docker/frontend.dockerfile .
+
+	# Generate SSL certificates for the hostname
+	${QUICKSTART_DIR}/certificate-creation.sh ${SSL_DIR} ${MACWORP_HOSTNAME} 
+
+	# Write the link to the project directory
+	echo "https://${MACWORP_HOSTNAME}:16160" > ${QUICKSTART_DIR}/URL
+
+	# Start docker-compose in separate docker-compose project called macworp-quickstart, combining the two docker-compose files
+	env CONTAINER_REGISTRY=${NIGHTLY_REGISTRY} CONTAINER_VERSION=${NIGHTLY_VERSION} DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+		docker compose -p macworp-quickstart-nightly -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml up
+
+quickstart-nightly-down:
+	# Destroy production test
+	env CONTAINER_REGISTRY=${NIGHTLY_REGISTRY} CONTAINER_VERSION=${NIGHTLY_VERSION} DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+		docker compose -p macworp-quickstart-nightly -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml down --remove-orphans
+
+
+quickstart-nightly-bash:
+	env CONTAINER_REGISTRY=${NIGHTLY_REGISTRY} CONTAINER_VERSION=${NIGHTLY_VERSION} DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+		docker compose -p macworp-quickstart-nightly -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml exec -it $(CONTAINER) bash
+
+quickstart-nightly-logs:
+	env CONTAINER_REGISTRY=${NIGHTLY_REGISTRY} CONTAINER_VERSION=${NIGHTLY_VERSION} DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH} PROJECT_DIR_ABSOLUTE=${PROJECT_DIR_ABSOLUTE} SSL_DIR=${SSL_DIR} MACWORP_HOSTNAME=${MACWORP_HOSTNAME} MACWORP_FUSIONAUTH_PROTOCOL=https MACWORP_FUSIONAUTH_PORT=16161 \
+		docker compose -p macworp-quickstart-nightly -f docker-compose.yml -f ${QUICKSTART_DIR}/docker-compose.yml logs -f $(CONTAINER)

@@ -23,6 +23,12 @@ The next step is to create a project where data and results can be stored later.
 Without any data uploaded, start one of the preinstalled `Result rendering` workflows.
 This will generate a folder `results` with some example files which will be rendered in the browser once your go into the folder.
 
+Once your done, press `ctrl-c` and enter `make quickstart-down` to clean up the started container stack.
+
+### Nighlty
+Feeling adventurous? `make quickstart-nighlty-up` will build the Docker containers from then selected branch and start MAcWorP with the newest features (if there are any).   
+`make quickstart-nighlty-down` will stop everything.
+
 ## Recommended full install
 
 The installation instruction is a more detailed description of the quickstart setup. The prerequisites are located in `docker-compose.yml` while the MAcWorP specific container are located in `quickstart.docker-compose.yml` 

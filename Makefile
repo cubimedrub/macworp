@@ -1,5 +1,5 @@
 PUBLIC_REGISTRY := ghcr.io/cubimedrub
-MACWORP_VERSION := 0.0.6
+MACWORP_VERSION := 0.0.7
 
 # Detect the operating system
 ifeq ($(OS),Windows_NT)

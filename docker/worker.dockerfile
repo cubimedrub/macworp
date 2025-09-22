@@ -11,7 +11,7 @@ ENV TZ=Etc/UTC
 
 # Native installs
 RUN apt-get update -y \
-    && apt-get install -y ca-certificates curl zip unzip openjdk-17-jre-headless software-properties-common tzdata \
+    && apt-get install -y ca-certificates curl zip unzip openjdk-17-jre-headless software-properties-common tzdata libnss3 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libpango-1.0-0 libcairo2 libasound2 \
     && add-apt-repository -y ppa:apptainer/ppa \
     && apt-get update -y \
     && apt-get install -y apptainer \

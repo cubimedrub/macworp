@@ -1,7 +1,10 @@
-FROM mambaorg/micromamba:1.2.0-jammy
+# FROM ghcr.io/apptainer/apptainer:1.4.2 AS apptainer_src
+
+
+FROM mambaorg/micromamba:2-ubuntu24.04
 LABEL maintainer="dirk.winkelhardt@rub.de"
 
-# Note: One could use a basic Python image to install the backend package
+# Note: One could use a basic Python image to install the worker package
 # but you have to install the mandatory dependencies via the OS package manager next to the conda environment
 # making the package less maintainable.
 
@@ -11,10 +14,11 @@ ENV TZ=Etc/UTC
 
 # Native installs
 RUN apt-get update -y \
-    && apt-get install -y ca-certificates curl zip unzip openjdk-17-jre-headless software-properties-common tzdata libnss3 libatk-bridge2.0-0 libcups2 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libpango-1.0-0 libcairo2 libasound2 \
+    && apt-get install -y ca-certificates curl zip unzip openjdk-21-jre-headless software-properties-common tzdata \
     && add-apt-repository -y ppa:apptainer/ppa \
+    && add-apt-repository ppa:xtradeb/apps -y \
     && apt-get update -y \
-    && apt-get install -y apptainer \
+    && apt-get install -y apptainer chromium \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
@@ -50,6 +54,7 @@ USER mambauser
 ENV HOME=/home/mambauser
 ENV PATH=$PATH:$HOME/.local/bin
 ENV ENV_NAME=macworp
+ENV BROWSER_PATH=/usr/bin/chromium
 ENV NXF_VER=24.09.2-edge
 
 RUN echo 'show_banner: false' > ~/.mambarc

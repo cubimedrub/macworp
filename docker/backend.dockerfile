@@ -1,4 +1,4 @@
-FROM mambaorg/micromamba:1.2.0-jammy
+FROM mambaorg/micromamba:2-debian13
 LABEL maintainer="dirk.winkelhardt@rub.de"
 
 # Note: One could use a basic Python image to install the backend package
@@ -10,7 +10,7 @@ ENV PROJECTS_DIR=/projects
 
 # Native installs
 RUN apt-get update -y \
-    && apt-get install -y postgresql-client-14 curl \
+    && apt-get install -y postgresql-client-17 curl \
     # Remove caches
     && rm -rf /var/lib/apt/lists/* 
 

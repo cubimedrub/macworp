@@ -2,27 +2,26 @@
 name: macworp-deployment-test
 services:  
   backend_1: &migrating_backend
-    image: ${CONTAINER_REGISTRY}/macworp-backend:${CONTAINER_VERSION}
+    image: ${MACWORP_CONTAINER}
     volumes:
-      - ./macworp:/home/mambauser/macworp
-      - ${PROJECT_DIR_ABSOLUTE}:/projects
+      - ${PROJECT_DIR_ABSOLUTE}:${PROJECT_DIR_ABSOLUTE}
       # Pass the local config
-      - ./quickstart/config.yml:/home/mambauser/local.config.yaml:ro
-      - ./dev_auth.yaml:/home/mambauser/dev_auth.yaml:ro
+      - ./quickstart/config.yml:/home/mambauser/local.config.yml:ro
+      - ./dev.users.yml:/home/mambauser/dev.users.yml:ro
       - ./demo_workflows:/home/mambauser/demo_workflows:ro
+      - ./db_seed.yml:/home/mambauser/db_seed.yml:ro
     environment:
       # Backend 1 runs migration and database seeding
-      RUN_MIGRATION: "true"
-      RUN_SEED: "true"
+      RUN_MIGRATION: /home/mambauser/local.config.yml
+      RUN_SEED: /home/mambauser/local.config.yml
+      PROJECTS_DIR: ${PROJECT_DIR_ABSOLUTE}
       OAUTHLIB_INSECURE_TRANSPORT: 1
       MACWORP_HOSTNAME: ${MACWORP_HOSTNAME:-localhost}
       MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
-      MIGRATION_DB_HOSTNAME: psql
       PYTHONUNBUFFERED: "true"
-      MACWORP_CONFIG: /home/mambauser/local.config.yaml
-    command: ["serve", "--gunicorn"]
+    command: ["--config", "/home/mambauser/local.config.yml", "backend:start"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/ping"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/healthcheck/ping"]
       interval: 10s
       timeout: 10s
       retries: 10
@@ -34,29 +33,29 @@ services:
   backend_2: &backend
     <<: *migrating_backend
     environment:
-      # Disable migration and seeding for the other backends
-      RUN_MIGRATION: "false"
-      RUN_SEED: "false"
+      PROJECTS_DIR: ${PROJECT_DIR_ABSOLUTE}
       OAUTHLIB_INSECURE_TRANSPORT: 1
       MACWORP_HOSTNAME: ${MACWORP_HOSTNAME:-localhost}
       MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
       PYTHONUNBUFFERED: "true"
-      MACWORP_CONFIG: /home/mambauser/local.config.yaml
     depends_on:
       backend_1:
         condition: service_healthy
   backend_3: *backend
   backend_4: *backend
   frontend:
-    image: ${CONTAINER_REGISTRY}/macworp-frontend:${CONTAINER_VERSION}
+    image: ${MACWORP_CONTAINER}
+    volumes:
+      - ${PROJECT_DIR_ABSOLUTE}:${PROJECT_DIR_ABSOLUTE}
+      # Pass the local config
+      - ./quickstart/config.yml:/home/mambauser/local.config.yml:ro
     environment:
-      MACWORP_BACKEND_BASE_URL: https://${MACWORP_HOSTNAME:-localhost}:16160
-      MACWORP_BACKEND_WS_URL: https://${MACWORP_HOSTNAME:-localhost}:16160
-      MACWORP_FRONTEND_INTERFACE: 0.0.0.0
-      MACWORP_UPLOAD_MAX_FILE_SITE: 10737418240
-      MACWORP_DISABLE_SSL_VERIFICATION: "true"
+      PROJECTS_DIR: ${PROJECT_DIR_ABSOLUTE}
+      MACWORP_HOSTNAME: ${MACWORP_HOSTNAME:-localhost}
+      MACWORP_FUSIONAUTH_PORT: ${MACWORP_FUSIONAUTH_PORT:-9011}
+    command: ["--config", "/home/mambauser/local.config.yml", "frontend:start"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/api/ping"]
+      test: ["CMD", "curl", "-f", "http://localhost:5001/healthcheck/ping"]
       interval: 5s
       timeout: 10s
       retries: 40
@@ -74,7 +73,7 @@ services:
       - ./docker/nginx/high-available.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./quickstart/ssl:/etc/custom_ssl:ro
     healthcheck:
-      test: ["CMD", "curl", "-k", "-f", "--user-agent", "curl/healthcheck", "https://${MACWORP_HOSTNAME}:16160/api/ping"]
+      test: ["CMD", "curl", "-k", "-f", "--user-agent", "curl/healthcheck", "https://${MACWORP_HOSTNAME}:16160/api/healthcheck/ping"]
       interval: 5s
       timeout: 10s
       retries: 40
@@ -99,7 +98,7 @@ services:
       - frontend
       - fusionauth
   worker:
-    image: ${CONTAINER_REGISTRY}/macworp-worker:${CONTAINER_VERSION}
+    image: ${MACWORP_CONTAINER}
     cap_add:
       - SYS_ADMIN
     devices:
@@ -107,27 +106,11 @@ services:
     environment:
       PYTHONUNBUFFERED: "true"
       PROJECTS_DIR: ${PROJECT_DIR_ABSOLUTE}
-    command: [
-      "-vvvvvvvv",
-      "--skip-cert-verification",
-      "-n", "/usr/local/bin/nextflow",
-      "-s", "/opt/conda/envs/macworp/bin/snakemake",
-      "-c", "https://${MACWORP_HOSTNAME:-localhost}:16160",
-      "-r", "amqp://admin:developer@rabbitmq:5672/%2f",
-      "-q", "project_workflow",
-      "-d", "${PROJECT_DIR_ABSOLUTE}",
-      "-u", "worker",
-      "-p", "developer",
-      "--keep-intermediate-files"
-    ]
+    command: ["--config", "/home/mambauser/local.config.yml", "worker:start"]
     volumes:
-      # Mount the demo workflows
-      - ./demo_workflows:/home/mambauser/demo_workflows:ro
-      # To be able to run docker commands from the worker container it is necessary
-      # to mount the hosts Docker socket into the container
-      # and make the project directory available on the same absolute path
-      - ${DOCKER_SOCKET_PATH}:/var/run/docker.sock:ro
       - ${PROJECT_DIR_ABSOLUTE}:${PROJECT_DIR_ABSOLUTE}
+      # Pass the local config
+      - ./quickstart/config.yml:/home/mambauser/local.config.yml:ro
     depends_on:
       nginx:
         condition: service_healthy

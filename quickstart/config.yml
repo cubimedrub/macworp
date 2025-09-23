@@ -1,30 +1,64 @@
-interface: 0.0.0.0
-port: 3001
-secret: "developmentindocker"
-use_reverse_proxy: true
-debug: false
-upload_path: ENV['PROJECTS_DIR']
-database:
-  url: postgresql://postgres:developer@psql:5432/macworp
-  pool_size: 4 # In development mode, more than one connections are supported
-rabbit_mq:
+# MAcWorP configuration
+backend:
+  allowed_origins:
+  - http://localhost:3001
+  - http://127.0.0.1:3001
+  - https://ENV['MACWORP_HOSTNAME']:16160
+  database: postgresql+psycopg://postgres:developer@psql:5432/macworp
+  frontend_host_url: https://ENV['MACWORP_HOSTNAME']:16160
+  interface: 0.0.0.0
+  login_providers:
+    database:
+      description: Login with local database
+    file:
+      dev:
+        description: Login with local file
+        expires_in: 4294967296
+        file: /home/mambauser/dev.users.yml
+    openid:
+      dev:
+        client_id: c63f35e8-66dc-4ec3-bb34-b29803ba72f1
+        client_secret: 
+          8CLrA9gAVmlM7GKKCnMnT9MHNvUMqXNVWog2kWUuC7Y2iBOnFIh9X0rpCqfMcpfQkEZfCBfxMqfz5FYC6cduB20kxqV5Ysq
+        description: Login with OpenID
+        discovery_url: 
+          https://ENV['MACWORP_HOSTNAME']:ENV['MACWORP_FUSIONAUTH_PORT']/31a047c3-3353-fcd4-28e0-965a473a1ee8/.well-known/openid-configuration
+        scope: offline_access
+        verify_ssl: false
+  matomo:
+    auth_token: ''
+    enabled: false
+    site_id: 1
+    url: ''
+  port: 3001
+  redis_url: redis://redis:6379/0
+  use_reverse_proxy: true
+debug: true
+development: false
+frontend:
+  # Frontend configuration
+  api_version: v1
+  app_name: MAcWorP
+  backend_url: https://ENV['MACWORP_HOSTNAME']:16160
+  dark_mode: true
+  debug: false
+  host: 0.0.0.0
+  port: 5001
+  session_timeout: 3600
+  theme_color: '#1976d2'
+  skip_cert_verification: true
+projects_path: ENV['PROJECTS_DIR']
+rabbitmq:
+  project_workflow_queue: project_workflow
   url: "amqp://admin:developer@rabbitmq:5672/%2f"
-redis_url: redis://redis:6379/0
+secret: secretquickstart
+worker:
+  keep_intermediate_files: false
+  macworp_url: https://ENV['MACWORP_HOSTNAME']:16160
+  nextflow_binary: nextflow
+  number_of_workers: 1
+  skip_cert_verification: true
+  snakemake_binary: snakemake
 worker_credentials:
-  username: "worker"
-  password: "developer"
-login_providers:
-  openid:
-    dev:
-      description: Login with local Fusionauth
-      client_id: c63f35e8-66dc-4ec3-bb34-b29803ba72f1
-      client_secret: 8CLrA9gAVmlM7GKKCnMnT9MHNvUMqXNVWog2kWUuC7Y2iBOnFIh9X0rpCqfMcpfQkEZfCBfxMqfz5FYC6cduB20kxqV5Ysq
-      discovery_url: https://ENV['MACWORP_HOSTNAME']:ENV['MACWORP_FUSIONAUTH_PORT']/.well-known/openid-configuration
-      scope: "offline_access"
-      verify_ssl: false
-  file:
-    dev:
-      description: Login with local file
-      file: /home/mambauser/dev_auth.yaml
-      expires_in: 4294967296
-frontend_host_url: https://ENV['MACWORP_HOSTNAME']:16160
+  password: developer
+  username: worker

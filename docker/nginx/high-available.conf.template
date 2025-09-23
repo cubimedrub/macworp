@@ -54,28 +54,33 @@ server {
         proxy_pass http://backend_handler;
     }
 
-    location /socket.io {
-        add_header X-Debug "sock location";
-        proxy_http_version 1.1;
-        proxy_buffering off;
-        proxy_redirect off;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "Upgrade";
-        proxy_pass http://socketio_handler/socket.io;
-    } 
+    # location /socket.io {
+    #     add_header X-Debug "sock location";
+    #     proxy_http_version 1.1;
+    #     proxy_buffering off;
+    #     proxy_redirect off;
+    #     proxy_set_header Host $http_host;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    #     proxy_set_header Upgrade $http_upgrade;
+    #     proxy_set_header Connection "Upgrade";
+    #     proxy_pass http://socketio_handler/socket.io;
+    # } 
 
     # Deliver frontend
     location / {
         # Disable buffering of upstream responses.
         proxy_buffering             off;
-        # Set proxy headers for Flask
+
         proxy_set_header X-Real-IP  $remote_addr;
-        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_redirect off;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection Upgrade;
+        proxy_set_header Host $host;
+
         proxy_pass http://frontend_handler;
     }
 }

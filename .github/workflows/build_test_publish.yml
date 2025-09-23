@@ -20,9 +20,7 @@ jobs:
       - name: Build Docker image
         id: build
         run: |
-          docker build -t ghcr.io/${{ github.repository }}-backend:${{ github.ref_name }} -f docker/backend.dockerfile .
-          docker build -t ghcr.io/${{ github.repository }}-worker:${{ github.ref_name }} -f docker/worker.dockerfile .
-          docker build -t ghcr.io/${{ github.repository }}-frontend:${{ github.ref_name }} -f docker/frontend.dockerfile .
+          docker build -t ghcr.io/${{ github.repository }}:${{ github.ref_name }} -f docker/backend.dockerfile .
 
       # First we would need some tests
       # - name: Run tests in Docker container
@@ -40,17 +38,11 @@ jobs:
       - name: Push Docker image
         if: steps.registry_login.outcome == 'success' && github.event_name != 'pull_request'
         run: |
-          docker tag ghcr.io/${{ github.repository }}-backend:${{ github.ref_name }} ghcr.io/${{ github.repository }}-backend:latest
-          docker tag ghcr.io/${{ github.repository }}-worker:${{ github.ref_name }} ghcr.io/${{ github.repository }}-worker:latest
-          docker tag ghcr.io/${{ github.repository }}-frontend:${{ github.ref_name }} ghcr.io/${{ github.repository }}-frontend:latest
+          docker tag ghcr.io/${{ github.repository }}:${{ github.ref_name }} ghcr.io/${{ github.repository }}:latest
 
-          docker push ghcr.io/${{ github.repository }}-backend:${{ github.ref_name }}
-          docker push ghcr.io/${{ github.repository }}-worker:${{ github.ref_name }}
-          docker push ghcr.io/${{ github.repository }}-frontend:${{ github.ref_name }}
+          docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
-          docker push ghcr.io/${{ github.repository }}-backend:latest
-          docker push ghcr.io/${{ github.repository }}-worker:latest
-          docker push ghcr.io/${{ github.repository }}-frontend:latest
+          docker push ghcr.io/${{ github.repository }}:latest
 
 
       - name: Fetch

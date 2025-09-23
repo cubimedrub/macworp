@@ -14,11 +14,11 @@
         "url": "/api/application/c63f35e8-66dc-4ec3-bb34-b29803ba72f1",
         "body": {
           "application": {
-            "name": "macworp",
+            "name": "nf_cloud",
             "oauthConfiguration": {
               "authorizedRedirectURLs": [
                 "http://localhost:3001/api/users/openid/dev/callback",
-                "https://#{ENV.MACWORP_HOSTNAME}:16160/api/users/openid/dev/callback"
+                "https://#{ENV.NF_HOSTNAME}:16160/api/users/openid/dev/callback"
               ],
               "clientAuthenticationPolicy": "Required",
               "clientSecret": "8CLrA9gAVmlM7GKKCnMnT9MHNvUMqXNVWog2kWUuC7Y2iBOnFIh9X0rpCqfMcpfQkEZfCBfxMqfz5FYC6cduB20kxqV5Ysq",

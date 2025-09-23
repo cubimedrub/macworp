@@ -1,0 +1,9 @@
+users:
+  - password: developer
+    role: admin
+    email: devadmin@example.com
+    login_id: devadmin
+  - password: developer
+    role: default
+    email: devuser@example.com
+    login_id: devuser

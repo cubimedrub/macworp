@@ -1,0 +1,4 @@
+include src/macworp/backend/data/*
+include src/macworp/backend/data/**/*
+include src/macworp/frontend/static/*
+include src/macworp/frontend/static/**/*

@@ -1,15 +1,23 @@
+# NiceGUI
+.nicegui/
+
 # IDE files
 .vscode
+!.vscode/extensions.json
 .idea
 
 # Tempfiles for workflows
 /tmp
+*.tmp
 
 # Local development files like database files
 /.db
-local.env
 macworp.local.config.yaml
+
+# Binary
 /nextflow
+
+# Quickstart
 /quickstart/ssl
 /quickstart/uploads
 /quickstart/URL
@@ -20,13 +28,16 @@ macworp.local.config.yaml
 
 # npm & yarn
 node_modules/
-.yarn/
 
 # Docs
 _site/
 
 # OS
 .DS_Store
+
+# Projects
+/projects
+
 
 # Copy from https://github.com/github/gitignore/blob/master/Python.gitignore with some additions
 # Byte-compiled / optimized / DLL files

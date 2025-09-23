@@ -1,17 +1,12 @@
-name: macworp
+name: macworp-dev-v2
 channels:
   - defaults
-  - conda-forge
 dependencies:
-  - libpq
-  - nodejs=18.*
-  - conda-forge::yarn
   - python=3.12
   - pip
   - setuptools
   - cython
   - yaml
+  - libpq
   - pip:
-    - -e ./backend[dev]
-    - -e ./worker[dev,demo]
-    - -r ./requirements.txt
+    - -e ./[dev,demo]

@@ -1,4 +1,5 @@
-frontend: cd frontend && yarn dev
-backend: python -m macworp_backend serve
-# Worker needs to run outside of honcho otherwise SDKMAN is not properly initialized when running Nextflow
-# worker: env PYTHONUNBUFFERED=1 python -m macworp_worker -n ./nextflow -s $(which snakemake) -c http://localhost:3001 -r amqp://admin:developer@127.0.0.1:5674/%2f -q project_workflow -d ./uploads -u worker -p developer -vvvvvvvv
+backend: python -m macworp backend:start
+# In development mode, NiceGUIs replace-feature is active which does not play along well when called with `python -m macworp`
+# hence we call main directly 
+frontend: python src/macworp/__main__.py frontend:start
+worker: python -m macworp worker:start

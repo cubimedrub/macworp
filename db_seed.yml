@@ -1,0 +1,60 @@
+- model: User
+  attributes:
+    login_id: devadmin
+    role: admin
+    provider_type: file
+    provider_name: dev
+    email: devadmin@example.com
+    hashed_password: ""
+- model: User
+  attributes:
+    login_id: devuser
+    role: default
+    provider_type: file
+    provider_name: dev
+    email: devuser@example.com
+    hashed_password: ""
+- model: User
+  attributes:
+    login_id: testperson
+    role: default
+    provider_type: database
+    provider_name: local
+    email: testperson@example.com
+    hashed_password: $2b$12$LcH4o3cwqH5XoVOqhnyneOMq.9PBCYlii8HynJ3/P1.bOVrq5mXLC
+    #Hash of "password"
+- model: Workflow
+  attributes:
+    name: owned
+    owner_id: 2
+    is_published: false
+- model: Workflow
+  attributes:
+    name: private
+    owner_id: 1
+    is_published: false
+- model: Workflow
+  attributes:
+    name: read-shared
+    owner_id: 1
+    is_published: false
+- model: Workflow
+  attributes:
+    name: write-shared
+    owner_id: 1
+    is_published: false
+- model: Workflow
+  attributes:
+    name: public
+    owner_id: 1
+    is_published: true
+- model: WorkflowShare
+  attributes:
+    user_id: 2
+    workflow_id: 3
+    write: false
+- model: WorkflowShare
+  attributes:
+    user_id: 2
+    workflow_id: 4
+    write: true

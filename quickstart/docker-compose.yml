@@ -1,4 +1,4 @@
-# Use in addition to docker-compose.yaml to test the deployment with unicorn and NginX as reverse proxy, see Readme.md
+# Use in addition to docker-compose.yaml to test the deployment with unicorn and NginX as reverse proxy, see README.md
 name: macworp-deployment-test
 services:  
   backend_1: &migrating_backend

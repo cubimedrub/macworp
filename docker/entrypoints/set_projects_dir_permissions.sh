@@ -24,7 +24,7 @@ case $PROJECT_DIR_UID in
         usermod -aG root mambauser
         ;;
     $(id -u ${MAMBA_USER}))
-        # Do nothing 
+        # Do nothing
         ;;
     *)
         # Change GID of mambauser-group
@@ -39,13 +39,11 @@ su $MAMBA_USER -c "echo 'do i have write access?' > $TEST_FILE"
 if [[ $? -ne 0 ]]
 then
     echo "The mambauser does not have write access to the project directory."
-    echo "Make sure the project folder is writable by the owning group or when not owned by root by the owning user."
+    echo "On your host, the project director need write permission for group with ID '${PROJECT_DIR_GID}'"
     echo "Exiting..."
     exit 1
 else
     rm $TEST_FILE
 fi
-
-
 
 exec "$@"

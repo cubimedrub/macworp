@@ -35,7 +35,7 @@ SSL_DIR ?= $(QUICKSTART_DIR)/ssl
 # Set immutable variables depending on CLI arguments
 ifeq ($(DETECTED_OS),Darwin)
 # `realpath` on macOS throws an error when the path does not exist
-PROJECT_DIR_ABSOLUTE:=$(shell python3 -c "from pathlib import Path; print(Path('${PROJECT_DIR}').absolute())")	
+PROJECT_DIR_ABSOLUTE:=$(shell python3 -c "from pathlib import Path; print(Path('${PROJECT_DIR}').absolute())")
 else ifeq ($(DETECTED_OS),Linux)
 PROJECT_DIR_ABSOLUTE:=$(shell realpath ${PROJECT_DIR})
 endif
@@ -52,6 +52,7 @@ NIGHTLY_VERSION := nightly
 quickstart-up:
 	# Create directories
 	mkdir -p ${PROJECT_DIR_ABSOLUTE}
+	chmod 775 ${PROJECT_DIR_ABSOLUTE}
 	mkdir -p ${SSL_DIR}
 
 	# Download prebuild containers
@@ -61,7 +62,7 @@ quickstart-up:
 	docker pull "${PUBLIC_REGISTRY}/macworp-frontend:${MACWORP_VERSION}"
 
 	# Generate SSL certificates for the hostname
-	${QUICKSTART_DIR}/certificate-creation.sh ${SSL_DIR} ${MACWORP_HOSTNAME} 
+	${QUICKSTART_DIR}/certificate-creation.sh ${SSL_DIR} ${MACWORP_HOSTNAME}
 
 	# Write the link to the project directory
 	echo "https://${MACWORP_HOSTNAME}:16160" > ${QUICKSTART_DIR}/URL
@@ -88,6 +89,7 @@ quickstart-logs:
 quickstart-nightly-up:
 	# Create directories
 	mkdir -p ${PROJECT_DIR_ABSOLUTE}
+	chmod 775 ${PROJECT_DIR_ABSOLUTE}
 	mkdir -p ${SSL_DIR}
 
 	# Download prebuild containers
@@ -99,7 +101,7 @@ quickstart-nightly-up:
 	env DOCKER_BUILDKIT=1 docker build -t "${NIGHTLY_REGISTRY}/macworp-frontend:${NIGHTLY_VERSION}" -f docker/frontend.dockerfile .
 
 	# Generate SSL certificates for the hostname
-	${QUICKSTART_DIR}/certificate-creation.sh ${SSL_DIR} ${MACWORP_HOSTNAME} 
+	${QUICKSTART_DIR}/certificate-creation.sh ${SSL_DIR} ${MACWORP_HOSTNAME}
 
 	# Write the link to the project directory
 	echo "https://${MACWORP_HOSTNAME}:16160" > ${QUICKSTART_DIR}/URL

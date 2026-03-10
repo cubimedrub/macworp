@@ -9,7 +9,7 @@ LABEL maintainer="dirk.winkelhardt@rub.de"
 # making the package less maintainable.
 
 USER root
-ENV DEBIAN_FRONTEND=noninteractive 
+ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
 # Native installs
@@ -31,7 +31,7 @@ RUN apt-get update -y \
     # Make sure the mambauser can run docker
     && usermod -aG docker mambauser \
     # Remove caches
-    && rm -rf /var/lib/apt/lists/* 
+    && rm -rf /var/lib/apt/lists/*
 
 # Add root entrypoints
 COPY docker/entrypoints/change_mambauser.sh /usr/local/bin/change_mambauser.sh
@@ -40,8 +40,9 @@ COPY docker/entrypoints/set_projects_dir_permissions.sh /usr/local/bin/set_proje
 
 # Nextflow install
 WORKDIR /usr/local/bin
-RUN curl -s https://get.nextflow.io | bash \ 
-    && chmod 755 /usr/local/bin/nextflow
+RUN curl -s https://get.nextflow.io | bash \
+    && chmod 755 /usr/local/bin/nextflow \
+    && chown mambauser:mambauser /usr/local/bin/nextflow
 
 WORKDIR /home/mambauser
 # Copy backend and environment.yml
@@ -55,7 +56,6 @@ ENV HOME=/home/mambauser
 ENV PATH=$PATH:$HOME/.local/bin
 ENV ENV_NAME=macworp
 ENV BROWSER_PATH=/usr/bin/chromium
-ENV NXF_VER=24.09.2-edge
 
 RUN echo 'show_banner: false' > ~/.mambarc
 

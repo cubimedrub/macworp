@@ -1,7 +1,6 @@
 #!/usr/bin/env nextflow
 
 nextflow.enable.dsl=2
-nextflow.preview.output = true
 
 params.inFile = ""
 params.inFolder = ""
@@ -64,26 +63,15 @@ workflow  {
     )
 
     publish:
-    params_txt >> params.resultsFolder
+    results = params_txt
 }
 
 /**
  * Move the output files to the results folder
  */
 output {
-    mode "move"
+    results {
+        mode "move"
+        path "."
+    }
 }
-
-/**
- * Once https://github.com/nextflow-io/nextflow/issues/5443#issuecomment-2445609593
- * is resolved and MAcWorP is updated to 24.10
- * we can use the following code to move the output files to the results folder
- * and replace `results >> params.resultsFolder` with `results >> "root"`
- * in the workflow
- */
-// output {
-//     "root" {
-//         mode "move"
-//         path "."
-//     }
-// }

@@ -1,0 +1,16 @@
+# Deny every file
+*
+
+# Conda
+!/environment.yml
+
+# Add python files
+!/pyproject.toml
+!/MANIFEST.in
+!/src/**/*.py
+# Add data files
+!/src/macworp/backend/data/**/*
+!/src/macworp/frontend/static/**/*
+
+# Add entrypoints 
+!/docker/entrypoints/*.sh

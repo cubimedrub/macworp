@@ -1,15 +1,17 @@
 """Interface for command generators for workflow runs."""
 
-from time import sleep
-from git import Repo as GitRepo
-from git.exc import GitCommandError
 import logging
 from pathlib import Path
+from time import sleep
 from typing import Any, ClassVar, Dict, List
 
+from git import Repo as GitRepo
+from git.exc import GitCommandError
 from macworp_utils.exchange.queued_project import QueuedProject
 from macworp_utils.path import make_relative_to, secure_joinpath
+
 from macworp_worker.web.backend_web_api_client import BackendWebApiClient
+
 
 class CmdGenerator:
     """Interface for command generators for workflow runs."""
@@ -41,6 +43,7 @@ class CmdGenerator:
         work_dir: Path,
         project_params: QueuedProject,
         workflow_settings: Dict[str, Any],
+        **kwargs
     ) -> List[str]:
         """Generate command for running a workflow.
 
@@ -54,6 +57,8 @@ class CmdGenerator:
             Project parameters
         workflow_settings : Dict[str, Any]
             Workflow definition
+        kwargs :
+            Additional parameters for the command generation, e.g. workflow engine specific parameters
 
         Returns
         -------
@@ -168,7 +173,7 @@ class CmdGenerator:
             If the intermediate files should be kept
         """
         raise NotImplementedError("Need to implement this method in a subclass.")
-    
+
     @classmethod
     def clone_git_repository(
         cls,

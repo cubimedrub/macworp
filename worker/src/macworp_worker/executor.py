@@ -1,15 +1,15 @@
 """Executor for running workflows. """
 
 import logging
+import re
+import shutil
+import subprocess
 from multiprocessing import Process, Queue
 from multiprocessing.connection import Connection
 from multiprocessing.synchronize import Event as EventClass
 from pathlib import Path
 from queue import Empty as EmptyQueueError
-import re
-import shutil
-import subprocess
-from typing import ClassVar, List
+from typing import ClassVar, List, Optional, Self, Tuple
 
 from macworp_utils.constants import SupportedWorkflowEngine
 from macworp_utils.path import secure_joinpath
@@ -155,9 +155,7 @@ class Executor(Process):
             command = []
 
             try:
-                workflow_engine = SupportedWorkflowEngine.from_str(
-                    workflow["definition"]["engine"]
-                )
+                (workflow_engine, workflow_engine_version) = self.__class__.split_engine(workflow["definition"]["engine"])
             except ValueError as e:
                 logger.error(
                     "[WORKER / PROJECT %i] Unsupported workflow engine: %s",
@@ -167,7 +165,7 @@ class Executor(Process):
                 self.communication_channel.send((delivery_tag, False))
                 continue
 
-            try: 
+            try:
                 match workflow_engine:
                     case SupportedWorkflowEngine.NEXTFLOW:
                         command = NextflowCmdGenerator(
@@ -176,7 +174,7 @@ class Executor(Process):
                             logger,
                             self.weblog_proxy_port,
                         ).generate_command(
-                            project_dir, work_dir, project_params, workflow["definition"]
+                            project_dir, work_dir, project_params, workflow["definition"], nextflow_version = workflow_engine_version
                         )
                     case SupportedWorkflowEngine.SNAKEMAKE:
                         command = SnakemakeCmdGenerator(
@@ -275,3 +273,24 @@ class Executor(Process):
         """
         sanitized_name: str = self.__class__.SANITIZE_REGEX.sub("", name)
         return self.__class__.WHITESPACE_REGEX.sub("_", sanitized_name)
+
+    def split_engine(engine: str) -> Tuple[SupportedWorkflowEngine, Optional[str]]:
+        """
+        Splits the workflow engine string into the engine and version if specified.
+
+        Parameters
+        ----------
+        engine : str
+            Workflow engine string, e.g. "nextflow|21.10.6"
+
+        Returns
+        -------
+        Tuple[SupportedWorkflowEngine, Optional[str]]
+            The workflow engine and version (if specified)
+        """
+
+        if "|" not in engine:
+            return SupportedWorkflowEngine.from_str(engine), None
+        else:
+            engine_split = engine.split("|")
+            return SupportedWorkflowEngine.from_str(engine_split[0]), "|".join(engine_split[1:])

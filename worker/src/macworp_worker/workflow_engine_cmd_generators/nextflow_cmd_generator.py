@@ -1,13 +1,17 @@
 """Generates the command for executing a Nextflow workflow."""
-
-from pathlib import Path
 import shutil
-from typing import Any, ClassVar, Dict, List
+from pathlib import Path
+from typing import Any, ClassVar, Dict, List, Optional
 
+from Cython.Plex.Regexps import Opt
 from git import Repo as GitRepo
+from macworp_utils.constants import (
+    SupportedWorkflowEngine,  # type: ignore[import-untyped]
+)
+from macworp_utils.exchange.queued_project import (
+    QueuedProject,  # type: ignore[import-untyped]
+)
 
-from macworp_utils.exchange.queued_project import QueuedProject  # type: ignore[import-untyped]
-from macworp_utils.constants import SupportedWorkflowEngine  # type: ignore[import-untyped]
 from macworp_worker.workflow_engine_cmd_generators.cmd_generator import CmdGenerator
 
 
@@ -23,9 +27,42 @@ class NextflowCmdGenerator(CmdGenerator):
         work_dir: Path,
         project_params: QueuedProject,
         workflow_settings: Dict[str, Any],
+        **kwargs,
     ) -> List[str]:
+        """
+        Generates the command for executing a Nextflow workflow.
+
+        Parameters
+        ----------
+        project_dir : Path
+            Path to the project directory
+        work_dir : Path
+            Path to the work directory
+        project_params : QueuedProject
+            Project parameters
+        workflow_settings : Dict[str, Any]
+            Workflow settings
+        kwargs :
+            Additional keyword arguments, e.g. workflow engine version.
+                * `nextflow_version`: Changes the used Nextflow version.
+
+        Returns
+        -------
+        List[str]
+            List of command parts to execute the workflow
+
+        """
+
+        command: List[str] = []
+
+        if kwargs["nextflow_version"] is not None and isinstance(kwargs["nextflow_version"], str) and kwargs["nextflow_version"] != "":
+            command += [
+                "env",
+                f"NXF_VER={kwargs['nextflow_version']}"
+            ]
+
         # Start `nextflow run -work-dir ... -with-weblog ...`
-        command = [
+        command += [
             str(self.workflow_engine_executable),
             "run",
             "-work-dir",

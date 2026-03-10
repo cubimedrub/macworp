@@ -1,13 +1,19 @@
 """Generates the command for executing a Nextflow workflow."""
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 from time import sleep
 from typing import Any, ClassVar, Dict, List
 
-from macworp_utils.exchange.queued_project import QueuedProject  # type: ignore[import-untyped]
-from macworp_utils.constants import SupportedWorkflowEngine  # type: ignore[import-untyped]
+from macworp_utils.constants import (
+    SupportedWorkflowEngine,  # type: ignore[import-untyped]
+)
+from macworp_utils.exchange.queued_project import (
+    QueuedProject,  # type: ignore[import-untyped]
+)
+
 from macworp_worker.workflow_engine_cmd_generators.cmd_generator import CmdGenerator
+
 
 class SnakemakeCmdGenerator(CmdGenerator):
     """Executes a workflow on a project."""
@@ -24,6 +30,7 @@ class SnakemakeCmdGenerator(CmdGenerator):
         work_dir: Path,
         project_params: QueuedProject,
         workflow_settings: Dict[str, Any],
+        **kwargs,
     ) -> List[str]:
         # Start `nextflow run -work-dir ... -with-weblog ...`
         command = [
@@ -70,14 +77,14 @@ class SnakemakeCmdGenerator(CmdGenerator):
         """
         Returns the snakefile option.
         If the workflow source is remote, the repository is cloned to the work directory.
-        
+
         Parameters
         ----------
         workflow_settings : Dict[str, Any]
             Workflow settings containing the source informatio
         work_dir : Path
             Path to the work directory where the workflow source will be cloned if remote
-        
+
         Returns
         -------
         List[str]

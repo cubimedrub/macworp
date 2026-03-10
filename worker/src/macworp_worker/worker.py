@@ -3,25 +3,26 @@
 # std imports
 import functools
 import logging
+import time
 from multiprocessing import Pipe, Queue
 from multiprocessing.connection import Connection, wait
 from multiprocessing.synchronize import Event as EventClass
 from pathlib import Path
 from queue import Full as FullQueueError
-import time
 from threading import Thread
 from typing import Any, List, Optional
 
 # external imports
 import pika
-from pika.channel import Channel
 from macworp_utils.exchange.queued_project import QueuedProject
+from pika.channel import Channel
+
+from macworp_worker.executor import Executor
 
 # internal imports
 from macworp_worker.logging import get_logger
 from macworp_worker.web.backend_web_api_client import BackendWebApiClient
 from macworp_worker.web.log_proxy.server import Server as LogProxy
-from macworp_worker.executor import Executor
 
 
 class AckHandler(Thread):

@@ -2,10 +2,12 @@
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Optional, Set
 
+from peewee import IntegrityError, PostgresqlDatabase
+
 # 3rd party imports
 from peewee_migrate import Router
-from peewee import PostgresqlDatabase, IntegrityError
-from yaml import load as yaml_load, Loader as YamlLoader
+from yaml import Loader as YamlLoader
+from yaml import load as yaml_load
 
 # internal imports
 # # Don't remove the model imports, they're needed for seeding

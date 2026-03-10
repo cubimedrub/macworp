@@ -116,7 +116,7 @@ The following JSON is the definition for the provided Nextflow variant of the in
 
 ### Definition elements
 
-* `engine`: Workflow engine to use. Options: `nextflow` & `snakemake`
+* `engine`: Workflow engine to use. Options: `nextflow` & `snakemake`. Optionally, the engine version can be added separated by a `|`, e.g. `nextflow|24.09.2-edge`. The version is currently used by Nextflow only, as it has the ability to up and downgrade itself.
 * `src`: Source defines the location of the workflow, which can be a local directory or a remote repository. In case of Nextflow it is also possible to run workflows from `nf-core`
     * Local example:
 

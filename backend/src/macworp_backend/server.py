@@ -1,10 +1,9 @@
-# std imports
+import uuid
+from pathlib import Path
 from typing import Optional
 
-# 3rd party imports
 from flask import Flask
 
-# internal imports
 from macworp_backend import app, socketio
 from macworp_backend.utility.configuration import Configuration
 
@@ -29,8 +28,13 @@ class Server:
     @classmethod
     def start(cls, interface: Optional[str] = None, port: Optional[int] = None):
         """
-        Starts the flask web server.
+        Write a unique uuid to the toplevel to of the upload/project directory for worker alignment and
+        starts the flask web server.
         """
+
+        with Path(Configuration.values()["upload_path"]).joinpath("exec-uuid.txt").open("w") as f:
+            f.write(str(uuid.uuid4()))
+
         socketio.run(
             app,
             interface if interface is not None else Configuration.values()["interface"],

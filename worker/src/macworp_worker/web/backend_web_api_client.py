@@ -7,12 +7,11 @@ from typing import ClassVar, Dict
 
 # 3rd party imports
 import requests
-from requests.auth import HTTPBasicAuth
-
 from macworp_utils.constants import (
     WEBLOG_WORKFLOW_ENGINE_HEADER,
     SupportedWorkflowEngine,
 )
+from requests.auth import HTTPBasicAuth
 
 
 class BackendWebApiClient:
@@ -245,6 +244,45 @@ class BackendWebApiClient:
                 if i < self.__class__.API_CALL_TRIES - 1:
                     logging.error(
                         "[WORKER / API CLIENT / ATTEMPT %i] Error while sending weblog to MAcWorP API: %s",
+                        i + 1,
+                        e,
+                    )
+                    sleep(self.__class__.RETRY_TIMEOUT)
+                    continue
+
+                raise e
+
+    def get_exec_uuid(self) -> str:
+        """
+        Requests the execution UUID set by MAcWorP when started.
+
+        Returns
+        -------
+        str
+            UUID
+
+        Raises
+        ------
+        ValueError
+            If the request was not successful.
+        """
+        url = f"{self.__macworp_base_url}/api/utilities/exec-uuid"
+        for i in range(self.__class__.API_CALL_TRIES):
+            try:
+                with requests.get(
+                    url,
+                    headers=self.__class__.HEADERS,
+                    timeout=self.__class__.TIMEOUT,
+                    verify=self.__verify_cert,
+                ) as response:
+                    if not response.ok:
+                        raise ValueError(f"Error getting exec uuid: {response.text}")
+
+                    return response.text.strip()
+            except requests.exceptions.ConnectionError as e:
+                if i < self.__class__.API_CALL_TRIES - 1:
+                    logging.error(
+                        "[WORKER / API CLIENT / ATTEMPT %i] Error while getting exec UUID from API: %s",
                         i + 1,
                         e,
                     )

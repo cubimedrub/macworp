@@ -45,8 +45,8 @@ In each shell te conda environment need be activated
 # Shell 1
 docker-compose up
 # Shell 2
-python -m macworp database migrate
-python -m macworp utility rabbitmq prepare
+python -m macworp_backend database migrate
+python -m macworp_backend utility rabbitmq prepare
 honcho -e dev.env start
 # Shell 3
 # Worker needs to run outside of honcho otherwise SDKMAN is not properly initialized when running Nextflow

@@ -1,0 +1,12 @@
+[package]
+name = "macworp_ui_core"
+version = "0.1.0"
+authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
+edition = "2021"
+
+
+[dependencies]
+dioxus = { workspace = true, features = ["router"] }
+manganis = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }

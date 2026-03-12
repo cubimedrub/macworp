@@ -1,0 +1,20 @@
+[package]
+name = "macworp_desktop"
+version = "0.1.0"
+authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
+edition = "2021"
+
+[dependencies]
+dioxus = { workspace = true, features = ["router", "desktop"] }
+directories = "6.0.0"
+macworp_backend = { workspace = true, features = ["integration"] }
+macworp_ui_core = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+
+[features]
+default = ["desktop"]
+desktop = ["dioxus/desktop"]

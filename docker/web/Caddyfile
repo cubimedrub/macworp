@@ -1,0 +1,6 @@
+:80 {
+	root * /usr/share/caddy
+	header Access-Control-Allow-Origin "*"
+	try_files {path} {path}/ /index.html
+	file_server
+}

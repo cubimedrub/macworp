@@ -1,0 +1,35 @@
+cff-version: 1.0.0
+message: "If you use this work in your research, please cite the following preprint:"
+title: "MAcWorP - Massively Accessible Workflow Platform"
+authors:
+  - family-names: "Winkelhardt"
+    given-names: "Dirk"
+    orcid: https://orcid.org/0000-0001-8770-2221
+  - family-names: "Berres"
+    given-names: "Sven"
+    orcid: https://orcid.org/0000-0002-9241-9137
+  - family-names: "Schork"
+    given-names: "Karin"
+    orcid: https://orcid.org/0000-0003-3756-4347
+  - family-names: "Eisenacher"
+    given-names: "Martin"
+    orcid: https://orcid.org/0000-0003-2687-7444
+  - family-names: "Uszkoreit"
+    given-names: "Julian"
+    orcid: https://orcid.org/0000-0001-7522-4007
+date-released:
+identifiers:
+  - type: doi
+    value: ""
+url: ""
+abstract: |
+  Background: To get the most insight out of current omics analyses it is necessary to combine various (bioinformatics) software tools. To achieve this in an
+  easy and reproducible way, workflow engines like Nextflow or Snakemake are used to build sophisticated data analysis pipelines. While those engines are powerful
+  tools for developers, they are a high obstacle to non-technical users due to their unfamiliarity to the command line or to Unix-like operating systems.
+
+  Results: The Massively Accessible Workflow Platform (MaCWorP) is designed to overcome these limitations by making powerful data analysis pipelines accessible
+  to less technically affine users via a web interface independent of the underlying workflow engine. Users can upload their data and run the embedded workflows
+  on the platform using a simple web browser. Furthermore, any result of the workflows can be visualized directly inside the browser as images, tables, interactive plots and more.
+
+  Conclusions: MAcWorP enables developers to quickly deploy Nextflow and Snakemake workflows on a web-based platform which creates a graphical user interface for the
+  workflow parameterization, execution and visualization of results. MAcWorP is open source and freely available at https://github.com/cubimedrub/macworp

@@ -1,33 +1,40 @@
-# Development
+# MAcWorP-Desktop
+Cross platform desktop application to run complex workflows on your local computer.
 
-Your new jumpstart project includes basic organization with an organized `assets` folder and a `components` folder.
-If you chose to develop with the router feature, you will also have a `views` folder.
+## Development
+
+Install [dioxus-cli](https://crates.io/crates/dioxus-cli)
+
+### Structure
 
 ```
 project/
-├─ assets/ # Any assets that are used by the app should be placed here
+├─ assets/ # Any assets specific for the desktop application
 ├─ src/
 │  ├─ main.rs # The entrypoint for the app. It also defines the routes for the app.
-│  ├─ components/
-│  │  ├─ mod.rs # Defines the components module
-│  │  ├─ hero.rs # The Hero component for use in the home page
-│  ├─ views/ # The views each route will render in the app.
-│  │  ├─ mod.rs # Defines the module for the views route and re-exports the components for each route
-│  │  ├─ blog.rs # The component that will render at the /blog/:id route
-│  │  ├─ home.rs # The component that will render at the / route
-├─ Cargo.toml # The Cargo.toml file defines the dependencies and feature flags for your project
+│  ├─ components/ # Desktop specific reusable compontents
+│  │  ├─ compontent1.rs 
+│  ├─ pages/ # Desktop specific page for the desktop application which show a single ressource or multiple ressources of the same type (lists/indexes) 
+│  │  ├─ page1.rs
+├─ Cargo.toml
 ```
 
-### Serving Your App
+Shared code between the desktop and web application should be put into the ui_core-crate.
 
-Run the following command in the root of your project to start developing with the default platform:
+### Running the app
 
 ```bash
-dx serve
+dx run --desktop`
 ```
 
-To run for a different platform, use the `--platform platform` flag. E.g.
+For passing argument to the underlaying binary add `--args`, e.g for increasing thrlog level:
+
 ```bash
-dx serve --platform desktop
+dx run --desktop --args=-vvvv`
 ```
 
+or see the help:s
+
+```bash
+dx run --desktop --args=--help
+```

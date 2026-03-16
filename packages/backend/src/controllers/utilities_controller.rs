@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::{Router, routing::get};
+use sqlx::Database;
 
 use crate::state::State;
 
@@ -11,7 +12,7 @@ impl UtilitiesController {
         "/utilities"
     }
 
-    pub fn routes() -> Router<Arc<State>> {
+    pub fn routes<T: Database>() -> Router<Arc<State<T>>> {
         Router::new()
             .route("/version", get(Self::version))
             .route("/healthcheck", get(Self::healthcheck))

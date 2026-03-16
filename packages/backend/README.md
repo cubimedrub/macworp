@@ -14,6 +14,9 @@ MAcWorP's central componentent to manage workflow execution on any kind of data.
     * Cloned workflow sources
   * Workflows are strictly confined into a project directory when executed
 
+## Features
+* `standalone` - Compiles for standalone deplyoment on a remote server.
+* `integration` - Integration into desktop application, switches to SQLite database.
 
 ## Developments
 

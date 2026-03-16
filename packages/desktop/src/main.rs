@@ -1,16 +1,135 @@
+mod errors;
+
+use std::{env, time::Duration};
+
+use clap::{command, Parser, Subcommand};
 use dioxus::prelude::*;
+use directories::ProjectDirs;
 
-use macworp_ui_core::{configuration::Configuration, routes::Route, FAVICON, MAIN_CSS};
+use macworp_core::logging::init_tracing_subscription;
+use macworp_ui_core::{
+    client::Client, configuration::Configuration, routes::Route, FAVICON, MAIN_CSS,
+};
 
+use crate::errors::Error;
+
+static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &[
+    "axum=error",
+    "dioxus_core=error",
+    "dioxus_signals=error",
+    "hyper_util=error",
+    "reqwest=error",
+    "sqlx=error",
+    "tao=error",
+    "tungstenite=error",
+    "warnings=error",
+];
+
+#[derive(Debug, Subcommand)]
+enum SubCommand {
+    /// Show version information
+    Version {},
+}
+
+#[derive(Debug, Parser)]
+#[command(name = env!("CARGO_PKG_NAME"))]
+struct CommandLineInterface {
+    /// Verbosity level
+    /// 0 - Error,
+    /// 1 - Warn,
+    /// 2 - Info,
+    /// 3 - Debug,
+    /// 4 - Trace
+    /// > 4 Set to tracing and remove all filter directives for underlaying crates
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+    #[command(subcommand)]
+    subcommand: Option<SubCommand>,
+}
+
+/// Starts the desktop version of MAcWorP.
+/// Application data is stored in the OS-specific application directory, see [Directories](https://docs.rs/directories/latest/directories/struct.ProjectDirs.html) for more information
+/// * qualifier: `de.ruhr-uni-bochum`
+/// * organization: `CUBiMed.RUB`
+/// * application: `env!("CARGO_PKG_NAME")`s
+///
+/// Database is SQL
 #[tokio::main]
-async fn main() {
-    // The `launch` function is the main entry point for a dioxus app. It takes a component and renders it with the platform feature
-    // you have enabled
-    tracing_subscriber::fmt::init();
+async fn main() -> Result<(), Error> {
+    let cli_args = CommandLineInterface::parse();
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    if let Some(subcommand) = &cli_args.subcommand {
+        match subcommand {
+            SubCommand::Version {} => {
+                println!("{}", env!("CARGO_PKG_VERSION"));
+            }
+        }
+    } else {
+        init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
+        match start().await {
+            Ok(_) => tracing::info!("Application stopped successfully"),
+            Err(e) => tracing::error!("Application stopped with error: {e}"),
+        }
+    }
 
-    let base_url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port(),);
+    Ok(())
+}
+
+/// Starts the desktop application with the backend running in the background
+///
+async fn start() -> Result<(), Error> {
+    let app_directory =
+        ProjectDirs::from("de.ruhr-uni-bochum", "CUBiMed.RUB", env!("CARGO_PKG_NAME"))
+            .ok_or(Error::ProjectDirectoryNotFound)?;
+
+    let app_data_directory = app_directory.data_dir();
+
+    tracing::info!(
+        "Application directory is: {}",
+        app_data_directory.to_str().unwrap()
+    );
+
+    if app_data_directory.is_file() {
+        return Err(Error::AppDirectoryCreation(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "App data directory path point to existing file",
+        )));
+    }
+
+    match app_data_directory.try_exists() {
+        Ok(true) => tracing::info!("App directory already exists"),
+        Ok(false) => {
+            tracing::info!("Creating app directory");
+            std::fs::create_dir_all(app_data_directory).map_err(Error::AppDirectoryCreation)?;
+        }
+        Err(err) => return Err(Error::AppDirectoryCreation(err)),
+    }
+
+    let database_path = app_data_directory.join("db.sqlite");
+
+    let database_url = format!("sqlite://{}", database_path.to_str().unwrap());
+
+    tracing::info!("Using database at: {}", database_url);
+
+    let mut backend_config = macworp_backend::configuration::Configuration::default();
+    *backend_config.database_url_mut() = database_url;
+    *backend_config.interface_mut() = "127.0.0.1".to_string();
+
+    let backend_listener =
+        tokio::net::TcpListener::bind(format!("{}:0", backend_config.interface()))
+            .await
+            .unwrap();
+
+    *backend_config.port_mut() = backend_listener
+        .local_addr()
+        .map_err(Error::BackendAddressNotFound)?
+        .port();
+
+    let base_url = format!(
+        "http://{}:{}",
+        backend_config.interface(),
+        backend_config.port()
+    );
 
     let (backend_shutdown_signal_sender, backend_shutdown_signal_receiver) =
         tokio::sync::oneshot::channel::<()>();
@@ -19,18 +138,51 @@ async fn main() {
     };
 
     let backend = tokio::spawn(async {
-        macworp_backend::start(listener, Box::pin(backend_shutdown_signal)).await
+        match macworp_backend::Backend::<sqlx::Sqlite>::start(
+            backend_listener,
+            Box::pin(backend_shutdown_signal),
+            backend_config,
+        )
+        .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                tracing::error!("Backend stopped with error: {e}");
+                Err(e)
+            }
+        }
     });
 
     let config = Configuration::new(base_url);
+
+    let client = Client::new(config.base_url().to_string(), 60);
+
+    // Wait for backend to come up.
+    loop {
+        if backend.is_finished() {
+            return Err(Error::BackendStoppedUnexpectedly);
+        }
+        match client.utilities().healthcheck().await {
+            Ok(_) => break,
+            Err(_) => {
+                tracing::warn!("Backend is not available yet, retrying in 100ms..");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+    }
 
     dioxus::LaunchBuilder::new()
         .with_context(config)
         .launch(App);
 
-    backend_shutdown_signal_sender.send(()).unwrap();
+    backend_shutdown_signal_sender
+        .send(())
+        .map_err(|_| Error::BackendStopSignal)?;
 
-    backend.await.unwrap();
+    backend
+        .await
+        .map_err(Error::BackendStopping)?
+        .map_err(Error::Backend)
 }
 
 #[component]

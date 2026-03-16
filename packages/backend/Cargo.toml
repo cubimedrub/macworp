@@ -17,13 +17,15 @@ dioxus = { workspace = true, optional = true, features = ["server"] }
 macworp_core = { workspace = true }
 sea-orm = { version = "2.0.0-rc.34", feature = ["macros"] }
 serde = { workspace = true, features = ["derive"] }
-sqlx = "0.8.6"
+sqlx = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+toml = { workspace = true, optional = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 
 [features]
 default = ["standalone"]
-standalone = ["dep:clap", "sqlx/postgres", "sea-orm/sqlx-postgres"]
-integration = ["dep:dioxus", "sqlx/sqlite", "sea-orm/sqlx-sqlite"]
+standalone = ["dep:clap", "dep:toml", "sqlx/postgres", "sqlx/runtime-tokio", "sea-orm/sqlx-postgres"]
+integration = ["dep:dioxus", "sqlx/sqlite", "sqlx/runtime-tokio", "sea-orm/sqlx-sqlite"]

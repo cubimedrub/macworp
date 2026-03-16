@@ -13,6 +13,8 @@ pub struct Model {
     pub lastname: String,
     pub email: String,
 
+    pub password: Option<String>,
+
     #[sea_orm(has_many, relation_enum = "OwnedGroups", via_rel = "Owner")]
     pub groups: HasMany<super::group::Entity>,
 

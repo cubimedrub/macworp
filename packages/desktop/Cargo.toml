@@ -5,11 +5,15 @@ authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
 edition = "2021"
 
 [dependencies]
+clap = { workspace = true, features = ["derive"] }
 dioxus = { workspace = true, features = ["router", "desktop"] }
 directories = "6.0.0"
 macworp_backend = { workspace = true, features = ["integration"] }
+macworp_core = { workspace = true }
 macworp_ui_core = { workspace = true }
 reqwest = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

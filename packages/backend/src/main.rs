@@ -1,29 +1,40 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
-use macworp_backend::start;
+use macworp_backend::{Backend, configuration::Configuration, standalone_error::StandaloneError};
 use macworp_core::logging::init_tracing_subscription;
+use sqlx::Pool;
+
+static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &["axum=error"];
 
 #[derive(Debug, Subcommand)]
 enum SubCommand {
+    /// Prints a new config
+    Config {},
+    /// Database migration
+    DbMigrate {
+        /// Configuration path
+        config: Option<PathBuf>,
+    },
     /// Start the backend server
     Serve {
-        /// Interface to bind to
-        interface: String,
-        /// Port to bind to, 0 will ask the OS for a free port.
-        port: u16,
+        /// Configuration path
+        config: Option<PathBuf>,
     },
     /// Show version information
     Version {},
 }
 
 #[derive(Debug, Parser)]
-#[command(name = "macworp")]
+#[command(name = env!("CARGO_PKG_NAME"))]
 struct CommandLineInterface {
     /// Verbosity level
     /// 0 - Error,
     /// 1 - Warn,
     /// 2 - Info,
     /// 3 - Debug,
-    /// > 3 - Trace
+    /// 4 - Trace
+    /// > 4 Set to tracing and remove all filter directives for underlaying crates
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
     #[command(subcommand)]
@@ -31,24 +42,65 @@ struct CommandLineInterface {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), StandaloneError> {
     let cli_args = CommandLineInterface::parse();
 
     match cli_args.subcommand {
-        SubCommand::Serve { interface, port } => {
-            init_tracing_subscription(cli_args.verbose, true);
+        SubCommand::Config {} => {
+            let config = Configuration::default();
 
-            let bind_address = format!("{}:{}", interface, port);
+            println!("{}", toml::to_string_pretty(&config).unwrap());
+        }
+        SubCommand::DbMigrate { config } => {
+            init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
+            let config = match config {
+                Some(config_path) => {
+                    let config_raw = std::fs::read_to_string(config_path)
+                        .map_err(StandaloneError::ConfigurationReadError)?;
+
+                    toml::from_str::<Configuration>(&config_raw)
+                        .map_err(StandaloneError::ConfigurationParseError)?
+                }
+                None => Configuration::default(),
+            };
+
+            let db = Pool::<sqlx::Postgres>::connect(config.database_url())
+                .await
+                .map_err(StandaloneError::DatabaseConnection)?;
+
+            sqlx::migrate!()
+                .run(&db)
+                .await
+                .map_err(macworp_backend::error::Error::DatabaseMigration)?;
+        }
+        SubCommand::Serve { config } => {
+            init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
+
+            let config = match config {
+                Some(config_path) => {
+                    let config_raw = std::fs::read_to_string(config_path)
+                        .map_err(StandaloneError::ConfigurationReadError)?;
+
+                    toml::from_str::<Configuration>(&config_raw)
+                        .map_err(StandaloneError::ConfigurationParseError)?
+                }
+                None => Configuration::default(),
+            };
+
+            let bind_address = format!("{}:{}", config.interface(), config.port());
             let listener = tokio::net::TcpListener::bind(bind_address).await.unwrap();
-            if port == 0 {
+            if config.port() == 0 {
                 tracing::info!("Starting on port {}", listener.local_addr().unwrap().port());
             }
-            start(listener, Box::pin(shutdown_signal())).await;
+            Backend::<sqlx::Postgres>::start(listener, Box::pin(shutdown_signal()), config)
+                .await
+                .map_err(StandaloneError::Backend)?;
         }
         SubCommand::Version {} => {
             println!("{}", env!("CARGO_PKG_VERSION"))
         }
     }
+    Ok(())
 }
 
 /// Shutdown signal that listens for Ctrl+C or SIGTERM and completes when either of them is received.

@@ -1,15 +1,13 @@
 use dioxus::prelude::*;
 use dioxus::router::Routable;
 
-use crate::components::navbar::Navbar;
+use crate::layouts::two_pane::TwoPane;
 use crate::pages::*;
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
-pub enum Route {
-    #[layout(Navbar)]
+pub enum Routes {
+    #[layout(TwoPane)]
         #[route("/")]
         Home {},
-        #[route("/blog/:id")]
-        Blog { id: i32 },
 }

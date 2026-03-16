@@ -8,7 +8,8 @@ use directories::ProjectDirs;
 
 use macworp_core::logging::init_tracing_subscription;
 use macworp_ui_core::{
-    client::Client, configuration::Configuration, routes::Route, FAVICON, MAIN_CSS,
+    client::Client, components::Bootstrap, configuration::Configuration, routes::Routes, FAVICON,
+    MAIN_CSS,
 };
 
 use crate::errors::Error;
@@ -193,7 +194,9 @@ fn App() -> Element {
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
+        Bootstrap {}
 
-        Router::<Route> {}
+
+        Router::<Routes> {}
     }
 }

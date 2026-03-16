@@ -1,6 +1,4 @@
-pub mod hero;
-pub mod navbar;
+pub mod bootstrap;
 
 // Re-export components
-pub use hero::Hero;
-pub use navbar::Navbar;
+pub use bootstrap::Bootstrap;

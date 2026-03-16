@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use macworp_ui_core::{configuration::Configuration, routes::Route, FAVICON, MAIN_CSS};
+use macworp_ui_core::{configuration::Configuration, routes::Routes, FAVICON, MAIN_CSS};
 
 fn main() {
     // The `launch` function is the main entry point for a dioxus app. It takes a component and renders it with the platform feature
@@ -40,6 +40,6 @@ fn App() -> Element {
 
         // The router component renders the route enum we defined above. It will handle synchronization of the URL and render
         // the layouts and components for the active route.
-        Router::<Route> {}
+        Router::<Routes> {}
     }
 }

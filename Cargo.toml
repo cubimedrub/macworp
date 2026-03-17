@@ -4,6 +4,7 @@ members = [
     "packages/backend",
     "packages/core",
     "packages/desktop",
+    "packages/migration",
     "packages/ui_core",
     "packages/web",
     "packages/worker"
@@ -15,6 +16,7 @@ dioxus = { version = "0.7.3" }
 manganis = { version = "0.7.3" }
 reqwest = { version = "0.13.2" }
 serde = { version = "1.0.228" }
+sea-orm = { version = "2.0.0-rc.37" }
 sqlx = "0.8.6"
 thiserror = { version = "2.0.18" }
 tokio = { version = "1.50.0" }
@@ -26,4 +28,5 @@ tracing-subscriber = { version = "0.3.2" }
 # workspace
 macworp_backend = { path = "packages/backend" }
 macworp_core = { path = "packages/core" }
+macworp_database_migration = { path = "packages/migration" }
 macworp_ui_core = { path = "packages/ui_core" }

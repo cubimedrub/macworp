@@ -139,7 +139,7 @@ async fn start() -> Result<(), Error> {
     };
 
     let backend = tokio::spawn(async {
-        match macworp_backend::Backend::<sqlx::Sqlite>::start(
+        match macworp_backend::Backend::start_inegration(
             backend_listener,
             Box::pin(backend_shutdown_signal),
             backend_config,

@@ -12,7 +12,7 @@ macro_rules! routing {
 
             impl [<$name Routing>] {
                 $(
-                    pub fn [< $path:lower _path >]() -> &'static str {
+                    pub fn [< $path:snake _path >]() -> &'static str {
                         concat!("/", stringify!([< $path:lower >]))
                     }
                 )+
@@ -28,3 +28,4 @@ macro_rules! routing {
 }
 
 routing!(Utilities, "healthcheck", "version");
+routing!(Login, "login-password");

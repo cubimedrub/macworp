@@ -7,7 +7,7 @@ pub enum StandaloneError {
     #[error("Failed to parse configuration file")]
     ConfigurationParseError(#[source] toml::de::Error),
     #[error("Unable to connect to database: {0}")]
-    DatabaseConnection(sqlx::Error),
+    DatabaseConnection(sea_orm::DbErr),
     #[error("{0}")]
     Core(#[from] macworp_core::error::Error),
     #[error("{0}")]

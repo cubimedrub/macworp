@@ -1,17 +1,14 @@
-use sqlx::{Database, Pool};
+use sea_orm::{Database, DatabaseConnection};
 
 use crate::{configuration::Configuration, error::Error};
 
-pub struct State<T: Database> {
+pub struct State {
     config: Configuration,
-    db: Pool<T>,
+    db: DatabaseConnection,
 }
 
-impl<T> State<T>
-where
-    T: Database,
-{
-    async fn new(config: Configuration, db: Pool<T>) -> Result<Self, Error> {
+impl State {
+    async fn new(config: Configuration, db: DatabaseConnection) -> Result<Self, Error> {
         Ok(Self { config, db })
     }
 
@@ -19,15 +16,15 @@ where
         &self.config
     }
 
-    pub fn db(&self) -> &Pool<T> {
+    pub fn db(&self) -> &DatabaseConnection {
         &self.db
     }
 }
 
 #[cfg(feature = "standalone")]
-impl State<sqlx::Postgres> {
+impl State {
     pub async fn new_for_standalone(config: Configuration) -> Result<Self, Error> {
-        let db = Pool::connect(config.database_url())
+        let db = Database::connect(config.database_url())
             .await
             .map_err(Error::DatabaseConnection)?;
 
@@ -36,19 +33,21 @@ impl State<sqlx::Postgres> {
 }
 
 #[cfg(feature = "integration")]
-impl State<sqlx::Sqlite> {
+impl State {
     pub async fn new_for_integration(config: Configuration) -> Result<Self, Error> {
-        use std::str::FromStr;
+        use sea_orm::ConnectOptions;
+        use sqlx::sqlite::SqliteJournalMode;
 
-        use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
+        let mut connect_options = ConnectOptions::new(config.database_url());
 
-        let options = SqliteConnectOptions::from_str(config.database_url())
-            .unwrap()
-            .journal_mode(SqliteJournalMode::Wal)
-            .read_only(false)
-            .create_if_missing(true);
+        connect_options.map_sqlx_sqlite_opts(|sqlite_options| {
+            sqlite_options
+                .journal_mode(SqliteJournalMode::Wal)
+                .read_only(false)
+                .create_if_missing(true)
+        });
 
-        let db = Pool::connect_with(options)
+        let db = Database::connect(connect_options)
             .await
             .map_err(Error::DatabaseConnection)?;
 

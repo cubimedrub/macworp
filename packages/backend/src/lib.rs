@@ -1,5 +1,5 @@
-/// Authentication providers
-pub mod auth_providers;
+/// Authentication
+pub mod authentication;
 /// Backend configuration
 pub mod configuration;
 /// Controllers providing the web API endpoints
@@ -22,19 +22,13 @@ use std::sync::Arc;
 
 use axum::Router;
 use macworp_core::routing::{IsRouting, UtilitiesRouting};
-use sqlx::Database;
 use tokio::net::TcpListener;
 
 use crate::{configuration::Configuration, controllers::*, error::Error, state::State};
 
-pub struct Backend<T: Database> {
-    _database_marker: std::marker::PhantomData<T>,
-}
+pub struct Backend;
 
-impl<T> Backend<T>
-where
-    T: Database,
-{
+impl Backend {
     /// Starts the backend on the provides TCP port.
     ///
     /// # Arguments
@@ -44,7 +38,7 @@ where
     pub async fn internal_start(
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
-        state: State<T>,
+        state: State,
     ) -> Result<(), Error> {
         let state = Arc::new(state);
 
@@ -63,14 +57,14 @@ where
 }
 
 #[cfg(feature = "standalone")]
-impl Backend<sqlx::Postgres> {
+impl Backend {
     /// Database and starts the backend on the provides TCP port.
     ///
     /// # Arguments
     /// * `tcp_listener` - The TCP listener to accept incoming connections on
     /// * `shutdown_signal` - A signal to gracefully shutdown the backend, e.g. when receiving a SIGINT
     /// * `config` - The backend configuration, e.g. database URL, interface and
-    pub async fn start(
+    pub async fn start_standalone(
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
         config: Configuration,
@@ -81,22 +75,23 @@ impl Backend<sqlx::Postgres> {
 }
 
 #[cfg(feature = "integration")]
-impl Backend<sqlx::Sqlite> {
+impl Backend {
     /// Migrates the database and starts the backend on the provides TCP port.
     ///
     /// # Arguments
     /// * `tcp_listener` - The TCP listener to accept incoming connections on
     /// * `shutdown_signal` - A signal to gracefully shutdown the backend
     /// * `config` - The backend configuration to use
-    pub async fn start(
+    pub async fn start_inegration(
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
         config: Configuration,
     ) -> Result<(), Error> {
+        use macworp_database_migration::{Migrator, MigratorTrait};
+
         let state = State::new_for_integration(config).await?;
 
-        sqlx::migrate!()
-            .run(state.db())
+        Migrator::up(state.db(), None)
             .await
             .map_err(Error::DatabaseMigration)?;
 

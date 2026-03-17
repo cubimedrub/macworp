@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
 use axum::{Router, routing::get};
-use sqlx::Database;
-
 use macworp_core::routing::UtilitiesRouting;
 
 use crate::state::State;
@@ -10,7 +8,7 @@ use crate::state::State;
 pub struct UtilitiesController;
 
 impl UtilitiesController {
-    pub fn routes<T: Database>() -> Router<Arc<State<T>>> {
+    pub fn routes() -> Router<Arc<State>> {
         Router::new()
             .route(UtilitiesRouting::version_path(), get(Self::version))
             .route(UtilitiesRouting::healthcheck_path(), get(Self::healthcheck))

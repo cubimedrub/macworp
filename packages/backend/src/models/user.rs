@@ -6,14 +6,17 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
-    #[sea_orm(unique)]
+    #[sea_orm(unique, indexed)]
     pub username: String,
 
     pub firstname: String,
     pub lastname: String,
     pub email: String,
 
+    #[sea_orm(nullable)]
     pub password: Option<String>,
+    #[sea_orm(nullable)]
+    pub access_token: Option<String>,
 
     #[sea_orm(has_many, relation_enum = "OwnedGroups", via_rel = "Owner")]
     pub groups: HasMany<super::group::Entity>,

@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use macworp_backend::{Backend, configuration::Configuration, standalone_error::StandaloneError};
 use macworp_core::logging::init_tracing_subscription;
-use sqlx::Pool;
+use macworp_database_migration::{Migrator, MigratorTrait};
+use sea_orm::Database;
 
 static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &["axum=error"];
 
@@ -64,14 +65,13 @@ async fn main() -> Result<(), StandaloneError> {
                 None => Configuration::default(),
             };
 
-            let db = Pool::<sqlx::Postgres>::connect(config.database_url())
+            let db = Database::connect(config.database_url())
                 .await
                 .map_err(StandaloneError::DatabaseConnection)?;
 
-            sqlx::migrate!()
-                .run(&db)
+            Migrator::up(&db, None)
                 .await
-                .map_err(macworp_backend::error::Error::DatabaseMigration)?;
+                .map_err(macworp_backend::error::Error::DatabaseMigration)?
         }
         SubCommand::Serve { config } => {
             init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
@@ -92,7 +92,7 @@ async fn main() -> Result<(), StandaloneError> {
             if config.port() == 0 {
                 tracing::info!("Starting on port {}", listener.local_addr().unwrap().port());
             }
-            Backend::<sqlx::Postgres>::start(listener, Box::pin(shutdown_signal()), config)
+            Backend::start_standalone(listener, Box::pin(shutdown_signal()), config)
                 .await
                 .map_err(StandaloneError::Backend)?;
         }

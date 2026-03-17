@@ -20,8 +20,6 @@ MAcWorP's central componentent to manage workflow execution on any kind of data.
 
 ## Developments
 
-Install [sqlx-cli](https://crates.io/crates/sqlx-cli)
-
 ### Structure
 
 ```

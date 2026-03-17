@@ -1,0 +1,9 @@
+[package]
+edition      = "2024"
+name         = "macworp_database_migration"
+publish      = false
+version      = "0.1.0"
+
+[dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+sea-orm-migration = "2.0.0-rc.37"

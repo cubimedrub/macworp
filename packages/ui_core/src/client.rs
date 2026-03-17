@@ -1,3 +1,5 @@
+use macworp_core::routing::*;
+
 /// Client to communicate with MAcWorP's backend.
 ///
 pub struct Client {
@@ -42,7 +44,12 @@ impl<'a> UtilitiesClient<'a> {
     /// Returns the backend version
     ///
     pub async fn version(&self) -> Result<String, reqwest::Error> {
-        let url = format!("{}/utilities/version", self.base_url);
+        let url = format!(
+            "{}{}{}",
+            self.base_url,
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::version_path()
+        );
         let client = reqwest::Client::new();
         let response = client
             .get(&url)
@@ -55,7 +62,12 @@ impl<'a> UtilitiesClient<'a> {
     /// Returns true it the backends answers with 200
     ///
     pub async fn healthcheck(&self) -> Result<bool, reqwest::Error> {
-        let url = format!("{}/utilities/healthcheck", self.base_url);
+        let url = format!(
+            "{}{}{}",
+            self.base_url,
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::healthcheck_path()
+        );
         let client = reqwest::Client::new();
         let response = client
             .get(&url)

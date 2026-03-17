@@ -21,6 +21,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::Router;
+use macworp_core::routing::{IsRouting, UtilitiesRouting};
 use sqlx::Database;
 use tokio::net::TcpListener;
 
@@ -48,7 +49,10 @@ where
         let state = Arc::new(state);
 
         let router = Router::new()
-            .nest(UtilitiesController::path(), UtilitiesController::routes())
+            .nest(
+                UtilitiesRouting::controller_path(),
+                UtilitiesController::routes(),
+            )
             .with_state(state);
 
         axum::serve(tcp_listener, router)

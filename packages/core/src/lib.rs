@@ -5,3 +5,5 @@ pub mod entities;
 pub mod error;
 /// Various functionality to logging/tracing
 pub mod logging;
+/// Routing segments of controllers
+pub mod routing;

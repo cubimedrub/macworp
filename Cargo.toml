@@ -14,6 +14,7 @@ members = [
 clap = { version = "4.5.60", features = ["derive"] }
 dioxus = { version = "0.7.3" }
 manganis = { version = "0.7.3" }
+password-auth = { version = "1.0.0" }
 reqwest = { version = "0.13.2" }
 serde = { version = "1.0.228" }
 sea-orm = { version = "2.0.0-rc.37" }

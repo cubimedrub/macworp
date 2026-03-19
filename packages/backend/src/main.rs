@@ -1,12 +1,34 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use macworp_backend::{Backend, configuration::Configuration, standalone_error::StandaloneError};
+use macworp_backend::{
+    Backend, configuration::Configuration, models::ActiveUser, standalone_error::StandaloneError,
+};
 use macworp_core::logging::init_tracing_subscription;
 use macworp_database_migration::{Migrator, MigratorTrait};
 use sea_orm::Database;
 
 static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &["axum=error"];
+
+#[derive(Debug, Subcommand)]
+enum UserSubCommand {
+    /// Create a new user
+    Create {
+        #[clap(short, long)]
+        /// Configuration path
+        config: Option<PathBuf>,
+        /// Username of the new user
+        username: String,
+        /// firstname of the new user
+        firstname: String,
+        /// lastname of the new user
+        lastname: String,
+        /// email of the new user
+        email: String,
+    },
+    /// Hashs the given password, e.g. for the
+    Password {},
+}
 
 #[derive(Debug, Subcommand)]
 enum SubCommand {
@@ -21,6 +43,10 @@ enum SubCommand {
     Serve {
         /// Configuration path
         config: Option<PathBuf>,
+    },
+    User {
+        #[command(subcommand)]
+        subcommand: UserSubCommand,
     },
     /// Show version information
     Version {},
@@ -96,6 +122,70 @@ async fn main() -> Result<(), StandaloneError> {
                 .await
                 .map_err(StandaloneError::Backend)?;
         }
+        SubCommand::User { subcommand } => match subcommand {
+            UserSubCommand::Create {
+                config,
+                username,
+                firstname,
+                lastname,
+                email,
+            } => {
+                let config = match config {
+                    Some(config_path) => {
+                        let config_raw = std::fs::read_to_string(config_path)
+                            .map_err(StandaloneError::ConfigurationReadError)?;
+
+                        toml::from_str::<Configuration>(&config_raw)
+                            .map_err(StandaloneError::ConfigurationParseError)?
+                    }
+                    None => Configuration::default(),
+                };
+
+                let db = Database::connect(config.database_url())
+                    .await
+                    .map_err(StandaloneError::DatabaseConnection)?;
+
+                let password = rpassword::prompt_password("Password: ")
+                    .map_err(StandaloneError::PasswordRead)?;
+                let password_confirmation = rpassword::prompt_password("Repeat password: ")
+                    .map_err(StandaloneError::PasswordRead)?;
+
+                if password != password_confirmation {
+                    return Err(StandaloneError::PasswordConfirmation);
+                }
+
+                let password_hash = password_auth::generate_hash(password.as_bytes());
+
+                let new_user = ActiveUser::builder()
+                    .set_username(username)
+                    .set_firstname(firstname)
+                    .set_lastname(lastname)
+                    .set_email(email)
+                    .set_password(password_hash);
+
+                new_user.insert(&db).await.map_err(|err| {
+                    macworp_backend::error::Error::Database(
+                        "creating a new user via CLI".to_string(),
+                        err,
+                    )
+                })?;
+            }
+            UserSubCommand::Password {} => {
+                let password = rpassword::prompt_password("Password: ")
+                    .map_err(StandaloneError::PasswordRead)?;
+
+                let password_confirmation = rpassword::prompt_password("Repeat password: ")
+                    .map_err(StandaloneError::PasswordRead)?;
+
+                if password != password_confirmation {
+                    return Err(StandaloneError::PasswordConfirmation);
+                }
+
+                let password_hash = password_auth::generate_hash(password.as_bytes());
+
+                println!("{}", password_hash);
+            }
+        },
         SubCommand::Version {} => {
             println!("{}", env!("CARGO_PKG_VERSION"))
         }

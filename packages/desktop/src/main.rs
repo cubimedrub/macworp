@@ -1,18 +1,20 @@
 mod errors;
+mod storage;
 
 use std::{env, time::Duration};
 
 use clap::{command, Parser, Subcommand};
 use dioxus::prelude::*;
 use directories::ProjectDirs;
+use rand::prelude::*;
 
 use macworp_core::logging::init_tracing_subscription;
 use macworp_ui_core::{
-    client::Client, components::Bootstrap, configuration::Configuration, routes::Routes, FAVICON,
-    MAIN_CSS,
+    client::Client, components::Bootstrap, configuration::Configuration, storage::IsStroage,
+    FAVICON, MAIN_CSS,
 };
 
-use crate::errors::Error;
+use crate::{errors::Error, router::Router, storage::Storage};
 
 static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &[
     "axum=error",
@@ -106,6 +108,20 @@ async fn start() -> Result<(), Error> {
         Err(err) => return Err(Error::AppDirectoryCreation(err)),
     }
 
+    let password_path = app_data_directory.join("pwd");
+
+    if password_path.is_dir() {
+        return Err(Error::PasswordFileIsDirectory);
+    }
+
+    let application_password = if password_path.is_file() {
+        std::fs::read_to_string(password_path).map_err(Error::PasswordFileRead)
+    } else {
+        let new_password = generate_password();
+        std::fs::write(password_path, &new_password).map_err(Error::PasswordFileWrite)?;
+        Ok(new_password)
+    }?;
+
     let database_path = app_data_directory.join("db.sqlite");
 
     let database_url = format!("sqlite://{}", database_path.to_str().unwrap());
@@ -115,6 +131,8 @@ async fn start() -> Result<(), Error> {
     let mut backend_config = macworp_backend::configuration::Configuration::default();
     *backend_config.database_url_mut() = database_url;
     *backend_config.interface_mut() = "127.0.0.1".to_string();
+    *backend_config.worker_mut().password_mut() =
+        password_auth::generate_hash(application_password.as_bytes());
 
     let backend_listener =
         tokio::net::TcpListener::bind(format!("{}:0", backend_config.interface()))
@@ -139,7 +157,7 @@ async fn start() -> Result<(), Error> {
     };
 
     let backend = tokio::spawn(async {
-        match macworp_backend::Backend::start_inegration(
+        match macworp_backend::Backend::start_integration(
             backend_listener,
             Box::pin(backend_shutdown_signal),
             backend_config,
@@ -154,9 +172,9 @@ async fn start() -> Result<(), Error> {
         }
     });
 
-    let config = Configuration::new(base_url);
+    let config = Configuration::new(base_url, 20);
 
-    let client = Client::new(config.base_url().to_string(), 60);
+    let client = Client::new(config.base_url().to_string(), config.timeout());
 
     // Wait for backend to come up.
     loop {
@@ -172,8 +190,19 @@ async fn start() -> Result<(), Error> {
         }
     }
 
+    let mut storage = Storage::new();
+
+    let jwt = client
+        .login()
+        .login_with_password("admin".to_string(), application_password.clone())
+        .await
+        .map_err(Error::LoginFailed)?;
+
+    storage.set_jwt(Some(jwt));
+
     dioxus::LaunchBuilder::new()
         .with_context(config)
+        .with_context(storage)
         .launch(App);
 
     backend_shutdown_signal_sender
@@ -186,10 +215,28 @@ async fn start() -> Result<(), Error> {
         .map_err(Error::Backend)
 }
 
+/// Creates a random 64 character password from ascii characters.
+/// This method does not produce recommended passwords or enforces
+/// any kind of pasword rules
+///
+fn generate_password() -> String {
+    // Pretty much every ASCII char on a keyboard
+    let alphabet = (33..=126).collect::<Vec<u8>>();
+
+    let mut rng = rand::rng();
+    let password: String = (0..64)
+        .map(|_| alphabet.choose(&mut rng).cloned().unwrap() as char)
+        .collect();
+
+    password
+}
+
 #[component]
 fn App() -> Element {
     let config = use_resource(async || use_context::<Configuration>());
+    let storage = use_context::<Storage>();
     use_context_provider(|| config);
+    use_context_provider(|| storage);
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }

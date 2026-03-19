@@ -9,6 +9,7 @@ edition = "2021"
 [dependencies]
 dioxus = { workspace = true, features = ["router"] }
 macworp_ui_core = { workspace = true }
+web-sys = { version = "0.3.91", features = ["Storage"] }
 
 [features]
 default = ["web"]

@@ -11,6 +11,8 @@ directories = "6.0.0"
 macworp_backend = { workspace = true, features = ["integration"] }
 macworp_core = { workspace = true }
 macworp_ui_core = { workspace = true }
+password-auth = { workspace = true }
+rand = "0.10.0"
 reqwest = { workspace = true }
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
 thiserror = { workspace = true }

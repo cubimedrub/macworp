@@ -1,6 +1,10 @@
+mod storage;
+
 use dioxus::prelude::*;
 
 use macworp_ui_core::{configuration::Configuration, routes::Routes, FAVICON, MAIN_CSS};
+
+use crate::storage::Storage;
 
 fn main() {
     // The `launch` function is the main entry point for a dioxus app. It takes a component and renders it with the platform feature

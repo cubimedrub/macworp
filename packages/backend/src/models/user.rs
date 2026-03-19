@@ -15,8 +15,6 @@ pub struct Model {
 
     #[sea_orm(nullable)]
     pub password: Option<String>,
-    #[sea_orm(nullable)]
-    pub access_token: Option<String>,
 
     #[sea_orm(has_many, relation_enum = "OwnedGroups", via_rel = "Owner")]
     pub groups: HasMany<super::group::Entity>,

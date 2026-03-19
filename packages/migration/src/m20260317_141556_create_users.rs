@@ -17,7 +17,6 @@ impl MigrationTrait for Migration {
                     .col(string_len("lastname", 128))
                     .col(string_len_uniq("email", 128))
                     .col(string_null("password"))
-                    .col(string_null("access_token"))
                     .to_owned(),
             )
             .await

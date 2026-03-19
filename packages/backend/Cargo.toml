@@ -12,13 +12,17 @@ path = "src/main.rs"
 
 [dependencies]
 axum = "0.8.8"
+base64 = "0.22.1"
+chrono = "0.4.44"
 clap = { workspace = true, optional = true }
 dioxus = { workspace = true, optional = true, features = ["server"] }
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"]}
 macworp_core = { workspace = true }
 macworp_database_migration = { workspace = true }
-password-auth = "1.0.0"
+password-auth = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
-sea-orm = { workspace = true, feature = ["macros"] }
+rpassword = { version = "7.4.0", optional = true }
+sea-orm = { workspace = true, features = ["macros"] }
 serde = { workspace = true, features = ["derive"] }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
@@ -30,5 +34,5 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [features]
 default = ["standalone"]
-standalone = ["dep:clap", "dep:toml", "sqlx/postgres", "sqlx/runtime-tokio", "sea-orm/sqlx-postgres"]
+standalone = ["dep:clap", "dep:rpassword", "dep:toml", "sqlx/postgres", "sqlx/runtime-tokio", "sea-orm/sqlx-postgres"]
 integration = ["dep:dioxus", "sqlx/sqlite", "sqlx/runtime-tokio", "sea-orm/sqlx-sqlite"]

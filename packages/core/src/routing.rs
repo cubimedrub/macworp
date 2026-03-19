@@ -4,6 +4,7 @@ pub trait IsRouting {
     fn controller_path() -> &'static str;
 }
 
+/// Creates a simple Routing struct for one controller to centralize the path segments of the URL
 #[macro_export]
 macro_rules! routing {
     ($name:ident, $( $path:literal ),+) => {
@@ -28,4 +29,5 @@ macro_rules! routing {
 }
 
 routing!(Utilities, "healthcheck", "version");
-routing!(Login, "login-password");
+routing!(Login, "with_password");
+routing!(Users, "current");

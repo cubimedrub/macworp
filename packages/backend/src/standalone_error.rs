@@ -8,6 +8,10 @@ pub enum StandaloneError {
     ConfigurationParseError(#[source] toml::de::Error),
     #[error("Unable to connect to database: {0}")]
     DatabaseConnection(sea_orm::DbErr),
+    #[error("Failed to read password file: {0}")]
+    PasswordRead(std::io::Error),
+    #[error("Password confirmation does not match")]
+    PasswordConfirmation,
     #[error("{0}")]
     Core(#[from] macworp_core::error::Error),
     #[error("{0}")]

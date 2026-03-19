@@ -6,6 +6,10 @@ pub enum Error {
     DatabaseConnection(sea_orm::DbErr),
     #[error("Unable to migrate database: {0}")]
     DatabaseMigration(sea_orm::DbErr),
+    #[error("Database error when {0}: {1}")]
+    Database(String, sea_orm::DbErr),
     #[error("Unable to start backend: {0}")]
     BackendStart(std::io::Error),
+    #[error("Error during authentication: {0}")]
+    Authentication(#[from] crate::authentication::error::Error),
 }

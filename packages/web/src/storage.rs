@@ -1,4 +1,4 @@
-use macworp_ui_core::storage::IsStroage;
+use macworp_ui_core::storage::IsStorage;
 use thiserror::Error;
 
 use web_sys::{window, Storage as LocalStorage};
@@ -27,7 +27,7 @@ impl Storage {
         let storage = window()
             .ok_or(Error::UnableToGetWindows)?
             .local_storage()
-            .map_err(Error::LocalStorageAccess)?
+            .map_err(|_| Error::LocalStorageAccess)?
             .ok_or(Error::MissingLocalStorageSupport)?;
 
         Ok(Self {
@@ -36,18 +36,25 @@ impl Storage {
     }
 }
 
-impl IsStroage for Storage {
+impl IsStorage for Storage {
     type Error = Error;
 
     fn jwt(&self) -> Result<Option<String>, Self::Error> {
         self.inner_storage
             .get_item(JWT_KEY)
-            .map_err(Error::LocalStorageAccess)
+            .map_err(|_| Error::LocalStorageAccess)
     }
 
     fn set_jwt(&mut self, jwt: Option<String>) -> Result<(), Self::Error> {
-        self.inner_storage
-            .set_item(JWT_KEY, jwt)
-            .map_err(Error::LocalStorageAccess)
+        match jwt {
+            Some(jwt) => self
+                .inner_storage
+                .set_item(JWT_KEY, &jwt)
+                .map_err(|_| Error::LocalStorageAccess),
+            None => self
+                .inner_storage
+                .remove_item(JWT_KEY)
+                .map_err(|_| Error::LocalStorageAccess),
+        }
     }
 }

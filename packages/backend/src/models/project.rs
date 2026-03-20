@@ -7,8 +7,8 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub owner_id: i64,
+    pub path: Option<String>,
     pub name: String,
-    pub is_public: bool,
 
     #[sea_orm(belongs_to, from = "owner_id", to = "id")]
     pub owner: HasOne<super::user::Entity>,

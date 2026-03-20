@@ -25,8 +25,8 @@ pub enum Error {
     MissingAuthorizationHeader,
     #[error("Authentication token is not valid")]
     Unauthorized,
-    #[error("State missing")]
-    StateMissing,
+    #[error("State missing: {0}")]
+    StateMissing(axum::extract::rejection::ExtensionRejection),
 }
 
 impl IntoResponse for Error {

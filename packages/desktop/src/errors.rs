@@ -16,6 +16,8 @@ pub enum Error {
     BackendStoppedUnexpectedly,
     #[error("{0}")]
     Core(#[from] macworp_core::error::Error),
+    #[error("Login failed: {0}")]
+    LoginFailed(macworp_ui_core::client::Error),
     #[error("Unable to read password file: {0}")]
     PasswordFileRead(std::io::Error),
     #[error("Unable to write password file: {0}")]
@@ -24,4 +26,6 @@ pub enum Error {
     PasswordFileIsDirectory,
     #[error("Failed to get project directory")]
     ProjectDirectoryNotFound,
+    #[error(transparent)]
+    Storage(#[from] crate::storage::Error),
 }

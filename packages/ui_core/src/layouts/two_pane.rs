@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use dioxus::prelude::*;
 
-use crate::{client::Client, configuration::Configuration, routes::Routes};
+use crate::{client::Client, configuration::Configuration, router::IsRouter};
 
 enum NavigationState {
     Open,
@@ -19,8 +19,8 @@ impl Display for NavigationState {
 }
 
 #[component]
-pub fn TwoPane() -> Element {
-    let desktop_version = use_signal(|| env!("CARGO_PKG_VERSION"));
+pub fn TwoPane<R: IsRouter>() -> Element {
+    let frontend_version = use_signal(|| env!("CARGO_PKG_VERSION"));
     let mut navigation_state = use_signal(|| NavigationState::Open);
     let config = use_context::<Resource<Configuration>>();
 
@@ -79,7 +79,22 @@ pub fn TwoPane() -> Element {
             }
 
             nav {
-                class: "flex-fill overflow-auto"
+                class: "flex-fill overflow-auto",
+                ul {
+                    class: "navbar-nav me-auto mb-2 mb-lg-0",
+
+                    li {
+                        class: "nav-item",
+                        Link {
+                            class: "nav-link",
+                            to: R::project_index_route(),
+                            i {
+                                class: "fa-solid fa-diagram-project"
+                            }
+                            "Projects"
+                        }
+                    }
+                }
             }
 
             nav {
@@ -90,7 +105,7 @@ pub fn TwoPane() -> Element {
                 class: "software d-flex flex-column",
 
                 span {
-                    "Desktop version: {desktop_version}"
+                    "Frontend version: {frontend_version}"
                 }
                 span {
                     match &*backend_version.read() {
@@ -102,8 +117,8 @@ pub fn TwoPane() -> Element {
             }
         }
         main {
-            class: "main-panel min-vh-100 flex-fill conainer-fluid",
-            Outlet::<Routes> {}
+            class: "main-panel min-vh-100 flex-fill conainer-fluid p-1",
+            Outlet::<R> {}
         }
     })
 }

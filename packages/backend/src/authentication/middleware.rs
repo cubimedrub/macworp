@@ -6,7 +6,7 @@ use axum::{
     http::{HeaderValue, request::Parts},
 };
 use base64::prelude::*;
-use macworp_core::authentication::TokenType;
+use macworp_core::authentication::{AUTHORIZATION_HEADER_NAME, TokenType};
 use sea_orm::EntityTrait;
 
 use crate::{
@@ -28,11 +28,11 @@ where
         let Extension(app_state) = parts
             .extract::<Extension<Arc<State>>>()
             .await
-            .map_err(|_| Error::StateMissing)?;
+            .map_err(Error::StateMissing)?;
 
         let auth_header = &parts
             .headers
-            .get("Authorization")
+            .get(AUTHORIZATION_HEADER_NAME)
             .ok_or(Error::MissingAuthorizationHeader)?;
 
         let (token_type, token) = split_authorization_header(auth_header)?;

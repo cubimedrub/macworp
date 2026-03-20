@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use thiserror::Error;
 
+pub const AUTHORIZATION_HEADER_NAME: &str = "authorization";
+
 const JSON_WEB_TOKEN: &str = "JWT";
 const BASIC_AUTH_TOKEN: &str = "Basic";
 

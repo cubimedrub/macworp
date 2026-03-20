@@ -1,10 +1,12 @@
+mod pages;
+mod router;
 mod storage;
 
 use dioxus::prelude::*;
 
-use macworp_ui_core::{configuration::Configuration, routes::Routes, FAVICON, MAIN_CSS};
+use macworp_ui_core::{configuration::Configuration, FAVICON, MAIN_CSS};
 
-use crate::storage::Storage;
+use crate::{router::Router, storage::Storage};
 
 fn main() {
     // The `launch` function is the main entry point for a dioxus app. It takes a component and renders it with the platform feature
@@ -29,13 +31,14 @@ async fn create_config() -> Configuration {
         }
     };
 
-    Configuration::new(format!("{}//{}", scheme, domain))
+    Configuration::new(format!("{}//{}", scheme, domain), 60)
 }
 
 #[component]
 fn App() -> Element {
     let config = use_resource(create_config);
     use_context_provider(|| config);
+    use_context_provider(|| Signal::new(Storage::new()));
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
@@ -44,6 +47,6 @@ fn App() -> Element {
 
         // The router component renders the route enum we defined above. It will handle synchronization of the URL and render
         // the layouts and components for the active route.
-        Router::<Routes> {}
+        Router::<Router> {}
     }
 }

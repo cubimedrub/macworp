@@ -10,8 +10,10 @@ pub mod configuration;
 pub mod layouts;
 /// Pages showing a single task (a resource, resource list, resource edit, ...)
 pub mod pages;
-/// Routes to navigate
-pub mod routes;
+/// Defintion of a router
+pub mod router;
+/// Trait defining how to store data, e.g. login etc.
+pub mod storage;
 
 /// The common favicon
 pub const FAVICON: Asset = asset!("/assets/favicon.ico");

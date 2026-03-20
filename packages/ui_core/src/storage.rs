@@ -1,4 +1,4 @@
-pub trait IsStroage: Clone {
+pub trait IsStorage: Clone {
     type Error: std::error::Error;
 
     /// Returns the JWT

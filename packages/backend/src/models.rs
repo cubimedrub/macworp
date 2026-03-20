@@ -12,7 +12,9 @@ pub use group::{ActiveModel as ActiveGroup, Entity as GroupTable, Model as Group
 // Entity as GroupShareTable,
 // Model as GroupShare, ActiveModel as ActiveGroupShare
 // };
-pub use project::{ActiveModel as ActiveProject, Entity as ProjectTable, Model as Project};
+pub use project::{
+    ActiveModel as ActiveProject, Column as ProjectColumn, Entity as ProjectTable, Model as Project,
+};
 pub use user::{ActiveModel as ActiveUser, Entity as UserTable, Model as User};
 // pub use user_share::{
 // Entity as UserShareTable,

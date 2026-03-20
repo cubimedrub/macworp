@@ -1,4 +1,6 @@
 mod errors;
+mod pages;
+mod router;
 mod storage;
 
 use std::{env, time::Duration};
@@ -10,11 +12,13 @@ use rand::prelude::*;
 
 use macworp_core::logging::init_tracing_subscription;
 use macworp_ui_core::{
-    client::Client, components::Bootstrap, configuration::Configuration, storage::IsStroage,
+    client::Client, components::Bootstrap, configuration::Configuration, storage::IsStorage,
     FAVICON, MAIN_CSS,
 };
 
 use crate::{errors::Error, router::Router, storage::Storage};
+
+const DESKTOP_USER_NAME: &str = "admin";
 
 static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &[
     "axum=error",
@@ -157,10 +161,13 @@ async fn start() -> Result<(), Error> {
     };
 
     let backend = tokio::spawn(async {
-        match macworp_backend::Backend::start_integration(
+        match macworp_backend::Backend::<
+            macworp_backend::filesystems::local_filesystem::LocalFilesystem,
+        >::start(
             backend_listener,
             Box::pin(backend_shutdown_signal),
             backend_config,
+            DESKTOP_USER_NAME.to_string(),
         )
         .await
         {
@@ -194,11 +201,11 @@ async fn start() -> Result<(), Error> {
 
     let jwt = client
         .login()
-        .login_with_password("admin".to_string(), application_password.clone())
+        .login_with_password(DESKTOP_USER_NAME.to_string(), application_password.clone())
         .await
         .map_err(Error::LoginFailed)?;
 
-    storage.set_jwt(Some(jwt));
+    storage.set_jwt(Some(jwt))?;
 
     dioxus::LaunchBuilder::new()
         .with_context(config)
@@ -236,7 +243,7 @@ fn App() -> Element {
     let config = use_resource(async || use_context::<Configuration>());
     let storage = use_context::<Storage>();
     use_context_provider(|| config);
-    use_context_provider(|| storage);
+    use_context_provider(|| Signal::new(storage));
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
@@ -244,6 +251,6 @@ fn App() -> Element {
         Bootstrap {}
 
 
-        Router::<Routes> {}
+        Router::<Router> {}
     }
 }

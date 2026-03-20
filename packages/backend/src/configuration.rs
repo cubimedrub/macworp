@@ -8,6 +8,8 @@ pub struct Configuration {
     secret: String,
     /// Duration after the login expires in seconds
     login_validity: Option<u32>,
+    /// Project path used on standalone
+    projects_path: String,
     /// Worker credentials
     worker: WorkerCredentials,
 }
@@ -53,6 +55,14 @@ impl Configuration {
         &mut self.login_validity
     }
 
+    pub fn projects_path(&self) -> &str {
+        &self.projects_path
+    }
+
+    pub fn projects_path_mut(&mut self) -> &mut String {
+        &mut self.projects_path
+    }
+
     pub fn worker(&self) -> &WorkerCredentials {
         &self.worker
     }
@@ -69,7 +79,8 @@ impl Default for Configuration {
             port: 8080,
             database_url: "postgresql://postgres:postgres@127.0.0.1:5432/postgres".to_string(), // for the provided docker compose
             secret: "development".to_string(),
-            login_validity: Some(1),
+            login_validity: None,
+            projects_path: "dev_projects".to_string(),
             worker: WorkerCredentials::default(),
         }
     }

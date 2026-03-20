@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use macworp_backend::{
-    Backend, configuration::Configuration, models::ActiveUser, standalone_error::StandaloneError,
+    Backend, configuration::Configuration, filesystems::remote_filesystem::RemoteFilesystem,
+    models::ActiveUser, standalone_error::StandaloneError,
 };
 use macworp_core::logging::init_tracing_subscription;
 use macworp_database_migration::{Migrator, MigratorTrait};
@@ -118,7 +119,7 @@ async fn main() -> Result<(), StandaloneError> {
             if config.port() == 0 {
                 tracing::info!("Starting on port {}", listener.local_addr().unwrap().port());
             }
-            Backend::start_standalone(listener, Box::pin(shutdown_signal()), config)
+            Backend::<RemoteFilesystem>::start(listener, Box::pin(shutdown_signal()), config)
                 .await
                 .map_err(StandaloneError::Backend)?;
         }

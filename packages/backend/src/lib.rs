@@ -6,6 +6,8 @@ pub mod configuration;
 mod controllers;
 /// Backend errors
 pub mod error;
+/// Defines how project content is loaded from different filesystems
+pub mod filesystems;
 /// Models abstracting the database access
 pub mod models;
 /// State of the backend, e.g. connection pool
@@ -18,15 +20,30 @@ pub mod standalone_error;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use axum::Router;
-use macworp_core::routing::{IsRouting, LoginRouting, UsersRouting, UtilitiesRouting};
+use axum::{Extension, Router};
+use macworp_core::routing::{
+    IsRouting, LoginRouting, ProjectsRouting, UsersRouting, UtilitiesRouting,
+};
 use tokio::net::TcpListener;
 
-use crate::{configuration::Configuration, controllers::*, error::Error, state::State};
+use crate::{
+    configuration::Configuration, controllers::*, error::Error,
+    filesystems::is_filesystem::IsFilesystem, state::State,
+};
 
-pub struct Backend;
+#[cfg(feature = "integration")]
+use crate::filesystems::local_filesystem::LocalFilesystem;
+#[cfg(feature = "standalone")]
+use crate::filesystems::remote_filesystem::RemoteFilesystem;
 
-impl Backend {
+pub struct Backend<F: IsFilesystem + 'static> {
+    _filesystem: std::marker::PhantomData<F>,
+}
+
+impl<F> Backend<F>
+where
+    F: IsFilesystem,
+{
     /// Starts the backend on the provides TCP port.
     ///
     /// # Arguments
@@ -53,6 +70,11 @@ impl Backend {
                 UsersRouting::controller_path(),
                 UsersController::routes(state.clone()),
             )
+            .nest(
+                ProjectsRouting::controller_path(),
+                ProjectsController::<F>::routes(state.clone()),
+            )
+            .layer(Extension(state.clone()))
             .with_state(state);
 
         axum::serve(tcp_listener, router)
@@ -63,14 +85,14 @@ impl Backend {
 }
 
 #[cfg(feature = "standalone")]
-impl Backend {
+impl Backend<RemoteFilesystem> {
     /// Database and starts the backend on the provides TCP port.
     ///
     /// # Arguments
     /// * `tcp_listener` - The TCP listener to accept incoming connections on
     /// * `shutdown_signal` - A signal to gracefully shutdown the backend, e.g. when receiving a SIGINT
     /// * `config` - The backend configuration, e.g. database URL, interface and
-    pub async fn start_standalone(
+    pub async fn start(
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
         config: Configuration,
@@ -81,17 +103,18 @@ impl Backend {
 }
 
 #[cfg(feature = "integration")]
-impl Backend {
+impl Backend<LocalFilesystem> {
     /// Migrates the database and starts the backend on the provides TCP port.
     ///
     /// # Arguments
     /// * `tcp_listener` - The TCP listener to accept incoming connections on
     /// * `shutdown_signal` - A signal to gracefully shutdown the backend
     /// * `config` - The backend configuration to use
-    pub async fn start_integration(
+    pub async fn start(
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
         config: Configuration,
+        desktop_user_name: String,
     ) -> Result<(), Error> {
         use macworp_database_migration::{Migrator, MigratorTrait};
 
@@ -103,7 +126,7 @@ impl Backend {
             .await
             .map_err(Error::DatabaseMigration)?;
 
-        match UserTable::find_by_username("desktop")
+        match UserTable::find_by_username(&desktop_user_name)
             .one(state.db())
             .await
             .map_err(|err| Error::Database("selecting user on integrated start".to_string(), err))?
@@ -122,9 +145,9 @@ impl Backend {
             }
             None => {
                 let new_user = ActiveUser::builder()
-                    .set_username("desktop".to_string())
-                    .set_firstname("desktop".to_string())
-                    .set_lastname("desktop".to_string())
+                    .set_username(&desktop_user_name)
+                    .set_firstname(&desktop_user_name)
+                    .set_lastname(&desktop_user_name)
                     .set_email("".to_string())
                     .set_password(state.config().worker().password().to_string());
                 let user = new_user.insert(state.db()).await.map_err(|err| {

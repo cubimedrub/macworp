@@ -1,4 +1,8 @@
-use macworp_ui_core::storage::IsStroage;
+use macworp_ui_core::storage::IsStorage;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Error {}
 
 #[derive(Debug, Clone)]
 pub struct Storage {
@@ -11,11 +15,11 @@ impl Storage {
     }
 }
 
-impl IsStroage for Storage {
-    type Error = ();
+impl IsStorage for Storage {
+    type Error = Error;
 
     fn jwt(&self) -> Result<Option<String>, Self::Error> {
-        Ok(self.jwt)
+        Ok(self.jwt.clone())
     }
 
     fn set_jwt(&mut self, jwt: Option<String>) -> Result<(), Self::Error> {

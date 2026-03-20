@@ -11,3 +11,6 @@ manganis = { workspace = true }
 macworp_core = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+urlencoding = { workspace = true }

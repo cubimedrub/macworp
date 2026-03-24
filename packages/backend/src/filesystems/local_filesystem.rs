@@ -46,4 +46,9 @@ impl IsFilesystem for LocalFilesystem {
 
         Ok(path)
     }
+
+    async fn delete_project_directory(_state: &State, _project: &Project) -> Result<(), Error> {
+        // Not messing around with local filesystem
+        Ok(())
+    }
 }

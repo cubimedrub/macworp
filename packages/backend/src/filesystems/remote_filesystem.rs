@@ -39,4 +39,16 @@ impl IsFilesystem for RemoteFilesystem {
 
         Ok(path)
     }
+
+    async fn delete_project_directory(state: &State, project: &Project) -> Result<(), Error> {
+        let project_path =
+            PathBuf::from(state.config().projects_path()).join(project.id.to_string());
+
+        tokio::fs::remove_dir_all(project_path)
+            .await
+            .map_err(|err| {
+                Error::RemoteFilesystem(RemoteFilesystemError::DeleteProjectDirectory(err))
+            })?;
+        Ok(())
+    }
 }

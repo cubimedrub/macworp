@@ -48,4 +48,15 @@ pub trait IsFilesystem {
             .for_each(|comp| final_path = final_path.join(comp));
         final_path
     }
+
+    /// Deletes the project directory if supported by the FS
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    /// * `project` - The project to delete the folder for
+    ///
+    fn delete_project_directory(
+        state: &State,
+        project: &Project,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 }

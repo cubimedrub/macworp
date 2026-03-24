@@ -25,4 +25,6 @@ pub enum LocalFilesystemError {
 pub enum RemoteFilesystemError {
     #[error("Failed to create project directory")]
     CreateProjectDirectoryFailed(#[source] std::io::Error),
+    #[error("Failed to delete project directory")]
+    DeleteProjectDirectory(#[source] std::io::Error),
 }

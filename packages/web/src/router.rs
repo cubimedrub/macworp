@@ -28,7 +28,7 @@ pub enum Router {
         ProjectIndex,
         #[route("/projects/new")]
         ProjectNew,
-        #[route("/projects/:id", ProjectEdit<Storage>)]
+        #[route("/projects/:id", ProjectEdit<Storage, Router>)]
         ProjectEdit{ id: i64 },
 }
 

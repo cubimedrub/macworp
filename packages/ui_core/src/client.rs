@@ -362,4 +362,41 @@ impl<'a> ProjectsClient<'a> {
             .await
             .map_err(Error::Request)
     }
+
+    pub async fn delete(&self, jwt: &str, id: i64) -> Result<bool, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            ProjectsRouting::controller_path(),
+            ProjectsRouting::DELETE_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to delete project: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::Backend(format!(
+                "Failed to delete project: HTTP {}, response text: {}",
+                status, text
+            )));
+        }
+
+        Ok(response.status().is_success())
+    }
 }

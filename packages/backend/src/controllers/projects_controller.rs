@@ -6,10 +6,13 @@ use axum::{
     routing::{get, post},
 };
 
+use http::StatusCode;
 use macworp_core::{
     requests::NewProjectRequest, responses::ProjectResponse, routing::ProjectsRouting,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, TransactionError, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, EntityTrait, ModelTrait, QueryFilter, TransactionError, TransactionTrait,
+};
 use serde::Deserialize;
 
 use crate::{
@@ -39,6 +42,7 @@ where
             .route(ProjectsRouting::INDEX_PATH, get(Self::index))
             .route(ProjectsRouting::NEW_PATH, post(Self::new))
             .route(ProjectsRouting::EDIT_PATH, get(Self::edit))
+            .route(ProjectsRouting::DELETE_PATH, post(Self::delete))
             .with_state(state)
     }
 
@@ -155,5 +159,45 @@ where
                 .map(|dir| dir.to_string_lossy().to_string())
                 .collect(),
         }))
+    }
+
+    async fn delete(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+        Path(id): Path<i64>,
+    ) -> Result<StatusCode, ProjectsControllerError> {
+        let project = ProjectTable::find_by_id(id)
+            .one(state.db())
+            .await
+            .map_err(ProjectsControllerError::Database)?
+            .ok_or(ProjectsControllerError::ProjectNotFound)?;
+
+        if project.owner_id != user.id {
+            return Err(ProjectsControllerError::Forbidden);
+        }
+        state
+            .clone()
+            .db()
+            .transaction::<_, (), ProjectsControllerError>(|txn| {
+                Box::pin(async move {
+                    F::delete_project_directory(state.as_ref(), &project)
+                        .await
+                        .map_err(ProjectsControllerError::Filesystem)?;
+
+                    project
+                        .delete(txn)
+                        .await
+                        .map_err(ProjectsControllerError::Database)?;
+
+                    Ok(())
+                })
+            })
+            .await
+            .map_err(|err| match err {
+                TransactionError::Connection(err) => ProjectsControllerError::Database(err),
+                TransactionError::Transaction(err) => err,
+            })?;
+
+        Ok(StatusCode::OK)
     }
 }

@@ -3989,6 +3989,7 @@ dependencies = [
  "chrono",
  "clap",
  "dioxus",
+ "http",
  "jsonwebtoken",
  "macworp_core",
  "macworp_database_migration",
@@ -4001,6 +4002,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml 1.0.6+spec-1.1.0",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "urlencoding",
@@ -4064,6 +4066,7 @@ name = "macworp_web"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "macworp_core",
  "macworp_ui_core",
  "thiserror 2.0.18",
  "web-sys",

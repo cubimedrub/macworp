@@ -16,6 +16,7 @@ base64 = "0.22.1"
 chrono = "0.4.44"
 clap = { workspace = true, optional = true }
 dioxus = { workspace = true, optional = true, features = ["server"] }
+http = { workspace = true }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"]}
 macworp_core = { workspace = true }
 macworp_database_migration = { workspace = true }
@@ -28,6 +29,7 @@ sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 toml = { workspace = true, optional = true }
+tower-http = { workspace = true, features = ["cors"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 urlencoding = { workspace = true }

@@ -21,10 +21,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::{Extension, Router};
+use http::Method;
 use macworp_core::routing::{
     IsRouting, LoginRouting, ProjectsRouting, UsersRouting, UtilitiesRouting,
 };
 use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::{
     configuration::Configuration, controllers::*, error::Error,
@@ -57,6 +59,17 @@ where
     ) -> Result<(), Error> {
         let state = Arc::new(state);
 
+        // Add CORS layer
+        let cors = CorsLayer::new()
+            .allow_methods([Method::GET, Method::POST])
+            .allow_headers(vec![
+                http::header::ACCEPT,
+                http::header::CONTENT_TYPE,
+                http::header::DNT,
+                http::header::AUTHORIZATION,
+            ])
+            .allow_origin(Any);
+
         let router = Router::new()
             .nest(
                 UtilitiesRouting::controller_path(),
@@ -75,7 +88,13 @@ where
                 ProjectsController::<F>::routes(state.clone()),
             )
             .layer(Extension(state.clone()))
-            .with_state(state);
+            .with_state(state)
+            .layer(cors);
+
+        tracing::info!(
+            "Starting MaCWorP backend on {}",
+            tcp_listener.local_addr().unwrap()
+        );
 
         axum::serve(tcp_listener, router)
             .with_graceful_shutdown(shutdown_signal)

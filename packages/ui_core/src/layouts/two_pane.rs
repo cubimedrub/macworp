@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use dioxus::prelude::*;
 
-use crate::{client::Client, configuration::Configuration, router::IsRouter};
+use crate::{client::Client, configuration::Configuration, router::IsRouter, storage::IsStorage};
 
 enum NavigationState {
     Open,
@@ -19,19 +19,31 @@ impl Display for NavigationState {
 }
 
 #[component]
-pub fn TwoPane<R: IsRouter>() -> Element {
+pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
+    let storage = use_context::<S>();
+
+    // Check if user is logged in
+    match storage.jwt() {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            let nav = navigator();
+            nav.push(R::login_route(Some(
+                "Please log in to access the application".to_string(),
+            )));
+        }
+        Err(err) => {
+            let nav = navigator();
+            nav.push(R::error_route(format!("{err}")));
+        }
+    }
+
     let frontend_version = use_signal(|| env!("CARGO_PKG_VERSION"));
     let mut navigation_state = use_signal(|| NavigationState::Open);
-    let config = use_context::<Resource<Configuration>>();
 
     let backend_version: Resource<Option<String>> = use_resource(move || async move {
-        let base_url = match config.read_unchecked().as_ref() {
-            Some(config) => config.base_url().to_string(),
-            None => return None,
-        };
-
+        let config = use_context::<Configuration>();
         Some(
-            Client::new(base_url, 10)
+            Client::new(config.base_url().to_string(), 10)
                 .utilities()
                 .version()
                 .await

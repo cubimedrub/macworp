@@ -1,3 +1,6 @@
+use std::hash::{Hash, Hasher};
+
+use macworp_core::responses::LoginProviderResponse;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,6 +15,9 @@ pub struct Configuration {
     projects_path: String,
     /// Worker credentials
     worker: WorkerCredentials,
+    /// Login providers
+    // TODO: Store as hashset, needs custom module for serialization
+    login_providers: Vec<LoginProvider>,
 }
 
 impl Configuration {
@@ -70,6 +76,14 @@ impl Configuration {
     pub fn worker_mut(&mut self) -> &mut WorkerCredentials {
         &mut self.worker
     }
+
+    pub fn login_providers(&self) -> &Vec<LoginProvider> {
+        &self.login_providers
+    }
+
+    pub fn login_providers_mut(&mut self) -> &mut Vec<LoginProvider> {
+        &mut self.login_providers
+    }
 }
 
 impl Default for Configuration {
@@ -82,6 +96,7 @@ impl Default for Configuration {
             login_validity: None,
             projects_path: "dev_projects".to_string(),
             worker: WorkerCredentials::default(),
+            login_providers: vec![LoginProvider::Local(LocalLoginProvider::default())],
         }
     }
 }
@@ -132,6 +147,36 @@ impl Default for WorkerCredentials {
         Self {
             username: "worker".to_string(),
             password: password_auth::generate_hash(b"developer"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum LoginProvider {
+    Local(LocalLoginProvider),
+}
+
+/// Login provider using the internal database
+///
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct LocalLoginProvider {
+    pub registration: bool,
+}
+
+impl From<&LoginProvider> for LoginProviderResponse {
+    fn from(value: &LoginProvider) -> Self {
+        match value {
+            LoginProvider::Local(provider) => LoginProviderResponse::Local(provider.registration),
+        }
+    }
+}
+
+impl Hash for LoginProvider {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            LoginProvider::Local(_) => {
+                "local".hash(state);
+            }
         }
     }
 }

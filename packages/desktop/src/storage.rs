@@ -1,7 +1,7 @@
 use macworp_ui_core::storage::IsStorage;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum Error {}
 
 #[derive(Debug, Clone)]

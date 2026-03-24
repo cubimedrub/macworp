@@ -4,10 +4,9 @@ version = "0.1.0"
 authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
 edition = "2021"
 
-
-
 [dependencies]
 dioxus = { workspace = true, features = ["router"] }
+macworp_core = { workspace = true }
 macworp_ui_core = { workspace = true }
 thiserror = { workspace = true }
 web-sys = { version = "0.3.91", features = ["Storage"] }

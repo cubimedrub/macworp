@@ -201,7 +201,7 @@ async fn start() -> Result<(), Error> {
 
     let jwt = client
         .login()
-        .login_with_password(DESKTOP_USER_NAME.to_string(), application_password.clone())
+        .local_login(DESKTOP_USER_NAME.to_string(), application_password.clone())
         .await
         .map_err(Error::LoginFailed)?;
 
@@ -240,16 +240,19 @@ fn generate_password() -> String {
 
 #[component]
 fn App() -> Element {
-    let config = use_resource(async || use_context::<Configuration>());
-    let storage = use_context::<Storage>();
+    // Get configuration and storage
+    let config = consume_context::<Configuration>();
+    let storage = consume_context::<Storage>();
+
+    // Make both available app wide
     use_context_provider(|| config);
-    use_context_provider(|| Signal::new(storage));
+    // Storage need to be wrapped in Result, like on web version (depending on Browser storage initialization may fail)
+    use_context_provider(|| storage);
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
         Bootstrap {}
-
 
         Router::<Router> {}
     }

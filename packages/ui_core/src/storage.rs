@@ -1,5 +1,7 @@
 pub trait IsStorage: Clone {
-    type Error: std::error::Error;
+    const JWT_KEY: &str = "jwt";
+
+    type Error: std::error::Error + Clone;
 
     /// Returns the JWT
     fn jwt(&self) -> Result<Option<String>, Self::Error>;

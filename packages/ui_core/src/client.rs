@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use macworp_core::{
     authentication::{TokenType, AUTHORIZATION_HEADER_NAME as PLAIN_AUTHORIZATION_HEADER_NAME},
     requests::{NewProjectRequest, PasswordLoginRequest},
-    responses::{ProjectResponse, UserResponse},
+    responses::{LoginProviderResponse, ProjectResponse, UserResponse},
     routing::*,
 };
 use reqwest::header::HeaderName;
@@ -167,16 +167,12 @@ impl<'a> LoginClient<'a> {
 
     /// Returns the backend version
     ///
-    pub async fn login_with_password(
-        &self,
-        username: String,
-        password: String,
-    ) -> Result<String, Error> {
+    pub async fn local_login(&self, username: String, password: String) -> Result<String, Error> {
         let url = format!(
             "{}{}{}",
             self.base_client.base_url(),
             LoginRouting::controller_path(),
-            LoginRouting::with_password_path()
+            LoginRouting::WITH_LOCAL
         );
         let client = reqwest::Client::new();
         let body = PasswordLoginRequest { username, password };
@@ -187,6 +183,33 @@ impl<'a> LoginClient<'a> {
             .send()
             .await?;
         response.text().await.map_err(Error::Request)
+    }
+
+    /// Returns the configured login providers
+    ///
+    pub async fn login_providers(&self) -> Result<Vec<LoginProviderResponse>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            LoginRouting::controller_path(),
+            LoginRouting::LOGIN_PROVIDERS_PATH
+        );
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+        response.json().await.map_err(Error::Request)
+    }
+
+    pub fn open_id_connect_url(&self, provider_name: &str) -> String {
+        format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            LoginRouting::controller_path(),
+            LoginRouting::WITH_OPEN_ID_CONNECT.replace("{name}", provider_name)
+        )
     }
 }
 

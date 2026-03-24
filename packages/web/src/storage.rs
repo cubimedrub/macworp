@@ -3,10 +3,8 @@ use thiserror::Error;
 
 use web_sys::{window, Storage as LocalStorage};
 
-const JWT_KEY: &str = "jwt";
-
 /// Error for stroage access
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum Error {
     #[error("Unable to get browser window for storage access")]
     UnableToGetWindows,
@@ -41,7 +39,7 @@ impl IsStorage for Storage {
 
     fn jwt(&self) -> Result<Option<String>, Self::Error> {
         self.inner_storage
-            .get_item(JWT_KEY)
+            .get_item(Self::JWT_KEY)
             .map_err(|_| Error::LocalStorageAccess)
     }
 
@@ -49,11 +47,11 @@ impl IsStorage for Storage {
         match jwt {
             Some(jwt) => self
                 .inner_storage
-                .set_item(JWT_KEY, &jwt)
+                .set_item(Self::JWT_KEY, &jwt)
                 .map_err(|_| Error::LocalStorageAccess),
             None => self
                 .inner_storage
-                .remove_item(JWT_KEY)
+                .remove_item(Self::JWT_KEY)
                 .map_err(|_| Error::LocalStorageAccess),
         }
     }

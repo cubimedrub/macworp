@@ -31,8 +31,19 @@ macro_rules! routing {
 }
 
 routing!(Utilities, "healthcheck", "version");
-routing!(Login, "with_password");
+
 routing!(Users, "current");
+
+pub struct LoginRouting;
+impl LoginRouting {
+    pub const WITH_LOCAL: &str = "/with-local";
+    pub const LOGIN_PROVIDERS_PATH: &str = "/login-providers";
+    pub const WITH_OPEN_ID_CONNECT: &str = "/with-oidc/{name}";
+}
+
+impl IsRouting for LoginRouting {
+    const CONTROLLER_PATH: &str = "/login";
+}
 
 pub struct ProjectsRouting;
 impl ProjectsRouting {

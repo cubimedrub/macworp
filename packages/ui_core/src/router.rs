@@ -1,7 +1,11 @@
 use dioxus::router::{NavigationTarget, Routable};
 
 pub trait IsRouter: Routable {
-    fn project_new_route() -> NavigationTarget;
-    fn project_index_route() -> NavigationTarget;
-    fn project_route(id: i64) -> NavigationTarget;
+    const LOGIN_VARIANT: Self;
+
+    fn project_new_route() -> NavigationTarget<Self>;
+    fn project_index_route() -> NavigationTarget<Self>;
+    fn project_route(id: i64) -> NavigationTarget<Self>;
+    fn login_route(message: Option<String>) -> NavigationTarget<Self>;
+    fn error_route(message: String) -> NavigationTarget<Self>;
 }

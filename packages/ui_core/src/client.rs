@@ -1,16 +1,12 @@
 use std::path::PathBuf;
 
 use macworp_core::{
-    authentication::{TokenType, AUTHORIZATION_HEADER_NAME as PLAIN_AUTHORIZATION_HEADER_NAME},
+    authentication::TokenType,
     requests::{NewProjectRequest, PasswordLoginRequest},
     responses::{LoginProviderResponse, ProjectResponse, UserResponse},
     routing::*,
 };
-use reqwest::header::HeaderName;
 use thiserror::Error;
-
-const AUTHENTICATION_HEADER_NAME: HeaderName =
-    HeaderName::from_static(PLAIN_AUTHORIZATION_HEADER_NAME);
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -139,7 +135,7 @@ impl<'a> UsersClient<'a> {
         let client = reqwest::Client::new();
         let response = client
             .post(&url)
-            .header(AUTHENTICATION_HEADER_NAME, jwt)
+            .header(http::header::AUTHORIZATION, jwt)
             .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
             .send()
             .await?;
@@ -241,7 +237,7 @@ impl<'a> ProjectsClient<'a> {
         let response = client
             .get(&url)
             .header(
-                AUTHENTICATION_HEADER_NAME,
+                http::header::AUTHORIZATION,
                 format!("{} {jwt}", TokenType::Jwt),
             )
             .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
@@ -288,7 +284,7 @@ impl<'a> ProjectsClient<'a> {
         let response = client
             .post(&url)
             .header(
-                AUTHENTICATION_HEADER_NAME,
+                http::header::AUTHORIZATION,
                 format!("{} {jwt}", TokenType::Jwt),
             )
             .json(&body)
@@ -340,7 +336,7 @@ impl<'a> ProjectsClient<'a> {
         let response = client
             .get(&url)
             .header(
-                AUTHENTICATION_HEADER_NAME,
+                http::header::AUTHORIZATION,
                 format!("{} {jwt}", TokenType::Jwt),
             )
             .timeout(std::time::Duration::from_secs(self.base_client.timeout()))

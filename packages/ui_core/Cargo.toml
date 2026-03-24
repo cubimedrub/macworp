@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 dioxus = { workspace = true, features = ["router"] }
+http = { workspace = true }
 manganis = { workspace = true }
 macworp_core = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }

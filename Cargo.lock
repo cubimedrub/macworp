@@ -4051,6 +4051,7 @@ name = "macworp_ui_core"
 version = "0.1.0"
 dependencies = [
  "dioxus",
+ "http",
  "macworp_core",
  "manganis",
  "reqwest 0.13.2",

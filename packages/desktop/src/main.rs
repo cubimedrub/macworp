@@ -245,9 +245,9 @@ fn App() -> Element {
     let storage = consume_context::<Storage>();
 
     // Make both available app wide
-    use_context_provider(|| config);
+    use_context_provider(|| Signal::new(config));
     // Storage need to be wrapped in Result, like on web version (depending on Browser storage initialization may fail)
-    use_context_provider(|| storage);
+    use_context_provider(|| Signal::new(storage));
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }

@@ -4,14 +4,17 @@ use macworp_ui_core::{client::Client, components::Spinner, configuration::Config
 
 use crate::router::Router;
 
-fn get_login_url(provider: &LoginProviderResponse) -> NavigationTarget<Router> {
+fn get_login_url(
+    config: &Signal<Configuration>,
+    provider: &LoginProviderResponse,
+) -> NavigationTarget<Router> {
     match provider {
         LoginProviderResponse::Local(_) => NavigationTarget::Internal(Router::LocalLogin),
         LoginProviderResponse::OpenIdConnect {
             name,
             description: _,
         } => {
-            let config = use_context::<Configuration>();
+            let config = config.read().clone();
             NavigationTarget::External(
                 Client::new(config.base_url().to_string(), config.timeout())
                     .login()
@@ -28,8 +31,11 @@ pub struct LoginProps {
 
 #[component]
 pub fn Login(props: LoginProps) -> Element {
-    let login_providers = use_resource(async || {
-        let config = use_context::<Configuration>();
+    let config = use_context::<Signal<Configuration>>();
+
+    let login_providers = use_resource(move || async move {
+        let config = config.read().clone();
+
         tracing::info!("Fetching login providers from {}", config.base_url());
         Client::new(config.base_url().to_string(), config.timeout())
             .login()
@@ -67,7 +73,7 @@ pub fn Login(props: LoginProps) -> Element {
                                 }
                                 Link {
                                     class: "btn btn-primary",
-                                    to: get_login_url(provider),
+                                    to: get_login_url(&config, provider),
                                     "login"
                                 }
                             }

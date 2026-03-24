@@ -18,6 +18,9 @@ pub enum Error {
 
 #[component]
 pub fn New() -> Element {
+    let storage = use_context::<Signal<Storage>>();
+    let config = use_context::<Signal<Configuration>>();
+
     let mut project_name = use_signal(String::new);
     let is_create_button_disabled = use_memo(move || project_name.read().is_empty());
 
@@ -28,13 +31,13 @@ pub fn New() -> Element {
             return Ok::<(), Error>(());
         }
 
-        let storage = use_context::<Storage>();
-        let config = use_context::<Configuration>();
-
         let jwt = storage
+            .read()
             .jwt()
             .map_err(Error::Storage)?
             .ok_or(Error::NotLoggedIn)?;
+
+        let config = config.read().clone();
 
         let project = Client::new(config.base_url().to_string(), config.timeout())
             .projects()

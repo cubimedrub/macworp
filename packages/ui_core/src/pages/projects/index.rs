@@ -21,15 +21,18 @@ pub enum Error<S: IsStorage> {
 
 #[component]
 pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
+    let storage = use_context::<Signal<S>>();
+    let config = use_context::<Signal<Configuration>>();
+
     let mut projects: Resource<Result<Vec<ProjectResponse>, Error<S>>> =
         use_resource(move || async move {
-            let storage = use_context::<S>();
-            let config = use_context::<Configuration>();
-
             let jwt = storage
+                .read()
                 .jwt()
                 .map_err(Error::Storage)?
                 .ok_or(Error::NotLoggedIn)?;
+
+            let config = config.read().clone();
 
             Client::new(config.base_url().to_string(), config.timeout())
                 .projects()

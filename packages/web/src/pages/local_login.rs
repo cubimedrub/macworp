@@ -15,6 +15,9 @@ pub enum Error {
 
 #[component]
 pub fn LocalLogin() -> Element {
+    let config = use_context::<Signal<Configuration>>();
+    let mut storage = use_context::<Signal<Storage>>();
+
     let mut username = use_signal(String::new);
     let mut password = use_signal(String::new);
 
@@ -25,12 +28,11 @@ pub fn LocalLogin() -> Element {
         let username = username.read().clone();
         let password = password.read().clone();
 
-        let config = use_context::<Configuration>();
-        let mut storage = use_context::<Storage>();
-
         if username.is_empty() || password.is_empty() {
             return Ok::<(), Error>(());
         }
+
+        let config = config.read().clone();
 
         let jwt = Client::new(config.base_url().to_string(), config.timeout())
             .login()
@@ -42,7 +44,7 @@ pub fn LocalLogin() -> Element {
 
         tracing::info!("Storing JWT in storage");
 
-        storage.set_jwt(Some(jwt)).map_err(Error::Storage)?;
+        storage.write().set_jwt(Some(jwt)).map_err(Error::Storage)?;
 
         tracing::info!("JWT stored successfully, navigating to project index");
 

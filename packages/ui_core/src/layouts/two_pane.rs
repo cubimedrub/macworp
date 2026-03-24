@@ -20,10 +20,11 @@ impl Display for NavigationState {
 
 #[component]
 pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
-    let storage = use_context::<S>();
+    let config = use_context::<Signal<Configuration>>();
+    let storage = use_context::<Signal<S>>();
 
     // Check if user is logged in
-    match storage.jwt() {
+    match storage.read().jwt() {
         Ok(Some(_)) => {}
         Ok(None) => {
             let nav = navigator();
@@ -41,9 +42,9 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
     let mut navigation_state = use_signal(|| NavigationState::Open);
 
     let backend_version: Resource<Option<String>> = use_resource(move || async move {
-        let config = use_context::<Configuration>();
+        let config = config.read().clone();
         Some(
-            Client::new(config.base_url().to_string(), 10)
+            Client::new(config.base_url().to_string(), config.timeout())
                 .utilities()
                 .version()
                 .await

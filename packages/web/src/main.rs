@@ -47,17 +47,25 @@ fn create_config() -> Result<Configuration, Error> {
 
 #[component]
 fn App() -> Element {
+    // Using use_context_provider in match is an anti pattern.
+    // Currently I see not convinient way to do it differently without
+    // putting the values into an Option which would intoduced very unconvinient
+    // check along the complete app.
     let config_res: Result<(), Error> = match create_config() {
         Ok(config) => {
-            use_context_provider(|| config);
+            use_context_provider(|| Signal::new(config));
             Ok(())
         }
         Err(e) => Err(e),
     };
 
+    // Using use_context_provider in match is an anti pattern.
+    // Currently I see not convinient way to do it differently without
+    // putting the values into an Option which would intoduced very unconvinient
+    // check along the complete app.
     let storage_res: Result<(), Error> = match Storage::new() {
         Ok(storage) => {
-            use_context_provider(|| storage);
+            use_context_provider(|| Signal::new(storage));
             Ok(())
         }
         Err(e) => Err(e.into()),

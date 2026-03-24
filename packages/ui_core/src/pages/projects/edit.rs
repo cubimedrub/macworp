@@ -26,24 +26,47 @@ pub struct EditProps {
 
 #[component]
 pub fn Edit<S: IsStorage + 'static>(props: EditProps) -> Element {
+    let storage = use_context::<Signal<S>>();
+    let config = use_context::<Signal<Configuration>>();
+    let navigator = navigator();
+
     let mut subpath: Signal<Option<String>> = use_signal(|| None);
 
     let project: Resource<Result<ProjectResponse, Error<S>>> = use_resource(move || async move {
-        let storage = use_context::<S>();
-        let config = use_context::<Configuration>();
-
         let jwt = storage
+            .read()
             .jwt()
             .map_err(Error::Storage)?
             .ok_or(Error::NotLoggedIn)?;
 
         let subpath = subpath.read().clone();
 
+        let config = config.read().clone();
+
         Client::new(config.base_url().to_string(), config.timeout())
             .projects()
             .project(&jwt, props.id, subpath)
             .await
             .map_err(Error::FetchProject)
+    });
+
+    let mut delete_project = use_action(move || async move {
+        let jwt = storage
+            .read()
+            .jwt()
+            .map_err(Error::Storage)?
+            .ok_or(Error::NotLoggedIn)?;
+
+        let config = config.read().clone();
+
+        Client::new(
+            config.read().base_url().to_string(),
+            config.read().timeout(),
+        )
+        .projects()
+        .project(&jwt, props.id, subpath)
+        .await
+        .map_err(Error::FetchProject)
     });
 
     rsx! {

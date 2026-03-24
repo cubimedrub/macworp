@@ -10,8 +10,8 @@ pub struct UtilitiesController;
 impl UtilitiesController {
     pub fn routes() -> Router<Arc<State>> {
         Router::new()
-            .route(UtilitiesRouting::version_path(), get(Self::version))
-            .route(UtilitiesRouting::healthcheck_path(), get(Self::healthcheck))
+            .route(UtilitiesRouting::VERSION_PATH, get(Self::version))
+            .route(UtilitiesRouting::HEALTHCHECK_PATH, get(Self::healthcheck))
     }
 
     pub async fn version() -> String {

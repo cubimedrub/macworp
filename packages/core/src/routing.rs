@@ -1,5 +1,3 @@
-use paste::paste;
-
 pub trait IsRouting {
     const CONTROLLER_PATH: &str;
 
@@ -8,31 +6,24 @@ pub trait IsRouting {
     }
 }
 
-/// Creates a simple Routing struct for one controller to centralize the path segments of the URL
-#[macro_export]
-macro_rules! routing {
-    ($name:ident, $( $path:literal ),+) => {
-        paste! {
-            pub struct [< $name Routing >];
-
-            impl [<$name Routing>] {
-                $(
-                    pub fn [< $path:snake _path >]() -> &'static str {
-                        concat!("/", stringify!([< $path:lower >]))
-                    }
-                )+
-            }
-
-            impl IsRouting for [< $name Routing >] {
-                const CONTROLLER_PATH: &str = concat!("/", stringify!([< $name:lower >]));
-            }
-        }
-    };
+pub struct UtilitiesRouting;
+impl UtilitiesRouting {
+    pub const HEALTHCHECK_PATH: &str = "/healthcheck";
+    pub const VERSION_PATH: &str = "/version";
 }
 
-routing!(Utilities, "healthcheck", "version");
+impl IsRouting for UtilitiesRouting {
+    const CONTROLLER_PATH: &str = "/utilities";
+}
 
-routing!(Users, "current");
+pub struct UsersRouting;
+impl UsersRouting {
+    pub const CURRENT_PATH: &str = "/current";
+}
+
+impl IsRouting for UsersRouting {
+    const CONTROLLER_PATH: &str = "/user";
+}
 
 pub struct LoginRouting;
 impl LoginRouting {

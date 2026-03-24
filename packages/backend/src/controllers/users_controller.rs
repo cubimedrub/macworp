@@ -14,7 +14,7 @@ pub struct UsersController;
 impl UsersController {
     pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
         Router::new()
-            .route(UsersRouting::current_path(), get(Self::current_user))
+            .route(UsersRouting::CURRENT_PATH, get(Self::current_user))
             .layer(Extension(state.clone()))
             .with_state(state)
     }

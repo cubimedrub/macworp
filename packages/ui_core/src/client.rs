@@ -82,7 +82,7 @@ impl<'a> UtilitiesClient<'a> {
             "{}{}{}",
             self.base_client.base_url(),
             UtilitiesRouting::controller_path(),
-            UtilitiesRouting::version_path()
+            UtilitiesRouting::VERSION_PATH
         );
         let client = reqwest::Client::new();
         let response = client
@@ -100,7 +100,7 @@ impl<'a> UtilitiesClient<'a> {
             "{}{}{}",
             self.base_client.base_url(),
             UtilitiesRouting::controller_path(),
-            UtilitiesRouting::healthcheck_path()
+            UtilitiesRouting::HEALTHCHECK_PATH
         );
         let client = reqwest::Client::new();
         let response = client
@@ -134,7 +134,7 @@ impl<'a> UsersClient<'a> {
             "{}{}{}",
             self.base_client.base_url(),
             UsersRouting::controller_path(),
-            UsersRouting::current_path()
+            UsersRouting::CURRENT_PATH
         );
         let client = reqwest::Client::new();
         let response = client

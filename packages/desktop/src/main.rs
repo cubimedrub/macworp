@@ -1,4 +1,6 @@
+mod client;
 mod errors;
+mod file;
 mod pages;
 mod router;
 mod storage;

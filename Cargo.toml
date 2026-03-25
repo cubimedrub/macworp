@@ -13,6 +13,7 @@ members = [
 [workspace.dependencies]
 clap = { version = "4.5.60", features = ["derive"] }
 dioxus = { version = "0.7.3" }
+futures = "0.3.32"
 http = { version = "1.4.0" }
 manganis = { version = "0.7.3" }
 password-auth = { version = "1.0.0" }

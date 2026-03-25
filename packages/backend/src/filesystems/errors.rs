@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -27,4 +29,18 @@ pub enum RemoteFilesystemError {
     CreateProjectDirectoryFailed(#[source] std::io::Error),
     #[error("Failed to delete project directory")]
     DeleteProjectDirectory(#[source] std::io::Error),
+    #[error("Failed to stream data to file: {0}")]
+    StreamToFile(#[source] std::io::Error),
+    #[error("Path `{0:?}` has not parent.")]
+    NoParentPath(PathBuf),
+    #[error("Could not create sub directory: {0}")]
+    CreateProjectSubDirectory(std::io::Error),
+    #[error("Could not reserve file: {0}")]
+    ReserveFile(std::io::Error),
+    #[error("Missing Content-Range header")]
+    MissingContentRangeHeader,
+    #[error("Invalid Content-Range header: {0}")]
+    InvalidContentRangeHeader(macworp_core::http::headers::ContentRangeHeaderValueError),
+    #[error("Missing file size in Content-Range header")]
+    MissingFileSize,
 }

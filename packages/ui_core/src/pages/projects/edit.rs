@@ -1,16 +1,41 @@
-use std::path::PathBuf;
+use std::{collections::VecDeque, future::Future, path::PathBuf, rc::Rc};
 
 use dioxus::prelude::*;
 use macworp_core::responses::ProjectResponse;
 use thiserror::Error;
 
 use crate::{
-    client::Client,
+    client::{Client, IsFileUpload, IsUploadableFile},
     components::{file_browser::IsFileBrowser, ConfirmationDialog, FileBrowser, Spinner},
     configuration::Configuration,
     router::IsRouter,
     storage::IsStorage,
 };
+
+/// Trait defining the uplaod behavior
+pub trait IsProjectEdit {
+    type Error: std::error::Error + std::fmt::Debug + Sync + Send + 'static;
+    type File: IsUploadableFile + 'static;
+    type FileUpload: IsFileUpload<File = Self::File>;
+
+    /// Prevent dropped file handling by window
+    fn prevent_window_file_drop_handling() -> impl Future<Output = Result<(), Self::Error>>;
+
+    /// File drop event
+    ///
+    /// # Arguments
+    /// * `event` - The file drop event
+    /// * `target_paht` - The selected path within the project when the event occured
+    /// * `queue` - The queue to enqueue the file entries into. Errors will also be enqueued as Err variants.
+    #[allow(clippy::type_complexity)]
+    fn drop_handler(
+        event: Event<DragData>,
+        target_path: Rc<PathBuf>,
+    ) -> impl Future<Output = Result<Vec<Result<Self::File, Self::Error>>, Self::Error>>;
+
+    /// File drop event
+    fn dragover_handler(event: Event<DragData>) -> impl Future<Output = Result<(), Self::Error>>;
+}
 
 #[derive(Debug, Error)]
 pub enum Error<S: IsStorage> {
@@ -20,10 +45,14 @@ pub enum Error<S: IsStorage> {
     FetchProject(crate::client::Error),
     #[error("Failed to delete projects: {0}")]
     DeleteProject(crate::client::Error),
+    #[error("Failed to upload file: {0}")]
+    Upload(crate::client::Error),
     #[error("Not logged in")]
     NotLoggedIn,
     #[error("{0}")]
     Storage(S::Error),
+    #[error("Unable to reqd upload queue")]
+    PoisenedUploadQueue,
 }
 
 #[derive(Clone, PartialEq, Props)]
@@ -33,7 +62,12 @@ pub struct EditProps {
 }
 
 #[component]
-pub fn Edit<F: IsFileBrowser + 'static, S: IsStorage + 'static, R: IsRouter>(
+pub fn Edit<
+    T: IsProjectEdit + 'static,
+    F: IsFileBrowser + 'static,
+    S: IsStorage + 'static,
+    R: IsRouter,
+>(
     props: EditProps,
 ) -> Element {
     let storage = use_context::<Signal<S>>();
@@ -42,6 +76,9 @@ pub fn Edit<F: IsFileBrowser + 'static, S: IsStorage + 'static, R: IsRouter>(
 
     let mut subpath: Signal<PathBuf> = use_signal(PathBuf::new);
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
+    let mut upload_queue = use_signal(VecDeque::<Result<T::File, T::Error>>::new);
+
+    let window_file_drop_handling_result = use_resource(T::prevent_window_file_drop_handling);
 
     let project: Resource<Result<Signal<ProjectResponse>, Error<S>>> =
         use_resource(move || async move {
@@ -84,8 +121,58 @@ pub fn Edit<F: IsFileBrowser + 'static, S: IsStorage + 'static, R: IsRouter>(
         Ok::<_, Error<S>>(())
     });
 
+    let mut upload_task: Resource<std::result::Result<(), Error<S>>> =
+        use_resource(move || async move {
+            tracing::info!("Starting file upload for project {id}", id = props.id);
+
+            let jwt = storage
+                .read()
+                .jwt()
+                .map_err(Error::Storage)?
+                .ok_or(Error::NotLoggedIn)?;
+
+            let config = config.read().clone();
+
+            let client = Client::new(config.base_url().to_string(), config.timeout());
+
+            loop {
+                let file = match upload_queue.write().pop_front() {
+                    Some(Ok(file)) => file,
+                    Some(Err(err)) => {
+                        tracing::error!("Failed to read file from upload queue: {err:?}");
+                        continue;
+                    }
+                    None => break,
+                };
+                client
+                    .projects()
+                    .upload_file::<T::FileUpload>(&jwt, props.id, file)
+                    .await
+                    .map_err(Error::Upload)?;
+            }
+            tracing::info!("Upload done!");
+            Ok(())
+        });
+
     rsx! {
         div {
+            class: "h-min-100",
+            ondrop: move |event| async move {
+                let current_path = Rc::new(subpath.read().clone());
+                match T::drop_handler(event, current_path).await {
+                    Ok(uploadable_files) => {
+                        upload_queue.write().extend(uploadable_files);
+                        upload_task.restart();
+                    },
+                    Err(err) => tracing::error!("File drop handler error: {err:?}")
+                }
+            },
+            ondragover: move |event| async move {
+                let res = T::dragover_handler(event).await;
+                if let Err(res) = res {
+                    tracing::error!("File dragover handler error: {res:?}");
+                }
+            },
             ConfirmationDialog {
                 is_open: is_delete_confirmation_dialog_open,
                 title: "Delete project".to_string(),
@@ -96,6 +183,17 @@ pub fn Edit<F: IsFileBrowser + 'static, S: IsStorage + 'static, R: IsRouter>(
                     delete_project.call();
                 }),
                 cancel_callback: Callback::new(move |_| is_delete_confirmation_dialog_open.set(false))
+            }
+            match &*window_file_drop_handling_result.read() {
+                Some(Ok(_)) => rsx! {},
+                Some(Err(err)) => rsx! {
+                    div {
+                        class: "alert alert-danger",
+                        role: "alert",
+                        "Failed to prevent window file drop handling: {err}"
+                    }
+                },
+                None => rsx! {}
             }
             match &*project.read() {
                 Some(Ok(project)) => rsx!(
@@ -130,6 +228,33 @@ pub fn Edit<F: IsFileBrowser + 'static, S: IsStorage + 'static, R: IsRouter>(
                         move_into_folder_callback: Callback::new(move |new_subpath| {
                             subpath.set(new_subpath);
                         })
+                    }
+                    if !upload_queue.read().is_empty() {
+                        ul {
+                            class: "list-group mt-3",
+                            for file in upload_queue.read().iter() {
+                                match file {
+                                    Ok(file) => rsx!{
+                                        li {
+                                            class: "list-group-item d-flex align-items-center",
+                                            i {
+                                                class: "fa-solid fa-file me-2"
+                                            }
+                                            "{file}"
+                                        }
+                                    },
+                                    Err(err) => rsx!{
+                                        li {
+                                            class: "list-group-item d-flex align-items-center list-group-item-danger",
+                                            i {
+                                                class: "fa-solid fa-triangle-exclamation me-2"
+                                            }
+                                            "Failed to read file: {err}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 ),
                 Some(Err(err)) => rsx!(

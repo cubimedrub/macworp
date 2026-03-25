@@ -67,6 +67,7 @@ where
                 http::header::CONTENT_TYPE,
                 http::header::DNT,
                 http::header::AUTHORIZATION,
+                http::header::CONTENT_RANGE,
             ])
             .allow_origin(Any);
 

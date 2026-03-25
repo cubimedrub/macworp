@@ -1,3 +1,4 @@
+pub mod edit;
 pub mod new;
 
 // Re-export pages

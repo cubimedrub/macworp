@@ -1,4 +1,9 @@
+use std::future::Future;
 use std::path::{Path, PathBuf};
+
+use axum::{BoxError, body::Bytes};
+use futures_util::Stream;
+use macworp_core::http::headers::ContentRangeHeaderValue;
 
 use crate::{
     filesystems::{errors::Error, project_content::ProjectContent},
@@ -19,6 +24,13 @@ pub trait IsFilesystem {
     fn content(state: &State, project: &Project, subpath: PathBuf)
     -> Result<ProjectContent, Error>;
 
+    /// Creates the full project path depending on the platform
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    /// * `project` - The project to get the path for
+    fn project_path(state: &State, project: &Project) -> Result<PathBuf, Error>;
+
     /// Creats a project folder if supported by the FS
     ///
     /// # Arguments
@@ -30,7 +42,7 @@ pub trait IsFilesystem {
         project: &Project,
     ) -> impl Future<Output = Result<PathBuf, Error>> + Send;
 
-    /// Securuly joins two pathes. Each non normal compontent of the subpath, e.g. Root or Parent is filtered out to prevent
+    /// Securly joins two pathes. Each non normal compontent of the subpath, e.g. Root or Parent is filtered out to prevent
     /// brekaing out of the base path
     ///
     /// # Arguments
@@ -56,4 +68,23 @@ pub trait IsFilesystem {
         state: &State,
         project: &Project,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Streams data to a file in the project directory. The file is created if it does not exist and overwritten if it does.
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    /// * `project` - The project to store the file in
+    /// * `file_path` - The path to the file to store, relative to the
+    /// * `stream` - The stream of data to write to the file, each item is a chunk of bytes. The stream should end when the file is fully written.
+    ///
+    fn stream_to_file<S, E>(
+        state: &State,
+        project: &Project,
+        file_path: PathBuf,
+        content_range: ContentRangeHeaderValue,
+        stream: S,
+    ) -> impl Future<Output = Result<(), Error>> + Send
+    where
+        S: Stream<Item = Result<Bytes, E>> + Send,
+        E: Into<BoxError>;
 }

@@ -8,7 +8,11 @@ use macworp_ui_core::{
 };
 
 use crate::{
-    pages::{local_login::LocalLogin, login::Login, projects::ProjectNew},
+    pages::{
+        local_login::LocalLogin,
+        login::Login,
+        projects::{edit::FileMutableProjectEdit, ProjectNew},
+    },
     storage::Storage,
 };
 
@@ -29,7 +33,7 @@ pub enum Router {
         ProjectIndex,
         #[route("/projects/new")]
         ProjectNew,
-        #[route("/projects/:id", ProjectEdit<MutableFileBrowser, Storage, Router>)]
+        #[route("/projects/:id", ProjectEdit<FileMutableProjectEdit, MutableFileBrowser, Storage, Router>)]
         ProjectEdit{ id: i64 },
 }
 

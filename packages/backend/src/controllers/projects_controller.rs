@@ -2,13 +2,14 @@ use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
-    extract::{Json, Path, Query, State},
+    extract::{Json, Path, Query, Request, State},
     routing::{get, post},
 };
 
-use http::StatusCode;
+use http::{HeaderMap, StatusCode};
 use macworp_core::{
-    requests::NewProjectRequest, responses::ProjectResponse, routing::ProjectsRouting,
+    http::headers::ContentRangeHeaderValue, requests::NewProjectRequest,
+    responses::ProjectResponse, routing::ProjectsRouting,
 };
 use sea_orm::{
     ColumnTrait, EntityTrait, ModelTrait, QueryFilter, TransactionError, TransactionTrait,
@@ -29,6 +30,12 @@ pub struct ProjectQueryParams {
     pub subpath: PathBuf,
 }
 
+#[derive(Deserialize)]
+pub struct ProjectFileUploadQuery {
+    /// File name to upload
+    pub file_path: PathBuf,
+}
+
 pub struct ProjectsController<F: IsFilesystem + 'static> {
     _filesystem: std::marker::PhantomData<F>,
 }
@@ -43,6 +50,7 @@ where
             .route(ProjectsRouting::NEW_PATH, post(Self::new))
             .route(ProjectsRouting::EDIT_PATH, get(Self::edit))
             .route(ProjectsRouting::DELETE_PATH, post(Self::delete))
+            .route(ProjectsRouting::UPLOAD_FILE_PATH, post(Self::upload_file))
             .with_state(state)
     }
 
@@ -182,6 +190,43 @@ where
                 TransactionError::Connection(err) => ProjectsControllerError::Database(err),
                 TransactionError::Transaction(err) => err,
             })?;
+
+        Ok(StatusCode::OK)
+    }
+
+    pub async fn upload_file(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+        Path(id): Path<i64>,
+        Query(params): Query<ProjectFileUploadQuery>,
+        headers: HeaderMap,
+        request: Request,
+    ) -> Result<StatusCode, ProjectsControllerError> {
+        let project = ProjectTable::find_by_id(id)
+            .one(state.db())
+            .await
+            .map_err(ProjectsControllerError::Database)?
+            .ok_or(ProjectsControllerError::ProjectNotFound)?;
+
+        if project.owner_id != user.id {
+            return Err(ProjectsControllerError::Forbidden);
+        }
+
+        let content_header_value = headers
+            .get("Content-Range")
+            .ok_or(ProjectsControllerError::MissingContentRangeHeader)?;
+
+        let content_range = ContentRangeHeaderValue::try_from(content_header_value)
+            .map_err(ProjectsControllerError::InvalidContentRangeHeader)?;
+
+        F::stream_to_file(
+            state.as_ref(),
+            &project,
+            params.file_path,
+            content_range,
+            request.into_body().into_data_stream(),
+        )
+        .await?;
 
         Ok(StatusCode::OK)
     }

@@ -7,7 +7,10 @@ use macworp_ui_core::{
     router::IsRouter,
 };
 
-use crate::{pages::projects::ProjectNew, storage::Storage};
+use crate::{
+    pages::projects::{edit::FileImmutableProjectEdit, ProjectNew},
+    storage::Storage,
+};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -22,7 +25,7 @@ pub enum Router {
         ProjectIndex,
         #[route("/projects/new")]
         ProjectNew,
-        #[route("/projects/:id", ProjectEdit<ImmutableFileBrowser, Storage, Router>)]
+        #[route("/projects/:id", ProjectEdit<FileImmutableProjectEdit, ImmutableFileBrowser, Storage, Router>)]
         ProjectEdit{ id: i64 },
 }
 

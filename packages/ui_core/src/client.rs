@@ -1,4 +1,9 @@
-use std::path::PathBuf;
+use std::{
+    fmt::{Debug, Display},
+    future::Future,
+    ops::Deref,
+    path::PathBuf,
+};
 
 use macworp_core::{
     authentication::TokenType,
@@ -6,6 +11,7 @@ use macworp_core::{
     responses::{LoginProviderResponse, ProjectResponse, UserResponse},
     routing::*,
 };
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -14,6 +20,8 @@ pub enum Error {
     Request(#[from] reqwest::Error),
     #[error("Something went wrong querying backend: {0}")]
     Backend(String),
+    #[error("Project file upload failed: {0}")]
+    ProjectFileUpload(String),
 }
 
 /// Client to communicate with MAcWorP's backend.
@@ -396,4 +404,55 @@ impl<'a> ProjectsClient<'a> {
 
         Ok(response.status().is_success())
     }
+
+    /// Uploads a file to the project
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `file` - The file to upload
+    ///
+    pub async fn upload_file<U: IsFileUpload>(
+        &self,
+        jwt: &str,
+        id: i64,
+        file: U::File,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            ProjectsRouting::controller_path(),
+            ProjectsRouting::UPLOAD_FILE_PATH.replace("{id}", &id.to_string())
+        );
+
+        U::upload_file(&url, jwt, file)
+            .await
+            .map_err(|err| Error::ProjectFileUpload(err.to_string()))
+    }
+}
+
+/// Trait defining an uploadable file.
+pub trait IsUploadableFile: Debug + Display + Deref<Target = Self::Inner> {
+    type Inner;
+    fn into_inner(self) -> Self::Inner;
+}
+
+pub trait IsFileUpload {
+    type Error: std::error::Error + std::fmt::Debug + Send + Sync;
+    /// Uploadable file may be different depending on the platform.
+    /// On WASM for example it is a FileSystemFileEntry which is later converted to JS File
+    type File: IsUploadableFile;
+
+    /// Uploads the given file
+    ///
+    /// # Arguments
+    /// * `url` - The URL to upload the file to
+    /// * `jwt` - The JWT for authentication
+    /// * `file` - The file to upload
+    ///
+    fn upload_file(
+        url: &str,
+        jwt: &str,
+        file: Self::File,
+    ) -> impl Future<Output = Result<(), Self::Error>>;
 }

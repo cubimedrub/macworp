@@ -5,6 +5,8 @@ pub mod authentication;
 pub mod entities;
 /// Core errors
 pub mod error;
+/// HTTP tools
+pub mod http;
 /// Various functionality to logging/tracing
 pub mod logging;
 /// Requests to the backend

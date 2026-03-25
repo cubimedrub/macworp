@@ -9,7 +9,7 @@ use macworp_core::logging::init_tracing_subscription;
 use macworp_database_migration::{Migrator, MigratorTrait};
 use sea_orm::Database;
 
-static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &["axum=error"];
+static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &["axum=error", "sqlx=error"];
 
 #[derive(Debug, Subcommand)]
 enum UserSubCommand {

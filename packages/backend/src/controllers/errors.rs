@@ -51,6 +51,10 @@ pub enum ProjectsControllerError {
     Filesystem(#[from] crate::filesystems::errors::Error),
     #[error("Invalid project path `{0}`")]
     InvalidProjectPath(String),
+    #[error("Missing Content-Range header")]
+    MissingContentRangeHeader,
+    #[error("Invalid Content-Range header: {0}")]
+    InvalidContentRangeHeader(macworp_core::http::headers::ContentRangeHeaderValueError),
 }
 
 impl IntoResponse for ProjectsControllerError {

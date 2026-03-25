@@ -26,7 +26,7 @@ use crate::{
 #[derive(Deserialize)]
 pub struct ProjectQueryParams {
     /// Project ID to fetch
-    pub subpath: Option<String>,
+    pub subpath: PathBuf,
 }
 
 pub struct ProjectsController<F: IsFilesystem + 'static> {
@@ -63,6 +63,7 @@ where
                     id: project.id,
                     name: project.name,
                     owner_username: user.username.clone(),
+                    current: PathBuf::new(),
                     files: Vec::new(),
                     directories: Vec::new(),
                 })
@@ -109,6 +110,7 @@ where
             id: project.id,
             name: project.name,
             owner_username: user.username.clone(),
+            current: PathBuf::new(),
             files: Vec::new(),
             directories: Vec::new(),
         }))
@@ -131,33 +133,16 @@ where
             return Err(ProjectsControllerError::Forbidden);
         }
 
-        let subpath = match query_params.subpath.as_ref() {
-            Some(subpath) => {
-                let decoded_subpath = urlencoding::decode(subpath)
-                    .map_err(|_| ProjectsControllerError::InvalidProjectPath(subpath.to_string()))?
-                    .to_string();
-                Some(PathBuf::from(decoded_subpath))
-            }
-            None => None,
-        };
-
-        let content = F::content(state.as_ref(), &project, subpath)
+        let content = F::content(state.as_ref(), &project, query_params.subpath)
             .map_err(ProjectsControllerError::Filesystem)?;
 
         Ok(Json(ProjectResponse {
             id: project.id,
             name: project.name,
             owner_username: user.username.clone(),
-            files: content
-                .files
-                .into_iter()
-                .map(|file| file.to_string_lossy().to_string())
-                .collect(),
-            directories: content
-                .directories
-                .into_iter()
-                .map(|dir| dir.to_string_lossy().to_string())
-                .collect(),
+            current: content.current,
+            files: content.files,
+            directories: content.directories,
         }))
     }
 

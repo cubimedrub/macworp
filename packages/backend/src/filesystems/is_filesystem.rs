@@ -16,11 +16,8 @@ pub trait IsFilesystem {
     /// * `project` - The project to get the content of
     /// * `subpath` - An optional subpath within the project to get the content
     ///
-    fn content(
-        state: &State,
-        project: &Project,
-        subpath: Option<PathBuf>,
-    ) -> Result<ProjectContent, Error>;
+    fn content(state: &State, project: &Project, subpath: PathBuf)
+    -> Result<ProjectContent, Error>;
 
     /// Creats a project folder if supported by the FS
     ///

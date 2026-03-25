@@ -1,12 +1,16 @@
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::filesystems::errors::Error;
 
 /// List of files and folder of a project
 ///
+#[derive(Deserialize, Serialize)]
 pub struct ProjectContent {
-    pub files: Vec<PathBuf>,
-    pub directories: Vec<PathBuf>,
+    pub current: PathBuf,
+    pub files: Vec<String>,
+    pub directories: Vec<String>,
 }
 
 impl TryFrom<(&PathBuf, &PathBuf)> for ProjectContent {
@@ -24,13 +28,25 @@ impl TryFrom<(&PathBuf, &PathBuf)> for ProjectContent {
             let entry = entry?;
             let path = entry.path();
 
+            let name = match path.file_name() {
+                Some(name) => name,
+                None => continue, // Skip entries without a valid file names
+            };
+
             if path.is_file() {
-                files.push(path.strip_prefix(project_path).unwrap().to_path_buf());
+                files.push(name.to_string_lossy().to_string());
             } else if path.is_dir() {
-                directories.push(path.strip_prefix(project_path).unwrap().to_path_buf());
+                directories.push(name.to_string_lossy().to_string());
             }
         }
 
-        Ok(ProjectContent { files, directories })
+        Ok(ProjectContent {
+            files,
+            directories,
+            current: requested_path
+                .strip_prefix(project_path)
+                .unwrap()
+                .to_path_buf(),
+        })
     }
 }

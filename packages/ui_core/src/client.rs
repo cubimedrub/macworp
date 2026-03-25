@@ -318,23 +318,20 @@ impl<'a> ProjectsClient<'a> {
         &self,
         jwt: &str,
         id: i64,
-        subpath: Option<String>,
+        subpath: PathBuf,
     ) -> Result<ProjectResponse, Error> {
-        let mut url = format!(
+        let url = format!(
             "{}{}{}",
             self.base_client.base_url(),
             ProjectsRouting::controller_path(),
             ProjectsRouting::EDIT_PATH.replace("{id}", &id.to_string())
         );
 
-        if let Some(subpath) = subpath {
-            url.push_str(&format!("?subpath={}", urlencoding::encode(&subpath)));
-        }
-
         let client = reqwest::Client::new();
 
         let response = client
             .get(&url)
+            .query(&[("subpath", subpath)])
             .header(
                 http::header::AUTHORIZATION,
                 format!("{} {jwt}", TokenType::Jwt),

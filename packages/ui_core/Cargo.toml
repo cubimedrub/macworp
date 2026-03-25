@@ -10,7 +10,7 @@ dioxus = { workspace = true, features = ["router"] }
 http = { workspace = true }
 manganis = { workspace = true }
 macworp_core = { workspace = true }
-reqwest = { workspace = true, features = ["json"] }
+reqwest = { workspace = true, features = ["json", "query"] }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }

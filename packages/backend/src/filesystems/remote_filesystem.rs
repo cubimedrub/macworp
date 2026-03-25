@@ -16,16 +16,12 @@ impl IsFilesystem for RemoteFilesystem {
     fn content(
         state: &State,
         project: &Project,
-        subpath: Option<PathBuf>,
+        subpath: PathBuf,
     ) -> Result<ProjectContent, Error> {
         let project_path =
             PathBuf::from(state.config().projects_path()).join(project.id.to_string());
 
-        let requested_path = if let Some(subpath) = subpath {
-            Self::join_paths(&project_path, &subpath)
-        } else {
-            project_path.clone()
-        };
+        let requested_path = Self::join_paths(&project_path, &subpath);
 
         ProjectContent::try_from((&project_path, &requested_path))
     }

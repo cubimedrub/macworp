@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,7 @@ pub struct ProjectResponse {
     pub id: i64,
     pub name: String,
     pub owner_username: String,
+    pub current: PathBuf,
     pub files: Vec<String>,
     pub directories: Vec<String>,
 }

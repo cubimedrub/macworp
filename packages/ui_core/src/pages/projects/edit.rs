@@ -1,10 +1,12 @@
+use std::path::PathBuf;
+
 use dioxus::prelude::*;
 use macworp_core::responses::ProjectResponse;
 use thiserror::Error;
 
 use crate::{
     client::Client,
-    components::{ConfirmationDialog, Spinner},
+    components::{file_browser::IsFileBrowser, ConfirmationDialog, FileBrowser, Spinner},
     configuration::Configuration,
     router::IsRouter,
     storage::IsStorage,
@@ -31,31 +33,36 @@ pub struct EditProps {
 }
 
 #[component]
-pub fn Edit<S: IsStorage + 'static, R: IsRouter>(props: EditProps) -> Element {
+pub fn Edit<F: IsFileBrowser + 'static, S: IsStorage + 'static, R: IsRouter>(
+    props: EditProps,
+) -> Element {
     let storage = use_context::<Signal<S>>();
     let config = use_context::<Signal<Configuration>>();
     let navigator = navigator();
 
-    let mut subpath: Signal<Option<String>> = use_signal(|| None);
+    let mut subpath: Signal<PathBuf> = use_signal(PathBuf::new);
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
 
-    let project: Resource<Result<ProjectResponse, Error<S>>> = use_resource(move || async move {
-        let jwt = storage
-            .read()
-            .jwt()
-            .map_err(Error::Storage)?
-            .ok_or(Error::NotLoggedIn)?;
+    let project: Resource<Result<Signal<ProjectResponse>, Error<S>>> =
+        use_resource(move || async move {
+            let jwt = storage
+                .read()
+                .jwt()
+                .map_err(Error::Storage)?
+                .ok_or(Error::NotLoggedIn)?;
 
-        let subpath = subpath.read().clone();
+            let subpath = subpath.read().clone();
 
-        let config = config.read().clone();
+            let config = config.read().clone();
 
-        Client::new(config.base_url().to_string(), config.timeout())
-            .projects()
-            .project(&jwt, props.id, subpath)
-            .await
-            .map_err(Error::FetchProject)
-    });
+            let project = Client::new(config.base_url().to_string(), config.timeout())
+                .projects()
+                .project(&jwt, props.id, subpath)
+                .await
+                .map_err(Error::FetchProject)?;
+
+            Ok(Signal::new(project))
+        });
 
     let mut delete_project = use_action(move || async move {
         let jwt = storage
@@ -96,7 +103,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter>(props: EditProps) -> Element {
                         class: "logo d-flex flex-row justify-content-between mb-3",
                         h1 {
                             class: "mb-0",
-                            "{project.name}"
+                            "{project.read().name}"
                         }
                         button {
                             id: "collapse-btn",
@@ -118,30 +125,11 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter>(props: EditProps) -> Element {
                         },
                         _ => rsx! {}
                     }
-                    ul {
-                        class: "list-group",
-                        for folder in project.directories.iter().cloned() {
-                            li {
-                                class: "list-group-item",
-                                onabort: move |_| {
-                                    let folder_name = folder.clone();
-                                    subpath.set(Some(folder_name));
-                                },
-                                i {
-                                    class: "fas fa-folder me-2"
-                                }
-                                "{folder}"
-                            }
-                        }
-                        for file in &project.files {
-                            li {
-                                class: "list-group-item",
-                                i {
-                                    class: "fas fa-file me-2"
-                                }
-                                "{file}"
-                            }
-                        }
+                    FileBrowser<F> {
+                        project: *project,
+                        move_into_folder_callback: Callback::new(move |new_subpath| {
+                            subpath.set(new_subpath);
+                        })
                     }
                 ),
                 Some(Err(err)) => rsx!(

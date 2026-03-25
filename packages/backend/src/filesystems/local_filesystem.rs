@@ -19,7 +19,7 @@ impl IsFilesystem for LocalFilesystem {
     fn content(
         _state: &State,
         project: &Project,
-        subpath: Option<PathBuf>,
+        subpath: PathBuf,
     ) -> Result<ProjectContent, Error> {
         let project_path = PathBuf::from(
             project
@@ -28,11 +28,7 @@ impl IsFilesystem for LocalFilesystem {
                 .ok_or(LocalFilesystemError::ProjectPathMissing)?,
         );
 
-        let requested_path = if let Some(subpath) = subpath {
-            Self::join_paths(&project_path, &subpath)
-        } else {
-            project_path.clone()
-        };
+        let requested_path = Self::join_paths(&project_path, &subpath);
 
         ProjectContent::try_from((&project_path, &requested_path))
     }

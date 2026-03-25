@@ -1,4 +1,3 @@
-// mod embedded;
 mod pages;
 mod router;
 mod storage;

@@ -412,6 +412,7 @@ impl<'a> ProjectsClient<'a> {
     /// * `jwt` - The JWT for authentication
     /// * `id` - The project id
     /// * `file` - The file to upload
+    /// * `buffer_size` - Size of the buffer to fill before sending a upload request.
     /// * `progress` - Signal to report upload progress of the file to the UI
     ///
     pub async fn upload_file<U: IsFileUpload>(
@@ -419,6 +420,7 @@ impl<'a> ProjectsClient<'a> {
         jwt: &str,
         id: i64,
         file: U::File,
+        buffer_size: usize,
         progress: Signal<f64>,
     ) -> Result<(), Error> {
         let url = format!(
@@ -428,7 +430,7 @@ impl<'a> ProjectsClient<'a> {
             ProjectsRouting::UPLOAD_FILE_PATH.replace("{id}", &id.to_string())
         );
 
-        U::upload_file(&url, jwt, file, progress)
+        U::upload_file(&url, jwt, file, buffer_size, progress)
             .await
             .map_err(|err| Error::ProjectFileUpload(err.to_string()))
     }
@@ -446,18 +448,20 @@ pub trait IsFileUpload {
     /// On WASM for example it is a FileSystemFileEntry which is later converted to JS File
     type File: IsUploadableFile;
 
-    /// Uploads the given file
+    /// Uploads the given file in chunks of max buffer_size
     ///
     /// # Arguments
     /// * `url` - The URL to upload the file to
     /// * `jwt` - The JWT for authentication
     /// * `file` - The file to upload
+    /// * `buffer_size` - Size of the buffer to fill before sending a upload request.
     /// * `progress` - Signal to report upload progress of the file to the UI
     ///
     fn upload_file(
         url: &str,
         jwt: &str,
         file: Self::File,
+        buffer_size: usize,
         progress: Signal<f64>,
     ) -> impl Future<Output = Result<(), Self::Error>>;
 }

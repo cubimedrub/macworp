@@ -151,7 +151,13 @@ pub fn Edit<
 
                 client
                     .projects()
-                    .upload_file::<T::FileUpload>(&jwt, props.id, file, upload_progress)
+                    .upload_file::<T::FileUpload>(
+                        &jwt,
+                        props.id,
+                        file,
+                        config.upload_buffer_size(),
+                        upload_progress,
+                    )
                     .await
                     .map_err(Error::Upload)?;
 

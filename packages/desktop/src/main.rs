@@ -181,7 +181,7 @@ async fn start() -> Result<(), Error> {
         }
     });
 
-    let config = Configuration::new(base_url, 20);
+    let config = Configuration::new(base_url, 20, 10 * 1024 * 1024);
 
     let client = Client::new(config.base_url().to_string(), config.timeout());
 

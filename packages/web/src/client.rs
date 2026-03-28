@@ -82,6 +82,7 @@ impl IsFileUpload for BrowserFileUpload {
         url: &str,
         jwt: &str,
         file: Self::File,
+        upload_buffer_size: usize,
         mut progress: Signal<f64>,
     ) -> Result<(), Self::Error> {
         progress.set(0.0);
@@ -113,7 +114,7 @@ impl IsFileUpload for BrowserFileUpload {
 
         let mut read_bytes: u64 = 0;
 
-        let mut buffer: Vec<u8> = Vec::with_capacity(2 * 1024 * 1024); // 10 MiB buffer, TODO: Make adjustable.
+        let mut buffer: Vec<u8> = Vec::with_capacity(upload_buffer_size); // 10 MiB buffer, TODO: Make adjustable.
         let mut chunk = Vec::new();
         let mut is_stream_exhausted = false;
 
@@ -168,7 +169,7 @@ impl IsFileUpload for BrowserFileUpload {
                     return Err(Error::ResponseStatus(response.status()));
                 }
                 read_bytes += buffer_len as u64;
-                buffer = Vec::with_capacity(2 * 1024 * 1024); // Clear buffer and create a new one.
+                buffer = Vec::with_capacity(upload_buffer_size); // Clear buffer and create a new one.
             }
             progress.set(read_bytes as f64 / file_size as f64 * 100.0);
         }

@@ -34,7 +34,11 @@ fn create_config() -> Result<Configuration, Error> {
     let base_url_override: Option<&'static str> = option_env!("MACWORP_BASE_URL");
 
     if let Some(base_url) = base_url_override {
-        return Ok(Configuration::new(base_url.to_string(), 60));
+        return Ok(Configuration::new(
+            base_url.to_string(),
+            60,
+            10 * 1024 * 1024,
+        ));
     }
 
     let location = window().ok_or(Error::Window)?.location();
@@ -43,7 +47,11 @@ fn create_config() -> Result<Configuration, Error> {
 
     let protocol = location.protocol().map_err(Error::Protocol)?;
 
-    Ok(Configuration::new(format!("{}//{}", protocol, host), 60))
+    Ok(Configuration::new(
+        format!("{}//{}", protocol, host),
+        60,
+        10 * 1024 * 1024,
+    ))
 }
 
 #[component]

@@ -17,6 +17,7 @@ impl IsFileUpload for DesktopFileUpload {
         _url: &str,
         _jwt: &str,
         _file: Self::File,
+        _upload_buffer_size: usize,
         _progress: Signal<f64>,
     ) -> Result<(), Self::Error> {
         Ok(())

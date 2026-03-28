@@ -8,7 +8,7 @@ use axum::{BoxError, body::Bytes};
 use futures_util::{Stream, TryStreamExt};
 use macworp_core::http::headers::ContentRangeHeaderValue;
 use tokio::{
-    fs::OpenOptions,
+    fs::{OpenOptions, metadata},
     io::{AsyncSeekExt, BufWriter},
 };
 use tokio_util::io::StreamReader;
@@ -26,6 +26,13 @@ use crate::{
 pub struct RemoteFilesystem;
 
 impl RemoteFilesystem {
+    /// Creates an empty file to file to reserve storage space to make sure the incomming content
+    /// can be stored.
+    ///
+    /// # Arguments
+    /// * `target_path` - The path where the file should be created.
+    /// * `size` - The size of the file to be created in bytes.
+    ///
     async fn reserve_file(target_path: &Path, size: u64) -> Result<(), Error> {
         let file = OpenOptions::new()
             .create(true)
@@ -105,6 +112,12 @@ impl IsFilesystem for RemoteFilesystem {
             Error::RemoteFilesystem(RemoteFilesystemError::CreateProjectSubDirectory(err))
         })?;
 
+        if target_path.is_dir() {
+            return Err(Error::RemoteFilesystem(
+                RemoteFilesystemError::TargetPathIsDirectory(target_path),
+            ));
+        }
+
         if !target_path.is_file() {
             Self::reserve_file(
                 &target_path,
@@ -113,6 +126,29 @@ impl IsFilesystem for RemoteFilesystem {
                 ))?,
             )
             .await?;
+        } else {
+            // Get the file size of the existing file
+            let target_size = metadata(&target_path)
+                .await
+                .map_err(|err| {
+                    Error::RemoteFilesystem(RemoteFilesystemError::GetFileMetadataFailed(err))
+                })?
+                .len();
+
+            // If it is too not equal call reserve_file to resize accordingly
+            if target_size
+                != content_range.size().ok_or(Error::RemoteFilesystem(
+                    RemoteFilesystemError::MissingFileSize,
+                ))?
+            {
+                Self::reserve_file(
+                    &target_path,
+                    content_range.size().ok_or(Error::RemoteFilesystem(
+                        RemoteFilesystemError::MissingFileSize,
+                    ))?,
+                )
+                .await?;
+            }
         }
 
         async {

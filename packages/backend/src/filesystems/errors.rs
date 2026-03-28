@@ -43,4 +43,8 @@ pub enum RemoteFilesystemError {
     InvalidContentRangeHeader(macworp_core::http::headers::ContentRangeHeaderValueError),
     #[error("Missing file size in Content-Range header")]
     MissingFileSize,
+    #[error("Target path is a directory: {0:?}")]
+    TargetPathIsDirectory(PathBuf),
+    #[error("Content range exceeds file size for target path: {0:?}")]
+    GetFileMetadataFailed(std::io::Error),
 }

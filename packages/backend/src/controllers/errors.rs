@@ -49,8 +49,6 @@ pub enum ProjectsControllerError {
     Forbidden,
     #[error("Errors while accessing filesystem: {0}")]
     Filesystem(#[from] crate::filesystems::errors::Error),
-    #[error("Invalid project path `{0}`")]
-    InvalidProjectPath(String),
     #[error("Missing Content-Range header")]
     MissingContentRangeHeader,
     #[error("Invalid Content-Range header: {0}")]
@@ -66,9 +64,6 @@ impl IntoResponse for ProjectsControllerError {
             }
             ProjectsControllerError::ProjectNotFound => {
                 (StatusCode::NOT_FOUND, self.to_string()).into_response()
-            }
-            ProjectsControllerError::InvalidProjectPath(_) => {
-                (StatusCode::BAD_REQUEST, self.to_string()).into_response()
             }
             ProjectsControllerError::Authentication(_) => self.into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),

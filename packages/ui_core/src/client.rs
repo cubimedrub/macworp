@@ -5,6 +5,7 @@ use std::{
     path::PathBuf,
 };
 
+use dioxus::signals::Signal;
 use macworp_core::{
     authentication::TokenType,
     requests::{NewProjectRequest, PasswordLoginRequest},
@@ -411,12 +412,14 @@ impl<'a> ProjectsClient<'a> {
     /// * `jwt` - The JWT for authentication
     /// * `id` - The project id
     /// * `file` - The file to upload
+    /// * `progress` - Signal to report upload progress of the file to the UI
     ///
     pub async fn upload_file<U: IsFileUpload>(
         &self,
         jwt: &str,
         id: i64,
         file: U::File,
+        progress: Signal<f64>,
     ) -> Result<(), Error> {
         let url = format!(
             "{}{}{}",
@@ -425,7 +428,7 @@ impl<'a> ProjectsClient<'a> {
             ProjectsRouting::UPLOAD_FILE_PATH.replace("{id}", &id.to_string())
         );
 
-        U::upload_file(&url, jwt, file)
+        U::upload_file(&url, jwt, file, progress)
             .await
             .map_err(|err| Error::ProjectFileUpload(err.to_string()))
     }
@@ -449,10 +452,12 @@ pub trait IsFileUpload {
     /// * `url` - The URL to upload the file to
     /// * `jwt` - The JWT for authentication
     /// * `file` - The file to upload
+    /// * `progress` - Signal to report upload progress of the file to the UI
     ///
     fn upload_file(
         url: &str,
         jwt: &str,
         file: Self::File,
+        progress: Signal<f64>,
     ) -> impl Future<Output = Result<(), Self::Error>>;
 }

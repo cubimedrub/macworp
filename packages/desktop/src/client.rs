@@ -1,3 +1,4 @@
+use dioxus::signals::Signal;
 use macworp_ui_core::client::IsFileUpload;
 use thiserror::Error;
 
@@ -12,7 +13,12 @@ impl IsFileUpload for DesktopFileUpload {
     type Error = Error;
     type File = UploadableFile;
 
-    async fn upload_file(_url: &str, _jwt: &str, _file: Self::File) -> Result<(), Self::Error> {
+    async fn upload_file(
+        _url: &str,
+        _jwt: &str,
+        _file: Self::File,
+        _progress: Signal<f64>,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }

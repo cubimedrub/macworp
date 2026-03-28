@@ -1,5 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
+use dioxus::signals::{Signal, WritableExt};
 use futures::channel::oneshot;
 use macworp_core::http::headers::ContentRangeHeaderValue;
 use macworp_ui_core::client::{IsFileUpload, IsUploadableFile};
@@ -77,7 +78,13 @@ impl IsFileUpload for BrowserFileUpload {
     type Error = Error;
     type File = UploadableFile;
 
-    async fn upload_file(url: &str, jwt: &str, file: Self::File) -> Result<(), Self::Error> {
+    async fn upload_file(
+        url: &str,
+        jwt: &str,
+        file: Self::File,
+        mut progress: Signal<f64>,
+    ) -> Result<(), Self::Error> {
+        progress.set(0.0);
         let path = file.upload_path();
         let file = file.into_inner();
 
@@ -163,6 +170,7 @@ impl IsFileUpload for BrowserFileUpload {
                 read_bytes += buffer_len as u64;
                 buffer = Vec::with_capacity(2 * 1024 * 1024); // Clear buffer and create a new one.
             }
+            progress.set(read_bytes as f64 / file_size as f64 * 100.0);
         }
 
         Ok(())

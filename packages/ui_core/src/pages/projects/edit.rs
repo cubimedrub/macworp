@@ -77,6 +77,8 @@ pub fn Edit<
     let mut subpath: Signal<PathBuf> = use_signal(PathBuf::new);
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
     let mut upload_queue = use_signal(VecDeque::<Result<T::File, T::Error>>::new);
+    let mut current_upload: Signal<Option<String>> = use_signal(|| None);
+    let mut upload_progress = use_signal(|| 0.0_f64);
 
     let window_file_drop_handling_result = use_resource(T::prevent_window_file_drop_handling);
 
@@ -144,11 +146,17 @@ pub fn Edit<
                     }
                     None => break,
                 };
+
+                current_upload.set(Some(format!("{file}")));
+
                 client
                     .projects()
-                    .upload_file::<T::FileUpload>(&jwt, props.id, file)
+                    .upload_file::<T::FileUpload>(&jwt, props.id, file, upload_progress)
                     .await
                     .map_err(Error::Upload)?;
+
+                current_upload.set(None);
+                upload_progress.set(0.0);
             }
             tracing::info!("Upload done!");
             Ok(())
@@ -229,9 +237,30 @@ pub fn Edit<
                             subpath.set(new_subpath);
                         })
                     }
-                    if !upload_queue.read().is_empty() {
+                    if !upload_queue.read().is_empty() || !current_upload.read().is_none() {
                         ul {
                             class: "list-group mt-3",
+                            if let Some(current_upload) = &*current_upload.read() {
+                                li {
+                                    class: "list-group-item d-flex align-items-center",
+                                    span {
+                                        class: "me-3",
+                                        "{current_upload}"
+                                    }
+                                    div {
+                                        class: "progress flex-fill",
+                                        role: "progressbar",
+                                        aria_label: "Basic example",
+                                        aria_valuenow: "{upload_progress}",
+                                        aria_valuemin: "0",
+                                        aria_valuemax: "100",
+                                        div {
+                                            class: "progress-bar",
+                                            style: "width: {upload_progress}%"
+                                        }
+                                    }
+                                }
+                            }
                             for file in upload_queue.read().iter() {
                                 match file {
                                     Ok(file) => rsx!{

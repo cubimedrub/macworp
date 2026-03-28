@@ -120,13 +120,6 @@ impl IsFilesystem for RemoteFilesystem {
             let body_with_io_error = stream.map_err(std::io::Error::other);
             let mut body_reader = pin!(StreamReader::new(body_with_io_error));
 
-            tracing::info!(
-                "content range {}/{} -> {}",
-                content_range.range().0,
-                content_range.range().1,
-                content_range.size().unwrap_or(0)
-            );
-
             // Create the file. `File` implements `AsyncWrite`.
             let mut file = OpenOptions::new().write(true).open(target_path).await?;
             let mut writer = BufWriter::new(&mut file);

@@ -1,11 +1,15 @@
 use std::{cell::RefCell, rc::Rc};
 
-use dioxus::signals::{Signal, WritableExt};
+use dioxus::{
+    logger::tracing,
+    signals::{Signal, WritableExt},
+};
 use futures::channel::oneshot;
 use macworp_core::http::headers::ContentRangeHeaderValue;
 use macworp_ui_core::client::{IsFileUpload, IsUploadableFile};
+use reqwest::RequestBuilder;
 use thiserror::Error;
-use wasm_bindgen_futures::JsFuture;
+use wasm_bindgen_futures::{spawn_local, JsFuture};
 use web_sys::{
     js_sys::{Reflect, Uint8Array, Undefined},
     wasm_bindgen::{prelude::Closure, JsCast, JsValue},
@@ -44,6 +48,8 @@ pub enum Error {
     Request(reqwest::Error),
     #[error("Response status indicates failure: {0}")]
     ResponseStatus(reqwest::StatusCode),
+    #[error("Uplaod was unexpectadly canceled")]
+    UploadResultChannel,
 }
 
 /// Implementation to upload files using the browser JS API in a streaming manner,
@@ -71,6 +77,51 @@ impl BrowserFileUpload {
             }
             Undefined::default()
         }) as Box<dyn FnMut(File) -> Undefined>)
+    }
+
+    async fn partial_upload(
+        request_builder: RequestBuilder,
+        file_size: u64,
+        content_range_start: u64,
+        body: Vec<u8>,
+    ) -> oneshot::Receiver<Result<u64, Error>> {
+        let (result_sender, result_receiver) = oneshot::channel::<Result<u64, Error>>();
+
+        spawn_local(async move {
+            let body_len = body.len();
+            let result = request_builder
+                .header(
+                    http::header::CONTENT_RANGE,
+                    ContentRangeHeaderValue::new(
+                        "bytes",
+                        (
+                            content_range_start,
+                            content_range_start + body_len as u64 - 1,
+                        ),
+                        Some(file_size),
+                    ),
+                )
+                .body(body)
+                .send()
+                .await
+                .map_err(Error::Request)
+                .and_then(|response| {
+                    if response.status().is_success() {
+                        Ok(body_len as u64)
+                    } else {
+                        Err(Error::ResponseStatus(response.status()))
+                    }
+                });
+
+            match result_sender.send(result) {
+                Ok(_) => {}
+                Err(_err) => tracing::error!(
+                    "Upload request could not send results due to closes oneshot channel."
+                ),
+            }
+        });
+
+        result_receiver
     }
 }
 
@@ -118,6 +169,8 @@ impl IsFileUpload for BrowserFileUpload {
         let mut chunk = Vec::new();
         let mut is_stream_exhausted = false;
 
+        let mut partial_upload_result_opt: Option<oneshot::Receiver<Result<u64, Error>>> = None;
+
         loop {
             if is_stream_exhausted && chunk.is_empty() && buffer.is_empty() {
                 break;
@@ -148,30 +201,24 @@ impl IsFileUpload for BrowserFileUpload {
             }
 
             if buffer.len() == buffer.capacity() || (is_stream_exhausted && !buffer.is_empty()) {
-                let buffer_len = buffer.len();
-                let response = request_builder
-                    .try_clone()
-                    .unwrap()
-                    .header(
-                        http::header::CONTENT_RANGE,
-                        ContentRangeHeaderValue::new(
-                            "bytes",
-                            (read_bytes, read_bytes + buffer_len as u64 - 1),
-                            Some(file_size),
-                        ),
-                    )
-                    .body(buffer)
-                    .send()
-                    .await
-                    .map_err(Error::Request)?;
-
-                if !response.status().is_success() {
-                    return Err(Error::ResponseStatus(response.status()));
+                // Wait for the previous request to succeed
+                if let Some(partial_upload) = partial_upload_result_opt.take() {
+                    read_bytes += partial_upload
+                        .await
+                        .map_err(|_| Error::UploadResultChannel)??;
+                    progress.set(read_bytes as f64 / file_size as f64 * 100.0);
                 }
-                read_bytes += buffer_len as u64;
-                buffer = Vec::with_capacity(upload_buffer_size); // Clear buffer and create a new one.
+
+                partial_upload_result_opt = Some(
+                    Self::partial_upload(
+                        request_builder.try_clone().unwrap(),
+                        file_size,
+                        read_bytes,
+                        std::mem::replace(&mut buffer, Vec::with_capacity(upload_buffer_size)), // Move buffer into body and create a new buffer for next file chunks
+                    )
+                    .await,
+                );
             }
-            progress.set(read_bytes as f64 / file_size as f64 * 100.0);
         }
 
         Ok(())

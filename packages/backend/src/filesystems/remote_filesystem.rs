@@ -23,6 +23,8 @@ use crate::{
     state::State,
 };
 
+const PARTIAL_UPLOAD_EXTENSION: &str = "macworp_partial_upload";
+
 pub struct RemoteFilesystem;
 
 impl RemoteFilesystem {
@@ -103,6 +105,10 @@ impl IsFilesystem for RemoteFilesystem {
         let project_path = Self::project_path(state, project)?;
 
         let target_path = Self::join_paths(&project_path, &file_path);
+        let partial_upload_path = Self::join_paths(
+            &project_path,
+            &file_path.with_extension(PARTIAL_UPLOAD_EXTENSION),
+        );
 
         tokio::fs::create_dir_all(target_path.parent().ok_or_else(|| {
             Error::RemoteFilesystem(RemoteFilesystemError::NoParentPath(target_path.clone()))
@@ -112,15 +118,15 @@ impl IsFilesystem for RemoteFilesystem {
             Error::RemoteFilesystem(RemoteFilesystemError::CreateProjectSubDirectory(err))
         })?;
 
-        if target_path.is_dir() {
+        if target_path.is_dir() || partial_upload_path.is_dir() {
             return Err(Error::RemoteFilesystem(
                 RemoteFilesystemError::TargetPathIsDirectory(target_path),
             ));
         }
 
-        if !target_path.is_file() {
+        if !partial_upload_path.is_file() {
             Self::reserve_file(
-                &target_path,
+                &partial_upload_path,
                 content_range.size().ok_or(Error::RemoteFilesystem(
                     RemoteFilesystemError::MissingFileSize,
                 ))?,
@@ -128,21 +134,21 @@ impl IsFilesystem for RemoteFilesystem {
             .await?;
         } else {
             // Get the file size of the existing file
-            let target_size = metadata(&target_path)
+            let target_size = metadata(&partial_upload_path)
                 .await
                 .map_err(|err| {
                     Error::RemoteFilesystem(RemoteFilesystemError::GetFileMetadataFailed(err))
                 })?
                 .len();
 
-            // If it is too not equal call reserve_file to resize accordingly
+            // If it is not equal, call reserve_file to resize accordingly
             if target_size
                 != content_range.size().ok_or(Error::RemoteFilesystem(
                     RemoteFilesystemError::MissingFileSize,
                 ))?
             {
                 Self::reserve_file(
-                    &target_path,
+                    &partial_upload_path,
                     content_range.size().ok_or(Error::RemoteFilesystem(
                         RemoteFilesystemError::MissingFileSize,
                     ))?,
@@ -157,7 +163,10 @@ impl IsFilesystem for RemoteFilesystem {
             let mut body_reader = pin!(StreamReader::new(body_with_io_error));
 
             // Create the file. `File` implements `AsyncWrite`.
-            let mut file = OpenOptions::new().write(true).open(target_path).await?;
+            let mut file = OpenOptions::new()
+                .write(true)
+                .open(&partial_upload_path)
+                .await?;
             let mut writer = BufWriter::new(&mut file);
             writer
                 .seek(SeekFrom::Start(content_range.range().0))
@@ -170,6 +179,14 @@ impl IsFilesystem for RemoteFilesystem {
         }
         .await
         .map_err(|err| Error::RemoteFilesystem(RemoteFilesystemError::StreamToFile(err)))?;
+
+        if content_range.range().1 + 1 == content_range.size().unwrap() {
+            tokio::fs::rename(&partial_upload_path, &target_path)
+                .await
+                .map_err(|err| {
+                    Error::RemoteFilesystem(RemoteFilesystemError::FinalizeUploadFailed(err))
+                })?;
+        }
 
         Ok(())
     }

@@ -47,4 +47,6 @@ pub enum RemoteFilesystemError {
     TargetPathIsDirectory(PathBuf),
     #[error("Content range exceeds file size for target path: {0:?}")]
     GetFileMetadataFailed(std::io::Error),
+    #[error("Unable to finalize upload")]
+    FinalizeUploadFailed(std::io::Error),
 }

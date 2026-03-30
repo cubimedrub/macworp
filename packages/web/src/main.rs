@@ -1,4 +1,5 @@
 mod client;
+mod components;
 mod file;
 mod pages;
 mod router;

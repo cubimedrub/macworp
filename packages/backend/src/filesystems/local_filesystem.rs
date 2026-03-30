@@ -65,4 +65,12 @@ impl IsFilesystem for LocalFilesystem {
     {
         Ok(())
     }
+
+    async fn create_folder(
+        _state: &State,
+        _project: &Project,
+        _folder_path: PathBuf,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
 }

@@ -8,7 +8,7 @@ use std::{
 use dioxus::signals::Signal;
 use macworp_core::{
     authentication::TokenType,
-    requests::{NewProjectRequest, PasswordLoginRequest},
+    requests::{NewProjectRequest, PasswordLoginRequest, ProjectCreateFolderRequest},
     responses::{LoginProviderResponse, ProjectResponse, UserResponse},
     routing::*,
 };
@@ -411,9 +411,7 @@ impl<'a> ProjectsClient<'a> {
     /// # Arguments
     /// * `jwt` - The JWT for authentication
     /// * `id` - The project id
-    /// * `file` - The file to upload
-    /// * `buffer_size` - Size of the buffer to fill before sending a upload request.
-    /// * `progress` - Signal to report upload progress of the file to the UI
+    /// * `folder_path` - The path of the folder to upload the file to relative to the project
     ///
     pub async fn upload_file<U: IsFileUpload>(
         &self,
@@ -433,6 +431,58 @@ impl<'a> ProjectsClient<'a> {
         U::upload_file(&url, jwt, file, buffer_size, progress)
             .await
             .map_err(|err| Error::ProjectFileUpload(err.to_string()))
+    }
+
+    /// Creates empty folder within a project
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `folder_path` - The path of the folder to create relative to the project
+    ///
+    pub async fn create_folder(
+        &self,
+        jwt: &str,
+        id: i64,
+        folder_path: PathBuf,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            ProjectsRouting::controller_path(),
+            ProjectsRouting::CREATE_FOLDER_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let body = ProjectCreateFolderRequest { folder_path };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+
+            tracing::error!(
+                "Failed to create folder: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::Backend(format!(
+                "Failed to create folder: HTTP {}, response text: {}",
+                status, text
+            )));
+        }
+
+        Ok(())
     }
 }
 

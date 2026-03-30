@@ -17,3 +17,9 @@ pub struct NewProjectRequest {
     pub name: String,
     pub path: PathBuf,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProjectCreateFolderRequest {
+    /// Folder path
+    pub folder_path: PathBuf,
+}

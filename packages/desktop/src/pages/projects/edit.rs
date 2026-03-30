@@ -1,12 +1,13 @@
 use std::{path::PathBuf, rc::Rc};
 
 use dioxus::{core::Event, html::DragData};
-use macworp_ui_core::{
-    components::file_browser::ImmutableFileBrowser, pages::projects::edit::IsProjectEdit,
-};
+use macworp_ui_core::pages::projects::edit::IsProjectEdit;
 use thiserror::Error;
 
-use crate::{client::DesktopFileUpload, file::UploadableFile, router::Router, storage::Storage};
+use crate::{
+    client::DesktopFileUpload, components::file_browser::FileBrowser, file::UploadableFile,
+    router::Router, storage::Storage,
+};
 
 #[derive(Debug, Error)]
 pub enum Error {}
@@ -17,7 +18,7 @@ impl IsProjectEdit for FileImmutableProjectEdit {
     type Error = Error;
     type File = UploadableFile;
     type FileUpload = DesktopFileUpload;
-    type FileBrowser = ImmutableFileBrowser;
+    type FileBrowser = FileBrowser;
     type Storage = Storage;
     type Router = Router;
 

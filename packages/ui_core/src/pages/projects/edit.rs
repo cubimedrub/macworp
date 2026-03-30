@@ -17,7 +17,7 @@ pub trait IsProjectEdit {
     type Error: std::error::Error + std::fmt::Debug + Sync + Send + 'static;
     type File: IsUploadableFile + 'static;
     type FileUpload: IsFileUpload<File = Self::File>;
-    type FileBrowser: IsFileBrowser + 'static;
+    type FileBrowser: IsFileBrowser<Storage = Self::Storage> + 'static;
     type Storage: IsStorage + 'static;
     type Router: IsRouter + 'static;
 
@@ -78,7 +78,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
 
     let window_file_drop_handling_result = use_resource(T::prevent_window_file_drop_handling);
 
-    let project: Resource<Result<Signal<ProjectResponse>, Error<T::Storage>>> =
+    let mut project_res: Resource<Result<Signal<ProjectResponse>, Error<T::Storage>>> =
         use_resource(move || async move {
             let jwt = storage
                 .read()
@@ -205,7 +205,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                 },
                 None => rsx! {}
             }
-            match &*project.read() {
+            match &*project_res.read() {
                 Some(Ok(project)) => rsx!(
                     div {
                         class: "logo d-flex flex-row justify-content-between mb-3",
@@ -237,6 +237,9 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                         project: *project,
                         move_into_folder_callback: Callback::new(move |new_subpath| {
                             subpath.set(new_subpath);
+                        }),
+                        reload_content_callback: Callback::new(move |_| {
+                            project_res.restart();
                         })
                     }
                     if !upload_queue.read().is_empty() || !current_upload.read().is_none() {
@@ -295,9 +298,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                     }
                 ),
                 None => rsx!(
-                    if project.pending() {
-                        Spinner {}
-                    }
+                    Spinner {}
                 )
             }
         }

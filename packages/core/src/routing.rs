@@ -43,6 +43,7 @@ impl ProjectsRouting {
     pub const EDIT_PATH: &str = "/edit/{id}";
     pub const DELETE_PATH: &str = "/delete/{id}";
     pub const UPLOAD_FILE_PATH: &str = "/upload-file/{id}";
+    pub const CREATE_FOLDER_PATH: &str = "/create-folder/{id}";
 }
 
 impl IsRouting for ProjectsRouting {

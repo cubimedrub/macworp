@@ -8,8 +8,10 @@ use axum::{
 
 use http::{HeaderMap, StatusCode};
 use macworp_core::{
-    http::headers::ContentRangeHeaderValue, requests::NewProjectRequest,
-    responses::ProjectResponse, routing::ProjectsRouting,
+    http::headers::ContentRangeHeaderValue,
+    requests::{NewProjectRequest, ProjectCreateFolderRequest},
+    responses::ProjectResponse,
+    routing::ProjectsRouting,
 };
 use sea_orm::{
     ColumnTrait, EntityTrait, ModelTrait, QueryFilter, TransactionError, TransactionTrait,
@@ -51,6 +53,10 @@ where
             .route(ProjectsRouting::EDIT_PATH, get(Self::edit))
             .route(ProjectsRouting::DELETE_PATH, post(Self::delete))
             .route(ProjectsRouting::UPLOAD_FILE_PATH, post(Self::upload_file))
+            .route(
+                ProjectsRouting::CREATE_FOLDER_PATH,
+                post(Self::create_folder),
+            )
             .with_state(state)
     }
 
@@ -227,6 +233,29 @@ where
             request.into_body().into_data_stream(),
         )
         .await?;
+
+        Ok(StatusCode::OK)
+    }
+
+    pub async fn create_folder(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+        Path(id): Path<i64>,
+        Json(payload): Json<ProjectCreateFolderRequest>,
+    ) -> Result<StatusCode, ProjectsControllerError> {
+        let project = ProjectTable::find_by_id(id)
+            .one(state.db())
+            .await
+            .map_err(ProjectsControllerError::Database)?
+            .ok_or(ProjectsControllerError::ProjectNotFound)?;
+
+        if project.owner_id != user.id {
+            return Err(ProjectsControllerError::Forbidden);
+        }
+
+        F::create_folder(state.as_ref(), &project, payload.folder_path)
+            .await
+            .map_err(ProjectsControllerError::Filesystem)?;
 
         Ok(StatusCode::OK)
     }

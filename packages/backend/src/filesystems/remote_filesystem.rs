@@ -190,4 +190,24 @@ impl IsFilesystem for RemoteFilesystem {
 
         Ok(())
     }
+
+    async fn create_folder(
+        state: &State,
+        project: &Project,
+        folder_path: PathBuf,
+    ) -> Result<(), Error> {
+        let new_folder_path = Self::join_paths(&Self::project_path(state, project)?, &folder_path);
+
+        if new_folder_path.is_file() {
+            return Err(Error::RemoteFilesystem(
+                RemoteFilesystemError::TargetPathIsFile(new_folder_path),
+            ));
+        }
+
+        tokio::fs::create_dir_all(&new_folder_path)
+            .await
+            .map_err(|err| {
+                Error::RemoteFilesystem(RemoteFilesystemError::CreateProjectSubDirectory(err))
+            })
+    }
 }

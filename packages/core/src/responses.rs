@@ -15,7 +15,7 @@ pub struct UserResponse {
 
 /// Response of login
 ///
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectResponse {
     pub id: i64,
     pub name: String,

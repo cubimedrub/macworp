@@ -3,37 +3,32 @@ use std::path::PathBuf;
 
 use dioxus::prelude::*;
 use macworp_core::responses::ProjectResponse;
-use thiserror::Error;
 
-#[derive(Debug, Error)]
-pub enum Error {}
+use crate::storage::IsStorage;
+
+#[derive(Clone, PartialEq, Props)]
+pub struct CreateFolderProps {
+    pub project: Signal<ProjectResponse>,
+    pub reload_content_callback: Callback<(), ()>,
+}
 
 /// Defines a type of file browser.
 ///
 pub trait IsFileBrowser {
+    type Storage: IsStorage;
     type Error: std::error::Error + Debug + Sync + Send + 'static;
-}
 
-/// Immutable file browser for desktop use where the user is supposed
-/// to use the native file explorer
-pub struct ImmutableFileBrowser;
-
-impl IsFileBrowser for ImmutableFileBrowser {
-    type Error = Error;
-}
-
-/// Mutable version of the file browser offers uploads,
-/// file/folder deletion and folder creation
-pub struct MutableFileBrowser;
-
-impl IsFileBrowser for MutableFileBrowser {
-    type Error = Error;
+    #[allow(non_upper_case_globals)]
+    const CreateFolder: Component<CreateFolderProps>;
 }
 
 #[derive(Clone, PartialEq, Props)]
 pub struct FileBrowserProps {
     pub project: Signal<ProjectResponse>,
+    /// Callback to call once moved into a folder, which should trigger a content reload
     pub move_into_folder_callback: Callback<PathBuf, ()>,
+    /// Callback for reloding file contente, once a folder was created
+    pub reload_content_callback: Callback<(), ()>,
 }
 
 #[component]
@@ -54,6 +49,10 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
     };
 
     rsx! {
+        F::CreateFolder{
+            project: props.project,
+            reload_content_callback: props.reload_content_callback,
+        }
         ul {
             class: "list-group",
             li {

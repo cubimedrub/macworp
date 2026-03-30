@@ -49,4 +49,6 @@ pub enum RemoteFilesystemError {
     GetFileMetadataFailed(std::io::Error),
     #[error("Unable to finalize upload")]
     FinalizeUploadFailed(std::io::Error),
+    #[error("Target path is a file: {0:?}")]
+    TargetPathIsFile(PathBuf),
 }

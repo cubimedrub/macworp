@@ -87,4 +87,17 @@ pub trait IsFilesystem {
     where
         S: Stream<Item = Result<Bytes, E>> + Send,
         E: Into<BoxError>;
+
+    /// Creates a folder
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    /// * `project` - The project to create the folder in
+    /// * `folder_path` - The path to the folder to create, relative to the
+    ///
+    fn create_folder(
+        state: &State,
+        project: &Project,
+        folder_path: PathBuf,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 }

@@ -17,6 +17,9 @@ pub trait IsProjectEdit {
     type Error: std::error::Error + std::fmt::Debug + Sync + Send + 'static;
     type File: IsUploadableFile + 'static;
     type FileUpload: IsFileUpload<File = Self::File>;
+    type FileBrowser: IsFileBrowser + 'static;
+    type Storage: IsStorage + 'static;
+    type Router: IsRouter + 'static;
 
     /// Prevent dropped file handling by window
     fn prevent_window_file_drop_handling() -> impl Future<Output = Result<(), Self::Error>>;
@@ -62,15 +65,8 @@ pub struct EditProps {
 }
 
 #[component]
-pub fn Edit<
-    T: IsProjectEdit + 'static,
-    F: IsFileBrowser + 'static,
-    S: IsStorage + 'static,
-    R: IsRouter,
->(
-    props: EditProps,
-) -> Element {
-    let storage = use_context::<Signal<S>>();
+pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
+    let storage = use_context::<Signal<T::Storage>>();
     let config = use_context::<Signal<Configuration>>();
     let navigator = navigator();
 
@@ -82,7 +78,7 @@ pub fn Edit<
 
     let window_file_drop_handling_result = use_resource(T::prevent_window_file_drop_handling);
 
-    let project: Resource<Result<Signal<ProjectResponse>, Error<S>>> =
+    let project: Resource<Result<Signal<ProjectResponse>, Error<T::Storage>>> =
         use_resource(move || async move {
             let jwt = storage
                 .read()
@@ -118,12 +114,12 @@ pub fn Edit<
             .await
             .map_err(Error::DeleteProject)?;
 
-        navigator.push(R::project_index_route());
+        navigator.push(T::Router::project_index_route());
 
-        Ok::<_, Error<S>>(())
+        Ok::<_, Error<T::Storage>>(())
     });
 
-    let mut upload_task: Resource<std::result::Result<(), Error<S>>> =
+    let mut upload_task: Resource<std::result::Result<(), Error<T::Storage>>> =
         use_resource(move || async move {
             tracing::info!("Starting file upload for project {id}", id = props.id);
 
@@ -237,7 +233,7 @@ pub fn Edit<
                         },
                         _ => rsx! {}
                     }
-                    FileBrowser<F> {
+                    FileBrowser<T::FileBrowser> {
                         project: *project,
                         move_into_folder_callback: Callback::new(move |new_subpath| {
                             subpath.set(new_subpath);

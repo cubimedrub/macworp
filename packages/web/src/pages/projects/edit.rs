@@ -2,7 +2,9 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use dioxus::{core::Event, html::DragData, logger::tracing, web::WebEventExt};
 use futures::channel::oneshot;
-use macworp_ui_core::pages::projects::edit::IsProjectEdit;
+use macworp_ui_core::{
+    components::file_browser::MutableFileBrowser, pages::projects::edit::IsProjectEdit,
+};
 use thiserror::Error;
 use web_sys::{
     js_sys::Undefined,
@@ -10,7 +12,7 @@ use web_sys::{
     window, DragEvent, FileSystemDirectoryEntry, FileSystemFileEntry,
 };
 
-use crate::{client::BrowserFileUpload, file::UploadableFile};
+use crate::{client::BrowserFileUpload, file::UploadableFile, router::Router, storage::Storage};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -118,6 +120,9 @@ impl IsProjectEdit for FileMutableProjectEdit {
     type Error = Error;
     type File = UploadableFile;
     type FileUpload = BrowserFileUpload;
+    type FileBrowser = MutableFileBrowser;
+    type Storage = Storage;
+    type Router = Router;
 
     async fn prevent_window_file_drop_handling() -> Result<(), Self::Error> {
         let (sync_sender, sync_receiver) = oneshot::channel::<()>();

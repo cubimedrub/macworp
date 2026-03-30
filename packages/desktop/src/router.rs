@@ -1,7 +1,6 @@
 use dioxus::prelude::*;
 
 use macworp_ui_core::{
-    components::file_browser::ImmutableFileBrowser,
     layouts::{one_pane::OnePane, two_pane::TwoPane},
     pages::{error::Error, projects::*},
     router::IsRouter,
@@ -25,7 +24,7 @@ pub enum Router {
         ProjectIndex,
         #[route("/projects/new")]
         ProjectNew,
-        #[route("/projects/:id", ProjectEdit<FileImmutableProjectEdit, ImmutableFileBrowser, Storage, Router>)]
+        #[route("/projects/:id", ProjectEdit<FileImmutableProjectEdit>)]
         ProjectEdit{ id: i64 },
 }
 

@@ -23,3 +23,9 @@ pub struct ProjectCreateFolderRequest {
     /// Folder path
     pub folder_path: PathBuf,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProjectPathDeletionRequest {
+    /// Target path to delete
+    pub path: PathBuf,
+}

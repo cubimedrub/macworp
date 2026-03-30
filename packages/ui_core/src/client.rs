@@ -8,7 +8,10 @@ use std::{
 use dioxus::signals::Signal;
 use macworp_core::{
     authentication::TokenType,
-    requests::{NewProjectRequest, PasswordLoginRequest, ProjectCreateFolderRequest},
+    requests::{
+        NewProjectRequest, PasswordLoginRequest, ProjectCreateFolderRequest,
+        ProjectPathDeletionRequest,
+    },
     responses::{LoginProviderResponse, ProjectResponse, UserResponse},
     routing::*,
 };
@@ -478,6 +481,53 @@ impl<'a> ProjectsClient<'a> {
             );
             return Err(Error::Backend(format!(
                 "Failed to create folder: HTTP {}, response text: {}",
+                status, text
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Deletes the given path
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `path` - Path to delete
+    ///
+    pub async fn delete_path(&self, jwt: &str, id: i64, path: PathBuf) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            ProjectsRouting::controller_path(),
+            ProjectsRouting::DELETE_PATH_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let body = ProjectPathDeletionRequest { path };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+
+            tracing::error!(
+                "Failed to delete path: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::Backend(format!(
+                "Failed to delete path: HTTP {}, response text: {}",
                 status, text
             )));
         }

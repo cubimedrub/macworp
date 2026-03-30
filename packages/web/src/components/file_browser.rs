@@ -1,7 +1,9 @@
+use std::path::PathBuf;
+
 use dioxus::prelude::*;
 use macworp_ui_core::{
     client::Client,
-    components::file_browser::{CreateFolderProps, IsFileBrowser},
+    components::file_browser::{CreateFolderProps, DeletePathProps, IsFileBrowser},
     configuration::Configuration,
     storage::IsStorage,
 };
@@ -29,7 +31,7 @@ impl IsFileBrowser for FileBrowser {
     type Storage = Storage;
     type Error = Error;
 
-    const CreateFolder: Component<CreateFolderProps> = |props: CreateFolderProps| {
+    const CreateFolder: Component<CreateFolderProps> = |props| {
         let storage = use_context::<Signal<Self::Storage>>();
         let config = use_context::<Signal<Configuration>>();
         let mut folder_name = use_signal(String::new);
@@ -103,6 +105,50 @@ impl IsFileBrowser for FileBrowser {
                         }
                     }
                 }
+            }
+        }
+    };
+
+    const PathDelete: Component<DeletePathProps> = |props| {
+        let storage = use_context::<Signal<Self::Storage>>();
+        let config = use_context::<Signal<Configuration>>();
+        let mut is_deleting_path = use_signal(|| false);
+
+        let mut delete_path_action = use_action(move |project_id: i64, path: PathBuf| async move {
+            is_deleting_path.set(true);
+
+            let jwt = storage
+                .read()
+                .jwt()
+                .map_err(Error::Storage)?
+                .ok_or(Error::NotLoggedIn)?;
+
+            let config = config.read().clone();
+
+            Client::new(config.base_url().to_string(), config.timeout())
+                .projects()
+                .delete_path(&jwt, project_id, path)
+                .await
+                .map_err(Error::Request)?;
+
+            is_deleting_path.set(false);
+
+            props.reload_content_callback.call(());
+
+            Ok::<(), Error>(())
+        });
+        rsx! {
+            button {
+                class: "btn btn-sm btn-outline-danger",
+                r#type: "button",
+                id: "path-delete-button",
+                onclick: move |event| event.prevent_default(),
+                ondoubleclick: move |_| delete_path_action.call(props.project.read().id, props.path.clone()),
+                disabled: is_deleting_path,
+                i {
+                    class: "fas fa-trash me-1",
+                }
+                "(2x click)"
             }
         }
     };

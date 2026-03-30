@@ -9,7 +9,7 @@ use axum::{
 use http::{HeaderMap, StatusCode};
 use macworp_core::{
     http::headers::ContentRangeHeaderValue,
-    requests::{NewProjectRequest, ProjectCreateFolderRequest},
+    requests::{NewProjectRequest, ProjectCreateFolderRequest, ProjectPathDeletionRequest},
     responses::ProjectResponse,
     routing::ProjectsRouting,
 };
@@ -57,6 +57,7 @@ where
                 ProjectsRouting::CREATE_FOLDER_PATH,
                 post(Self::create_folder),
             )
+            .route(ProjectsRouting::DELETE_PATH_PATH, post(Self::delete_path))
             .with_state(state)
     }
 
@@ -254,6 +255,29 @@ where
         }
 
         F::create_folder(state.as_ref(), &project, payload.folder_path)
+            .await
+            .map_err(ProjectsControllerError::Filesystem)?;
+
+        Ok(StatusCode::OK)
+    }
+
+    pub async fn delete_path(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+        Path(id): Path<i64>,
+        Json(payload): Json<ProjectPathDeletionRequest>,
+    ) -> Result<StatusCode, ProjectsControllerError> {
+        let project = ProjectTable::find_by_id(id)
+            .one(state.db())
+            .await
+            .map_err(ProjectsControllerError::Database)?
+            .ok_or(ProjectsControllerError::ProjectNotFound)?;
+
+        if project.owner_id != user.id {
+            return Err(ProjectsControllerError::Forbidden);
+        }
+
+        F::delete_path(state.as_ref(), &project, payload.path)
             .await
             .map_err(ProjectsControllerError::Filesystem)?;
 

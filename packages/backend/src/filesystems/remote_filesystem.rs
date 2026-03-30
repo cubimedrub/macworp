@@ -210,4 +210,22 @@ impl IsFilesystem for RemoteFilesystem {
                 Error::RemoteFilesystem(RemoteFilesystemError::CreateProjectSubDirectory(err))
             })
     }
+
+    async fn delete_path(state: &State, project: &Project, path: PathBuf) -> Result<(), Error> {
+        let target_path = Self::join_paths(&Self::project_path(state, project)?, &path);
+
+        if target_path.is_file() {
+            tokio::fs::remove_file(target_path).await.map_err(|err| {
+                Error::RemoteFilesystem(RemoteFilesystemError::DeleteFileFailed(err))
+            })
+        } else if target_path.is_dir() {
+            tokio::fs::remove_dir_all(target_path).await.map_err(|err| {
+                Error::RemoteFilesystem(RemoteFilesystemError::DeleteDirectoryFailed(err))
+            })
+        } else {
+            Err(Error::RemoteFilesystem(
+                RemoteFilesystemError::PathDoesNotExist(path),
+            ))
+        }
+    }
 }

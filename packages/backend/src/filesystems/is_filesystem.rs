@@ -100,4 +100,17 @@ pub trait IsFilesystem {
         project: &Project,
         folder_path: PathBuf,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Deletes a file or folder
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    /// * `project` - The project to delete the file or folder in
+    /// * `path` - The path to the file or folder to delete, relative to
+    ///
+    fn delete_path(
+        state: &State,
+        project: &Project,
+        path: PathBuf,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
 }

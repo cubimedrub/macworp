@@ -1,5 +1,7 @@
 use dioxus::prelude::*;
-use macworp_ui_core::components::file_browser::{CreateFolderProps, IsFileBrowser};
+use macworp_ui_core::components::file_browser::{
+    CreateFolderProps, DeletePathProps, IsFileBrowser,
+};
 use thiserror::Error;
 
 use crate::storage::Storage;
@@ -16,6 +18,10 @@ impl IsFileBrowser for FileBrowser {
     type Error = Error;
 
     const CreateFolder: Component<CreateFolderProps> = |_props| {
+        rsx! {}
+    };
+
+    const PathDelete: Component<DeletePathProps> = |_props| {
         rsx! {}
     };
 }

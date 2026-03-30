@@ -51,4 +51,10 @@ pub enum RemoteFilesystemError {
     FinalizeUploadFailed(std::io::Error),
     #[error("Target path is a file: {0:?}")]
     TargetPathIsFile(PathBuf),
+    #[error("Failed to delete file, {0}")]
+    DeleteFileFailed(std::io::Error),
+    #[error("Failed to delete directory, {0}")]
+    DeleteDirectoryFailed(std::io::Error),
+    #[error("Path `{0:?}` does not exist.")]
+    PathDoesNotExist(PathBuf),
 }

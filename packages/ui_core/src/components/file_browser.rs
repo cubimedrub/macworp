@@ -12,6 +12,13 @@ pub struct CreateFolderProps {
     pub reload_content_callback: Callback<(), ()>,
 }
 
+#[derive(Clone, PartialEq, Props)]
+pub struct DeletePathProps {
+    pub project: Signal<ProjectResponse>,
+    pub path: PathBuf,
+    pub reload_content_callback: Callback<(), ()>,
+}
+
 /// Defines a type of file browser.
 ///
 pub trait IsFileBrowser {
@@ -20,6 +27,9 @@ pub trait IsFileBrowser {
 
     #[allow(non_upper_case_globals)]
     const CreateFolder: Component<CreateFolderProps>;
+
+    #[allow(non_upper_case_globals)]
+    const PathDelete: Component<DeletePathProps>;
 }
 
 #[derive(Clone, PartialEq, Props)]
@@ -65,23 +75,40 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
             }
             for folder in props.project.read().directories.iter().cloned() {
                 li {
-                    class: "list-group-item cursor-pointer",
-                    onclick: move |_| {
-                        props.move_into_folder_callback.call(props.project.read().current.join(&folder));
-                    },
-                    i {
-                        class: "fas fa-folder me-2"
+                    class: "list-group-item cursor-pointer d-flex",
+                    span {
+                        class: "d-flex align-items-center flex-fill",
+                        onclick: move |_| {
+                            props.move_into_folder_callback.call(props.project.read().current.join(&folder));
+                        },
+                        i {
+                            class: "fas fa-folder me-2"
+                        }
+                        "{folder}"
                     }
-                    "{folder}"
+                    F::PathDelete {
+                        project: props.project,
+                        path: props.project.read().current.join(&folder),
+                        reload_content_callback: props.reload_content_callback,
+                    }
+
                 }
             }
             for file in props.project.read().files.iter() {
                 li {
-                    class: "list-group-item",
-                    i {
-                        class: "fas fa-file me-2"
+                    class: "list-group-item d-flex",
+                    span {
+                        class: "d-flex align-items-center flex-fill",
+                        i {
+                            class: "fas fa-file me-2"
+                        }
+                        "{file}"
                     }
-                    "{file}"
+                    F::PathDelete {
+                        project: props.project,
+                        path: props.project.read().current.join(file),
+                        reload_content_callback: props.reload_content_callback,
+                    }
                 }
             }
         }

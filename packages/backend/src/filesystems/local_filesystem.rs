@@ -73,4 +73,8 @@ impl IsFilesystem for LocalFilesystem {
     ) -> Result<(), Error> {
         Ok(())
     }
+
+    async fn delete_path(_state: &State, _project: &Project, _path: PathBuf) -> Result<(), Error> {
+        Ok(())
+    }
 }

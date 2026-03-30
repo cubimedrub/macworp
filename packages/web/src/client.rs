@@ -221,6 +221,14 @@ impl IsFileUpload for BrowserFileUpload {
             }
         }
 
+        // Wait for the last request to succeed
+        if let Some(partial_upload) = partial_upload_result_opt.take() {
+            read_bytes += partial_upload
+                .await
+                .map_err(|_| Error::UploadResultChannel)??;
+            progress.set(read_bytes as f64 / file_size as f64 * 100.0);
+        }
+
         Ok(())
     }
 }

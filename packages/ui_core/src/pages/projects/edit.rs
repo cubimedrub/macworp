@@ -145,6 +145,8 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
 
                 current_upload.set(Some(format!("{file}")));
 
+                let file_destination = file.parent().map(PathBuf::from);
+
                 client
                     .projects()
                     .upload_file::<T::FileUpload>(
@@ -156,6 +158,13 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                     )
                     .await
                     .map_err(Error::Upload)?;
+
+                // Refresh content if we're still in the same path
+                if let Some(destination) = file_destination.as_ref() {
+                    if destination == &*subpath.read() {
+                        project_res.restart();
+                    }
+                }
 
                 current_upload.set(None);
                 upload_progress.set(0.0);

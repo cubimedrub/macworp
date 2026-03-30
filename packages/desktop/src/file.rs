@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::Deref};
+use std::{fmt::Display, ops::Deref, path::Path};
 
 use macworp_ui_core::client::IsUploadableFile;
 
@@ -15,6 +15,10 @@ impl IsUploadableFile for UploadableFile {
     type Inner = ();
 
     fn into_inner(self) -> Self::Inner {}
+
+    fn parent(&self) -> Option<&Path> {
+        None
+    }
 }
 
 impl Display for UploadableFile {

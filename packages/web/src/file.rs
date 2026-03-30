@@ -1,4 +1,9 @@
-use std::{fmt::Display, ops::Deref, path::PathBuf, rc::Rc};
+use std::{
+    fmt::Display,
+    ops::Deref,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use macworp_ui_core::client::IsUploadableFile;
 use web_sys::FileSystemFileEntry;
@@ -27,6 +32,10 @@ impl IsUploadableFile for UploadableFile {
 
     fn into_inner(self) -> Self::Inner {
         self.inner
+    }
+
+    fn parent(&self) -> Option<&Path> {
+        Some(self.target_directory.as_path())
     }
 }
 

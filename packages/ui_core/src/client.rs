@@ -2,7 +2,7 @@ use std::{
     fmt::{Debug, Display},
     future::Future,
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use dioxus::signals::Signal;
@@ -490,6 +490,7 @@ impl<'a> ProjectsClient<'a> {
 pub trait IsUploadableFile: Debug + Display + Deref<Target = Self::Inner> {
     type Inner;
     fn into_inner(self) -> Self::Inner;
+    fn parent(&self) -> Option<&Path>;
 }
 
 pub trait IsFileUpload {

@@ -9,10 +9,12 @@ use dioxus::signals::Signal;
 use macworp_core::{
     authentication::TokenType,
     requests::{
-        NewProjectRequest, PasswordLoginRequest, ProjectCreateFolderRequest,
-        ProjectPathDeletionRequest,
+        NewProjectRequest, NewWorkflowIntegrationRequest, PasswordLoginRequest,
+        ProjectCreateFolderRequest, ProjectPathDeletionRequest,
     },
-    responses::{LoginProviderResponse, ProjectResponse, UserResponse},
+    responses::{
+        LoginProviderResponse, ProjectResponse, UserResponse, WorkflowIntegrationResponse,
+    },
     routing::*,
 };
 
@@ -65,6 +67,10 @@ impl Client {
 
     pub fn projects<'a>(&'a self) -> ProjectsClient<'a> {
         ProjectsClient::new(self)
+    }
+
+    pub fn workflow_integrations<'a>(&'a self) -> WorkflowIntegrationClient<'a> {
+        WorkflowIntegrationClient::new(self)
     }
 }
 
@@ -565,4 +571,194 @@ pub trait IsFileUpload {
         buffer_size: usize,
         progress: Signal<f64>,
     ) -> impl Future<Output = Result<(), Self::Error>>;
+}
+
+/// Projects subclient
+///
+pub struct WorkflowIntegrationClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> WorkflowIntegrationClient<'a> {
+    /// Creates a new client
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Returns the backend version
+    ///
+    pub async fn workflow_integrations(
+        &self,
+        jwt: &str,
+    ) -> Result<Vec<WorkflowIntegrationResponse>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::INDEX_PATH
+        );
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::Backend(format!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status, text
+            )));
+        }
+
+        response
+            .json::<Vec<WorkflowIntegrationResponse>>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a new project
+    ///
+    pub async fn new_workflow_integration(
+        &self,
+        jwt: &str,
+        name: String,
+        description: String,
+    ) -> Result<WorkflowIntegrationResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::NEW_PATH
+        );
+        let client = reqwest::Client::new();
+
+        let body = NewWorkflowIntegrationRequest { name, description };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch new workflow integration request: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::Backend(format!(
+                "Failed to fetch new workflow integration request: HTTP {}, response text: {}",
+                status, text
+            )));
+        }
+
+        response
+            .json::<WorkflowIntegrationResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a new project
+    ///
+    pub async fn workflow_integration(
+        &self,
+        jwt: &str,
+        id: i64,
+    ) -> Result<WorkflowIntegrationResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::EDIT_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::Backend(format!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status, text
+            )));
+        }
+
+        response
+            .json::<WorkflowIntegrationResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    pub async fn delete(&self, jwt: &str, id: i64) -> Result<bool, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::DELETE_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to delete project: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::Backend(format!(
+                "Failed to delete project: HTTP {}, response text: {}",
+                status, text
+            )));
+        }
+
+        Ok(response.status().is_success())
+    }
 }

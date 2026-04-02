@@ -29,3 +29,11 @@ pub struct ProjectPathDeletionRequest {
     /// Target path to delete
     pub path: PathBuf,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewWorkflowIntegrationRequest {
+    /// Name of the new integration
+    pub name: String,
+    /// Descriptio
+    pub description: String,
+}

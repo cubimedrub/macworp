@@ -26,7 +26,7 @@ pub struct Model {
     pub projects: HasMany<super::project::Entity>,
 
     #[sea_orm(has_many)]
-    pub workflows: HasMany<super::workflow::Entity>,
+    pub workflows: HasMany<super::workflow_integration::Entity>,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

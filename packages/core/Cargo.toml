@@ -5,7 +5,14 @@ edition = "2024"
 
 [dependencies]
 http = { workspace = true }
-serde = { workspace = true }
+sea-orm = { workspace = true, features = ["macros"], optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, optional = true }
+strum = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[features]
+default = []
+database = ["dep:sea-orm", "dep:serde_json"]

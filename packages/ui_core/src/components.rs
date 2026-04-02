@@ -1,7 +1,9 @@
 pub mod bootstrap;
 pub mod confirmation_dialog;
 pub mod file_browser;
+pub mod separator;
 pub mod spiner;
+pub mod workflow_integrations;
 
 // Re-export components
 pub use bootstrap::Bootstrap;

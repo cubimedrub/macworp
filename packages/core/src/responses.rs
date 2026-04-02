@@ -2,6 +2,8 @@ use std::{fmt::Display, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::workflow_configuration::WorkflowConfiguration;
+
 /// Response of login
 ///
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,5 +51,25 @@ impl Display for LoginProviderResponse {
                 description: _,
             } => write!(f, "{name}"),
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkflowIntegrationResponse {
+    pub id: i64,
+    pub owner_username: String,
+    pub is_public: bool,
+    pub name: String,
+    pub description: String,
+    pub configuration: WorkflowConfiguration,
+}
+
+impl WorkflowIntegrationResponse {
+    pub fn configuration(&self) -> &WorkflowConfiguration {
+        &self.configuration
+    }
+
+    pub fn configuration_mut(&mut self) -> &mut WorkflowConfiguration {
+        &mut self.configuration
     }
 }

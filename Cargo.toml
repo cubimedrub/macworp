@@ -19,8 +19,10 @@ manganis = { version = "0.7.3" }
 password-auth = { version = "1.0.0" }
 reqwest = { version = "0.13.2" }
 serde = { version = "1.0.228" }
+serde_json = { version = "1.0.149" }
 sea-orm = { version = "2.0.0-rc.37" }
 sqlx = "0.8.6"
+strum = "0.28.0"
 thiserror = { version = "2.0.18" }
 tokio = { version = "1.50.0" }
 toml = { version = "1.0.6+spec-1.1.0" }

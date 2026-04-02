@@ -15,3 +15,5 @@ pub mod requests;
 pub mod responses;
 /// Routing segments of controllers
 pub mod routing;
+/// Workflow configuration
+pub mod workflow_configuration;

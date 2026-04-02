@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use macworp_ui_core::{
     layouts::{one_pane::OnePane, two_pane::TwoPane},
-    pages::{error::Error, projects::*},
+    pages::{error::Error, projects::*, workflow_integrations::*},
     router::IsRouter,
 };
 
@@ -34,6 +34,13 @@ pub enum Router {
         ProjectNew,
         #[route("/projects/:id", ProjectEdit<FileMutableProjectEdit>)]
         ProjectEdit{ id: i64 },
+
+        #[route("/workflow-integrations", WorkflowIntegrationIndex<Storage, Router>)]
+        WorkflowIntegrationIndex,
+        #[route("/workflow-integrations/new", WorkflowIntegrationNew<Storage, Router>)]
+        WorkflowIntegrationNew,
+        #[route("/workflow-integrations/:id", WorkflowIntegrationEdit<Storage>)]
+        WorkflowIntegrationEdit{ id: i64 },
 }
 
 impl IsRouter for Router {
@@ -57,5 +64,17 @@ impl IsRouter for Router {
 
     fn error_route(message: String) -> NavigationTarget<Self> {
         NavigationTarget::Internal(Router::ErrorPage { message })
+    }
+
+    fn workflow_integration_new_route() -> NavigationTarget<Self> {
+        NavigationTarget::Internal(Router::WorkflowIntegrationNew)
+    }
+
+    fn workflow_integration_index_route() -> NavigationTarget<Self> {
+        NavigationTarget::Internal(Router::WorkflowIntegrationIndex)
+    }
+
+    fn workflow_integration_route(id: i64) -> NavigationTarget<Self> {
+        NavigationTarget::Internal(Router::WorkflowIntegrationEdit { id })
     }
 }

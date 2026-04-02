@@ -50,3 +50,15 @@ impl ProjectsRouting {
 impl IsRouting for ProjectsRouting {
     const CONTROLLER_PATH: &str = "/projects";
 }
+
+pub struct WorkflowIntegrationsRouting;
+impl WorkflowIntegrationsRouting {
+    pub const INDEX_PATH: &str = "/index";
+    pub const NEW_PATH: &str = "/new";
+    pub const EDIT_PATH: &str = "/edit/{id}";
+    pub const DELETE_PATH: &str = "/delete/{id}";
+}
+
+impl IsRouting for WorkflowIntegrationsRouting {
+    const CONTROLLER_PATH: &str = "/workflow-integrations";
+}

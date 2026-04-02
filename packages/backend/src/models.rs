@@ -4,7 +4,7 @@ mod project;
 pub mod user;
 mod user_share;
 mod users_groups;
-mod workflow;
+mod workflow_integration;
 
 // Re-exporting the models for easier access from other modules
 pub use group::{ActiveModel as ActiveGroup, Entity as GroupTable, Model as Group};
@@ -23,4 +23,7 @@ pub use user::{ActiveModel as ActiveUser, Entity as UserTable, Model as User};
 pub use users_groups::{
     ActiveModel as ActiveUsersGroups, Entity as UsersGroupsTable, Model as UsersGroups,
 };
-pub use workflow::{ActiveModel as ActiveWorkflow, Entity as WorkflowTable, Model as Workflow};
+pub use workflow_integration::{
+    ActiveModel as ActiveWorkflowIntegration, Column as WorkflowIntegrationColumn,
+    Entity as WorkflowIntegrationTable, Model as WorkflowIntegration,
+};

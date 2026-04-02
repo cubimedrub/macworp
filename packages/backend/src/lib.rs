@@ -24,6 +24,7 @@ use axum::{Extension, Router};
 use http::Method;
 use macworp_core::routing::{
     IsRouting, LoginRouting, ProjectsRouting, UsersRouting, UtilitiesRouting,
+    WorkflowIntegrationsRouting,
 };
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
@@ -87,6 +88,10 @@ where
             .nest(
                 ProjectsRouting::controller_path(),
                 ProjectsController::<F>::routes(state.clone()),
+            )
+            .nest(
+                WorkflowIntegrationsRouting::controller_path(),
+                WorkflowIntegrationsController::routes(state.clone()),
             )
             .layer(Extension(state.clone()))
             .with_state(state)

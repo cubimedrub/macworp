@@ -19,13 +19,13 @@ dioxus = { workspace = true, optional = true, features = ["server"] }
 futures-util = "0.3.32"
 http = { workspace = true }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"]}
-macworp_core = { workspace = true }
+macworp_core = { workspace = true, features = ["database"] }
 macworp_database_migration = { workspace = true }
 password-auth = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 rpassword = { version = "7.4.0", optional = true }
 sea-orm = { workspace = true, features = ["macros"] }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive", "rc"] }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

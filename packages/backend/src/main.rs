@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use macworp_backend::{
     Backend, configuration::Configuration, filesystems::remote_filesystem::RemoteFilesystem,
     models::ActiveUser, standalone_error::StandaloneError,
@@ -10,6 +10,14 @@ use macworp_database_migration::{Migrator, MigratorTrait};
 use sea_orm::Database;
 
 static DEFAULT_LOGGING_DIRECTIVES: &[&str] = &["axum=error", "sqlx=error"];
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum MigrationDirection {
+    /// Migration up
+    Up,
+    /// Migration down
+    Down,
+}
 
 #[derive(Debug, Subcommand)]
 enum UserSubCommand {
@@ -35,8 +43,14 @@ enum UserSubCommand {
 enum SubCommand {
     /// Prints a new config
     Config {},
-    /// Database migration
+    /// Database migration, default is updated to latest migration
     DbMigrate {
+        /// Direction ot migrate
+        #[arg(short, long)]
+        direction: Option<MigrationDirection>,
+        /// Steps to migratre up or down
+        #[arg(short, long)]
+        steps: Option<u32>,
         /// Configuration path
         config: Option<PathBuf>,
     },
@@ -79,7 +93,11 @@ async fn main() -> Result<(), StandaloneError> {
 
             println!("{}", toml::to_string_pretty(&config).unwrap());
         }
-        SubCommand::DbMigrate { config } => {
+        SubCommand::DbMigrate {
+            config,
+            direction,
+            steps,
+        } => {
             init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
             let config = match config {
                 Some(config_path) => {
@@ -96,9 +114,14 @@ async fn main() -> Result<(), StandaloneError> {
                 .await
                 .map_err(StandaloneError::DatabaseConnection)?;
 
-            Migrator::up(&db, None)
-                .await
-                .map_err(macworp_backend::error::Error::DatabaseMigration)?
+            match direction {
+                Some(MigrationDirection::Down) => Migrator::down(&db, steps)
+                    .await
+                    .map_err(macworp_backend::error::Error::DatabaseMigration)?,
+                _ => Migrator::up(&db, steps)
+                    .await
+                    .map_err(macworp_backend::error::Error::DatabaseMigration)?,
+            }
         }
         SubCommand::Serve { config } => {
             init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;

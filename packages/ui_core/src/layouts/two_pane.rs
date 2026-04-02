@@ -102,9 +102,20 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
                             class: "nav-link",
                             to: R::project_index_route(),
                             i {
-                                class: "fa-solid fa-diagram-project"
+                                class: "fa-solid fa-folder-open me-3"
                             }
                             "Projects"
+                        }
+                    }
+                    li {
+                        class: "nav-item",
+                        Link {
+                            class: "nav-link",
+                            to: R::workflow_integration_index_route(),
+                            i {
+                                class: "fa-solid fa-diagram-project me-3"
+                            }
+                            "Workflow integration"
                         }
                     }
                 }

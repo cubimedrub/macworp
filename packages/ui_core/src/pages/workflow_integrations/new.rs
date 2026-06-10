@@ -17,6 +17,7 @@ pub enum Error<S: IsStorage> {
 pub fn New<S: IsStorage + 'static, R: IsRouter + 'static>() -> Element {
     let storage = use_context::<Signal<S>>();
     let config = use_context::<Signal<Configuration>>();
+    let navigator = navigator();
 
     let mut workflow_integration_name = use_signal(String::new);
     let mut workflow_integration_description = use_signal(String::new);
@@ -48,10 +49,7 @@ pub fn New<S: IsStorage + 'static, R: IsRouter + 'static>() -> Element {
             .await
             .map_err(Error::CreateProject)?;
 
-        let nav = navigator();
-
-        nav.push(R::workflow_integration_route(new_workflow_integration.id))
-            .unwrap();
+        navigator.push(R::workflow_integration_route(new_workflow_integration.id));
 
         Ok(())
     });

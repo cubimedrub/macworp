@@ -39,7 +39,7 @@ pub enum Router {
         WorkflowIntegrationIndex,
         #[route("/workflow-integrations/new", WorkflowIntegrationNew<Storage, Router>)]
         WorkflowIntegrationNew,
-        #[route("/workflow-integrations/:id", WorkflowIntegrationEdit<Storage>)]
+        #[route("/workflow-integrations/:id", WorkflowIntegrationEdit<Storage, Router>)]
         WorkflowIntegrationEdit{ id: i64 },
 }
 

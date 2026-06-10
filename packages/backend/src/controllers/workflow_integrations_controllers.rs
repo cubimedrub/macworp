@@ -9,7 +9,7 @@ use macworp_core::{
     requests::NewWorkflowIntegrationRequest, responses::WorkflowIntegrationResponse,
     routing::WorkflowIntegrationsRouting,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, ModelTrait, QueryFilter};
 
 use crate::{
     authentication::middleware::RequireAuth,
@@ -101,10 +101,25 @@ impl WorkflowIntegrationsController {
     }
 
     async fn delete(
-        State(_state): State<Arc<AppState>>,
-        RequireAuth(_user): RequireAuth,
-        Path(_id): Path<i64>,
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+        Path(id): Path<i64>,
     ) -> Result<http::StatusCode, WorkflowIntegrationsControllerError> {
-        unimplemented!()
+        let workflow_integration = WorkflowIntegrationTable::find_by_id(id)
+            .one(state.db())
+            .await
+            .map_err(WorkflowIntegrationsControllerError::Database)?
+            .ok_or(WorkflowIntegrationsControllerError::WorkflowIntegrationNotFound)?;
+
+        if workflow_integration.owner_id != user.id {
+            return Err(WorkflowIntegrationsControllerError::Forbidden);
+        }
+
+        workflow_integration
+            .delete(state.db())
+            .await
+            .map_err(WorkflowIntegrationsControllerError::Database)?;
+
+        Ok(http::StatusCode::OK)
     }
 }

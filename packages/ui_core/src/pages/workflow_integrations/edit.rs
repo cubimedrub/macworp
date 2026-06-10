@@ -16,6 +16,7 @@ use crate::{
     client::Client,
     components::{separator::Separator, workflow_integrations::*, ConfirmationDialog, Spinner},
     configuration::Configuration,
+    router::IsRouter,
     storage::IsStorage,
 };
 
@@ -160,15 +161,21 @@ fn on_workflow_source_change(
     }
 }
 
+pub trait IsWorkFlowEdit {
+    type Storage: IsStorage + 'static;
+    type Router: IsRouter + 'static;
+}
+
 #[derive(Clone, PartialEq, Props)]
 pub struct EditProps {
     pub id: i64,
 }
 
 #[component]
-pub fn Edit<S: IsStorage + 'static>(props: EditProps) -> Element {
+pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> Element {
     let storage = use_context::<Signal<S>>();
     let config = use_context::<Signal<Configuration>>();
+    let navigator = navigator();
 
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
     let last_workflow_source = use_signal(|| None::<Source>);
@@ -194,7 +201,25 @@ pub fn Edit<S: IsStorage + 'static>(props: EditProps) -> Element {
         Ok(Signal::new(workflow_integration.into()))
     });
 
-    let mut delete_action = use_action(move || async move { Ok::<(), Error<S>>(()) });
+    let mut delete_action = use_action(move || async move {
+        let jwt = storage
+            .read()
+            .jwt()
+            .map_err(Error::Storage)?
+            .ok_or(Error::NotLoggedIn)?;
+
+        let config = config.read().clone();
+
+        Client::new(config.base_url().to_string(), config.timeout())
+            .workflow_integrations()
+            .delete(&jwt, props.id)
+            .await
+            .map_err(Error::DeleteProject)?;
+
+        navigator.push(R::workflow_integration_index_route());
+
+        Ok::<_, Error<S>>(())
+    });
 
     rsx! {
         match &*workflow_integration_res.read() {

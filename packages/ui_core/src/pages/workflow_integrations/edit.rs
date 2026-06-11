@@ -465,7 +465,13 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                 for (parameter_idx, parameter) in workflow_integration.read().dynamic_parameters().iter().enumerate() {
                     match &*parameter.read() {
                         Parameter::Float(_) => rsx! {
-                            FloatParameter<DynamicParameter> {
+                            NumericParameter<DynamicParameter, f64> {
+                                parameter: *parameter,
+                                parameter_idx
+                            },
+                        },
+                        Parameter::Integer(_) => rsx! {
+                            NumericParameter<DynamicParameter, i64> {
                                 parameter: *parameter,
                                 parameter_idx
                             },

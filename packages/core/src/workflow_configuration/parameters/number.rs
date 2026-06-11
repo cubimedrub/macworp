@@ -7,7 +7,7 @@ use crate::workflow_configuration::parameters::parameter::{
 // TODO: Yes, we could make T implement num_trait to make it more specific
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "T: Serialize + DeserializeOwned + Clone + Copy")]
-pub struct Number<T: Serialize + DeserializeOwned + Clone> {
+pub struct Number<T: num_traits::Num + Serialize + DeserializeOwned + Clone> {
     #[serde(flatten)]
     inner: Parameter<T>,
     min: Option<T>,
@@ -16,7 +16,7 @@ pub struct Number<T: Serialize + DeserializeOwned + Clone> {
 
 impl<T> Number<T>
 where
-    T: Serialize + DeserializeOwned + Clone + Copy,
+    T: num_traits::Num + Serialize + DeserializeOwned + Clone + Copy,
 {
     pub fn new(name: String, label: String, desc: String) -> Self {
         Self {
@@ -45,7 +45,7 @@ where
 
 impl<T> IsParameter for Number<T>
 where
-    T: Serialize + DeserializeOwned + Clone,
+    T: num_traits::Num + Serialize + DeserializeOwned + Clone,
 {
     fn name(&self) -> &str {
         self.inner.name()
@@ -74,7 +74,7 @@ where
 
 impl<T> IsParameterWithValue<T> for Number<T>
 where
-    T: Serialize + DeserializeOwned + Clone,
+    T: num_traits::Num + Serialize + DeserializeOwned + Clone,
 {
     fn value(&self) -> Option<&T> {
         self.inner.value()
@@ -87,7 +87,7 @@ where
 
 impl<T> Default for Number<T>
 where
-    T: Serialize + DeserializeOwned + Clone,
+    T: num_traits::Num + Serialize + DeserializeOwned + Clone,
 {
     fn default() -> Self {
         Self {

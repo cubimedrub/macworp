@@ -4289,6 +4289,7 @@ name = "macworp_core"
 version = "0.1.0"
 dependencies = [
  "http",
+ "num-traits",
  "sea-orm",
  "serde",
  "serde_json",
@@ -4336,6 +4337,7 @@ dependencies = [
  "http",
  "macworp_core",
  "manganis",
+ "num-traits",
  "reqwest 0.13.2",
  "serde",
  "strum 0.28.0",

@@ -6,10 +6,13 @@ use axum::{
     routing::{get, post},
 };
 use macworp_core::{
-    requests::NewWorkflowIntegrationRequest, responses::WorkflowIntegrationResponse,
+    requests::{NewWorkflowIntegrationRequest, UpdateWorkflowIntegrationRequest},
+    responses::WorkflowIntegrationResponse,
     routing::WorkflowIntegrationsRouting,
 };
-use sea_orm::{ColumnTrait, EntityTrait, ModelTrait, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, ModelTrait, QueryFilter,
+};
 
 use crate::{
     authentication::middleware::RequireAuth,
@@ -30,6 +33,7 @@ impl WorkflowIntegrationsController {
             .route(WorkflowIntegrationsRouting::NEW_PATH, post(Self::new))
             .route(WorkflowIntegrationsRouting::EDIT_PATH, get(Self::edit))
             .route(WorkflowIntegrationsRouting::DELETE_PATH, post(Self::delete))
+            .route(WorkflowIntegrationsRouting::UPDATE_PATH, post(Self::update))
             .with_state(state)
     }
 
@@ -121,5 +125,38 @@ impl WorkflowIntegrationsController {
             .map_err(WorkflowIntegrationsControllerError::Database)?;
 
         Ok(http::StatusCode::OK)
+    }
+
+    async fn update(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+        Path(id): Path<i64>,
+        Json(payload): Json<UpdateWorkflowIntegrationRequest>,
+    ) -> Result<Json<WorkflowIntegrationResponse>, WorkflowIntegrationsControllerError> {
+        let workflow_integration = WorkflowIntegrationTable::find_by_id(id)
+            .one(state.db())
+            .await
+            .map_err(WorkflowIntegrationsControllerError::Database)?
+            .ok_or(WorkflowIntegrationsControllerError::WorkflowIntegrationNotFound)?;
+
+        if workflow_integration.owner_id != user.id {
+            return Err(WorkflowIntegrationsControllerError::Forbidden);
+        }
+
+        let mut active: ActiveWorkflowIntegration = workflow_integration.into();
+        active.name = Set(payload.name);
+        active.description = Set(payload.description);
+        active.is_public = Set(payload.is_public);
+        active.configuration = Set(payload.configuration);
+
+        let updated: WorkflowIntegration = active
+            .update(state.db())
+            .await
+            .map_err(WorkflowIntegrationsControllerError::Database)?;
+
+        let mut response = WorkflowIntegrationResponse::from(updated);
+        response.owner_username = user.username;
+
+        Ok(Json(response))
     }
 }

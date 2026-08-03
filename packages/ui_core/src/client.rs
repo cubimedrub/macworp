@@ -10,12 +10,13 @@ use macworp_core::{
     authentication::TokenType,
     requests::{
         NewProjectRequest, NewWorkflowIntegrationRequest, PasswordLoginRequest,
-        ProjectCreateFolderRequest, ProjectPathDeletionRequest,
+        ProjectCreateFolderRequest, ProjectPathDeletionRequest, UpdateWorkflowIntegrationRequest,
     },
     responses::{
         LoginProviderResponse, ProjectResponse, UserResponse, WorkflowIntegrationResponse,
     },
     routing::*,
+    workflow_configuration::WorkflowConfiguration,
 };
 
 use thiserror::Error;
@@ -715,6 +716,63 @@ impl<'a> WorkflowIntegrationClient<'a> {
             );
             return Err(Error::Backend(format!(
                 "Failed to fetch projects: HTTP {}, response text: {}",
+                status, text
+            )));
+        }
+
+        response
+            .json::<WorkflowIntegrationResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Updates an existing workflow integration
+    ///
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_workflow_integration(
+        &self,
+        jwt: &str,
+        id: i64,
+        name: String,
+        description: String,
+        is_public: bool,
+        configuration: WorkflowConfiguration,
+    ) -> Result<WorkflowIntegrationResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::UPDATE_PATH.replace("{id}", &id.to_string())
+        );
+        let client = reqwest::Client::new();
+
+        let body = UpdateWorkflowIntegrationRequest {
+            name,
+            description,
+            is_public,
+            configuration,
+        };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to update workflow integration: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::Backend(format!(
+                "Failed to update workflow integration: HTTP {}, response text: {}",
                 status, text
             )));
         }

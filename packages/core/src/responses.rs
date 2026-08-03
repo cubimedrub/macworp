@@ -54,7 +54,7 @@ impl Display for LoginProviderResponse {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkflowIntegrationResponse {
     pub id: i64,
     pub owner_username: String,

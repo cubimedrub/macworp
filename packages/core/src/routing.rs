@@ -57,6 +57,7 @@ impl WorkflowIntegrationsRouting {
     pub const NEW_PATH: &str = "/new";
     pub const EDIT_PATH: &str = "/edit/{id}";
     pub const DELETE_PATH: &str = "/delete/{id}";
+    pub const UPDATE_PATH: &str = "/update/{id}";
 }
 
 impl IsRouting for WorkflowIntegrationsRouting {

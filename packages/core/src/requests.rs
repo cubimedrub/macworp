@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::workflow_configuration::WorkflowConfiguration;
+
 /// Request for the login
 ///
 #[derive(Debug, Serialize, Deserialize)]
@@ -36,4 +38,16 @@ pub struct NewWorkflowIntegrationRequest {
     pub name: String,
     /// Descriptio
     pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateWorkflowIntegrationRequest {
+    /// Name of the integration
+    pub name: String,
+    /// Description of the integration
+    pub description: String,
+    /// Whether the integration is public
+    pub is_public: bool,
+    /// Workflow configuration
+    pub configuration: WorkflowConfiguration,
 }

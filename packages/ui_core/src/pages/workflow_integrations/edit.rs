@@ -28,6 +28,8 @@ pub enum Error<S: IsStorage> {
     FetchProject(crate::client::Error),
     #[error("Failed to delete projects: {0}")]
     DeleteProject(crate::client::Error),
+    #[error("Failed to save workflow integration: {0}")]
+    SaveWorkflowIntegration(crate::client::Error),
     #[error("Failed to upload file: {0}")]
     Upload(crate::client::Error),
     #[error("Not logged in")]
@@ -72,6 +74,31 @@ impl DisassambledWorkflowIntegration {
 
     pub fn fixed_parameters_mut(&mut self) -> &mut Vec<Signal<Parameter>> {
         &mut self.fixed_parameters
+    }
+
+    /// Reassembles the disassembled parameter signals back into the inner
+    /// response's configuration and returns it, consuming self.
+    ///
+    pub fn into_response(mut self) -> WorkflowIntegrationResponse {
+        *self.inner.configuration_mut().engine_parameters_mut() = self
+            .engine_parameters
+            .drain(..)
+            .map(|param| param.read().clone())
+            .collect();
+
+        *self.inner.configuration_mut().dynamic_parameters_mut() = self
+            .dynamic_parameters
+            .drain(..)
+            .map(|param| param.read().clone())
+            .collect();
+
+        *self.inner.configuration_mut().fixed_parameters_mut() = self
+            .fixed_parameters
+            .drain(..)
+            .map(|param| param.read().clone())
+            .collect();
+
+        self.inner
     }
 }
 
@@ -221,6 +248,49 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
         Ok::<_, Error<S>>(())
     });
 
+    let mut save_action = use_action(move || async move {
+        let jwt = storage
+            .read()
+            .jwt()
+            .map_err(Error::Storage)?
+            .ok_or(Error::NotLoggedIn)?;
+
+        let config = config.read().clone();
+
+        let mut workflow_integration_signal = match &*workflow_integration_res.read() {
+            Some(Ok(signal)) => *signal,
+            _ => return Ok::<_, Error<S>>(()),
+        };
+
+        let disassembled = {
+            let current = workflow_integration_signal.read();
+            DisassambledWorkflowIntegration {
+                inner: current.inner().clone(),
+                engine_parameters: current.engine_parameters().to_vec(),
+                dynamic_parameters: current.dynamic_parameters().to_vec(),
+                fixed_parameters: current.fixed_parameters().to_vec(),
+            }
+        };
+        let response = disassembled.into_response();
+
+        let updated = Client::new(config.base_url().to_string(), config.timeout())
+            .workflow_integrations()
+            .update_workflow_integration(
+                &jwt,
+                props.id,
+                response.name.clone(),
+                response.description.clone(),
+                response.is_public,
+                response.configuration().clone(),
+            )
+            .await
+            .map_err(Error::SaveWorkflowIntegration)?;
+
+        workflow_integration_signal.write().inner = updated;
+
+        Ok::<_, Error<S>>(())
+    });
+
     rsx! {
         match &*workflow_integration_res.read() {
             Some(Ok(mut workflow_integration)) => rsx!{
@@ -241,15 +311,28 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         class: "mb-0",
                         "{workflow_integration.read().inner().name}"
                     }
-                    button {
-                        id: "collapse-btn",
-                        class: "btn btn-sm btn-outline-danger",
-                        title: "Collapse sidebar",
-                        onclick: move |_| is_delete_confirmation_dialog_open.set(true),
-                        i {
-                            class: "fa-solid fa-trash me-1"
+                    div {
+                        class: "d-flex flex-row",
+                        button {
+                            id: "save-btn",
+                            class: "btn btn-sm btn-outline-primary me-2",
+                            title: "Save workflow integration",
+                            onclick: move |_| { save_action.call(); },
+                            i {
+                                class: "fa-solid fa-floppy-disk me-1"
+                            }
+                            "Save"
                         }
-                        "Delete"
+                        button {
+                            id: "collapse-btn",
+                            class: "btn btn-sm btn-outline-danger",
+                            title: "Collapse sidebar",
+                            onclick: move |_| is_delete_confirmation_dialog_open.set(true),
+                            i {
+                                class: "fa-solid fa-trash me-1"
+                            }
+                            "Delete"
+                        }
                     }
                 }
                 match delete_action.value() {
@@ -258,6 +341,15 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                             class: "alert alert-danger",
                             role: "alert",
                             "Failed to delete project: {err}" }
+                    },
+                    _ => rsx! {}
+                }
+                match save_action.value() {
+                    Some(Err(err)) => rsx! {
+                        div {
+                            class: "alert alert-danger",
+                            role: "alert",
+                            "Failed to save workflow integration: {err}" }
                     },
                     _ => rsx! {}
                 }

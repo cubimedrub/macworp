@@ -8,7 +8,7 @@ mod storage;
 
 use std::{env, time::Duration};
 
-use clap::{command, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use dioxus::prelude::*;
 use directories::ProjectDirs;
 use rand::prelude::*;

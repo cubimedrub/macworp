@@ -476,6 +476,12 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                 parameter_idx
                             },
                         },
+                        Parameter::Text(_) => rsx! {
+                            TextParameter<DynamicParameter> {
+                                parameter: *parameter,
+                                parameter_idx
+                            },
+                        },
                         _ => rsx! {
                             p {
                                 "{parameter}"

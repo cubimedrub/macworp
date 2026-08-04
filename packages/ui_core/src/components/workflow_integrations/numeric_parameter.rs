@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use dioxus::prelude::*;
 use macworp_core::workflow_configuration::parameters::{
@@ -11,14 +11,23 @@ use crate::components::workflow_integrations::parameter::{
 };
 
 pub trait NumericKind:
-    num_traits::Num + Serialize + DeserializeOwned + Clone + Copy + Display + 'static
+    FromStr + num_traits::Num + Serialize + DeserializeOwned + Clone + Copy + Display + 'static
 {
     fn from_parameter(p: &Parameter) -> Option<&Number<Self>>;
+    fn from_parameter_mut(p: &mut Parameter) -> Option<&mut Number<Self>>;
     fn placeholder() -> &'static str;
 }
 
 impl NumericKind for f64 {
     fn from_parameter(p: &Parameter) -> Option<&Number<Self>> {
+        if let Parameter::Float(f) = p {
+            Some(f)
+        } else {
+            None
+        }
+    }
+
+    fn from_parameter_mut(p: &mut Parameter) -> Option<&mut Number<Self>> {
         if let Parameter::Float(f) = p {
             Some(f)
         } else {
@@ -40,6 +49,14 @@ impl NumericKind for i64 {
         }
     }
 
+    fn from_parameter_mut(p: &mut Parameter) -> Option<&mut Number<Self>> {
+        if let Parameter::Integer(i) = p {
+            Some(i)
+        } else {
+            None
+        }
+    }
+
     fn placeholder() -> &'static str {
         "Integer value"
     }
@@ -53,7 +70,7 @@ pub struct NumericProps {
 
 #[component]
 pub fn NumericParameter<P: IsParameterElement + 'static, T: NumericKind>(
-    props: NumericProps,
+    mut props: NumericProps,
 ) -> Element {
     let param = props.parameter.read();
     match T::from_parameter(&param) {
@@ -78,6 +95,14 @@ pub fn NumericParameter<P: IsParameterElement + 'static, T: NumericKind>(
                     min: num_param.min().map(|v| v.to_string()).unwrap_or_default(),
                     max: num_param.max().map(|v| v.to_string()).unwrap_or_default(),
                     value: "{num_param.value().map(|v| v.to_string()).unwrap_or_default()}",
+                    oninput: move |evt| {
+                        if let Ok(value) = evt.value().parse::<T>() {
+                            let mut param = props.parameter.write();
+                            if let Some(num_param) = T::from_parameter_mut(&mut param){
+                                *num_param.value_mut() = Some(value);
+                            }
+                        }
+                    }
                 }
             }
             div {
@@ -96,6 +121,14 @@ pub fn NumericParameter<P: IsParameterElement + 'static, T: NumericKind>(
                     min: num_param.min().map(|v| v.to_string()).unwrap_or_default(),
                     max: num_param.max().map(|v| v.to_string()).unwrap_or_default(),
                     value: "{num_param.min().map(|v| v.to_string()).unwrap_or_default()}",
+                    oninput: move |evt| {
+                        if let Ok(value) = evt.value().parse::<T>() {
+                            let mut param = props.parameter.write();
+                            if let Some(num_param) = T::from_parameter_mut(&mut param){
+                                *num_param.min_mut() = Some(value);
+                            }
+                        }
+                    }
                 }
             }
             div {
@@ -114,6 +147,14 @@ pub fn NumericParameter<P: IsParameterElement + 'static, T: NumericKind>(
                     min: num_param.min().map(|v| v.to_string()).unwrap_or_default(),
                     max: num_param.max().map(|v| v.to_string()).unwrap_or_default(),
                     value: "{num_param.max().map(|v| v.to_string()).unwrap_or_default()}",
+                    oninput: move |evt| {
+                        if let Ok(value) = evt.value().parse::<T>() {
+                            let mut param = props.parameter.write();
+                            if let Some(num_param) = T::from_parameter_mut(&mut param){
+                                *num_param.max_mut() = Some(value);
+                            }
+                        }
+                    }
                 }
             }
         },

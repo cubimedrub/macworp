@@ -32,7 +32,7 @@ pub fn TextParameter<P: IsParameterElement + 'static>(mut props: TextProps) -> E
                     class: "form-check-input",
                     id: "workflow-integration-configuration-{P::ID_PART}-parameter-{props.parameter_idx}-is-multiline",
                     checked: "{ text_param.is_multiline() }",
-                    onchange: move |_| {
+                    oninput: move |_| {
                         let mut param = props.parameter.write();
                         if let Parameter::Text(text_param) = &mut *param {
                             *text_param.is_multiline_mut() = !text_param.is_multiline();
@@ -54,7 +54,7 @@ pub fn TextParameter<P: IsParameterElement + 'static>(mut props: TextProps) -> E
                         aria_label: "Multiline text parameter",
                         aria_describedby: "workflow-integration-configuration-{P::ID_PART}-parameter-{props.parameter_idx}-value",
                         value: "{text_param.value().map(|v| v.to_string()).unwrap_or_default()}",
-                        onchange: move |e| {
+                        oninput: move |e| {
                             let mut param = props.parameter.write();
                             if let Parameter::Text(text_param) = &mut *param {
                                 *text_param.value_mut() = Some(e.value());
@@ -69,7 +69,7 @@ pub fn TextParameter<P: IsParameterElement + 'static>(mut props: TextProps) -> E
                         aria_label: "Text taramteter",
                         aria_describedby: "workflow-integration-configuration-{P::ID_PART}-parameter-{props.parameter_idx}-value",
                         value: "{text_param.value().map(|v| v.to_string()).unwrap_or_default()}",
-                        onchange: move |e| {
+                        oninput: move |e| {
                             let mut param = props.parameter.write();
                             if let Parameter::Text(text_param) = &mut *param {
                                 *text_param.value_mut() = Some(e.value());

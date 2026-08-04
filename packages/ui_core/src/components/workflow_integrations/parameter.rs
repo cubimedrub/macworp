@@ -45,7 +45,7 @@ pub struct ParameterProps {
 }
 
 #[component]
-pub fn Parameter<P: IsParameter>(props: ParameterProps) -> Element {
+pub fn Parameter<P: IsParameter>(mut props: ParameterProps) -> Element {
     rsx! {
         div {
             class: "input-group mb-3",
@@ -61,9 +61,10 @@ pub fn Parameter<P: IsParameter>(props: ParameterProps) -> Element {
                 aria_label: "Name for workflow {P::ID_PART} parameter {props.parameter_idx} ",
                 aria_describedby: "workflow-integration-configuration-{P::ID_PART}-parameter-{props.parameter_idx}-name",
                 value: "{props.parameter.read().name()}",
-                // oninput: move |event| if let Source::Remote(source) = workflow_integration.write().configuration_mut().source_mut() {
-                //     *source.version_mut() = if event.value().is_empty() { None } else { Some(event.value()) }
-                // }
+                oninput: move |event| {
+                    let mut param = props.parameter.write();
+                    *param.name_mut() = event.value();
+                }
             }
         }
         div {
@@ -80,9 +81,10 @@ pub fn Parameter<P: IsParameter>(props: ParameterProps) -> Element {
                 aria_label: "Label shown in user UI",
                 aria_describedby: "workflow-integration-configuration-{P::ID_PART}-parameter-{props.parameter_idx}-label",
                 value: "{props.parameter.read().label()}",
-                // oninput: move |event| if let Source::Remote(source) = workflow_integration.write().configuration_mut().source_mut() {
-                //     *source.version_mut() = if event.value().is_empty() { None } else { Some(event.value()) }
-                // }
+                oninput: move |event| {
+                    let mut param = props.parameter.write();
+                    *param.label_mut() = event.value();
+                }
             }
         }
         div {
@@ -98,9 +100,10 @@ pub fn Parameter<P: IsParameter>(props: ParameterProps) -> Element {
                 aria_label: "Description shown to user",
                 aria_describedby: "workflow-integration-configuration-{P::ID_PART}-parameter-{props.parameter_idx}-description",
                 value: "{props.parameter.read().desc()}",
-                // oninput: move |event| if let Source::Remote(source) = workflow_integration.write().configuration_mut().source_mut() {
-                //     *source.version_mut() = if event.value().is_empty() { None } else { Some(event.value()) }
-                // }
+                oninput: move |event| {
+                    let mut param = props.parameter.write();
+                    *param.desc_mut() = event.value();
+                }
             }
         }
     }

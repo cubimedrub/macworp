@@ -570,6 +570,12 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                                 parameter_idx
                                             },
                                         },
+                                        Parameter::Glob(_) => rsx! {
+                                            GlobParameter<DynamicParameter> {
+                                                parameter: *parameter,
+                                                parameter_idx
+                                            },
+                                        },
                                         Parameter::Integer(_) => rsx! {
                                             NumericParameter<DynamicParameter, i64> {
                                                 parameter: *parameter,
@@ -588,11 +594,6 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                                 parameter_idx
                                             },
                                         },
-                                        _ => rsx! {
-                                            p {
-                                                "{parameter}"
-                                            }
-                                        }
                                     }
                                     button {
                                         class: "btn btn-outline-danger btn-sm ms-2",

@@ -385,6 +385,21 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         oninput: move |event| workflow_integration.write().inner_mut().description = event.value(),
                     }
                 }
+                div {
+                    class: "form-check form-switch mb-3",
+                    label {
+                        class: "form-check-label",
+                        r#for: "workflow-integration-is-public",
+                        "Public"
+                    }
+                    input {
+                        r#type: "checkbox",
+                        class: "form-check-input",
+                        id: "workflow-integration-is-public",
+                        checked: "{ workflow_integration.read().inner().is_public }",
+                        oninput: move |evt| workflow_integration.write().inner_mut().is_public = evt.checked(),
+                    }
+                }
                 h2 {
                     "Configuration"
                 },

@@ -3,6 +3,7 @@ pub mod confirmation_dialog;
 pub mod file_browser;
 pub mod separator;
 pub mod spiner;
+/// Components for workflow integration, e.g. the dynamic paramters.
 pub mod workflow_integrations;
 
 // Re-export components

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{num::NonZeroUsize, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,36 +9,71 @@ use crate::workflow_configuration::parameters::parameter::{
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Path {
     #[serde(flatten)]
-    inner: Parameter<PathBuf>,
+    inner: Parameter<Vec<PathBuf>>,
     /// Whether the parameter is exceptiung a file
-    is_excepting_file: bool,
+    is_excepting_files: bool,
     /// Whether the parameter is excepting a folder
-    is_excepting_folder: bool,
+    is_excepting_folders: bool,
+    /// Limit
+    limit: NonZeroUsize,
 }
 
 impl Path {
     pub fn new(name: String, label: String, desc: String) -> Self {
         Self {
             inner: Parameter::new(name, label, desc),
-            is_excepting_file: false,
-            is_excepting_folder: false,
+            is_excepting_files: false,
+            is_excepting_folders: false,
+            limit: NonZeroUsize::new(1).unwrap(),
         }
     }
 
-    pub fn is_excepting_file(&self) -> bool {
-        self.is_excepting_file
+    pub fn is_excepting_files(&self) -> bool {
+        self.is_excepting_files
     }
 
-    pub fn is_excepting_file_mut(&mut self) -> &mut bool {
-        &mut self.is_excepting_file
+    pub fn is_excepting_files_mut(&mut self) -> &mut bool {
+        &mut self.is_excepting_files
     }
 
-    pub fn is_excepting_folder(&self) -> bool {
-        self.is_excepting_folder
+    pub fn is_excepting_folders(&self) -> bool {
+        self.is_excepting_folders
     }
 
-    pub fn is_excepting_folder_mut(&mut self) -> &mut bool {
-        &mut self.is_excepting_folder
+    pub fn is_excepting_folders_mut(&mut self) -> &mut bool {
+        &mut self.is_excepting_folders
+    }
+
+    pub fn limit(&self) -> NonZeroUsize {
+        self.limit
+    }
+
+    pub fn limit_mut(&mut self) -> &mut NonZeroUsize {
+        &mut self.limit
+    }
+    pub fn value_as_string(&self) -> String {
+        self.inner
+            .value()
+            .map(|paths| {
+                paths
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<String>>()
+                    .join("\n")
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn value_from_string(&mut self, new_value: String) {
+        if new_value.trim().is_empty() {
+            *self.inner.value_mut() = None;
+            return;
+        }
+        let paths: Vec<PathBuf> = new_value
+            .split("\n")
+            .map(|s| PathBuf::from(s.trim()))
+            .collect();
+        *self.inner.value_mut() = Some(paths);
     }
 }
 
@@ -68,12 +103,12 @@ impl IsParameter for Path {
     }
 }
 
-impl IsParameterWithValue<PathBuf> for Path {
-    fn value(&self) -> Option<&PathBuf> {
+impl IsParameterWithValue<Vec<PathBuf>> for Path {
+    fn value(&self) -> Option<&Vec<PathBuf>> {
         self.inner.value()
     }
 
-    fn value_mut(&mut self) -> &mut Option<PathBuf> {
+    fn value_mut(&mut self) -> &mut Option<Vec<PathBuf>> {
         self.inner.value_mut()
     }
 }
@@ -82,8 +117,9 @@ impl Default for Path {
     fn default() -> Self {
         Self {
             inner: Parameter::default(),
-            is_excepting_file: true,
-            is_excepting_folder: false,
+            is_excepting_files: true,
+            is_excepting_folders: false,
+            limit: NonZeroUsize::new(1).unwrap(),
         }
     }
 }

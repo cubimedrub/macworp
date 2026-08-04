@@ -17,7 +17,6 @@ pub mod number;
 /// Generic paramerter for simple data
 pub mod parameter;
 pub mod path;
-pub mod path_list;
 /// Single and multiline text
 pub mod text;
 
@@ -39,8 +38,6 @@ pub enum Parameter {
     Glob(glob::Glob),
     /// A path to a file or folder
     Path(path::Path),
-    /// A list of paths to files or folders
-    PathList(path_list::PathList),
 }
 
 impl Parameter {
@@ -59,7 +56,6 @@ impl Deref for Parameter {
             Parameter::Float(float) => float,
             Parameter::Glob(glob) => glob,
             Parameter::Path(path) => path,
-            Parameter::PathList(path_list) => path_list,
         }
     }
 }
@@ -72,7 +68,6 @@ impl DerefMut for Parameter {
             Parameter::Float(float) => float,
             Parameter::Glob(glob) => glob,
             Parameter::Path(path) => path,
-            Parameter::PathList(path_list) => path_list,
         }
     }
 }
@@ -85,7 +80,6 @@ impl Display for Parameter {
             Parameter::Float(_) => "Float",
             Parameter::Glob(_) => "Glob",
             Parameter::Path(_) => "Path",
-            Parameter::PathList(_) => "PathList",
         };
 
         write!(f, "{text}")
@@ -102,7 +96,6 @@ impl FromStr for Parameter {
             "float" => Ok(Parameter::Float(number::Float::default())),
             "glob" => Ok(Parameter::Glob(glob::Glob::default())),
             "path" => Ok(Parameter::Path(path::Path::default())),
-            "pathlist" => Ok(Parameter::PathList(path_list::PathList::default())),
             _ => Err(Error::UnsupporterParameter(s.to_string())),
         }
     }

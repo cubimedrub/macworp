@@ -324,9 +324,9 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                             "Save"
                         }
                         button {
-                            id: "collapse-btn",
+                            id: "delete-btn",
                             class: "btn btn-sm btn-outline-danger",
-                            title: "Collapse sidebar",
+                            title: "Delete button",
                             onclick: move |_| is_delete_confirmation_dialog_open.set(true),
                             i {
                                 class: "fa-solid fa-trash me-1"

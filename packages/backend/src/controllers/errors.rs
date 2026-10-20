@@ -66,6 +66,9 @@ impl IntoResponse for ProjectsControllerError {
                 (StatusCode::NOT_FOUND, self.to_string()).into_response()
             }
             ProjectsControllerError::Authentication(e) => e.into_response(),
+            ProjectsControllerError::Filesystem(
+                crate::filesystems::errors::Error::SymlinkNotAllowed(_),
+            ) => (StatusCode::FORBIDDEN, "Symlinks are not allowed").into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }

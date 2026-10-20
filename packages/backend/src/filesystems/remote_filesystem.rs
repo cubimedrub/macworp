@@ -59,7 +59,7 @@ impl IsFilesystem for RemoteFilesystem {
         let project_path =
             PathBuf::from(state.config().projects_path()).join(project.id.to_string());
 
-        let requested_path = Self::join_paths(&project_path, &subpath);
+        let requested_path = Self::join_paths(&project_path, &subpath)?;
 
         ProjectContent::try_from((&project_path, &requested_path))
     }
@@ -104,11 +104,11 @@ impl IsFilesystem for RemoteFilesystem {
     {
         let project_path = Self::project_path(state, project)?;
 
-        let target_path = Self::join_paths(&project_path, &file_path);
+        let target_path = Self::join_paths(&project_path, &file_path)?;
         let partial_upload_path = Self::join_paths(
             &project_path,
             &file_path.with_extension(PARTIAL_UPLOAD_EXTENSION),
-        );
+        )?;
 
         tokio::fs::create_dir_all(target_path.parent().ok_or_else(|| {
             Error::RemoteFilesystem(RemoteFilesystemError::NoParentPath(target_path.clone()))
@@ -196,7 +196,7 @@ impl IsFilesystem for RemoteFilesystem {
         project: &Project,
         folder_path: PathBuf,
     ) -> Result<(), Error> {
-        let new_folder_path = Self::join_paths(&Self::project_path(state, project)?, &folder_path);
+        let new_folder_path = Self::join_paths(&Self::project_path(state, project)?, &folder_path)?;
 
         if new_folder_path.is_file() {
             return Err(Error::RemoteFilesystem(
@@ -212,7 +212,7 @@ impl IsFilesystem for RemoteFilesystem {
     }
 
     async fn delete_path(state: &State, project: &Project, path: PathBuf) -> Result<(), Error> {
-        let target_path = Self::join_paths(&Self::project_path(state, project)?, &path);
+        let target_path = Self::join_paths(&Self::project_path(state, project)?, &path)?;
 
         if target_path.is_file() {
             tokio::fs::remove_file(target_path).await.map_err(|err| {

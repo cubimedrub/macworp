@@ -43,19 +43,36 @@ pub trait IsFilesystem {
     ) -> impl Future<Output = Result<PathBuf, Error>> + Send;
 
     /// Securly joins two pathes. Each non normal compontent of the subpath, e.g. Root or Parent is filtered out to prevent
-    /// brekaing out of the base path
+    /// brekaing out of the base path. Existing components below the base that are symlinks are rejected.
+    /// The base itself may be a symlink.
+    ///
+    /// Note: check and later use are not atomic, so a symlink created in between is not caught.
     ///
     /// # Arguments
     /// * `base` - The base path to join to
     /// * `subpath` - The subpath to join to the base path, only
     ///
-    fn join_paths(base: &Path, subpath: &Path) -> PathBuf {
+    fn join_paths(base: &Path, subpath: &Path) -> Result<PathBuf, Error> {
         let mut final_path = base.to_path_buf();
-        subpath
+        let mut exists = true;
+        for comp in subpath
             .components()
             .filter(|comp| matches!(comp, std::path::Component::Normal(_)))
-            .for_each(|comp| final_path = final_path.join(comp));
-        final_path
+        {
+            final_path.push(comp);
+            if exists {
+                match std::fs::symlink_metadata(&final_path) {
+                    Ok(meta) if meta.file_type().is_symlink() => {
+                        return Err(Error::SymlinkNotAllowed(final_path));
+                    }
+                    Ok(_) => {}
+                    // Nothing below a missing path can be a symlink
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => exists = false,
+                    Err(err) => return Err(err.into()),
+                }
+            }
+        }
+        Ok(final_path)
     }
 
     /// Deletes the project directory if supported by the FS
@@ -113,4 +130,101 @@ pub trait IsFilesystem {
         project: &Project,
         path: PathBuf,
     ) -> impl Future<Output = Result<(), Error>> + Send;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use crate::filesystems::{
+        errors::Error, remote_filesystem::RemoteFilesystem, project_content::ProjectContent,
+    };
+
+    use super::IsFilesystem;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "macworp_{name}_{}_{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn strips_parent_and_root_components() {
+        let tmp = TempDir::new("strip");
+        let joined = RemoteFilesystem::join_paths(&tmp.0, Path::new("/../a/../b")).unwrap();
+        assert_eq!(joined, tmp.0.join("a").join("b"));
+    }
+
+    #[test]
+    fn missing_path_joins() {
+        let tmp = TempDir::new("missing");
+        let joined = RemoteFilesystem::join_paths(&tmp.0, Path::new("new/dir/file.txt")).unwrap();
+        assert_eq!(joined, tmp.0.join("new/dir/file.txt"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_directory_component() {
+        let tmp = TempDir::new("symdir");
+        let outside = TempDir::new("symdir_outside");
+        std::os::unix::fs::symlink(&outside.0, tmp.0.join("link")).unwrap();
+
+        let res = RemoteFilesystem::join_paths(&tmp.0, Path::new("link/secret"));
+        assert!(matches!(res, Err(Error::SymlinkNotAllowed(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_final_component() {
+        let tmp = TempDir::new("symfile");
+        let outside = TempDir::new("symfile_outside");
+        std::fs::write(outside.0.join("f"), "x").unwrap();
+        std::os::unix::fs::symlink(outside.0.join("f"), tmp.0.join("link")).unwrap();
+
+        let res = RemoteFilesystem::join_paths(&tmp.0, Path::new("link"));
+        assert!(matches!(res, Err(Error::SymlinkNotAllowed(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn allows_symlinked_base() {
+        let real = TempDir::new("symbase_real");
+        std::fs::create_dir(real.0.join("sub")).unwrap();
+        let holder = TempDir::new("symbase_holder");
+        let base = holder.0.join("base");
+        std::os::unix::fs::symlink(&real.0, &base).unwrap();
+
+        let joined = RemoteFilesystem::join_paths(&base, Path::new("sub")).unwrap();
+        assert_eq!(joined, base.join("sub"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn listing_skips_symlinks() {
+        let tmp = TempDir::new("list");
+        let outside = TempDir::new("list_outside");
+        std::fs::write(tmp.0.join("real.txt"), "x").unwrap();
+        std::fs::create_dir(tmp.0.join("realdir")).unwrap();
+        std::os::unix::fs::symlink(&outside.0, tmp.0.join("linkdir")).unwrap();
+        std::os::unix::fs::symlink(outside.0.clone(), tmp.0.join("linkfile")).unwrap();
+
+        let content = ProjectContent::try_from((&tmp.0, &tmp.0)).unwrap();
+        assert_eq!(content.files, vec!["real.txt"]);
+        assert_eq!(content.directories, vec!["realdir"]);
+    }
 }

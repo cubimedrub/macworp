@@ -27,7 +27,7 @@ impl IsFilesystem for LocalFilesystem {
     ) -> Result<ProjectContent, Error> {
         let project_path = Self::project_path(state, project)?;
 
-        let requested_path = Self::join_paths(&project_path, &subpath);
+        let requested_path = Self::join_paths(&project_path, &subpath)?;
 
         ProjectContent::try_from((&project_path, &requested_path))
     }

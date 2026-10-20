@@ -10,6 +10,9 @@ pub enum Error {
     #[error("Unable to read content of project director: {0}")]
     ReadDir(#[from] std::io::Error),
 
+    #[error("Symlinks are not allowed in project paths: {0:?}")]
+    SymlinkNotAllowed(PathBuf),
+
     #[error(transparent)]
     LocalFilesystem(#[from] LocalFilesystemError),
 

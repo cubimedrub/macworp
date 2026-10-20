@@ -26,17 +26,14 @@ impl TryFrom<(&PathBuf, &PathBuf)> for ProjectContent {
 
         for entry in requested_path.read_dir()? {
             let entry = entry?;
-            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
 
-            let name = match path.file_name() {
-                Some(name) => name,
-                None => continue, // Skip entries without a valid file names
-            };
-
-            if path.is_file() {
-                files.push(name.to_string_lossy().to_string());
-            } else if path.is_dir() {
-                directories.push(name.to_string_lossy().to_string());
+            // `DirEntry::file_type` does not follow symlinks, so links are skipped
+            let file_type = entry.file_type()?;
+            if file_type.is_file() {
+                files.push(name);
+            } else if file_type.is_dir() {
+                directories.push(name);
             }
         }
 

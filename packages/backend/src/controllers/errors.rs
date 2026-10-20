@@ -13,7 +13,7 @@ impl IntoResponse for LoginControllerError {
     fn into_response(self) -> axum::response::Response {
         tracing::error!("{self}");
         match self {
-            LoginControllerError::Authentication(_) => self.into_response(),
+            LoginControllerError::Authentication(e) => e.into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
@@ -31,7 +31,7 @@ impl IntoResponse for UsersControllerError {
     fn into_response(self) -> axum::response::Response {
         tracing::error!("{self}");
         match self {
-            UsersControllerError::Authentication(_) => self.into_response(),
+            UsersControllerError::Authentication(e) => e.into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
@@ -65,7 +65,7 @@ impl IntoResponse for ProjectsControllerError {
             ProjectsControllerError::ProjectNotFound => {
                 (StatusCode::NOT_FOUND, self.to_string()).into_response()
             }
-            ProjectsControllerError::Authentication(_) => self.into_response(),
+            ProjectsControllerError::Authentication(e) => e.into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }

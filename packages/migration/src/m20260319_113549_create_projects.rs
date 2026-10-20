@@ -14,7 +14,8 @@ impl MigrationTrait for Migration {
                     .col(big_pk_auto("id"))
                     .col(big_integer("owner_id"))
                     .col(text("path").null()) // this used for integrated features only
-                    .col(string_len_uniq("name", 512))
+                    .col(string_len("name", 512))
+                    .col(timestamp_with_time_zone("created_at").default(Expr::current_timestamp()))
                     .foreign_key(
                         ForeignKey::create()
                             .from("projects", "owner_id")

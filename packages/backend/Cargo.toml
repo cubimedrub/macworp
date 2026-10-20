@@ -13,7 +13,7 @@ path = "src/main.rs"
 [dependencies]
 axum = {version = "0.8.8", features = ["multipart", "macros"]}
 base64 = "0.22.1"
-chrono = "0.4.44"
+chrono = { workspace = true, features = ["clock"] }
 clap = { workspace = true, optional = true }
 dioxus = { workspace = true, optional = true, features = ["server"] }
 futures-util = "0.3.32"

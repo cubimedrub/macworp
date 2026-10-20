@@ -77,6 +77,7 @@ where
                 .map(|project| ProjectResponse {
                     id: project.id,
                     name: project.name,
+                    created_at: project.created_at,
                     owner_username: user.username.clone(),
                     current: PathBuf::new(),
                     files: Vec::new(),
@@ -99,6 +100,7 @@ where
                 Box::pin(async move {
                     let new_project = ActiveProject::builder()
                         .set_name(payload.name.clone())
+                        .set_created_at(chrono::Utc::now())
                         .set_path(payload.path.to_string_lossy().to_string())
                         .set_owner_id(user.id);
 
@@ -124,6 +126,7 @@ where
         Ok(Json(ProjectResponse {
             id: project.id,
             name: project.name,
+            created_at: project.created_at,
             owner_username: user.username.clone(),
             current: PathBuf::new(),
             files: Vec::new(),
@@ -154,6 +157,7 @@ where
         Ok(Json(ProjectResponse {
             id: project.id,
             name: project.name,
+            created_at: project.created_at,
             owner_username: user.username.clone(),
             current: content.current,
             files: content.files,

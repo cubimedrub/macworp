@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chrono = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 num-traits = { workspace = true }
 sea-orm = { workspace = true, features = ["macros"], optional = true }

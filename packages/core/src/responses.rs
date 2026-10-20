@@ -1,5 +1,6 @@
 use std::{fmt::Display, path::PathBuf};
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::workflow_configuration::WorkflowConfiguration;
@@ -21,6 +22,7 @@ pub struct UserResponse {
 pub struct ProjectResponse {
     pub id: i64,
     pub name: String,
+    pub created_at: DateTime<Utc>,
     pub owner_username: String,
     pub current: PathBuf,
     pub files: Vec<String>,

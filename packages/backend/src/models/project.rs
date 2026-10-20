@@ -9,6 +9,7 @@ pub struct Model {
     pub owner_id: i64,
     pub path: Option<String>,
     pub name: String,
+    pub created_at: DateTimeUtc,
 
     #[sea_orm(belongs_to, from = "owner_id", to = "id")]
     pub owner: HasOne<super::user::Entity>,

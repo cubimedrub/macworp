@@ -6,7 +6,10 @@ use thiserror::Error;
 
 use crate::{
     client::{Client, IsFileUpload, IsUploadableFile},
-    components::{file_browser::IsFileBrowser, ConfirmationDialog, FileBrowser, Spinner},
+    components::{
+        file_browser::IsFileBrowser, projects::workflow_start_dialog::WorkflowStartDialog,
+        ConfirmationDialog, FileBrowser, Spinner,
+    },
     configuration::Configuration,
     router::IsRouter,
     storage::IsStorage,
@@ -72,6 +75,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
 
     let mut subpath: Signal<PathBuf> = use_signal(PathBuf::new);
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
+    let mut is_workflow_start_dialog_open = use_signal(|| false);
     let mut upload_queue = use_signal(VecDeque::<Result<T::File, T::Error>>::new);
     let mut current_upload: Signal<Option<String>> = use_signal(|| None);
     let mut upload_progress = use_signal(|| 0.0_f64);
@@ -203,6 +207,14 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                 }),
                 cancel_callback: Callback::new(move |_| is_delete_confirmation_dialog_open.set(false))
             }
+            WorkflowStartDialog::<T::Storage> {
+                is_open: is_workflow_start_dialog_open,
+                cancel_callback: Callback::new(move |_| is_workflow_start_dialog_open.set(false)),
+                start_callback: Callback::new(move |integration: macworp_core::responses::WorkflowIntegrationResponse| {
+                    is_workflow_start_dialog_open.set(false);
+                    tracing::info!("Starting workflow integration {}", integration.id);
+                })
+            }
             match &*window_file_drop_handling_result.read() {
                 Some(Ok(_)) => rsx! {},
                 Some(Err(err)) => rsx! {
@@ -222,15 +234,27 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                             class: "mb-0",
                             "{project.read().name}"
                         }
-                        button {
-                            id: "collapse-btn",
-                            class: "btn btn-sm btn-outline-danger",
-                            title: "Collapse sidebar",
-                            onclick: move |_| is_delete_confirmation_dialog_open.set(true),
-                            i {
-                                class: "fa-solid fa-trash me-1"
+                        div {
+                            class: "d-flex flex-row",
+                            button {
+                                class: "btn btn-sm btn-outline-primary me-2",
+                                title: "Start workflow",
+                                onclick: move |_| is_workflow_start_dialog_open.set(true),
+                                i {
+                                    class: "fa-solid fa-play me-1"
+                                }
+                                "Start workflow"
                             }
-                            "Delete"
+                            button {
+                                id: "delete-btn",
+                                class: "btn btn-sm btn-outline-danger",
+                                title: "Delete project",
+                                onclick: move |_| is_delete_confirmation_dialog_open.set(true),
+                                i {
+                                    class: "fa-solid fa-trash me-1"
+                                }
+                                "Delete"
+                            }
                         }
                     }
                     match delete_project.value() {

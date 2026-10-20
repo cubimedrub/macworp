@@ -1,7 +1,5 @@
-mod numeric_parameter;
 pub mod glob_parameter;
-// pub mod path;
-// pub mod path_list;
+pub mod numeric_parameter;
 pub mod parameter;
 pub mod path_parameter;
 pub mod text_parameter;

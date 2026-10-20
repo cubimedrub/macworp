@@ -1,6 +1,7 @@
 pub mod bootstrap;
 pub mod confirmation_dialog;
 pub mod file_browser;
+pub mod projects;
 pub mod separator;
 pub mod spiner;
 /// Components for workflow integration, e.g. the dynamic paramters.

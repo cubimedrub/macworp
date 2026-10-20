@@ -51,3 +51,13 @@ pub struct UpdateWorkflowIntegrationRequest {
     /// Workflow configuration
     pub configuration: WorkflowConfiguration,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkflowStartRequest {
+    /// Workflow integration ID
+    pub id: i64,
+    /// Optional comment for the workflow run
+    pub comment: String,
+    /// Workflow configuration
+    pub configuration: WorkflowConfiguration,
+}

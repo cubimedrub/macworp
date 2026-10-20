@@ -15,6 +15,8 @@ pub enum Error {
     InvalidAuthorizationHeader(&'static str),
     #[error("User has invalid password hash {0}: {1}")]
     InvalidPasswordHash(i64, password_auth::ParseError),
+    #[error("Authentication token is not valid")]
+    InvalidTokenSubject,
     #[error("Invalid user or password")]
     InvalidUserOrPassword,
     #[error("JWT encryption failed: {0}")]
@@ -38,9 +40,10 @@ impl IntoResponse for Error {
             | Error::MissingAuthorizationHeader => {
                 (StatusCode::BAD_REQUEST, self.to_string()).into_response()
             }
-            Error::ExpiredSession | Error::InvalidUserOrPassword | Error::Unauthorized => {
-                (StatusCode::UNAUTHORIZED, self.to_string()).into_response()
-            }
+            Error::ExpiredSession
+            | Error::InvalidTokenSubject
+            | Error::InvalidUserOrPassword
+            | Error::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()).into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }

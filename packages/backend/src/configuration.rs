@@ -1,7 +1,23 @@
 use std::hash::{Hash, Hasher};
 
 use macworp_core::responses::LoginProviderResponse;
+use rand::{RngExt, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
+
+/// Login validity in seconds if not configured (24 hours)
+pub const DEFAULT_LOGIN_VALIDITY: u32 = 24 * 60 * 60;
+
+/// Minimum length of the JWT secret in bytes
+const MIN_SECRET_LENGTH: usize = 32;
+
+/// Generates a random alphanumeric secret for signing JWTs
+pub fn generate_secret() -> String {
+    rand::rng()
+        .sample_iter(Alphanumeric)
+        .take(64)
+        .map(char::from)
+        .collect()
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Configuration {
@@ -9,7 +25,7 @@ pub struct Configuration {
     port: u16,
     database_url: String,
     secret: String,
-    /// Duration after the login expires in seconds
+    /// Duration after the login expires in seconds, defaults to `DEFAULT_LOGIN_VALIDITY`
     login_validity: Option<u32>,
     /// Project path used on standalone
     projects_path: String,
@@ -21,6 +37,16 @@ pub struct Configuration {
 }
 
 impl Configuration {
+    /// Checks the configuration for values that must not be used, e.g. weak JWT secrets
+    pub fn validate(&self) -> Result<(), crate::error::Error> {
+        if self.secret == "development" || self.secret.len() < MIN_SECRET_LENGTH {
+            return Err(crate::error::Error::Configuration(
+                "secret must be at least 32 bytes long and not the development default, use the `config` command to generate one",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn interface(&self) -> &str {
         &self.interface
     }
@@ -92,7 +118,7 @@ impl Default for Configuration {
             interface: "127.0.0.1".to_string(),
             port: 8080,
             database_url: "postgresql://postgres:postgres@127.0.0.1:5432/postgres".to_string(), // for the provided docker compose
-            secret: "development".to_string(),
+            secret: generate_secret(),
             login_validity: None,
             projects_path: "dev_projects".to_string(),
             worker: WorkerCredentials::default(),

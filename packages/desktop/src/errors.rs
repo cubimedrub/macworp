@@ -24,6 +24,10 @@ pub enum Error {
     PasswordFileWrite(std::io::Error),
     #[error("Password file is a directory")]
     PasswordFileIsDirectory,
+    #[error("Unable to read secret file: {0}")]
+    SecretFileRead(std::io::Error),
+    #[error("Unable to write secret file: {0}")]
+    SecretFileWrite(std::io::Error),
     #[error("Failed to get project directory")]
     ProjectDirectoryNotFound,
     #[error(transparent)]

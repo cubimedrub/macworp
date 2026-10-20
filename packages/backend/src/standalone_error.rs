@@ -4,6 +4,8 @@ use thiserror::Error;
 pub enum StandaloneError {
     #[error("Failed to read configuration file")]
     ConfigurationReadError(#[source] std::io::Error),
+    #[error("No configuration file given, create one with the `config` command")]
+    ConfigurationMissing,
     #[error("Failed to parse configuration file")]
     ConfigurationParseError(#[source] toml::de::Error),
     #[error("Unable to connect to database: {0}")]

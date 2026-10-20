@@ -107,7 +107,7 @@ async fn main() -> Result<(), StandaloneError> {
                     toml::from_str::<Configuration>(&config_raw)
                         .map_err(StandaloneError::ConfigurationParseError)?
                 }
-                None => Configuration::default(),
+                None => return Err(StandaloneError::ConfigurationMissing),
             };
 
             let db = Database::connect(config.database_url())
@@ -134,7 +134,7 @@ async fn main() -> Result<(), StandaloneError> {
                     toml::from_str::<Configuration>(&config_raw)
                         .map_err(StandaloneError::ConfigurationParseError)?
                 }
-                None => Configuration::default(),
+                None => return Err(StandaloneError::ConfigurationMissing),
             };
 
             let bind_address = format!("{}:{}", config.interface(), config.port());
@@ -162,7 +162,7 @@ async fn main() -> Result<(), StandaloneError> {
                         toml::from_str::<Configuration>(&config_raw)
                             .map_err(StandaloneError::ConfigurationParseError)?
                     }
-                    None => Configuration::default(),
+                    None => return Err(StandaloneError::ConfigurationMissing),
                 };
 
                 let db = Database::connect(config.database_url())

@@ -107,7 +107,7 @@ async fn get_user_from_token(
         TokenType::Jwt => {
             let payload = JsonWebToken::decode(token, state.config())?;
 
-            let user = UserTable::find_by_id(payload.user_id())
+            let user = UserTable::find_by_id(payload.user_id()?)
                 .one(state.db())
                 .await
                 .map_err(Error::Database)?;

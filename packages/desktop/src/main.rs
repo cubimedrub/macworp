@@ -6,7 +6,9 @@ mod pages;
 mod router;
 mod storage;
 
-use std::{env, time::Duration};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+use std::{env, io::Write, time::Duration};
 
 use clap::{Parser, Subcommand};
 use dioxus::prelude::*;
@@ -129,6 +131,14 @@ async fn start() -> Result<(), Error> {
         Ok(new_password)
     }?;
 
+    let secret_path = app_data_directory.join("jwt_secret");
+    let jwt_secret = match std::fs::read_to_string(&secret_path) {
+        Ok(secret) if !secret.trim().is_empty() => secret.trim().to_string(),
+        Ok(_) => create_secret_file(&secret_path)?,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => create_secret_file(&secret_path)?,
+        Err(err) => return Err(Error::SecretFileRead(err)),
+    };
+
     let database_path = app_data_directory.join("db.sqlite");
 
     let database_url = format!("sqlite://{}", database_path.to_str().unwrap());
@@ -137,6 +147,7 @@ async fn start() -> Result<(), Error> {
 
     let mut backend_config = macworp_backend::configuration::Configuration::default();
     *backend_config.database_url_mut() = database_url;
+    *backend_config.secret_mut() = jwt_secret;
     *backend_config.interface_mut() = "127.0.0.1".to_string();
     *backend_config.worker_mut().password_mut() =
         password_auth::generate_hash(application_password.as_bytes());
@@ -229,6 +240,23 @@ async fn start() -> Result<(), Error> {
 /// This method does not produce recommended passwords or enforces
 /// any kind of pasword rules
 ///
+/// Creates the file with a new JWT secret, readable by the current user only
+fn create_secret_file(path: &std::path::Path) -> Result<String, Error> {
+    let secret = macworp_backend::configuration::generate_secret();
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+
+    options
+        .open(path)
+        .and_then(|mut file| file.write_all(secret.as_bytes()))
+        .map_err(Error::SecretFileWrite)?;
+
+    Ok(secret)
+}
+
 fn generate_password() -> String {
     // Pretty much every ASCII char on a keyboard
     let alphabet = (33..=126).collect::<Vec<u8>>();

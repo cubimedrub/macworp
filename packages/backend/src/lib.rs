@@ -122,6 +122,7 @@ impl Backend<RemoteFilesystem> {
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
         config: Configuration,
     ) -> Result<(), Error> {
+        config.validate()?;
         let state = State::new_for_standalone(config).await?;
         Self::internal_start(tcp_listener, shutdown_signal, state).await
     }
@@ -145,6 +146,7 @@ impl Backend<LocalFilesystem> {
 
         use crate::models::{ActiveUser, User, UserTable};
 
+        config.validate()?;
         let state = State::new_for_integration(config).await?;
 
         Migrator::up(state.db(), None)

@@ -16,7 +16,7 @@ pub struct PathProps {
 
 #[component]
 pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
-    mut props: PathProps,
+    props: PathProps,
 ) -> Element {
     match &*props.parameter.read() {
         Parameter::Path(path_param) => rsx! {

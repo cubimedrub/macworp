@@ -2,7 +2,10 @@ use std::fmt::Display;
 
 use dioxus::prelude::*;
 
-use crate::{client::Client, configuration::Configuration, router::IsRouter, storage::IsStorage};
+use crate::{
+    client::Client, configuration::Configuration, router::IsRouter,
+    runtime_status::RuntimeStatusBar, storage::IsStorage,
+};
 
 enum NavigationState {
     Open,
@@ -140,9 +143,13 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
 
             }
         }
-        main {
-            class: "main-panel min-vh-100 flex-fill conainer-fluid p-1",
-            Outlet::<R> {}
+        div {
+            class: "d-flex flex-column flex-fill min-vh-100",
+            main {
+                class: "main-panel flex-fill conainer-fluid p-1",
+                Outlet::<R> {}
+            }
+            RuntimeStatusBar {}
         }
     })
 }

@@ -12,6 +12,8 @@ pub mod layouts;
 pub mod pages;
 /// Defintion of a router
 pub mod router;
+/// Container runtime status bar (only shown if the platform provides a handle)
+pub mod runtime_status;
 /// Trait defining how to store data, e.g. login etc.
 pub mod storage;
 

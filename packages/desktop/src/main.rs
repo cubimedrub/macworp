@@ -4,6 +4,7 @@ mod errors;
 mod file;
 mod pages;
 mod router;
+mod runtime_status;
 mod storage;
 
 use std::{env, time::Duration};
@@ -15,11 +16,16 @@ use rand::prelude::*;
 
 use macworp_core::logging::init_tracing_subscription;
 use macworp_ui_core::{
-    client::Client, components::Bootstrap, configuration::Configuration, storage::IsStorage,
-    FAVICON, MAIN_CSS,
+    client::Client, components::Bootstrap, configuration::Configuration,
+    runtime_status::RuntimeStatusHandle, storage::IsStorage, FAVICON, MAIN_CSS,
 };
 
-use crate::{errors::Error, router::Router, storage::Storage};
+use crate::{
+    errors::Error,
+    router::Router,
+    runtime_status::{check_runtime, to_status, InitialRuntimeStatus},
+    storage::Storage,
+};
 
 const DESKTOP_USER_NAME: &str = "admin";
 
@@ -102,6 +108,7 @@ async fn start() -> Result<(), Error> {
     let container_runtime_report =
         macworp_worker::container_runtime::doctor(Default::default()).await;
     let unavailable_engines = container_runtime_report.unavailable_engines();
+    let runtime_status = InitialRuntimeStatus(to_status(&container_runtime_report));
     if container_runtime_report.is_ok() {
         tracing::info!("Container runtime:\n{container_runtime_report}");
     } else {
@@ -225,6 +232,7 @@ async fn start() -> Result<(), Error> {
     dioxus::LaunchBuilder::new()
         .with_context(config)
         .with_context(storage)
+        .with_context(runtime_status)
         .launch(App);
 
     backend_shutdown_signal_sender
@@ -271,6 +279,25 @@ fn App() -> Element {
     use_context_provider(|| Signal::new(config));
     // Storage need to be wrapped in Result, like on web version (depending on Browser storage initialization may fail)
     use_context_provider(|| Signal::new(storage));
+
+    // Container runtime status bar. A refresh only updates the UI: the backend keeps the
+    // engine availability it was started with.
+    let initial_status = consume_context::<InitialRuntimeStatus>();
+    let mut status = use_signal(|| initial_status.0);
+    let mut refreshing = use_signal(|| false);
+    let refresh = use_callback(move |()| {
+        spawn(async move {
+            refreshing.set(true);
+            let new_status = check_runtime().await;
+            status.set(new_status);
+            refreshing.set(false);
+        });
+    });
+    use_context_provider(|| RuntimeStatusHandle {
+        status,
+        refreshing,
+        refresh,
+    });
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }

@@ -9,11 +9,13 @@ use dioxus::signals::Signal;
 use macworp_core::{
     authentication::TokenType,
     requests::{
-        NewProjectRequest, NewWorkflowIntegrationRequest, PasswordLoginRequest,
+        NewProjectRequest, NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest,
         ProjectCreateFolderRequest, ProjectPathDeletionRequest, UpdateWorkflowIntegrationRequest,
+        WorkflowStartRequest,
     },
     responses::{
-        LoginProviderResponse, ProjectResponse, UserResponse, WorkflowIntegrationResponse,
+        LoginProviderResponse, ProjectResponse, RunResponse, UserResponse,
+        WorkflowIntegrationResponse,
     },
     routing::*,
     workflow_configuration::WorkflowConfiguration,
@@ -72,6 +74,11 @@ impl Client {
 
     pub fn workflow_integrations<'a>(&'a self) -> WorkflowIntegrationClient<'a> {
         WorkflowIntegrationClient::new(self)
+    }
+
+    /// Returns a sub client to access runs
+    pub fn runs<'a>(&'a self) -> RunsClient<'a> {
+        RunsClient::new(self)
     }
 }
 
@@ -818,5 +825,109 @@ impl<'a> WorkflowIntegrationClient<'a> {
         }
 
         Ok(response.status().is_success())
+    }
+}
+
+/// Runs subclient
+///
+pub struct RunsClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> RunsClient<'a> {
+    /// Creates a runs client on top of the base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Full URL of a runs endpoint
+    fn url(&self, path: &str) -> String {
+        format!(
+            "{}{}{path}",
+            self.base_client.base_url(),
+            RunsRouting::controller_path()
+        )
+    }
+
+    /// Sends an authenticated request and parses the JSON response.
+    /// `what` names the action for error messages, e.g. "start run".
+    async fn send<T: serde::de::DeserializeOwned>(
+        &self,
+        request: reqwest::RequestBuilder,
+        jwt: &str,
+        what: &str,
+    ) -> Result<T, Error> {
+        let response = request
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!("Failed to {what}: HTTP {status}, response text: {text}");
+            return Err(Error::Backend(format!(
+                "Failed to {what}: HTTP {status}, response text: {text}"
+            )));
+        }
+
+        response.json::<T>().await.map_err(Error::Request)
+    }
+
+    /// Queues a run of a workflow on a project
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `project_id` - The project to run on
+    /// * `workflow_id` - The workflow integration to run
+    /// * `comment` - Comment stored with the run
+    /// * `parameters` - Values of the workflow's dynamic parameters
+    pub async fn start(
+        &self,
+        jwt: &str,
+        project_id: i64,
+        workflow_id: i64,
+        comment: String,
+        parameters: Vec<ParameterValue>,
+    ) -> Result<RunResponse, Error> {
+        let url =
+            self.url(&RunsRouting::START_PATH.replace("{project_id}", &project_id.to_string()));
+        let body = WorkflowStartRequest {
+            workflow_id,
+            comment,
+            parameters,
+        };
+        self.send(
+            reqwest::Client::new().post(&url).json(&body),
+            jwt,
+            "start run",
+        )
+        .await
+    }
+
+    /// Runs of a project, newest first
+    pub async fn index(&self, jwt: &str, project_id: i64) -> Result<Vec<RunResponse>, Error> {
+        let url =
+            self.url(&RunsRouting::INDEX_PATH.replace("{project_id}", &project_id.to_string()));
+        self.send(reqwest::Client::new().get(&url), jwt, "fetch runs")
+            .await
+    }
+
+    /// A single run
+    pub async fn get(&self, jwt: &str, id: i64) -> Result<RunResponse, Error> {
+        let url = self.url(&RunsRouting::GET_PATH.replace("{id}", &id.to_string()));
+        self.send(reqwest::Client::new().get(&url), jwt, "fetch run")
+            .await
+    }
+
+    /// Cancels a queued run or asks the worker to stop a running one
+    pub async fn cancel(&self, jwt: &str, id: i64) -> Result<RunResponse, Error> {
+        let url = self.url(&RunsRouting::CANCEL_PATH.replace("{id}", &id.to_string()));
+        self.send(reqwest::Client::new().post(&url), jwt, "cancel run")
+            .await
     }
 }

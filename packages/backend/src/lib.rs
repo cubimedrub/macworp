@@ -24,7 +24,7 @@ use axum::{Extension, Router};
 #[cfg(feature = "standalone")]
 use http::Method;
 use macworp_core::routing::{
-    IsRouting, LoginRouting, ProjectsRouting, UsersRouting, UtilitiesRouting,
+    IsRouting, LoginRouting, ProjectsRouting, RunsRouting, UsersRouting, UtilitiesRouting,
     WorkflowIntegrationsRouting,
 };
 use tokio::net::TcpListener;
@@ -120,6 +120,10 @@ where
             .nest(
                 WorkflowIntegrationsRouting::controller_path(),
                 WorkflowIntegrationsController::routes(state.clone()),
+            )
+            .nest(
+                RunsRouting::controller_path(),
+                RunsController::routes(state.clone()),
             )
             .layer(Extension(state.clone()))
             .with_state(state);

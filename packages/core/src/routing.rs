@@ -63,3 +63,20 @@ impl WorkflowIntegrationsRouting {
 impl IsRouting for WorkflowIntegrationsRouting {
     const CONTROLLER_PATH: &str = "/workflow-integrations";
 }
+
+/// Routes for runs
+pub struct RunsRouting;
+impl RunsRouting {
+    /// POST: queue a run on a project
+    pub const START_PATH: &str = "/start/{project_id}";
+    /// GET: runs of a project, newest first
+    pub const INDEX_PATH: &str = "/index/{project_id}";
+    /// GET: one run
+    pub const GET_PATH: &str = "/get/{id}";
+    /// POST: cancel a queued run or ask a worker to stop a running one
+    pub const CANCEL_PATH: &str = "/cancel/{id}";
+}
+
+impl IsRouting for RunsRouting {
+    const CONTROLLER_PATH: &str = "/runs";
+}

@@ -4274,6 +4274,7 @@ dependencies = [
  "rpassword",
  "sea-orm",
  "serde",
+ "serde_json",
  "sqlx",
  "thiserror 2.0.18",
  "tokio",

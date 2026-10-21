@@ -1,6 +1,8 @@
 use dioxus::prelude::*;
 use macworp_core::{
-    responses::WorkflowIntegrationResponse, workflow_configuration::parameters::Parameter,
+    requests::ParameterValue,
+    responses::WorkflowIntegrationResponse,
+    workflow_configuration::{parameters::Parameter, render::value_json},
 };
 use thiserror::Error;
 
@@ -30,7 +32,7 @@ pub enum Error<S: IsStorage> {
 pub struct WorkflowStartDialogProps {
     pub is_open: ReadSignal<bool>,
     pub cancel_callback: Callback<(), ()>,
-    pub start_callback: Callback<WorkflowIntegrationResponse, ()>,
+    pub start_callback: Callback<(i64, Vec<ParameterValue>), ()>,
 }
 
 /// Dialog for selecting a workflow integration to start and previewing its dynamic parameters.
@@ -38,7 +40,7 @@ pub struct WorkflowStartDialogProps {
 /// # Arguments
 /// * `is_open` - A signal that indicates whether the dialog is open or not
 /// * `cancel_callback` - The callback to call when the dialog is closed without starting
-/// * `start_callback` - The callback to call with the selected workflow integration when the user confirms
+/// * `start_callback` - The callback to call with the selected workflow's id and the entered dynamic parameter values when the user confirms
 ///
 #[component]
 pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogProps) -> Element {
@@ -205,6 +207,22 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                             r#type: "button",
                             class: "btn btn-primary",
                             disabled: selected.read().is_none(),
+                            onclick: move |_| {
+                                if let Some(integration) = &*selected.read() {
+                                    let values = integration
+                                        .dynamic_parameters()
+                                        .iter()
+                                        .map(|parameter| {
+                                            let parameter = parameter.read();
+                                            ParameterValue {
+                                                name: parameter.name().to_string(),
+                                                value: value_json(&parameter),
+                                            }
+                                        })
+                                        .collect();
+                                    props.start_callback.call((integration.inner().id, values));
+                                }
+                            },
                             "Start"
                         }
                     }

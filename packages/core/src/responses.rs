@@ -3,7 +3,7 @@ use std::{fmt::Display, path::PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::workflow_configuration::WorkflowConfiguration;
+use crate::{entities::RunStatus, workflow_configuration::WorkflowConfiguration};
 
 /// Response of login
 ///
@@ -74,4 +74,33 @@ impl WorkflowIntegrationResponse {
     pub fn configuration_mut(&mut self) -> &mut WorkflowConfiguration {
         &mut self.configuration
     }
+}
+
+/// State of a run
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RunResponse {
+    pub id: i64,
+    /// Project the run belongs to
+    pub project_id: i64,
+    /// `None` if the workflow was deleted since
+    pub workflow_id: Option<i64>,
+    /// Name of the workflow at start, empty if unknown
+    pub workflow_name: String,
+    pub status: RunStatus,
+    /// Engine exit code, `None` until it exited
+    pub exit_code: Option<i32>,
+    /// Why the run failed when the exit code does not say, e.g. timeout
+    pub error: Option<String>,
+    /// Comment given at start
+    pub comment: String,
+    /// A user asked to cancel a running run, the worker has not stopped it yet
+    pub cancel_requested: bool,
+    /// Locked runs are kept by the run limit
+    pub locked: bool,
+    /// When the run was queued
+    pub created_at: DateTime<Utc>,
+    /// When a worker started it, `None` while queued
+    pub started_at: Option<DateTime<Utc>>,
+    /// When it reached a terminal status
+    pub finished_at: Option<DateTime<Utc>>,
 }

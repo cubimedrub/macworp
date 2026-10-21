@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub mod engine;
 /// Workflow parameters types
 pub mod parameters;
+/// Rendering of a configuration into engine command line arguments
+pub mod render;
 /// Source of the workflows, e.g. local folder or remote repository
 pub mod source;
 

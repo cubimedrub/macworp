@@ -52,12 +52,25 @@ pub struct UpdateWorkflowIntegrationRequest {
     pub configuration: WorkflowConfiguration,
 }
 
+/// Value for one dynamic parameter of a workflow, matched by parameter name
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ParameterValue {
+    /// Name of the dynamic parameter
+    pub name: String,
+    /// Text/Glob: string, Integer/Float: number, Path: array of strings (or one string); `null` unsets
+    pub value: serde_json::Value,
+}
+
+/// Request to start a workflow on a project.
+///
+/// Only values of dynamic parameters are taken from the client. Engine, source, engine
+/// parameters and fixed parameters always come from the stored workflow.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkflowStartRequest {
     /// Workflow integration ID
-    pub id: i64,
+    pub workflow_id: i64,
     /// Optional comment for the workflow run
     pub comment: String,
-    /// Workflow configuration
-    pub configuration: WorkflowConfiguration,
+    /// Values for the dynamic parameters
+    pub parameters: Vec<ParameterValue>,
 }

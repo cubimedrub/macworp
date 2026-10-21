@@ -18,9 +18,12 @@ impl MigrationTrait for Migration {
                     // Snapshots: runs stay reproducible after the workflow is edited or deleted
                     .col(json_binary("configuration"))
                     .col(json_binary("parameters"))
+                    .col(text("comment").default(""))
                     .col(string_len("status", 16).default("queued"))
                     .col(integer_null("exit_code"))
                     .col(text_null("error"))
+                    // Set while a running run should be stopped, the worker moves it to cancelled
+                    .col(boolean("cancel_requested").default(false))
                     // Locked runs are never evicted by the per-project retention limit
                     .col(boolean("locked").default(false))
                     .col(timestamp_with_time_zone("created_at").default(Expr::current_timestamp()))

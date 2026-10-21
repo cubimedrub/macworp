@@ -1,4 +1,6 @@
-use macworp_core::{entities::RunStatus, workflow_configuration::WorkflowConfiguration};
+use macworp_core::{
+    entities::RunStatus, responses::RunResponse, workflow_configuration::WorkflowConfiguration,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, QueryOrder,
     Set, entity::prelude::*,
@@ -27,6 +29,8 @@ pub struct Model {
     pub configuration: WorkflowConfiguration,
     /// Snapshot of the user supplied parameter values
     pub parameters: Json,
+    /// Comment given by the user at start
+    pub comment: String,
     pub status: RunStatus,
     /// Exit code of the engine, `None` until it exited
     #[sea_orm(nullable)]
@@ -34,6 +38,8 @@ pub struct Model {
     /// Why the run failed if the reason is not the exit code, e.g. timeout or container runtime missing
     #[sea_orm(nullable)]
     pub error: Option<String>,
+    /// A user asked to stop the run while it was running, the worker checks this and moves the run to `Cancelled`
+    pub cancel_requested: bool,
     /// Locked runs are never evicted by the retention limit
     pub locked: bool,
     /// When the run was queued
@@ -47,7 +53,12 @@ pub struct Model {
 
     #[sea_orm(belongs_to, relation_enum = "Project", from = "project_id", to = "id")]
     pub project: HasOne<super::project::Entity>,
-    #[sea_orm(belongs_to, relation_enum = "Workflow", from = "workflow_id", to = "id")]
+    #[sea_orm(
+        belongs_to,
+        relation_enum = "Workflow",
+        from = "workflow_id",
+        to = "id"
+    )]
     pub workflow: HasOne<super::workflow_integration::Entity>,
     #[sea_orm(belongs_to, relation_enum = "Starter", from = "started_by", to = "id")]
     pub starter: HasOne<super::user::Entity>,
@@ -67,6 +78,9 @@ pub enum RunError {
     /// No run with the given id
     #[error("Run not found")]
     NotFound,
+    /// The run is already in a terminal status
+    #[error("Run already finished")]
+    AlreadyFinished,
     #[error("Database error: {0}")]
     Database(#[from] DbErr),
 }
@@ -75,6 +89,43 @@ impl Model {
     /// A run can be evicted by the run limit if it is finished and not locked
     pub fn is_evictable(&self) -> bool {
         !self.locked && self.status.is_terminal()
+    }
+
+    /// Converts to the API response. `workflow_name` is the current name of the workflow, empty if deleted.
+    pub fn into_response(self, workflow_name: String) -> RunResponse {
+        RunResponse {
+            id: self.id,
+            project_id: self.project_id,
+            workflow_id: self.workflow_id,
+            workflow_name,
+            status: self.status,
+            exit_code: self.exit_code,
+            error: self.error,
+            comment: self.comment,
+            cancel_requested: self.cancel_requested,
+            locked: self.locked,
+            created_at: self.created_at,
+            started_at: self.started_at,
+            finished_at: self.finished_at,
+        }
+    }
+
+    /// Cancels the run: a queued run is cancelled right away, a running run is flagged with
+    /// `cancel_requested` for its worker to stop. Finished runs return [`RunError::AlreadyFinished`].
+    pub async fn request_cancel<C: ConnectionTrait>(&self, db: &C) -> Result<Model, RunError> {
+        let mut active = ActiveModel {
+            id: Set(self.id),
+            ..Default::default()
+        };
+        match self.status {
+            RunStatus::Queued => {
+                active.status = Set(RunStatus::Cancelled);
+                active.finished_at = Set(Some(chrono::Utc::now()));
+            }
+            RunStatus::Running => active.cancel_requested = Set(true),
+            _ => return Err(RunError::AlreadyFinished),
+        }
+        Ok(active.update(db).await?)
     }
 
     /// Locks or unlocks the run, a locked run is kept when newer runs exceed the project's limit
@@ -184,7 +235,9 @@ mod tests {
             started_by: Set(user),
             configuration: Set(WorkflowConfiguration::default()),
             parameters: Set(Json::Object(Default::default())),
+            comment: Set(String::new()),
             status: Set(status),
+            cancel_requested: Set(false),
             locked: Set(locked),
             created_at: Set(Utc::now() - Duration::minutes(age)),
             ..Default::default()
@@ -229,6 +282,28 @@ mod tests {
         assert_eq!(ids(&db).await, vec![b, c]);
         assert!(!ids(&db).await.contains(&oldest));
         assert_eq!(RunLogTable::find().all(&db).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn cancel_rules() {
+        let (db, u, p) = setup().await;
+        let get = async |id| Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+        let queued = add_run(&db, u, p, 3, RunStatus::Queued, false).await;
+        let running = add_run(&db, u, p, 2, RunStatus::Running, false).await;
+        let done = add_run(&db, u, p, 1, RunStatus::Succeeded, false).await;
+
+        let r = get(queued).await.request_cancel(&db).await.unwrap();
+        assert_eq!(r.status, RunStatus::Cancelled);
+        assert!(r.finished_at.is_some());
+
+        let r = get(running).await.request_cancel(&db).await.unwrap();
+        assert_eq!(r.status, RunStatus::Running);
+        assert!(r.cancel_requested);
+
+        let err = get(done).await.request_cancel(&db).await.unwrap_err();
+        assert!(matches!(err, RunError::AlreadyFinished));
+        let err = get(queued).await.request_cancel(&db).await.unwrap_err();
+        assert!(matches!(err, RunError::AlreadyFinished));
     }
 
     #[tokio::test]

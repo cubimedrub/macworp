@@ -99,6 +99,17 @@ async fn start() -> Result<(), Error> {
         app_data_directory.to_str().unwrap()
     );
 
+    let container_runtime_report =
+        macworp_worker::container_runtime::doctor(Default::default()).await;
+    let unavailable_engines = container_runtime_report.unavailable_engines();
+    if container_runtime_report.is_ok() {
+        tracing::info!("Container runtime:\n{container_runtime_report}");
+    } else {
+        tracing::warn!(
+            "No usable container runtime, workflows cannot run:\n{container_runtime_report}"
+        );
+    }
+
     if app_data_directory.is_file() {
         return Err(Error::AppDirectoryCreation(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
@@ -137,6 +148,7 @@ async fn start() -> Result<(), Error> {
     let mut backend_config = macworp_backend::configuration::Configuration::default();
     *backend_config.database_url_mut() = database_url;
     *backend_config.secret_mut() = jwt_secret;
+    *backend_config.unavailable_engines_mut() = unavailable_engines;
     *backend_config.interface_mut() = "127.0.0.1".to_string();
     *backend_config.worker_mut().password_mut() =
         password_auth::generate_hash(application_password.as_bytes());

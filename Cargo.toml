@@ -39,3 +39,4 @@ macworp_backend = { path = "packages/backend" }
 macworp_core = { path = "packages/core" }
 macworp_database_migration = { path = "packages/migration" }
 macworp_ui_core = { path = "packages/ui_core" }
+macworp_worker = { path = "packages/worker" }

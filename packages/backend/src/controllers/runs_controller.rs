@@ -53,6 +53,9 @@ pub enum Error {
     /// Submitted parameter values do not fit the workflow, or it cannot be rendered, 400
     #[error("Invalid parameters: {0}")]
     InvalidParameters(#[from] macworp_core::workflow_configuration::render::RenderError),
+    /// The container runtime of this instance cannot run the workflow's engine, 409
+    #[error("Workflow engine {0} is not available with the detected container runtime")]
+    EngineUnavailable(macworp_core::workflow_configuration::engine::Engine),
     /// The project's run limit is reached and no run can be evicted, 409
     #[error("Run limit of {0} reached, all runs are locked or still active")]
     RunLimitReached(u64),
@@ -85,7 +88,7 @@ impl IntoResponse for Error {
             Error::InvalidParameters(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string()).into_response()
             }
-            Error::RunLimitReached(_) | Error::AlreadyFinished => {
+            Error::RunLimitReached(_) | Error::AlreadyFinished | Error::EngineUnavailable(_) => {
                 (StatusCode::CONFLICT, self.to_string()).into_response()
             }
             Error::Database(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -164,6 +167,11 @@ impl RunsController {
             .ok_or(Error::WorkflowNotFound)?;
         if workflow.owner_id != user.id {
             return Err(Error::Forbidden);
+        }
+
+        let engine = workflow.configuration.engine();
+        if state.config().unavailable_engines().contains(engine) {
+            return Err(Error::EngineUnavailable(engine.clone()));
         }
 
         // Only dynamic parameter values come from the client, everything else from the stored workflow

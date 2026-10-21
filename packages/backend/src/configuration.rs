@@ -1,6 +1,6 @@
 use std::hash::{Hash, Hasher};
 
-use macworp_core::responses::LoginProviderResponse;
+use macworp_core::{responses::LoginProviderResponse, workflow_configuration::engine::Engine};
 use rand::{RngExt, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +45,10 @@ pub struct Configuration {
     /// `0` disables the limit.
     #[serde(default = "default_max_runs_per_project")]
     max_runs_per_project: u64,
+    /// Engines the container runtime cannot run, runs of them are rejected. Detected by the
+    /// embedding application (desktop), never read from the config file.
+    #[serde(skip)]
+    unavailable_engines: Vec<Engine>,
 }
 
 fn default_max_runs_per_project() -> u64 {
@@ -148,6 +152,14 @@ impl Configuration {
     pub fn max_runs_per_project_mut(&mut self) -> &mut u64 {
         &mut self.max_runs_per_project
     }
+
+    pub fn unavailable_engines(&self) -> &[Engine] {
+        &self.unavailable_engines
+    }
+
+    pub fn unavailable_engines_mut(&mut self) -> &mut Vec<Engine> {
+        &mut self.unavailable_engines
+    }
 }
 
 impl Default for Configuration {
@@ -163,6 +175,7 @@ impl Default for Configuration {
             login_providers: vec![LoginProvider::Local(LocalLoginProvider::default())],
             cors_allowed_origins: Vec::new(),
             max_runs_per_project: DEFAULT_MAX_RUNS_PER_PROJECT,
+            unavailable_engines: Vec::new(),
         }
     }
 }

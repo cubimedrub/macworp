@@ -1,6 +1,8 @@
 mod group;
 mod group_share;
 mod project;
+pub mod run;
+mod run_log;
 pub mod user;
 mod user_share;
 mod users_groups;
@@ -26,4 +28,8 @@ pub use users_groups::{
 pub use workflow_integration::{
     ActiveModel as ActiveWorkflowIntegration, Column as WorkflowIntegrationColumn,
     Entity as WorkflowIntegrationTable, Model as WorkflowIntegration,
+};
+pub use run::{ActiveModel as ActiveRun, Column as RunColumn, Entity as RunTable, Model as Run, RunError};
+pub use run_log::{
+    ActiveModel as ActiveRunLog, Column as RunLogColumn, Entity as RunLogTable, Model as RunLog,
 };

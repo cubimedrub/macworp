@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 /// Login validity in seconds if not configured (24 hours)
 pub const DEFAULT_LOGIN_VALIDITY: u32 = 24 * 60 * 60;
 
+/// Runs kept per project if not configured
+pub const DEFAULT_MAX_RUNS_PER_PROJECT: u64 = 10;
+
 /// Minimum length of the JWT secret in bytes
 const MIN_SECRET_LENGTH: usize = 32;
 
@@ -38,6 +41,14 @@ pub struct Configuration {
     /// Empty (default) disables CORS, `"*"` allows any origin. Ignored by the desktop integration.
     #[serde(default)]
     cors_allowed_origins: Vec<String>,
+    /// Runs kept per project, the oldest finished and unlocked run is replaced by a new one.
+    /// `0` disables the limit.
+    #[serde(default = "default_max_runs_per_project")]
+    max_runs_per_project: u64,
+}
+
+fn default_max_runs_per_project() -> u64 {
+    DEFAULT_MAX_RUNS_PER_PROJECT
 }
 
 impl Configuration {
@@ -129,6 +140,14 @@ impl Configuration {
     pub fn cors_allowed_origins_mut(&mut self) -> &mut Vec<String> {
         &mut self.cors_allowed_origins
     }
+
+    pub fn max_runs_per_project(&self) -> u64 {
+        self.max_runs_per_project
+    }
+
+    pub fn max_runs_per_project_mut(&mut self) -> &mut u64 {
+        &mut self.max_runs_per_project
+    }
 }
 
 impl Default for Configuration {
@@ -143,6 +162,7 @@ impl Default for Configuration {
             worker: WorkerCredentials::default(),
             login_providers: vec![LoginProvider::Local(LocalLoginProvider::default())],
             cors_allowed_origins: Vec::new(),
+            max_runs_per_project: DEFAULT_MAX_RUNS_PER_PROJECT,
         }
     }
 }

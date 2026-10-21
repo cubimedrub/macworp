@@ -132,7 +132,7 @@ pub trait IsFilesystem {
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "standalone"))]
 mod tests {
     use std::path::{Path, PathBuf};
 

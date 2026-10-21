@@ -14,6 +14,7 @@ pub enum Error {
 pub enum Engine {
     Nextflow,
     Snakemake,
+    Cwl,
     Docker,
 }
 
@@ -22,6 +23,7 @@ impl Display for Engine {
         match self {
             Engine::Nextflow => write!(f, "Nextflow"),
             Engine::Snakemake => write!(f, "Snakemake"),
+            Engine::Cwl => write!(f, "Cwl"),
             Engine::Docker => write!(f, "Docker"),
         }
     }
@@ -34,9 +36,32 @@ impl FromStr for Engine {
         match s.to_lowercase().as_str() {
             "nextflow" => Ok(Engine::Nextflow),
             "snakemake" => Ok(Engine::Snakemake),
+            "cwl" => Ok(Engine::Cwl),
             "docker" => Ok(Engine::Docker),
             _ => Err(Error::UnsupportedEngine(s.to_string())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use strum::IntoEnumIterator;
+
+    use super::*;
+
+    #[test]
+    fn display_from_str_roundtrip() {
+        for engine in Engine::iter() {
+            assert_eq!(engine.to_string().parse::<Engine>().unwrap(), engine);
+        }
+        assert_eq!("CWL".parse::<Engine>().unwrap(), Engine::Cwl);
+    }
+
+    #[test]
+    fn cwl_serde_roundtrip() {
+        let json = serde_json::to_string(&Engine::Cwl).unwrap();
+        assert_eq!(json, "\"Cwl\"");
+        assert_eq!(serde_json::from_str::<Engine>(&json).unwrap(), Engine::Cwl);
     }
 }
 

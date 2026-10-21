@@ -15,6 +15,9 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [features]
 default = []
 database = ["dep:sea-orm", "dep:serde_json"]

@@ -14,9 +14,14 @@ pub enum Error {
 pub enum Source {
     Local(LocalSource),
     Remote(RemoteSource),
+    NfCore(NfCoreSource),
 }
 
 impl Source {
+    pub fn is_nf_core(&self) -> bool {
+        matches!(self, Source::NfCore(_))
+    }
+
     pub fn is_local(&self) -> bool {
         matches!(self, Source::Local(_))
     }
@@ -35,6 +40,7 @@ impl Display for Source {
         match self {
             Source::Local(_) => write!(f, "Local"),
             Source::Remote(_) => write!(f, "Remote"),
+            Source::NfCore(_) => write!(f, "NfCore"),
         }
     }
 }
@@ -46,6 +52,7 @@ impl FromStr for Source {
         match s.to_lowercase().as_str() {
             "local" => Ok(Source::Local(LocalSource::default())),
             "remote" => Ok(Source::Remote(RemoteSource::default())),
+            "nfcore" | "nf-core" => Ok(Source::NfCore(NfCoreSource::default())),
             _ => Err(Error::UnsupportedSource(s.to_string())),
         }
     }
@@ -142,5 +149,67 @@ impl Default for RemoteSource {
             version: Some("main".to_string()),
             script: Some(PathBuf::from("main.nf")),
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NfCoreSource {
+    /// Name of the nf-core pipeline, e.g. `rnaseq`
+    pipeline: String,
+    /// Optional pipeline release/tag (`-r`). Latest if unset
+    version: Option<String>,
+}
+
+impl NfCoreSource {
+    pub fn new(pipeline: String, version: Option<String>) -> Self {
+        Self { pipeline, version }
+    }
+
+    pub fn pipeline(&self) -> &str {
+        &self.pipeline
+    }
+
+    pub fn pipeline_mut(&mut self) -> &mut String {
+        &mut self.pipeline
+    }
+
+    pub fn version(&self) -> Option<&String> {
+        self.version.as_ref()
+    }
+
+    pub fn version_mut(&mut self) -> &mut Option<String> {
+        &mut self.version
+    }
+}
+
+impl Default for NfCoreSource {
+    fn default() -> Self {
+        Self {
+            pipeline: "demo".to_string(),
+            version: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use strum::IntoEnumIterator;
+
+    use super::*;
+
+    #[test]
+    fn display_from_str_roundtrip() {
+        for source in Source::iter() {
+            assert!(source.to_string().parse::<Source>().unwrap().is_same_variant(&source));
+        }
+        assert!("nf-core".parse::<Source>().unwrap().is_nf_core());
+        assert_eq!(Source::iter().count(), 3);
+    }
+
+    #[test]
+    fn nf_core_serde_roundtrip() {
+        let source = Source::NfCore(NfCoreSource::new("rnaseq".into(), Some("3.14.0".into())));
+        let json = serde_json::to_string(&source).unwrap();
+        assert_eq!(serde_json::from_str::<Source>(&json).unwrap(), source);
     }
 }

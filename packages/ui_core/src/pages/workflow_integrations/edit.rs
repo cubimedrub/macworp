@@ -6,7 +6,7 @@ use macworp_core::{
     workflow_configuration::{
         engine::{Engine, EngineParameter},
         parameters::Parameter,
-        source::{LocalSource, RemoteSource, Source},
+        source::Source,
     },
 };
 use strum::IntoEnumIterator;
@@ -161,30 +161,15 @@ fn on_workflow_source_change(
         return;
     }
 
-    // Deal with uninitialized last source
-    if last_source.is_none() {
-        match new_source_type {
-            Source::Local(_) => *last_source = Some(Source::Local(LocalSource::default())),
-            Source::Remote(_) => *last_source = Some(Source::Remote(RemoteSource::default())),
-        }
-    }
-
     if last_source
         .as_ref()
-        .unwrap()
-        .is_same_variant(&new_source_type)
+        .is_some_and(|last| last.is_same_variant(&new_source_type))
     {
+        // Switching back to the previously used variant: restore its settings.
         std::mem::swap(current_source, last_source.as_mut().unwrap());
-    } else if new_source_type.is_local() {
-        // if new is local, last must be remote which is "more complex"
-        // so lets just create a new local so the complex type is not lost.
-        *current_source = Source::Local(LocalSource::default());
-    } else if new_source_type.is_remote() {
-        // if new is remote, last must be local which less "more complex"
-        // so we override the last source with a new remote and then swap
-        // so the more complex setting got saved
-        last_source.replace(Source::Remote(RemoteSource::default()));
-        std::mem::swap(current_source, last_source.as_mut().unwrap());
+    } else {
+        // Stash the outgoing source so switching back restores it, start fresh with the new variant.
+        *last_source = Some(std::mem::replace(current_source, new_source_type));
     }
 }
 
@@ -404,7 +389,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     "Configuration"
                 },
                 p {
-                    "This setting defines the kind of workflow (Snakemake, Nextflow, Docker, ...), where to get the workflow source and how the paramter inputs should be rendered for the user."
+                    "This setting defines the kind of workflow (Nextflow, Snakemake, CWL, Docker, ...), where to get the workflow source and how the paramter inputs should be rendered for the user."
                 }
                 Separator{
                     label: "Engine"
@@ -443,8 +428,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     class: "input-group mb-3",
                     span {
                         class: "input-group-text",
-                        id: "workflow-integration-configuration-engine",
-                        "Engine"
+                        id: "workflow-integration-configuration-source",
+                        "Source"
                     }
                     select {
                         class: "form-select",
@@ -556,6 +541,46 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                 value: "{source.script().map(|path| path.display().to_string()).unwrap_or_default()}",
                                 oninput: move |event| if let Source::Remote(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
                                     *source.script_mut() = if event.value().is_empty() { None } else { Some(PathBuf::from(event.value())) }
+                                }
+                            }
+                        }
+                    },
+                    Source::NfCore(source) => rsx! {
+                        div {
+                            class: "input-group mb-3",
+                            span {
+                                class: "input-group-text",
+                                id: "workflow-integration-configuration-source-nfcore-pipeline",
+                                "Pipeline"
+                            }
+                            input {
+                                type: "text",
+                                class: "form-control",
+                                placeholder: "rnaseq",
+                                aria_label: "nf-core pipeline name",
+                                aria_describedby: "workflow-integration-configuration-source-nfcore-pipeline",
+                                value: "{source.pipeline()}",
+                                oninput: move |event| if let Source::NfCore(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
+                                    *source.pipeline_mut() = event.value();
+                                }
+                            }
+                        },
+                        div {
+                            class: "input-group mb-3",
+                            span {
+                                class: "input-group-text",
+                                id: "workflow-integration-configuration-source-nfcore-version",
+                                "Version"
+                            }
+                            input {
+                                type: "text",
+                                class: "form-control",
+                                placeholder: "3.14.0 (empty = latest)",
+                                aria_label: "nf-core pipeline version",
+                                aria_describedby: "workflow-integration-configuration-source-nfcore-version",
+                                value: "{source.version().map(|version| version.as_str()).unwrap_or_default()}",
+                                oninput: move |event| if let Source::NfCore(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
+                                    *source.version_mut() = if event.value().is_empty() { None } else { Some(event.value()) }
                                 }
                             }
                         }

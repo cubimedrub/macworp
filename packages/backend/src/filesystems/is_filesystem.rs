@@ -137,7 +137,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use crate::filesystems::{
-        errors::Error, remote_filesystem::RemoteFilesystem, project_content::ProjectContent,
+        errors::Error, project_content::ProjectContent, remote_filesystem::RemoteFilesystem,
     };
 
     use super::IsFilesystem;

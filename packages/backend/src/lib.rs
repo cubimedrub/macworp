@@ -21,13 +21,16 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::{Extension, Router};
+#[cfg(feature = "standalone")]
 use http::Method;
 use macworp_core::routing::{
     IsRouting, LoginRouting, ProjectsRouting, UsersRouting, UtilitiesRouting,
     WorkflowIntegrationsRouting,
 };
 use tokio::net::TcpListener;
-use tower_http::cors::{Any, CorsLayer};
+#[cfg(feature = "standalone")]
+use tower_http::cors::AllowOrigin;
+use tower_http::cors::CorsLayer;
 
 use crate::{
     configuration::Configuration, controllers::*, error::Error,
@@ -38,6 +41,42 @@ use crate::{
 use crate::filesystems::local_filesystem::LocalFilesystem;
 #[cfg(feature = "standalone")]
 use crate::filesystems::remote_filesystem::RemoteFilesystem;
+
+/// Builds the CORS layer from the configured origins, `None` if cross-origin access is disabled
+#[cfg(feature = "standalone")]
+fn cors_layer(config: &Configuration) -> Option<CorsLayer> {
+    let origins = config.cors_allowed_origins();
+    if origins.is_empty() {
+        return None;
+    }
+
+    let allow_origin = if origins.iter().any(|origin| origin == "*") {
+        tracing::warn!("CORS allows any origin, restrict `cors_allowed_origins` in production");
+        AllowOrigin::any()
+    } else {
+        AllowOrigin::list(origins.iter().filter_map(|origin| origin.parse().ok()))
+    };
+
+    Some(
+        CorsLayer::new()
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers(vec![
+                http::header::ACCEPT,
+                http::header::CONTENT_TYPE,
+                http::header::DNT,
+                http::header::AUTHORIZATION,
+                http::header::CONTENT_RANGE,
+            ])
+            .allow_origin(allow_origin),
+    )
+}
 
 pub struct Backend<F: IsFilesystem + 'static> {
     _filesystem: std::marker::PhantomData<F>,
@@ -57,20 +96,9 @@ where
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
         state: State,
+        cors: Option<CorsLayer>,
     ) -> Result<(), Error> {
         let state = Arc::new(state);
-
-        // Add CORS layer
-        let cors = CorsLayer::new()
-            .allow_methods([Method::GET, Method::POST])
-            .allow_headers(vec![
-                http::header::ACCEPT,
-                http::header::CONTENT_TYPE,
-                http::header::DNT,
-                http::header::AUTHORIZATION,
-                http::header::CONTENT_RANGE,
-            ])
-            .allow_origin(Any);
 
         let router = Router::new()
             .nest(
@@ -94,8 +122,11 @@ where
                 WorkflowIntegrationsController::routes(state.clone()),
             )
             .layer(Extension(state.clone()))
-            .with_state(state)
-            .layer(cors);
+            .with_state(state);
+        let router = match cors {
+            Some(cors) => router.layer(cors),
+            None => router,
+        };
 
         tracing::info!(
             "Starting MaCWorP backend on {}",
@@ -124,7 +155,8 @@ impl Backend<RemoteFilesystem> {
     ) -> Result<(), Error> {
         config.validate()?;
         let state = State::new_for_standalone(config).await?;
-        Self::internal_start(tcp_listener, shutdown_signal, state).await
+        let cors = cors_layer(state.config());
+        Self::internal_start(tcp_listener, shutdown_signal, state, cors).await
     }
 }
 
@@ -184,6 +216,7 @@ impl Backend<LocalFilesystem> {
             }
         };
 
-        Self::internal_start(tcp_listener, shutdown_signal, state).await
+        // The desktop UI talks to the backend in-process, no cross-origin access needed
+        Self::internal_start(tcp_listener, shutdown_signal, state, None).await
     }
 }

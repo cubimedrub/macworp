@@ -18,16 +18,6 @@ pub enum Error {
     Core(#[from] macworp_core::error::Error),
     #[error("Login failed: {0}")]
     LoginFailed(macworp_ui_core::client::Error),
-    #[error("Unable to read password file: {0}")]
-    PasswordFileRead(std::io::Error),
-    #[error("Unable to write password file: {0}")]
-    PasswordFileWrite(std::io::Error),
-    #[error("Password file is a directory")]
-    PasswordFileIsDirectory,
-    #[error("Unable to read secret file: {0}")]
-    SecretFileRead(std::io::Error),
-    #[error("Unable to write secret file: {0}")]
-    SecretFileWrite(std::io::Error),
     #[error("Failed to get project directory")]
     ProjectDirectoryNotFound,
     #[error(transparent)]

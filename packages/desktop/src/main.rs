@@ -6,9 +6,7 @@ mod pages;
 mod router;
 mod storage;
 
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
-use std::{env, io::Write, time::Duration};
+use std::{env, time::Duration};
 
 use clap::{Parser, Subcommand};
 use dioxus::prelude::*;
@@ -112,32 +110,23 @@ async fn start() -> Result<(), Error> {
         Ok(true) => tracing::info!("App directory already exists"),
         Ok(false) => {
             tracing::info!("Creating app directory");
-            std::fs::create_dir_all(app_data_directory).map_err(Error::AppDirectoryCreation)?;
+            create_private_directory(app_data_directory).map_err(Error::AppDirectoryCreation)?;
         }
         Err(err) => return Err(Error::AppDirectoryCreation(err)),
     }
 
-    let password_path = app_data_directory.join("pwd");
-
-    if password_path.is_dir() {
-        return Err(Error::PasswordFileIsDirectory);
+    // Secrets live in memory only: the backend re-syncs the desktop user's password on
+    // every start and the login token is never persisted, so nothing needs to survive a restart.
+    for legacy_file in ["pwd", "jwt_secret"] {
+        match std::fs::remove_file(app_data_directory.join(legacy_file)) {
+            Ok(_) => tracing::info!("Removed legacy secret file {legacy_file}"),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => tracing::warn!("Unable to remove legacy secret file {legacy_file}: {err}"),
+        }
     }
 
-    let application_password = if password_path.is_file() {
-        std::fs::read_to_string(password_path).map_err(Error::PasswordFileRead)
-    } else {
-        let new_password = generate_password();
-        std::fs::write(password_path, &new_password).map_err(Error::PasswordFileWrite)?;
-        Ok(new_password)
-    }?;
-
-    let secret_path = app_data_directory.join("jwt_secret");
-    let jwt_secret = match std::fs::read_to_string(&secret_path) {
-        Ok(secret) if !secret.trim().is_empty() => secret.trim().to_string(),
-        Ok(_) => create_secret_file(&secret_path)?,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => create_secret_file(&secret_path)?,
-        Err(err) => return Err(Error::SecretFileRead(err)),
-    };
+    let application_password = generate_password();
+    let jwt_secret = macworp_backend::configuration::generate_secret();
 
     let database_path = app_data_directory.join("db.sqlite");
 
@@ -239,22 +228,13 @@ async fn start() -> Result<(), Error> {
 /// Creates a random 64 character password from ascii characters.
 /// This method does not produce recommended passwords or enforces
 /// any kind of pasword rules
-///
-/// Creates the file with a new JWT secret, readable by the current user only
-fn create_secret_file(path: &std::path::Path) -> Result<String, Error> {
-    let secret = macworp_backend::configuration::generate_secret();
-
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+/// Creates the directory (and parents), readable by the current user only on unix
+fn create_private_directory(path: &std::path::Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
     #[cfg(unix)]
-    options.mode(0o600);
-
-    options
-        .open(path)
-        .and_then(|mut file| file.write_all(secret.as_bytes()))
-        .map_err(Error::SecretFileWrite)?;
-
-    Ok(secret)
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(path)
 }
 
 fn generate_password() -> String {

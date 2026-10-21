@@ -34,6 +34,10 @@ pub struct Configuration {
     /// Login providers
     // TODO: Store as hashset, needs custom module for serialization
     login_providers: Vec<LoginProvider>,
+    /// Origins allowed to call the API cross-origin, e.g. a separately deployed web frontend.
+    /// Empty (default) disables CORS, `"*"` allows any origin. Ignored by the desktop integration.
+    #[serde(default)]
+    cors_allowed_origins: Vec<String>,
 }
 
 impl Configuration {
@@ -43,6 +47,13 @@ impl Configuration {
             return Err(crate::error::Error::Configuration(
                 "secret must be at least 32 bytes long and not the development default, use the `config` command to generate one",
             ));
+        }
+        for origin in &self.cors_allowed_origins {
+            if origin != "*" && origin.parse::<http::HeaderValue>().is_err() {
+                return Err(crate::error::Error::Configuration(
+                    "cors_allowed_origins must contain `*` or valid origins, e.g. https://example.org",
+                ));
+            }
         }
         Ok(())
     }
@@ -110,6 +121,14 @@ impl Configuration {
     pub fn login_providers_mut(&mut self) -> &mut Vec<LoginProvider> {
         &mut self.login_providers
     }
+
+    pub fn cors_allowed_origins(&self) -> &Vec<String> {
+        &self.cors_allowed_origins
+    }
+
+    pub fn cors_allowed_origins_mut(&mut self) -> &mut Vec<String> {
+        &mut self.cors_allowed_origins
+    }
 }
 
 impl Default for Configuration {
@@ -123,6 +142,7 @@ impl Default for Configuration {
             projects_path: "dev_projects".to_string(),
             worker: WorkerCredentials::default(),
             login_providers: vec![LoginProvider::Local(LocalLoginProvider::default())],
+            cors_allowed_origins: Vec::new(),
         }
     }
 }
@@ -204,5 +224,30 @@ impl Hash for LoginProvider {
                 "local".hash(state);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_rejects_invalid_cors_origin() {
+        let mut config = Configuration::default();
+        assert!(config.validate().is_ok());
+        config
+            .cors_allowed_origins_mut()
+            .push("bad\norigin".to_string());
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_cors_origins() {
+        let mut config = Configuration::default();
+        config.cors_allowed_origins_mut().push("*".to_string());
+        config
+            .cors_allowed_origins_mut()
+            .push("http://localhost:8080".to_string());
+        assert!(config.validate().is_ok());
     }
 }

@@ -4,18 +4,39 @@ use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 use thiserror::Error;
 
+use super::source::{ImageSource, LocalSource, NfCoreSource, RemoteSource, Source};
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Workflow engine `{0}` is not supported")]
     UnsupportedEngine(String),
 }
 
+/// Supported workflow engines.
+/// * Nextflow: https://www.nextflow.io/
+/// * Snakemake: https://snakemake.readthedocs.io/en/stable
+/// * CWL: https://www.commonwl.org/
+/// * Container: run a single OCI image (technically not a workflow engine but handy for containerized tools).
+///   Docker/Podman/wslc is a host/worker setting, not part of the workflow definition.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, EnumIter)]
 pub enum Engine {
     Nextflow,
     Snakemake,
     Cwl,
-    Docker,
+    Container,
+}
+
+impl Engine {
+    /// Source kinds this engine can run, each with default payload.
+    pub fn supported_sources(&self) -> Vec<Source> {
+        let local = Source::Local(LocalSource::default());
+        let remote = Source::Remote(RemoteSource::default());
+        match self {
+            Engine::Nextflow => vec![local, remote, Source::NfCore(NfCoreSource::default())],
+            Engine::Snakemake | Engine::Cwl => vec![local, remote],
+            Engine::Container => vec![Source::Image(ImageSource::default())],
+        }
+    }
 }
 
 impl Display for Engine {
@@ -23,8 +44,8 @@ impl Display for Engine {
         match self {
             Engine::Nextflow => write!(f, "Nextflow"),
             Engine::Snakemake => write!(f, "Snakemake"),
-            Engine::Cwl => write!(f, "Cwl"),
-            Engine::Docker => write!(f, "Docker"),
+            Engine::Cwl => write!(f, "CWL"),
+            Engine::Container => write!(f, "Container"),
         }
     }
 }
@@ -37,7 +58,7 @@ impl FromStr for Engine {
             "nextflow" => Ok(Engine::Nextflow),
             "snakemake" => Ok(Engine::Snakemake),
             "cwl" => Ok(Engine::Cwl),
-            "docker" => Ok(Engine::Docker),
+            "container" => Ok(Engine::Container),
             _ => Err(Error::UnsupportedEngine(s.to_string())),
         }
     }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Enum for workflow engines, e.g. Nextflow, Snakemake, Docker
+/// Enum for workflow engines, e.g. Nextflow, Snakemake, CWL, Container
 pub mod engine;
 /// Workflow parameters types
 pub mod parameters;

@@ -2,6 +2,8 @@ use std::{fmt::Display, path::PathBuf, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
+
+use super::engine::Engine;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -10,16 +12,35 @@ pub enum Error {
     UnsupportedSource(String),
 }
 
+/// Source of the workflow
+/// Local: workflow is on the local filesystem, e.g. for development
+/// Remote: workflow is in a remote Git repository, e.g. GitHub, and cloned for execution
+/// NfCore: workflow is a nf-core pipeline, e.g. `nf-core/rnaseq`
+/// Image: container image to pull (Docker/Podman/wslc)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, EnumIter)]
 pub enum Source {
     Local(LocalSource),
     Remote(RemoteSource),
     NfCore(NfCoreSource),
+    /// Container image to pull (Container engine)
+    Image(ImageSource),
 }
 
 impl Source {
     pub fn is_nf_core(&self) -> bool {
         matches!(self, Source::NfCore(_))
+    }
+
+    pub fn is_image(&self) -> bool {
+        matches!(self, Source::Image(_))
+    }
+
+    /// Whether `engine` can run workflows from this kind of source.
+    pub fn is_supported_by(&self, engine: &Engine) -> bool {
+        engine
+            .supported_sources()
+            .iter()
+            .any(|source| source.is_same_variant(self))
     }
 
     pub fn is_local(&self) -> bool {
@@ -40,7 +61,8 @@ impl Display for Source {
         match self {
             Source::Local(_) => write!(f, "Local"),
             Source::Remote(_) => write!(f, "Remote"),
-            Source::NfCore(_) => write!(f, "NfCore"),
+            Source::NfCore(_) => write!(f, "nf-core"),
+            Source::Image(_) => write!(f, "Image"),
         }
     }
 }
@@ -53,6 +75,7 @@ impl FromStr for Source {
             "local" => Ok(Source::Local(LocalSource::default())),
             "remote" => Ok(Source::Remote(RemoteSource::default())),
             "nfcore" | "nf-core" => Ok(Source::NfCore(NfCoreSource::default())),
+            "image" => Ok(Source::Image(ImageSource::default())),
             _ => Err(Error::UnsupportedSource(s.to_string())),
         }
     }
@@ -191,6 +214,26 @@ impl Default for NfCoreSource {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ImageSource {
+    /// Image reference to pull, e.g. `docker.io/library/hello-world:latest`
+    image: String,
+}
+
+impl ImageSource {
+    pub fn new(image: String) -> Self {
+        Self { image }
+    }
+
+    pub fn image(&self) -> &str {
+        &self.image
+    }
+
+    pub fn image_mut(&mut self) -> &mut String {
+        &mut self.image
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use strum::IntoEnumIterator;
@@ -200,10 +243,20 @@ mod tests {
     #[test]
     fn display_from_str_roundtrip() {
         for source in Source::iter() {
-            assert!(source.to_string().parse::<Source>().unwrap().is_same_variant(&source));
+            assert!(
+                source
+                    .to_string()
+                    .parse::<Source>()
+                    .unwrap()
+                    .is_same_variant(&source)
+            );
         }
         assert!("nf-core".parse::<Source>().unwrap().is_nf_core());
-        assert_eq!(Source::iter().count(), 3);
+        assert_eq!(Source::iter().count(), 4);
+        assert_eq!(
+            Source::NfCore(NfCoreSource::default()).to_string(),
+            "nf-core"
+        );
     }
 
     #[test]
@@ -211,5 +264,17 @@ mod tests {
         let source = Source::NfCore(NfCoreSource::new("rnaseq".into(), Some("3.14.0".into())));
         let json = serde_json::to_string(&source).unwrap();
         assert_eq!(serde_json::from_str::<Source>(&json).unwrap(), source);
+    }
+
+    #[test]
+    fn sources_are_engine_specific() {
+        let nf_core = Source::NfCore(NfCoreSource::default());
+        let local = Source::Local(LocalSource::default());
+        assert!(nf_core.is_supported_by(&Engine::Nextflow));
+        assert!(!nf_core.is_supported_by(&Engine::Snakemake));
+        assert!(!nf_core.is_supported_by(&Engine::Cwl));
+        assert!(local.is_supported_by(&Engine::Cwl));
+        assert!(!local.is_supported_by(&Engine::Container));
+        assert!(Source::Image(ImageSource::default()).is_supported_by(&Engine::Container));
     }
 }

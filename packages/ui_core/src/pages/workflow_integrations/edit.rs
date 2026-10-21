@@ -389,7 +389,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     "Configuration"
                 },
                 p {
-                    "This setting defines the kind of workflow (Nextflow, Snakemake, CWL, Docker, ...), where to get the workflow source and how the paramter inputs should be rendered for the user."
+                    "This setting defines the kind of workflow (Nextflow, Snakemake, CWL, Container, ...), where to get the workflow source and how the paramter inputs should be rendered for the user."
                 }
                 Separator{
                     label: "Engine"
@@ -407,7 +407,15 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         onchange: move |event| {
                             let engine = event.value();
                             if let Ok(engine) = engine.parse::<Engine>() {
-                                *workflow_integration.write().inner_mut().configuration.engine_mut() = engine;
+                                let mut workflow_integration = workflow_integration.write();
+                                let configuration = &mut workflow_integration.inner_mut().configuration;
+                                // Sources are engine specific: fall back to the engine's first source if the current one is unsupported
+                                if !configuration.source().is_supported_by(&engine) {
+                                    if let Some(source) = engine.supported_sources().into_iter().next() {
+                                        *configuration.source_mut() = source;
+                                    }
+                                }
+                                *configuration.engine_mut() = engine;
                             }
                         },
                         for engine in Engine::iter() {
@@ -435,7 +443,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         class: "form-select",
                         aria_label: "Workflow source",
                         onchange: move |event| on_workflow_source_change(workflow_integration, last_workflow_source, event),
-                        for source in Source::iter() {
+                        for source in workflow_integration.read().inner().configuration.engine().supported_sources() {
                             option {
                                 selected: source.is_same_variant(workflow_integration.read().inner().configuration.source()),
                                 value: "{source}",
@@ -541,6 +549,27 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                 value: "{source.script().map(|path| path.display().to_string()).unwrap_or_default()}",
                                 oninput: move |event| if let Source::Remote(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
                                     *source.script_mut() = if event.value().is_empty() { None } else { Some(PathBuf::from(event.value())) }
+                                }
+                            }
+                        }
+                    },
+                    Source::Image(source) => rsx! {
+                        div {
+                            class: "input-group mb-3",
+                            span {
+                                class: "input-group-text",
+                                id: "workflow-integration-configuration-source-image",
+                                "Image"
+                            }
+                            input {
+                                type: "text",
+                                class: "form-control",
+                                placeholder: "docker.io/library/hello-world:latest",
+                                aria_label: "Container image to pull",
+                                aria_describedby: "workflow-integration-configuration-source-image",
+                                value: "{source.image()}",
+                                oninput: move |event| if let Source::Image(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
+                                    *source.image_mut() = event.value();
                                 }
                             }
                         }

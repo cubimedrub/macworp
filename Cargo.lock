@@ -4364,6 +4364,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "macworp_worker"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "git2",
+ "reqwest 0.13.2",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "malloc_buf"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9046,19 +9059,6 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
-]
-
-[[package]]
-name = "worker"
-version = "0.1.0"
-dependencies = [
- "clap",
- "git2",
- "reqwest 0.13.2",
- "serde",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

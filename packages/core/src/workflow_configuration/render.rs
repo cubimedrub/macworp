@@ -25,7 +25,10 @@ pub enum RenderError {
     /// Name is empty, starts with `-` or has characters other than letters, digits, `_`, `.`, `-`
     #[error("Invalid parameter name `{0}`, use letters, digits, `_`, `.` and `-` (not leading)")]
     InvalidName(String),
-    /// Rendering exists only for Nextflow and Snakemake so far
+    /// The engine takes no engine parameters (Container)
+    #[error("Engine `{0}` does not support engine parameters")]
+    EngineParametersUnsupported(String),
+    /// Rendering exists only for Nextflow, Snakemake and Container so far
     #[error("Command line rendering is not supported for engine `{0}` yet")]
     UnsupportedEngine(String),
 }
@@ -197,17 +200,38 @@ fn value_string(parameter: &Parameter) -> Option<String> {
     }
 }
 
+/// Flag for a Container parameter: single character names are short options (`-v`), longer
+/// ones long options (`--verbose`).
+fn container_flag(name: &str) -> String {
+    if name.chars().count() == 1 {
+        format!("-{name}")
+    } else {
+        format!("--{name}")
+    }
+}
+
 /// Renders engine parameters and fixed + dynamic parameters into engine arguments (argv, not a
 /// shell string: pass them to the process directly, no quoting needed).
 ///
 /// * Nextflow: engine parameters `-name value`, workflow parameters `--name value`
 /// * Snakemake: engine parameters `--name value`, workflow parameters `--config name=value ...`
 ///
+/// * Container: no engine parameters, workflow parameters `-n value` (single character name) or
+///   `--name value`, passed to the image
+///
 /// Parameters without a value are skipped. Executable, script and source are up to the executor.
 pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, RenderError> {
     let engine_prefix = match config.engine() {
         Engine::Nextflow => "-",
         Engine::Snakemake => "--",
+        Engine::Container => {
+            if !config.engine_parameters().is_empty() {
+                return Err(RenderError::EngineParametersUnsupported(
+                    Engine::Container.to_string(),
+                ));
+            }
+            return render_container_args(config);
+        }
         other => return Err(RenderError::UnsupportedEngine(other.to_string())),
     };
 
@@ -246,6 +270,22 @@ pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Render
                 args.push("--config".to_string());
                 args.extend(pairs);
             }
+        }
+    }
+    Ok(args)
+}
+
+fn render_container_args(config: &WorkflowConfiguration) -> Result<Vec<String>, RenderError> {
+    let mut args = Vec::new();
+    for p in config
+        .fixed_parameters()
+        .iter()
+        .chain(config.dynamic_parameters())
+    {
+        validate_name(p.name())?;
+        if let Some(v) = value_string(p) {
+            args.push(container_flag(p.name()));
+            args.push(v);
         }
     }
     Ok(args)
@@ -362,6 +402,26 @@ mod tests {
         *c.dynamic_parameters_mut()[1].name_mut() = "-x".into();
         apply_values(&mut c, &[pv("-x", json!("v"))]).unwrap();
         assert_eq!(render_args(&c), Err(RenderError::InvalidName("-x".into())));
+    }
+
+    #[test]
+    fn container_flags_by_name_length() {
+        let mut c = config(Engine::Container);
+        let mut short = Text::new("n".into(), "N".into(), "".into());
+        *short.value_mut() = Some("3".into());
+        c.fixed_parameters_mut().push(Parameter::Text(short));
+        assert_eq!(render_args(&c).unwrap(), ["--mode", "fast", "-n", "3"]);
+    }
+
+    #[test]
+    fn container_rejects_engine_parameters() {
+        let mut c = config(Engine::Container);
+        c.engine_parameters_mut()
+            .push(EngineParameter::new("memory".into(), "2g".into()));
+        assert!(matches!(
+            render_args(&c),
+            Err(RenderError::EngineParametersUnsupported(_))
+        ));
     }
 
     #[test]

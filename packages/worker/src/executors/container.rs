@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use macworp_core::workflow_configuration::{engine::Engine, source::Source};
+use macworp_core::workflow_configuration::{engine::Engine, render::render_args, source::Source};
 use tokio::sync::{mpsc, watch};
 
 use super::{
@@ -11,8 +11,8 @@ use crate::container_runtime::BoxFuture;
 /// Runs the single image of a `Container` workflow through the container runtime.
 ///
 /// The image is the workflow itself, so unlike the other executors there is no engine image.
-/// Workflow parameters are not passed to the image yet, how they reach a plain container
-/// (arguments, environment, files) is not decided.
+/// Workflow parameters are passed as arguments after the image (`--name value`, `-n value` for
+/// single character names), engine parameters are rejected.
 #[derive(Debug, Clone)]
 pub struct ContainerExecutor {
     runtime_binary: PathBuf,
@@ -33,7 +33,7 @@ impl ContainerExecutor {
                 image.image(),
                 job,
                 &[],
-                vec![],
+                render_args(&job.configuration)?,
             )),
             other => Err(ExecutorError::UnsupportedSource(format!("{other:?}"))),
         }

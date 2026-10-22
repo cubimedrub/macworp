@@ -1,0 +1,28 @@
+use macworp_core::workflow_configuration::{engine::Engine, render::RenderError};
+use thiserror::Error;
+use tokio::sync::{mpsc, watch};
+
+use super::{Job, LogLine, Outcome};
+use crate::container_runtime::BoxFuture;
+
+#[derive(Debug, Error)]
+pub enum ExecutorError {
+    #[error("Cannot render workflow parameters: {0}")]
+    Render(#[from] RenderError),
+    #[error("Workflow source is not supported by this executor: {0}")]
+    UnsupportedSource(String),
+}
+
+/// Runs jobs of one workflow engine.
+pub trait Executor: Send + Sync {
+    fn engine(&self) -> Engine;
+
+    /// Runs the job to its end. Engine output goes to `logs`; the run is stopped when `cancel`
+    /// turns `true`. Failures to even start the engine are reported as `Outcome::Failed`.
+    fn run<'a>(
+        &'a self,
+        job: &'a Job,
+        logs: mpsc::Sender<LogLine>,
+        cancel: watch::Receiver<bool>,
+    ) -> BoxFuture<'a, Outcome>;
+}

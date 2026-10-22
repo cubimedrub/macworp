@@ -18,7 +18,7 @@ pub enum Error {
 /// * CWL: https://www.commonwl.org/
 /// * Container: run a single OCI image (technically not a workflow engine but handy for containerized tools).
 ///   Docker/Podman/wslc is a host/worker setting, not part of the workflow definition.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, EnumIter)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
 pub enum Engine {
     Nextflow,
     Snakemake,

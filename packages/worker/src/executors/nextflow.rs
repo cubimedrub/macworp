@@ -17,6 +17,7 @@ pub const DEFAULT_IMAGE: &str = "macworp-nextflow:latest";
 pub struct NextflowExecutor {
     runtime_binary: PathBuf,
     image: String,
+    engine_access: Vec<String>,
 }
 
 impl NextflowExecutor {
@@ -24,7 +25,15 @@ impl NextflowExecutor {
         Self {
             runtime_binary: runtime_binary.into(),
             image: image.into(),
+            engine_access: Vec::new(),
         }
+    }
+
+    /// Extra `run` arguments so the engine can start sibling containers, see
+    /// [`crate::container_runtime::RuntimeInfo::engine_access_args`].
+    pub fn with_engine_access(mut self, args: Vec<String>) -> Self {
+        self.engine_access = args;
+        self
     }
 
     /// The `<runtime> run ...` command for the job, see [`containerized_spec`].
@@ -64,6 +73,7 @@ impl NextflowExecutor {
             &self.image,
             job,
             &read_only,
+            &self.engine_access,
             command,
         ))
     }

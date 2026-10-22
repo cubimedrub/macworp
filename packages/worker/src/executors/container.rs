@@ -33,6 +33,7 @@ impl ContainerExecutor {
                 image.image(),
                 job,
                 &[],
+                &[],
                 render_args(&job.configuration)?,
             )),
             other => Err(ExecutorError::UnsupportedSource(format!("{other:?}"))),

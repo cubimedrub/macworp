@@ -70,6 +70,42 @@ pub struct RuntimeInfo {
     pub socket: Option<PathBuf>,
 }
 
+/// Where the engine container reaches the runtime API, see [`RuntimeInfo::engine_access_args`].
+const ENGINE_SOCKET: &str = "/run/container.sock";
+/// Docker socket as seen by the daemon (inside the VM on Docker Desktop), `docker info` does not report it.
+const DEFAULT_DOCKER_SOCKET: &str = "/var/run/docker.sock";
+
+impl RuntimeInfo {
+    /// `<runtime> run` arguments that let an engine container start sibling containers through
+    /// the runtime socket (docker CLI inside the engine image, `DOCKER_HOST` points at the mount).
+    ///
+    /// Spiked on macOS with Docker Desktop and a rootless podman machine, see ADR 0004. Nested
+    /// podman was rejected: needs extra privileges and has no shared image cache. `None` if the
+    /// runtime offers no socket (wslc). A rootful socket is root-equivalent, see doctor.
+    pub fn engine_access_args(&self) -> Option<Vec<String>> {
+        let (socket, extra): (PathBuf, &[&str]) = match self.kind {
+            // SELinux (Fedora CoreOS machine, RHEL) denies the container access to the socket
+            RuntimeKind::Podman => (self.socket.clone()?, &["--security-opt", "label=disable"]),
+            RuntimeKind::Docker => (
+                self.socket
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from(DEFAULT_DOCKER_SOCKET)),
+                &[],
+            ),
+            #[cfg(windows)]
+            RuntimeKind::Wslc => return None,
+        };
+        let mut args = vec![
+            "-v".to_string(),
+            format!("{}:{ENGINE_SOCKET}", socket.display()),
+            "-e".to_string(),
+            format!("DOCKER_HOST=unix://{ENGINE_SOCKET}"),
+        ];
+        args.extend(extra.iter().map(|arg| arg.to_string()));
+        Some(args)
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum RuntimeError {
     #[error("`{0}` not found on PATH")]
@@ -223,7 +259,8 @@ pub(crate) fn parse_podman_info(json: &str) -> Result<RuntimeInfo, serde_json::E
             .pointer("/host/security/rootless")
             .and_then(Value::as_bool),
         storage_root: string_at(&value, "/store/graphRoot").map(PathBuf::from),
-        socket: string_at(&value, "/host/remoteSocket/path").map(PathBuf::from),
+        socket: string_at(&value, "/host/remoteSocket/path")
+            .map(|path| PathBuf::from(path.strip_prefix("unix://").unwrap_or(&path))),
     })
 }
 
@@ -281,6 +318,45 @@ mod tests {
             Some(Path::new("/run/user/1000/podman/podman.sock"))
         );
         assert!(info.storage_root.is_some());
+    }
+
+    #[test]
+    fn podman_socket_scheme_is_stripped() {
+        let info = parse_podman_info(
+            r#"{"host":{"remoteSocket":{"path":"unix:///run/user/501/podman/podman.sock"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            info.socket.as_deref(),
+            Some(Path::new("/run/user/501/podman/podman.sock"))
+        );
+    }
+
+    #[test]
+    fn engine_access_args_per_runtime() {
+        let mut info = parse_podman_info(
+            r#"{"host":{"remoteSocket":{"path":"/run/user/1000/podman/podman.sock"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            info.engine_access_args().unwrap(),
+            [
+                "-v",
+                "/run/user/1000/podman/podman.sock:/run/container.sock",
+                "-e",
+                "DOCKER_HOST=unix:///run/container.sock",
+                "--security-opt",
+                "label=disable"
+            ]
+        );
+        info.socket = None;
+        assert!(info.engine_access_args().is_none());
+
+        let docker = parse_docker_info(r#"{"ServerVersion":"27"}"#).unwrap();
+        assert_eq!(
+            docker.engine_access_args().unwrap()[1],
+            "/var/run/docker.sock:/run/container.sock"
+        );
     }
 
     #[test]

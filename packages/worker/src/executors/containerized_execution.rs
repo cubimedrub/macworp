@@ -11,14 +11,15 @@ pub(super) fn path_arg(path: &Path) -> String {
 /// `<runtime> run --rm --name macworp-run-<id> -v <project>:<project> -w <project> [-v <dir>:<dir>:ro]... <image> <command>`
 ///
 /// The project directory is mounted read-write and every `read_only` directory read-only, all at
-/// their host path so mounts the engine creates itself resolve on the host. Sibling-container
-/// access for the engine (socket or nested podman) and hardening are not part of it yet, they
-/// come with the engine-in-container spike and P6.
+/// their host path so mounts the engine creates itself resolve on the host. `engine_access` are
+/// extra `run` arguments for sibling-container access ([`crate::container_runtime::RuntimeInfo::engine_access_args`]).
+/// Hardening is not part of it yet, that is P6.
 pub fn containerized_spec(
     runtime_binary: &Path,
     image: &str,
     job: &Job,
     read_only: &[&Path],
+    engine_access: &[String],
     command: Vec<String>,
 ) -> LaunchSpec {
     let container_name = format!("macworp-run-{}", job.run_id);
@@ -38,6 +39,7 @@ pub fn containerized_spec(
         let dir = path_arg(dir);
         args.extend(["-v".into(), format!("{dir}:{dir}:ro")]);
     }
+    args.extend(engine_access.iter().cloned());
     args.push(image.to_string());
     args.extend(command);
 

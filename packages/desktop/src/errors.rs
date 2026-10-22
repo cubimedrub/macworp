@@ -20,6 +20,10 @@ pub enum Error {
     LoginFailed(macworp_ui_core::client::Error),
     #[error("Failed to get project directory")]
     ProjectDirectoryNotFound,
+    #[error("Worker could not open the database: {0}")]
+    WorkerDatabase(sea_orm::DbErr),
+    #[error("Stopping worker went wrong, {0}")]
+    WorkerStopping(tokio::task::JoinError),
     #[error(transparent)]
     Storage(#[from] crate::storage::Error),
 }

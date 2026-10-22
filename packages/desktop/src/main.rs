@@ -1,5 +1,6 @@
 mod client;
 mod components;
+mod db_job_source;
 mod errors;
 mod file;
 mod pages;
@@ -7,20 +8,34 @@ mod router;
 mod runtime_status;
 mod storage;
 
-use std::{env, time::Duration};
+use std::{env, sync::Arc, time::Duration};
 
 use clap::{Parser, Subcommand};
 use dioxus::prelude::*;
 use directories::ProjectDirs;
 use rand::prelude::*;
 
+use macworp_backend::models::RunTable;
 use macworp_core::logging::init_tracing_subscription;
 use macworp_ui_core::{
     client::Client, components::Bootstrap, configuration::Configuration,
     runtime_status::RuntimeStatusHandle, storage::IsStorage, FAVICON, MAIN_CSS,
 };
 
+use macworp_worker::{
+    container_runtime::ContainerRuntime,
+    executors::{
+        container::ContainerExecutor,
+        nextflow::{self, NextflowExecutor},
+        snakemake::{self, SnakemakeExecutor},
+        Executor,
+    },
+    worker::{Worker, WorkerOptions},
+};
+use tokio::sync::watch;
+
 use crate::{
+    db_job_source::DbJobSource,
     errors::Error,
     router::Router,
     runtime_status::{check_runtime, to_status, InitialRuntimeStatus},
@@ -116,6 +131,7 @@ async fn start() -> Result<(), Error> {
             "No usable container runtime, workflows cannot run:\n{container_runtime_report}"
         );
     }
+    let container_runtime = container_runtime_report.into_runtime().ok();
 
     if app_data_directory.is_file() {
         return Err(Error::AppDirectoryCreation(std::io::Error::new(
@@ -152,8 +168,10 @@ async fn start() -> Result<(), Error> {
 
     tracing::info!("Using database at: {}", database_url);
 
+    let max_log_bytes =
+        macworp_backend::configuration::Configuration::default().max_log_bytes_per_run();
     let mut backend_config = macworp_backend::configuration::Configuration::default();
-    *backend_config.database_url_mut() = database_url;
+    *backend_config.database_url_mut() = database_url.clone();
     *backend_config.secret_mut() = jwt_secret;
     *backend_config.unavailable_engines_mut() = unavailable_engines;
     *backend_config.interface_mut() = "127.0.0.1".to_string();
@@ -219,6 +237,12 @@ async fn start() -> Result<(), Error> {
         }
     }
 
+    // Backend ran the migrations, the embedded worker can use the same database now
+    let worker = match container_runtime {
+        Some(runtime) => Some(start_worker(&database_url, max_log_bytes, runtime).await?),
+        None => None,
+    };
+
     let mut storage = Storage::new();
 
     let jwt = client
@@ -235,6 +259,12 @@ async fn start() -> Result<(), Error> {
         .with_context(runtime_status)
         .launch(App);
 
+    if let Some((stop, handle)) = worker {
+        // A running job is finished (or cancelled by process exit) before the backend goes away
+        stop.send(true).ok();
+        handle.await.map_err(Error::WorkerStopping)?;
+    }
+
     backend_shutdown_signal_sender
         .send(())
         .map_err(|_| Error::BackendStopSignal)?;
@@ -243,6 +273,45 @@ async fn start() -> Result<(), Error> {
         .await
         .map_err(Error::BackendStopping)?
         .map_err(Error::Backend)
+}
+
+/// Starts the embedded worker on the backend database.
+///
+/// Runs left `Running` by an earlier crash are failed first, nothing can be executing them now.
+async fn start_worker(
+    database_url: &str,
+    max_log_bytes: u64,
+    runtime: Arc<dyn ContainerRuntime>,
+) -> Result<(watch::Sender<bool>, tokio::task::JoinHandle<()>), Error> {
+    let db = sea_orm::Database::connect(database_url)
+        .await
+        .map_err(Error::WorkerDatabase)?;
+    match RunTable::fail_orphaned_running(&db).await {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!("Marked {n} interrupted run(s) as failed"),
+        Err(e) => tracing::warn!("Unable to clean up interrupted runs: {e}"),
+    }
+
+    let binary = runtime.binary().to_path_buf();
+    let executors: Vec<Arc<dyn Executor>> = vec![
+        Arc::new(NextflowExecutor::new(&binary, nextflow::DEFAULT_IMAGE)),
+        Arc::new(SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE)),
+        Arc::new(ContainerExecutor::new(&binary)),
+    ];
+    let executors = executors
+        .into_iter()
+        .filter(|executor| runtime.supports_engine(&executor.engine()))
+        .collect();
+    let worker = Worker::new(
+        Arc::new(DbJobSource::new(db, max_log_bytes)),
+        executors,
+        WorkerOptions::default(),
+    );
+
+    let (stop, stopped) = watch::channel(false);
+    let handle = tokio::spawn(async move { worker.run_until(stopped).await });
+    tracing::info!("Embedded worker started using {}", runtime.kind());
+    Ok((stop, handle))
 }
 
 /// Creates a random 64 character password from ascii characters.

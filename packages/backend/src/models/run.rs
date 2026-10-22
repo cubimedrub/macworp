@@ -149,6 +149,92 @@ impl Model {
 }
 
 impl Entity {
+    /// Moves the oldest queued run to `Running` and returns it, `None` if nothing is queued.
+    ///
+    /// The status switch is a conditional update, so concurrent workers never claim the same run.
+    pub async fn claim_next<C: ConnectionTrait>(db: &C) -> Result<Option<Model>, RunError> {
+        loop {
+            let Some(next) = Entity::find()
+                .filter(Column::Status.eq(RunStatus::Queued))
+                .order_by_asc(Column::CreatedAt)
+                .order_by_asc(Column::Id)
+                .one(db)
+                .await?
+            else {
+                return Ok(None);
+            };
+            let claimed = Entity::update_many()
+                .col_expr(Column::Status, Expr::value(RunStatus::Running))
+                .col_expr(Column::StartedAt, Expr::value(chrono::Utc::now()))
+                .filter(Column::Id.eq(next.id))
+                .filter(Column::Status.eq(RunStatus::Queued))
+                .exec(db)
+                .await?
+                .rows_affected;
+            if claimed == 1 {
+                return Ok(Entity::find_by_id(next.id).one(db).await?);
+            }
+            // lost the race (or the run was cancelled meanwhile), look at the next one
+        }
+    }
+
+    /// Moves a run to the terminal `status`. A run that is already terminal (e.g. cancelled while
+    /// queued) is left untouched and returns [`RunError::AlreadyFinished`].
+    pub async fn finish<C: ConnectionTrait>(
+        db: &C,
+        id: i64,
+        status: RunStatus,
+        exit_code: Option<i32>,
+        error: Option<String>,
+    ) -> Result<(), RunError> {
+        debug_assert!(status.is_terminal());
+        let updated = Entity::update_many()
+            .col_expr(Column::Status, Expr::value(status))
+            .col_expr(Column::ExitCode, Expr::value(exit_code))
+            .col_expr(Column::Error, Expr::value(error))
+            .col_expr(Column::FinishedAt, Expr::value(chrono::Utc::now()))
+            .filter(Column::Id.eq(id))
+            .filter(Column::Status.is_in([RunStatus::Queued, RunStatus::Running]))
+            .exec(db)
+            .await?
+            .rows_affected;
+        if updated == 1 {
+            return Ok(());
+        }
+        match Entity::find_by_id(id).one(db).await? {
+            Some(_) => Err(RunError::AlreadyFinished),
+            None => Err(RunError::NotFound),
+        }
+    }
+
+    /// Whether a user asked to stop the run
+    pub async fn is_cancel_requested<C: ConnectionTrait>(
+        db: &C,
+        id: i64,
+    ) -> Result<bool, RunError> {
+        Entity::find_by_id(id)
+            .one(db)
+            .await?
+            .map(|run| run.cancel_requested)
+            .ok_or(RunError::NotFound)
+    }
+
+    /// Fails runs still marked `Running`, for use at start when no worker can be executing them
+    /// (embedded desktop worker crashed or was killed). Returns the number of runs changed.
+    pub async fn fail_orphaned_running<C: ConnectionTrait>(db: &C) -> Result<u64, RunError> {
+        Ok(Entity::update_many()
+            .col_expr(Column::Status, Expr::value(RunStatus::Failed))
+            .col_expr(
+                Column::Error,
+                Expr::value("Interrupted: the application stopped while the run was active"),
+            )
+            .col_expr(Column::FinishedAt, Expr::value(chrono::Utc::now()))
+            .filter(Column::Status.eq(RunStatus::Running))
+            .exec(db)
+            .await?
+            .rows_affected)
+    }
+
     /// Evicts the oldest evictable runs of a project (see [`Model::is_evictable`]) so that one
     /// more run fits into `max_runs`.
     ///
@@ -345,6 +431,111 @@ mod tests {
         assert_eq!(ids(&db).await.len(), 4);
         Entity::make_room(&db, p + 1, 1).await.unwrap();
         assert_eq!(ids(&db).await.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn claim_takes_oldest_queued_once() {
+        let (db, u, p) = setup().await;
+        let newer = add_run(&db, u, p, 1, RunStatus::Queued, false).await;
+        let older = add_run(&db, u, p, 5, RunStatus::Queued, false).await;
+        add_run(&db, u, p, 9, RunStatus::Running, false).await;
+
+        let a = Entity::claim_next(&db).await.unwrap().unwrap();
+        assert_eq!(a.id, older);
+        assert_eq!(a.status, RunStatus::Running);
+        assert!(a.started_at.is_some());
+        let b = Entity::claim_next(&db).await.unwrap().unwrap();
+        assert_eq!(b.id, newer);
+        assert!(Entity::claim_next(&db).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn finish_sets_result_and_keeps_cancelled() {
+        let (db, u, p) = setup().await;
+        let get = async |id| Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+        let running = add_run(&db, u, p, 2, RunStatus::Running, false).await;
+        Entity::finish(
+            &db,
+            running,
+            RunStatus::Failed,
+            Some(2),
+            Some("boom".into()),
+        )
+        .await
+        .unwrap();
+        let r = get(running).await;
+        assert_eq!(r.status, RunStatus::Failed);
+        assert_eq!(r.exit_code, Some(2));
+        assert_eq!(r.error.as_deref(), Some("boom"));
+        assert!(r.finished_at.is_some());
+
+        let cancelled = add_run(&db, u, p, 1, RunStatus::Cancelled, false).await;
+        let err = Entity::finish(&db, cancelled, RunStatus::Succeeded, Some(0), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RunError::AlreadyFinished));
+        assert_eq!(get(cancelled).await.status, RunStatus::Cancelled);
+        let err = Entity::finish(&db, 999, RunStatus::Failed, None, None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RunError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn orphaned_running_runs_fail() {
+        let (db, u, p) = setup().await;
+        let running = add_run(&db, u, p, 2, RunStatus::Running, false).await;
+        let queued = add_run(&db, u, p, 1, RunStatus::Queued, false).await;
+        assert_eq!(Entity::fail_orphaned_running(&db).await.unwrap(), 1);
+        let get = async |id| Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+        assert_eq!(get(running).await.status, RunStatus::Failed);
+        assert_eq!(get(queued).await.status, RunStatus::Queued);
+    }
+
+    #[tokio::test]
+    async fn cancel_flag_is_readable() {
+        let (db, u, p) = setup().await;
+        let id = add_run(&db, u, p, 1, RunStatus::Running, false).await;
+        assert!(!Entity::is_cancel_requested(&db, id).await.unwrap());
+        get_run(&db, id).await.request_cancel(&db).await.unwrap();
+        assert!(Entity::is_cancel_requested(&db, id).await.unwrap());
+    }
+
+    async fn get_run(db: &DatabaseConnection, id: i64) -> Model {
+        Entity::find_by_id(id).one(db).await.unwrap().unwrap()
+    }
+
+    #[tokio::test]
+    async fn log_append_sequences_and_truncates_once() {
+        use crate::models::{RunLogColumn, RunLogTable, run_log::TRUNCATION_MARKER};
+        use macworp_core::entities::LogStream;
+        let (db, u, p) = setup().await;
+        let id = add_run(&db, u, p, 1, RunStatus::Running, false).await;
+        // add_run stored one chunk (seq 0, 8 bytes)
+        let lines = vec!["abcd".to_string(), "efgh".to_string()];
+        RunLogTable::append(&db, id, LogStream::Stderr, &lines, 0)
+            .await
+            .unwrap();
+        RunLogTable::append(&db, id, LogStream::Stdout, &lines, 20)
+            .await
+            .unwrap(); // 16 bytes stored < 20: kept, crosses the limit
+        RunLogTable::append(&db, id, LogStream::Stdout, &lines, 20)
+            .await
+            .unwrap(); // 25 >= 20: marker
+        RunLogTable::append(&db, id, LogStream::Stdout, &lines, 20)
+            .await
+            .unwrap(); // dropped
+        let logs = RunLogTable::find()
+            .filter(RunLogColumn::RunId.eq(id))
+            .order_by_asc(RunLogColumn::Seq)
+            .all(&db)
+            .await
+            .unwrap();
+        let seqs: Vec<i64> = logs.iter().map(|l| l.seq).collect();
+        assert_eq!(seqs, vec![0, 1, 2, 3]);
+        assert_eq!(logs[1].line_count, 2);
+        assert_eq!(logs[1].stream, LogStream::Stderr);
+        assert_eq!(logs[3].content, TRUNCATION_MARKER);
     }
 
     #[tokio::test]

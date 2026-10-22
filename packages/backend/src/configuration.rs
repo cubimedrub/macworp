@@ -10,6 +10,9 @@ pub const DEFAULT_LOGIN_VALIDITY: u32 = 24 * 60 * 60;
 /// Runs kept per project if not configured
 pub const DEFAULT_MAX_RUNS_PER_PROJECT: u64 = 10;
 
+/// Log bytes stored per run if not configured (10 MiB)
+pub const DEFAULT_MAX_LOG_BYTES_PER_RUN: u64 = 10 * 1024 * 1024;
+
 /// Minimum length of the JWT secret in bytes
 const MIN_SECRET_LENGTH: usize = 32;
 
@@ -45,6 +48,10 @@ pub struct Configuration {
     /// `0` disables the limit.
     #[serde(default = "default_max_runs_per_project")]
     max_runs_per_project: u64,
+    /// Log bytes stored per run, further output is dropped after one truncation marker.
+    /// `0` disables the limit.
+    #[serde(default = "default_max_log_bytes_per_run")]
+    max_log_bytes_per_run: u64,
     /// Engines the container runtime cannot run, runs of them are rejected. Detected by the
     /// embedding application (desktop), never read from the config file.
     #[serde(skip)]
@@ -53,6 +60,10 @@ pub struct Configuration {
 
 fn default_max_runs_per_project() -> u64 {
     DEFAULT_MAX_RUNS_PER_PROJECT
+}
+
+fn default_max_log_bytes_per_run() -> u64 {
+    DEFAULT_MAX_LOG_BYTES_PER_RUN
 }
 
 impl Configuration {
@@ -153,6 +164,14 @@ impl Configuration {
         &mut self.max_runs_per_project
     }
 
+    pub fn max_log_bytes_per_run(&self) -> u64 {
+        self.max_log_bytes_per_run
+    }
+
+    pub fn max_log_bytes_per_run_mut(&mut self) -> &mut u64 {
+        &mut self.max_log_bytes_per_run
+    }
+
     pub fn unavailable_engines(&self) -> &[Engine] {
         &self.unavailable_engines
     }
@@ -175,6 +194,7 @@ impl Default for Configuration {
             login_providers: vec![LoginProvider::Local(LocalLoginProvider::default())],
             cors_allowed_origins: Vec::new(),
             max_runs_per_project: DEFAULT_MAX_RUNS_PER_PROJECT,
+            max_log_bytes_per_run: DEFAULT_MAX_LOG_BYTES_PER_RUN,
             unavailable_engines: Vec::new(),
         }
     }

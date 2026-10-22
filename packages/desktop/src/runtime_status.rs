@@ -1,6 +1,6 @@
 use macworp_ui_core::runtime_status::{RuntimeStatus, StatusCheck, StatusLevel};
 use macworp_worker::container_runtime::{
-    Check, CheckStatus, DoctorReport, RuntimeInfo, RuntimePreference, doctor,
+    doctor, Check, CheckStatus, DoctorReport, RuntimeInfo, RuntimePreference,
 };
 
 /// Initial status, handed to the UI through the launch context.

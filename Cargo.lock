@@ -4315,17 +4315,22 @@ dependencies = [
 name = "macworp_desktop"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "clap",
  "dioxus",
  "directories",
  "macworp_backend",
  "macworp_core",
+ "macworp_database_migration",
  "macworp_ui_core",
  "macworp_worker",
  "password-auth",
  "rand 0.10.0",
  "reqwest 0.13.2",
+ "sea-orm",
+ "serde_json",
  "sqlx",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

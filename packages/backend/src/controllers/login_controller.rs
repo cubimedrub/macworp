@@ -3,9 +3,12 @@ use std::sync::Arc;
 use axum::{
     Router,
     extract::{Json, Path, State},
-    response::Redirect,
+    http::StatusCode,
+    response::{IntoResponse, Redirect},
     routing::{get, post},
 };
+
+use thiserror::Error;
 
 use macworp_core::{
     requests::PasswordLoginRequest, responses::LoginProviderResponse, routing::LoginRouting,
@@ -16,10 +19,27 @@ use crate::{
         error::Error as AuthenticationError, jwt::JsonWebToken, password::verify_password,
     },
     configuration::LoginProvider,
-    controllers::errors::LoginControllerError,
     models::UserTable,
     state::State as AppState,
 };
+
+#[derive(Error, Debug)]
+pub enum LoginControllerError {
+    #[error("{0}")]
+    Database(#[from] sea_orm::DbErr),
+    #[error("{0}")]
+    Authentication(#[from] crate::authentication::error::Error),
+}
+
+impl IntoResponse for LoginControllerError {
+    fn into_response(self) -> axum::response::Response {
+        tracing::error!("{self}");
+        match self {
+            LoginControllerError::Authentication(e) => e.into_response(),
+            _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    }
+}
 
 pub struct LoginController;
 

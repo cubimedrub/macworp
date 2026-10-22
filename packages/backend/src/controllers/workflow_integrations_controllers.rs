@@ -3,6 +3,8 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
 };
 use macworp_core::{
@@ -13,16 +15,41 @@ use macworp_core::{
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, ModelTrait, QueryFilter,
 };
+use thiserror::Error;
 
 use crate::{
     authentication::middleware::RequireAuth,
-    controllers::errors::WorkflowIntegrationsControllerError,
     models::{
         ActiveWorkflowIntegration, WorkflowIntegration, WorkflowIntegrationColumn,
         WorkflowIntegrationTable,
     },
     state::State as AppState,
 };
+
+#[derive(Error, Debug)]
+pub enum WorkflowIntegrationsControllerError {
+    #[error("{0}")]
+    Database(#[from] sea_orm::DbErr),
+    #[error("Access to this workflow integration is not allowed")]
+    Forbidden,
+    #[error("Workflow integration not found")]
+    WorkflowIntegrationNotFound,
+}
+
+impl IntoResponse for WorkflowIntegrationsControllerError {
+    fn into_response(self) -> axum::response::Response {
+        tracing::error!("{self}");
+        match self {
+            WorkflowIntegrationsControllerError::Forbidden => {
+                (http::StatusCode::FORBIDDEN, self.to_string()).into_response()
+            }
+            WorkflowIntegrationsControllerError::WorkflowIntegrationNotFound => {
+                (http::StatusCode::NOT_FOUND, self.to_string()).into_response()
+            }
+            _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    }
+}
 
 pub struct WorkflowIntegrationsController;
 

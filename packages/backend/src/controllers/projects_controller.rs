@@ -3,6 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use axum::{
     Router,
     extract::{Json, Path, Query, Request, State},
+    response::IntoResponse,
     routing::{get, post},
 };
 
@@ -17,14 +18,51 @@ use sea_orm::{
     ColumnTrait, EntityTrait, ModelTrait, QueryFilter, TransactionError, TransactionTrait,
 };
 use serde::Deserialize;
+use thiserror::Error;
 
 use crate::{
     authentication::middleware::RequireAuth,
-    controllers::errors::ProjectsControllerError,
     filesystems::is_filesystem::IsFilesystem,
     models::{ActiveProject, Project, ProjectColumn, ProjectTable},
     state::State as AppState,
 };
+
+#[derive(Error, Debug)]
+pub enum ProjectsControllerError {
+    #[error("{0}")]
+    Database(#[from] sea_orm::DbErr),
+    #[error("{0}")]
+    Authentication(#[from] crate::authentication::error::Error),
+    #[error("Project not found")]
+    ProjectNotFound,
+    #[error("Access to this project is forbidden")]
+    Forbidden,
+    #[error("Errors while accessing filesystem: {0}")]
+    Filesystem(#[from] crate::filesystems::errors::Error),
+    #[error("Missing Content-Range header")]
+    MissingContentRangeHeader,
+    #[error("Invalid Content-Range header: {0}")]
+    InvalidContentRangeHeader(macworp_core::http::headers::ContentRangeHeaderValueError),
+}
+
+impl IntoResponse for ProjectsControllerError {
+    fn into_response(self) -> axum::response::Response {
+        tracing::error!("{self}");
+        match self {
+            ProjectsControllerError::Forbidden => {
+                (StatusCode::FORBIDDEN, self.to_string()).into_response()
+            }
+            ProjectsControllerError::ProjectNotFound => {
+                (StatusCode::NOT_FOUND, self.to_string()).into_response()
+            }
+            ProjectsControllerError::Authentication(e) => e.into_response(),
+            ProjectsControllerError::Filesystem(
+                crate::filesystems::errors::Error::SymlinkNotAllowed(_),
+            ) => (StatusCode::FORBIDDEN, "Symlinks are not allowed").into_response(),
+            _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    }
+}
 
 #[derive(Deserialize)]
 pub struct ProjectQueryParams {

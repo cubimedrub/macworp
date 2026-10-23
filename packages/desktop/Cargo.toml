@@ -13,6 +13,7 @@ chrono = { workspace = true, features = ["clock"] }
 macworp_core = { workspace = true }
 macworp_ui_core = { workspace = true }
 macworp_worker = { workspace = true }
+opener = { workspace = true }
 password-auth = { workspace = true }
 rand = "0.10.0"
 reqwest = { workspace = true }

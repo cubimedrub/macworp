@@ -10,7 +10,12 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
-pub enum Error {}
+pub enum Error {
+    #[error("{0}")]
+    OpenFileExplorer(#[from] opener::OpenError),
+    #[error("File explorer task failed: {0}")]
+    Join(#[from] tokio::task::JoinError),
+}
 
 pub struct FileImmutableProjectEdit;
 
@@ -34,6 +39,12 @@ impl IsProjectEdit for FileImmutableProjectEdit {
     }
 
     async fn dragover_handler(_event: Event<DragData>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    // TODO(P7): on Windows with a WSL project dir translate to `\\wsl$\<distro>\...`
+    async fn open_in_file_explorer(path: PathBuf) -> Result<(), Self::Error> {
+        tokio::task::spawn_blocking(move || opener::open(path)).await??;
         Ok(())
     }
 }

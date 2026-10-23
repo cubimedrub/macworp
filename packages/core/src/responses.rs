@@ -27,6 +27,9 @@ pub struct ProjectResponse {
     pub current: PathBuf,
     pub files: Vec<String>,
     pub directories: Vec<String>,
+    /// Project directory on the user's machine, only set when the backend runs locally (desktop)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

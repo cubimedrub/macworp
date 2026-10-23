@@ -41,6 +41,12 @@ pub trait IsProjectEdit {
 
     /// File drop event
     fn dragover_handler(event: Event<DragData>) -> impl Future<Output = Result<(), Self::Error>>;
+
+    /// Reveals a project directory in the native file explorer. Only called if the backend
+    /// reported a local path, i.e. not on web.
+    fn open_in_file_explorer(_path: PathBuf) -> impl Future<Output = Result<(), Self::Error>> {
+        async { Ok(()) }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -99,6 +105,10 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                 .map_err(Error::<T::Storage>::StartRun)
         },
     );
+
+    let mut open_explorer = use_action(move |path: PathBuf| async move {
+        T::open_in_file_explorer(path).await
+    });
 
     let window_file_drop_handling_result = use_resource(T::prevent_window_file_drop_handling);
 
@@ -265,6 +275,19 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                                 }
                                 "Start workflow"
                             }
+                            if let Some(target) = project.read().local_path.as_ref().map(|path| path.join(&project.read().current)) {
+                                button {
+                                    class: "btn btn-sm btn-outline-secondary me-2",
+                                    title: "Open in file explorer",
+                                    onclick: move |_| {
+                                        open_explorer.call(target.clone());
+                                    },
+                                    i {
+                                        class: "fa-solid fa-folder-open me-1"
+                                    }
+                                    "Open folder"
+                                }
+                            }
                             button {
                                 id: "delete-btn",
                                 class: "btn btn-sm btn-outline-danger",
@@ -293,6 +316,16 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                             }
                         },
                         None => rsx! {}
+                    }
+                    match open_explorer.value() {
+                        Some(Err(err)) => rsx! {
+                            div {
+                                class: "alert alert-danger",
+                                role: "alert",
+                                "Failed to open file explorer: {err}"
+                            }
+                        },
+                        _ => rsx! {}
                     }
                     match delete_project.value() {
                         Some(Err(err)) => rsx! {

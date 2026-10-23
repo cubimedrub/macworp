@@ -41,6 +41,10 @@ impl IsFilesystem for LocalFilesystem {
         ))
     }
 
+    fn local_path(state: &State, project: &Project) -> Option<PathBuf> {
+        Self::project_path(state, project).ok()
+    }
+
     async fn create_project_directory(state: &State, project: &Project) -> Result<PathBuf, Error> {
         let path = Self::project_path(state, project)?;
 

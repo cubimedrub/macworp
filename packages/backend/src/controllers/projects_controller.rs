@@ -120,6 +120,7 @@ where
                     current: PathBuf::new(),
                     files: Vec::new(),
                     directories: Vec::new(),
+                    local_path: None,
                 })
                 .collect(),
         ))
@@ -169,6 +170,7 @@ where
             current: PathBuf::new(),
             files: Vec::new(),
             directories: Vec::new(),
+            local_path: None,
         }))
     }
 
@@ -191,6 +193,7 @@ where
 
         let content = F::content(state.as_ref(), &project, query_params.subpath)
             .map_err(ProjectsControllerError::Filesystem)?;
+        let local_path = F::local_path(state.as_ref(), &project);
 
         Ok(Json(ProjectResponse {
             id: project.id,
@@ -200,6 +203,7 @@ where
             current: content.current,
             files: content.files,
             directories: content.directories,
+            local_path,
         }))
     }
 

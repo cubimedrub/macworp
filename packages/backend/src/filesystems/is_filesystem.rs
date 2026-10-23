@@ -31,6 +31,16 @@ pub trait IsFilesystem {
     /// * `project` - The project to get the path for
     fn project_path(state: &State, project: &Project) -> Result<PathBuf, Error>;
 
+    /// Project path on the machine of the user, if the backend runs on it (desktop). Never set for
+    /// remote filesystems so server paths are not exposed to clients.
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    /// * `project` - The project to get the path for
+    fn local_path(_state: &State, _project: &Project) -> Option<PathBuf> {
+        None
+    }
+
     /// Creats a project folder if supported by the FS
     ///
     /// # Arguments

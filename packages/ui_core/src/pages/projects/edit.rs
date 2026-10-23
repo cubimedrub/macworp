@@ -42,6 +42,12 @@ pub trait IsProjectEdit {
     /// File drop event
     fn dragover_handler(event: Event<DragData>) -> impl Future<Output = Result<(), Self::Error>>;
 
+    /// Resolves once the content of a local directory changed. Platforms without local
+    /// access keep the default, which never resolves.
+    fn wait_for_change(_path: PathBuf) -> impl Future<Output = Result<(), Self::Error>> {
+        std::future::pending()
+    }
+
     /// Reveals a project directory in the native file explorer. Only called if the backend
     /// reported a local path, i.e. not on web.
     fn open_in_file_explorer(_path: PathBuf) -> impl Future<Output = Result<(), Self::Error>> {
@@ -132,6 +138,24 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
 
             Ok(Signal::new(project))
         });
+
+    // Reload the listing whenever the shown local directory changes. The resource restarts
+    // itself with every reload, which re-arms the watcher.
+    let _watcher = use_resource(move || async move {
+        let target = match &*project_res.read() {
+            Some(Ok(project)) => project
+                .read()
+                .local_path
+                .as_ref()
+                .map(|path| path.join(&project.read().current)),
+            _ => None,
+        };
+        let Some(target) = target else { return };
+        match T::wait_for_change(target).await {
+            Ok(()) => project_res.restart(),
+            Err(err) => tracing::warn!("Unable to watch project folder: {err:?}"),
+        }
+    });
 
     let mut delete_project = use_action(move || async move {
         let jwt = storage
@@ -274,6 +298,15 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                                     class: "fa-solid fa-play me-1"
                                 }
                                 "Start workflow"
+                            }
+                            button {
+                                class: "btn btn-sm btn-outline-secondary me-2",
+                                title: "Reload file list",
+                                onclick: move |_| project_res.restart(),
+                                i {
+                                    class: "fa-solid fa-rotate me-1"
+                                }
+                                "Reload"
                             }
                             if let Some(target) = project.read().local_path.as_ref().map(|path| path.join(&project.read().current)) {
                                 button {

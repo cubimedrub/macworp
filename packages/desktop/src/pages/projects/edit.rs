@@ -2,6 +2,7 @@ use std::{path::PathBuf, rc::Rc};
 
 use dioxus::{core::Event, html::DragData};
 use macworp_ui_core::pages::projects::edit::IsProjectEdit;
+use notify::{RecursiveMode, Watcher};
 use thiserror::Error;
 
 use crate::{
@@ -13,6 +14,8 @@ use crate::{
 pub enum Error {
     #[error("{0}")]
     OpenFileExplorer(#[from] opener::OpenError),
+    #[error("{0}")]
+    Watch(#[from] notify::Error),
     #[error("File explorer task failed: {0}")]
     Join(#[from] tokio::task::JoinError),
 }
@@ -39,6 +42,28 @@ impl IsProjectEdit for FileImmutableProjectEdit {
     }
 
     async fn dragover_handler(_event: Event<DragData>) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn wait_for_change(path: PathBuf) -> Result<(), Self::Error> {
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+            // Reads do not change the listing
+            if let Ok(event) = event {
+                if !event.kind.is_access() {
+                    sender.send(()).ok();
+                }
+            }
+        })?;
+        watcher.watch(&path, RecursiveMode::NonRecursive)?;
+
+        // The watcher lives in this future, dropping it stops watching
+        receiver.recv().await;
+        // Debounce: wait until the directory is quiet, so a bulk copy reloads once
+        while tokio::time::timeout(std::time::Duration::from_millis(300), receiver.recv())
+            .await
+            .is_ok()
+        {}
         Ok(())
     }
 

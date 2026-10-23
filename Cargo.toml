@@ -17,6 +17,7 @@ dioxus = { version = "0.7.9" }
 futures = "0.3.32"
 http = { version = "1.4.0" }
 num-traits = "0.2.15"
+notify = "8"
 opener = "0.8"
 manganis = { version = "0.7.3" }
 password-auth = { version = "1.0.0" }

@@ -17,6 +17,7 @@ use crate::{
     components::{separator::Separator, workflow_integrations::*, ConfirmationDialog, Spinner},
     configuration::Configuration,
     router::IsRouter,
+    runtime_status::engine_hint,
     storage::IsStorage,
 };
 
@@ -418,12 +419,27 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                             }
                         },
                         for engine in Engine::iter() {
-                            option {
-                                selected: *workflow_integration.read().inner().configuration.engine() == engine,
-                                value: "{engine}",
-                                "{engine}"
+                            {
+                                let selected = *workflow_integration.read().inner().configuration.engine() == engine;
+                                let hint = engine_hint(&engine);
+                                rsx! {
+                                    // The current engine stays selectable so an existing workflow is not changed silently
+                                    option {
+                                        selected,
+                                        disabled: hint.is_some() && !selected,
+                                        title: hint,
+                                        value: "{engine}",
+                                        "{engine}"
+                                    }
+                                }
                             }
                         }
+                    }
+                }
+                if let Some(hint) = engine_hint(workflow_integration.read().inner().configuration.engine()) {
+                    div {
+                        class: "alert alert-warning",
+                        "{hint}. Runs of this workflow are rejected."
                     }
                 }
 

@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use macworp_core::workflow_configuration::engine::Engine;
 
 /// Outcome of a single container runtime check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,13 +45,34 @@ pub struct RuntimeStatus {
     /// A runtime was found and no check failed
     pub ok: bool,
     pub checks: Vec<StatusCheck>,
+    /// Engines the runtime cannot run (all of them without a runtime)
+    pub unavailable_engines: Vec<Engine>,
 }
 
 impl RuntimeStatus {
+    /// Why `engine` cannot run, `None` if it can.
+    pub fn engine_hint(&self, engine: &Engine) -> Option<String> {
+        if !self.unavailable_engines.contains(engine) {
+            return None;
+        }
+        let Some(kind) = &self.kind else {
+            return Some("No container runtime available".to_string());
+        };
+        let runtime = match &self.version {
+            Some(version) => format!("{kind} {version}"),
+            None => kind.clone(),
+        };
+        Some(match engine {
+            Engine::Snakemake => format!("{engine} needs Docker; {runtime} cannot run it"),
+            _ => format!("{runtime} cannot run {engine} workflows"),
+        })
+    }
+
     pub fn level(&self) -> StatusLevel {
         if self.kind.is_none() || !self.ok {
             StatusLevel::Fail
         } else if self.rootless == Some(false)
+            || !self.unavailable_engines.is_empty()
             || self.checks.iter().any(|c| c.level == StatusLevel::Warn)
         {
             StatusLevel::Warn
@@ -73,8 +95,19 @@ impl RuntimeStatus {
             Some(false) => label.push_str(" · rootful"),
             None => {}
         }
+        if self.ok && !self.unavailable_engines.is_empty() {
+            label.push_str(" · limited");
+        }
         label
     }
+}
+
+/// Hint why `engine` cannot run, `None` if it can or the platform provides no runtime status.
+/// Reactive: follows refreshes of the status.
+pub fn engine_hint(engine: &Engine) -> Option<String> {
+    let handle = try_consume_context::<RuntimeStatusHandle>()?;
+    let hint = handle.status.read().engine_hint(engine);
+    hint
 }
 
 /// Provided as context by platforms that run workflows locally (desktop). `RuntimeStatusBar`
@@ -143,6 +176,13 @@ pub fn RuntimeStatusBar() -> Element {
                     }
                     div {
                         class: "modal-body",
+                        if !status.unavailable_engines.is_empty() {
+                            p {
+                                class: "mb-2",
+                                strong { "Unavailable engines: " }
+                                {status.unavailable_engines.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")}
+                            }
+                        }
                         ul {
                             class: "list-unstyled mb-0",
                             for check in status.checks.iter() {
@@ -181,6 +221,7 @@ mod tests {
             rootless,
             ok,
             checks: vec![],
+            unavailable_engines: vec![],
         }
     }
 
@@ -222,6 +263,37 @@ mod tests {
         assert_eq!(
             status(Some("podman"), Some(true), false).level(),
             StatusLevel::Fail
+        );
+    }
+
+    #[test]
+    fn limited_runtime_warns() {
+        let mut s = status(Some("podman"), Some(true), true);
+        s.unavailable_engines = vec![Engine::Snakemake];
+        assert_eq!(s.level(), StatusLevel::Warn);
+        assert_eq!(s.label(), "podman 5.1.0 · rootless · limited");
+    }
+
+    #[test]
+    fn engine_hints() {
+        let mut s = status(Some("podman"), Some(true), true);
+        s.unavailable_engines = vec![Engine::Snakemake, Engine::Cwl];
+        assert_eq!(s.engine_hint(&Engine::Nextflow), None);
+        assert_eq!(
+            s.engine_hint(&Engine::Snakemake).as_deref(),
+            Some("Snakemake needs Docker; podman 5.1.0 cannot run it")
+        );
+        assert_eq!(
+            s.engine_hint(&Engine::Cwl).as_deref(),
+            Some("podman 5.1.0 cannot run CWL workflows")
+        );
+        let none = RuntimeStatus {
+            unavailable_engines: vec![Engine::Container],
+            ..status(None, None, false)
+        };
+        assert_eq!(
+            none.engine_hint(&Engine::Container).as_deref(),
+            Some("No container runtime available")
         );
     }
 }

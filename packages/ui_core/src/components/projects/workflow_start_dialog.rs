@@ -20,6 +20,7 @@ use crate::{
     },
     configuration::Configuration,
     pages::workflow_integrations::edit::DisassambledWorkflowIntegration,
+    runtime_status::engine_hint,
     storage::IsStorage,
 };
 
@@ -115,18 +116,21 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
             let jwt = storage.read().jwt().ok().flatten();
             let Some(jwt) = jwt else { return };
             let client_config = config.read().clone();
-            let last = Client::new(client_config.base_url().to_string(), client_config.timeout())
-                .runs()
-                .last(&jwt, props.project_id, None)
-                .await;
+            let last = Client::new(
+                client_config.base_url().to_string(),
+                client_config.timeout(),
+            )
+            .runs()
+            .last(&jwt, props.project_id, None)
+            .await;
             let Some(integration) = last
                 .ok()
                 .and_then(|l| integrations.into_iter().find(|i| i.id == l.workflow_id))
+                .filter(|i| engine_hint(i.configuration().engine()).is_none())
             else {
                 return;
             };
-            let prefilled =
-                with_history(storage, config, props.project_id, integration).await;
+            let prefilled = with_history(storage, config, props.project_id, integration).await;
             if selected.peek().is_none() {
                 selected.set(Some(prefilled));
             }
@@ -182,9 +186,14 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                         div {
                                             class: "list-group",
                                             for integration in integrations {
+                                                {
+                                                    let hint = engine_hint(integration.configuration().engine());
+                                                    rsx! {
                                                 button {
                                                     r#type: "button",
-                                                    class: "list-group-item list-group-item-action",
+                                                    class: if hint.is_some() { "list-group-item list-group-item-action disabled" } else { "list-group-item list-group-item-action" },
+                                                    disabled: hint.is_some(),
+                                                    title: hint.clone(),
                                                     onclick: {
                                                         let integration = integration.clone();
                                                         move |_| {
@@ -202,6 +211,11 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                                         }
                                                     },
                                                     "{integration.name}"
+                                                    if let Some(hint) = &hint {
+                                                        small { class: "d-block text-muted", "{hint}" }
+                                                    }
+                                                }
+                                                    }
                                                 }
                                             }
                                         }

@@ -1,5 +1,6 @@
 use std::sync::OnceLock;
 
+use macworp_core::workflow_configuration::engine::Engine;
 use macworp_ui_core::runtime_status::{RuntimeStatus, StatusCheck, StatusLevel};
 use macworp_worker::container_runtime::{
     doctor, Check, CheckStatus, DoctorReport, RuntimeInfo, RuntimePreference,
@@ -10,7 +11,12 @@ use macworp_worker::container_runtime::{
 pub struct InitialRuntimeStatus(pub RuntimeStatus);
 
 pub fn to_status(report: &DoctorReport) -> RuntimeStatus {
-    from_parts(report.info.as_ref(), &report.checks, report.is_ok())
+    from_parts(
+        report.info.as_ref(),
+        &report.checks,
+        report.is_ok(),
+        report.unavailable_engines(),
+    )
 }
 
 static PREFERENCE: OnceLock<RuntimePreference> = OnceLock::new();
@@ -36,7 +42,12 @@ pub async fn check_runtime() -> RuntimeStatus {
     to_status(&report)
 }
 
-fn from_parts(info: Option<&RuntimeInfo>, checks: &[Check], ok: bool) -> RuntimeStatus {
+fn from_parts(
+    info: Option<&RuntimeInfo>,
+    checks: &[Check],
+    ok: bool,
+    unavailable_engines: Vec<Engine>,
+) -> RuntimeStatus {
     RuntimeStatus {
         kind: info.map(|i| i.kind.to_string()),
         version: info.map(|i| i.version.clone()),
@@ -54,6 +65,7 @@ fn from_parts(info: Option<&RuntimeInfo>, checks: &[Check], ok: bool) -> Runtime
                 message: c.message.clone(),
             })
             .collect(),
+        unavailable_engines,
     }
 }
 
@@ -83,7 +95,12 @@ mod tests {
 
     #[test]
     fn rootless_runtime() {
-        let status = from_parts(Some(&info(Some(true))), &[check(CheckStatus::Ok)], true);
+        let status = from_parts(
+            Some(&info(Some(true))),
+            &[check(CheckStatus::Ok)],
+            true,
+            vec![],
+        );
         assert_eq!(status.kind.as_deref(), Some("podman"));
         assert_eq!(status.version.as_deref(), Some("5.1.0"));
         assert_eq!(status.rootless, Some(true));
@@ -92,14 +109,30 @@ mod tests {
 
     #[test]
     fn rootful_runtime_warns() {
-        let status = from_parts(Some(&info(Some(false))), &[check(CheckStatus::Warn)], true);
+        let status = from_parts(
+            Some(&info(Some(false))),
+            &[check(CheckStatus::Warn)],
+            true,
+            vec![],
+        );
         assert_eq!(status.level(), StatusLevel::Warn);
         assert_eq!(status.checks[0].level, StatusLevel::Warn);
     }
 
     #[test]
     fn no_runtime() {
-        let status = from_parts(None, &[check(CheckStatus::Fail)], false);
+        let status = from_parts(
+            None,
+            &[check(CheckStatus::Fail)],
+            false,
+            vec![
+                Engine::Nextflow,
+                Engine::Snakemake,
+                Engine::Cwl,
+                Engine::Container,
+            ],
+        );
+        assert_eq!(status.unavailable_engines.len(), 4);
         assert_eq!(status.kind, None);
         assert_eq!(status.level(), StatusLevel::Fail);
         assert_eq!(status.checks[0].message, "msg");
@@ -107,7 +140,12 @@ mod tests {
 
     #[test]
     fn runtime_with_failed_check() {
-        let status = from_parts(Some(&info(Some(true))), &[check(CheckStatus::Fail)], false);
+        let status = from_parts(
+            Some(&info(Some(true))),
+            &[check(CheckStatus::Fail)],
+            false,
+            vec![],
+        );
         assert_eq!(status.kind.as_deref(), Some("podman"));
         assert_eq!(status.level(), StatusLevel::Fail);
     }

@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::{
     client::Client, components::Spinner, configuration::Configuration, router::IsRouter,
-    storage::IsStorage,
+    runtime_status::engine_hint, storage::IsStorage,
 };
 
 #[derive(Debug, Error)]
@@ -64,6 +64,13 @@ pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
                             class: "list-group-item",
                             to: R::workflow_integration_route(workflow_integration.id),
                             "{workflow_integration.name}"
+                            if let Some(hint) = engine_hint(workflow_integration.configuration().engine()) {
+                                span {
+                                    class: "badge text-bg-warning ms-2",
+                                    title: "{hint}",
+                                    "unavailable"
+                                }
+                            }
                         }
                     }
                 }

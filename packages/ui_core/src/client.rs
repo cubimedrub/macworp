@@ -14,8 +14,8 @@ use macworp_core::{
         WorkflowStartRequest,
     },
     responses::{
-        LastRunResponse, LoginProviderResponse, ProjectResponse, RunLogsResponse, RunResponse, UserResponse,
-        WorkflowIntegrationResponse,
+        LastRunResponse, LoginProviderResponse, ProjectResponse, RunLogsResponse, RunResponse,
+        UserResponse, WorkflowIntegrationResponse,
     },
     routing::*,
     workflow_configuration::WorkflowConfiguration,

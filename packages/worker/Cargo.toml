@@ -12,11 +12,11 @@ name = "macworp_worker"
 path = "src/main.rs"
 
 [dependencies]
-axum = "0.8.8"
+axum = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
-git2 = "0.20.3"
+git2 = { workspace = true }
 macworp_core = { workspace = true }
-rand = "0.10.0"
+rand = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -28,4 +28,4 @@ tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json", "form"] }
-tempfile = "3"
+tempfile = { workspace = true }

@@ -11,29 +11,43 @@ members = [
 ]
 
 [workspace.dependencies]
+axum = { version = "0.8.8" }
+base64 = "0.22.1"
 chrono = { version = "0.4.44", default-features = false }
 clap = { version = "4.5.60", features = ["derive"] }
 dioxus = { version = "0.7.9" }
+directories = "6.0.0"
 futures = "0.3.32"
+futures-util = "0.3.32"
+git2 = "0.20.3"
+gloo-timers = { version = "0.3" }
 http = { version = "1.4.0" }
+jsonwebtoken = { version = "10.3.0" }
 num-traits = "0.2.15"
 notify = "8"
 opener = "0.8"
 manganis = { version = "0.7.3" }
 password-auth = { version = "1.0.0" }
+rand = "0.10.0"
 reqwest = { version = "0.13.2" }
+rpassword = { version = "7.4.0" }
 serde = { version = "1.0.228" }
 serde_json = { version = "1.0.149" }
 sea-orm = { version = "2.0.0-rc.37" }
+sea-orm-migration = { version = "2.0.0-rc.37" }
 sqlx = "0.8.6"
 strum = "0.28.0"
+tempfile = "3"
 thiserror = { version = "2.0.18" }
 tokio = { version = "1.50.0" }
+tokio-util = "0.7.18"
 toml = { version = "1.0.6+spec-1.1.0" }
 tower-http = { version = "0.6.8" }
 tracing = { version = "0.1.37" }
 tracing-subscriber = { version = "0.3.2" }
 urlencoding = { version = "2.1.2" }
+wasm-bindgen-futures = "0.4.64"
+web-sys = { version = "0.3.91" }
 
 
 # workspace

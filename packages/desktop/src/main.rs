@@ -23,6 +23,7 @@ use macworp_ui_core::{
 };
 
 use macworp_worker::{
+    configuration::WorkerConfiguration,
     container_runtime::ContainerRuntime,
     executors::{
         container::ContainerExecutor,
@@ -75,6 +76,8 @@ struct CommandLineInterface {
     /// > 4 Set to tracing and remove all filter directives for underlaying crates
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+    #[command(flatten)]
+    worker: WorkerConfiguration,
     #[command(subcommand)]
     subcommand: Option<SubCommand>,
 }
@@ -98,6 +101,7 @@ async fn main() -> Result<(), Error> {
         }
     } else {
         init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
+        runtime_status::set_preference(cli_args.worker.container_runtime);
         match start().await {
             Ok(_) => tracing::info!("Application stopped successfully"),
             Err(e) => tracing::error!("Application stopped with error: {e}"),
@@ -122,7 +126,7 @@ async fn start() -> Result<(), Error> {
     );
 
     let container_runtime_report =
-        macworp_worker::container_runtime::doctor(Default::default()).await;
+        macworp_worker::container_runtime::doctor(runtime_status::preference()).await;
     let unavailable_engines = container_runtime_report.unavailable_engines();
     let runtime_status = InitialRuntimeStatus(to_status(&container_runtime_report));
     if container_runtime_report.is_ok() {

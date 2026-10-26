@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use macworp_ui_core::runtime_status::{RuntimeStatus, StatusCheck, StatusLevel};
 use macworp_worker::container_runtime::{
     doctor, Check, CheckStatus, DoctorReport, RuntimeInfo, RuntimePreference,
@@ -11,9 +13,21 @@ pub fn to_status(report: &DoctorReport) -> RuntimeStatus {
     from_parts(report.info.as_ref(), &report.checks, report.is_ok())
 }
 
-/// Runs the doctor check again.
+static PREFERENCE: OnceLock<RuntimePreference> = OnceLock::new();
+
+/// Sets the container runtime the user enforced (`--container-runtime`), once at startup.
+pub fn set_preference(preference: RuntimePreference) {
+    PREFERENCE.set(preference).ok();
+}
+
+/// The enforced container runtime, `Auto` if none was set.
+pub fn preference() -> RuntimePreference {
+    PREFERENCE.get().copied().unwrap_or_default()
+}
+
+/// Runs the doctor check again, with the same runtime preference as at startup.
 pub async fn check_runtime() -> RuntimeStatus {
-    let report = doctor(RuntimePreference::default()).await;
+    let report = doctor(preference()).await;
     if report.is_ok() {
         tracing::info!("Container runtime:\n{report}");
     } else {

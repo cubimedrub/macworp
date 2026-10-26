@@ -8,7 +8,10 @@ use super::{
     engine::Engine,
     parameters::{Parameter, parameter::IsParameterWithValue},
 };
-use crate::requests::ParameterValue;
+use crate::{
+    paths::{is_confined, sanitize_relative},
+    requests::ParameterValue,
+};
 
 /// Why parameter values could not be applied or a configuration could not be rendered
 #[derive(Debug, Error, PartialEq)]
@@ -22,6 +25,9 @@ pub enum RenderError {
     /// A value for a parameter that takes none (separator)
     #[error("Parameter `{0}` takes no value")]
     NoValueAllowed(String),
+    /// Path points out of the project directory (`..`) or is empty (parameter name)
+    #[error("Path in parameter `{0}` must stay inside the project directory")]
+    InvalidPath(String),
     /// Number outside `min`/`max` or more paths than `limit` (parameter name, reason)
     #[error("Value of parameter `{0}` is out of range: {1}")]
     OutOfRange(String, String),
@@ -77,6 +83,16 @@ fn check_range<T: PartialOrd + std::fmt::Display + Copy>(
     Ok(())
 }
 
+/// Validates and normalises a user supplied path with the shared [`crate::paths`] rules.
+fn project_path(name: &str, raw: &str) -> Result<PathBuf, RenderError> {
+    let raw = std::path::Path::new(raw);
+    let path = sanitize_relative(raw);
+    if !is_confined(raw) || path.as_os_str().is_empty() {
+        return Err(RenderError::InvalidPath(name.to_string()));
+    }
+    Ok(path)
+}
+
 /// Sets the value of one parameter from its JSON representation, `null` unsets it.
 fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError> {
     let name = parameter.name().to_string();
@@ -123,14 +139,15 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError
         Parameter::Path(p) => {
             let paths: Option<Vec<PathBuf>> = match value {
                 Value::Null => None,
-                Value::String(s) => Some(vec![PathBuf::from(s)]),
+                Value::String(s) => Some(vec![project_path(&name, s)?]),
                 Value::Array(items) => Some(
                     items
                         .iter()
                         .map(|i| {
-                            i.as_str().map(PathBuf::from).ok_or_else(|| {
+                            let s = i.as_str().ok_or_else(|| {
                                 RenderError::TypeMismatch(name.clone(), "array of strings")
-                            })
+                            })?;
+                            project_path(&name, s)
                         })
                         .collect::<Result<_, _>>()?,
                 ),

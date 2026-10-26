@@ -65,10 +65,7 @@ pub trait IsFilesystem {
     fn join_paths(base: &Path, subpath: &Path) -> Result<PathBuf, Error> {
         let mut final_path = base.to_path_buf();
         let mut exists = true;
-        for comp in subpath
-            .components()
-            .filter(|comp| matches!(comp, std::path::Component::Normal(_)))
-        {
+        for comp in macworp_core::paths::sanitize_relative(subpath).components() {
             final_path.push(comp);
             if exists {
                 match std::fs::symlink_metadata(&final_path) {

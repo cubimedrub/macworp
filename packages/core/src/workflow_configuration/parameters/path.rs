@@ -71,9 +71,10 @@ impl Path {
         }
         let paths: Vec<PathBuf> = new_value
             .split("\n")
-            .map(|s| PathBuf::from(s.trim()))
+            .map(|s| crate::paths::sanitize_relative(std::path::Path::new(s.trim())))
+            .filter(|p| !p.as_os_str().is_empty())
             .collect();
-        *self.inner.value_mut() = Some(paths);
+        *self.inner.value_mut() = if paths.is_empty() { None } else { Some(paths) };
     }
 }
 

@@ -9,6 +9,8 @@ pub mod error;
 pub mod http;
 /// Various functionality to logging/tracing
 pub mod logging;
+/// Lexical sanitising of in-project relative paths
+pub mod paths;
 /// Requests to the backend
 pub mod requests;
 /// Responses from the backend

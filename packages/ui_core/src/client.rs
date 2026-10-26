@@ -14,7 +14,7 @@ use macworp_core::{
         WorkflowStartRequest,
     },
     responses::{
-        LoginProviderResponse, ProjectResponse, RunResponse, UserResponse,
+        LoginProviderResponse, ProjectResponse, RunLogsResponse, RunResponse, UserResponse,
         WorkflowIntegrationResponse,
     },
     routing::*,
@@ -922,6 +922,22 @@ impl<'a> RunsClient<'a> {
         let url = self.url(&RunsRouting::GET_PATH.replace("{id}", &id.to_string()));
         self.send(reqwest::Client::new().get(&url), jwt, "fetch run")
             .await
+    }
+
+    /// Log chunks of a run with a `seq` greater than `after` (all if `None`) plus the run's
+    /// current state. Pass the `seq` of the last chunk received to get only new ones.
+    pub async fn logs(
+        &self,
+        jwt: &str,
+        id: i64,
+        after: Option<i64>,
+    ) -> Result<RunLogsResponse, Error> {
+        let url = self.url(&RunsRouting::LOGS_PATH.replace("{id}", &id.to_string()));
+        let mut request = reqwest::Client::new().get(&url);
+        if let Some(after) = after {
+            request = request.query(&[("after", after)]);
+        }
+        self.send(request, jwt, "fetch run logs").await
     }
 
     /// Cancels a queued run or asks the worker to stop a running one

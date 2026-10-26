@@ -3,7 +3,10 @@ use std::{fmt::Display, path::PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::{entities::RunStatus, workflow_configuration::WorkflowConfiguration};
+use crate::{
+    entities::{LogStream, RunStatus},
+    workflow_configuration::WorkflowConfiguration,
+};
 
 /// Response of login
 ///
@@ -94,6 +97,12 @@ pub struct RunResponse {
     pub exit_code: Option<i32>,
     /// Why the run failed when the exit code does not say, e.g. timeout
     pub error: Option<String>,
+    /// Tasks the engine announced so far, grows during the run (0 if the engine reports none)
+    pub tasks_total: i32,
+    /// Tasks the engine finished
+    pub tasks_done: i32,
+    /// Latest progress detail reported by the engine
+    pub progress_message: Option<String>,
     /// Comment given at start
     pub comment: String,
     /// A user asked to cancel a running run, the worker has not stopped it yet
@@ -106,4 +115,25 @@ pub struct RunResponse {
     pub started_at: Option<DateTime<Utc>>,
     /// When it reached a terminal status
     pub finished_at: Option<DateTime<Utc>>,
+}
+
+/// A batch of consecutive log lines of one stream
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RunLogChunk {
+    /// Position within the run, the cursor for the next request
+    pub seq: i64,
+    pub stream: LogStream,
+    pub created_at: DateTime<Utc>,
+    /// Lines joined by `\n`
+    pub content: String,
+    pub line_count: i32,
+}
+
+/// New log chunks of a run together with the current state
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RunLogsResponse {
+    /// Chunks after the requested cursor, oldest first. More may be waiting if the page limit was hit.
+    pub chunks: Vec<RunLogChunk>,
+    /// The run itself, includes status and progress, so one request is enough per poll
+    pub run: RunResponse,
 }

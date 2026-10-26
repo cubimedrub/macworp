@@ -18,3 +18,11 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 urlencoding = { workspace = true }
 futures = { workspace = true }
+# `format` for timestamps, the features are not unified in the wasm build
+chrono = { workspace = true, features = ["alloc"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["time"] }

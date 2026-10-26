@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use macworp_core::{entities::LogStream, workflow_configuration::WorkflowConfiguration};
 
+use crate::log_proxy::ProgressEndpoint;
+
 /// A run claimed by a worker.
 #[derive(Debug, Clone)]
 pub struct Job {
@@ -11,6 +13,8 @@ pub struct Job {
     pub project_dir: PathBuf,
     /// Workflow configuration snapshot with the user's parameter values already applied
     pub configuration: WorkflowConfiguration,
+    /// Where the engine reports its progress, set by the worker for engines that do
+    pub progress: Option<ProgressEndpoint>,
 }
 
 /// One line of engine output or a MAcWorP message.

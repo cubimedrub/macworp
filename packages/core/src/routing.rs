@@ -75,6 +75,8 @@ impl RunsRouting {
     pub const GET_PATH: &str = "/get/{id}";
     /// POST: cancel a queued run or ask a worker to stop a running one
     pub const CANCEL_PATH: &str = "/cancel/{id}";
+    /// GET: log chunks of a run after the query parameter `after` (a chunk `seq`)
+    pub const LOGS_PATH: &str = "/logs/{id}";
 }
 
 impl IsRouting for RunsRouting {

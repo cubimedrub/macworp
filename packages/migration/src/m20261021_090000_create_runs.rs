@@ -22,6 +22,11 @@ impl MigrationTrait for Migration {
                     .col(string_len("status", 16).default("queued"))
                     .col(integer_null("exit_code"))
                     .col(text_null("error"))
+                    // Progress reported by the engine: tasks seen so far (grows during the run) and finished
+                    .col(integer("tasks_total").default(0))
+                    .col(integer("tasks_done").default(0))
+                    // Latest progress detail, e.g. the task that just changed state
+                    .col(text_null("progress_message"))
                     // Set while a running run should be stopped, the worker moves it to cancelled
                     .col(boolean("cancel_requested").default(false))
                     // Locked runs are never evicted by the per-project retention limit

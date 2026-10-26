@@ -8,7 +8,7 @@ use crate::{
     client::{Client, IsFileUpload, IsUploadableFile},
     components::{
         file_browser::IsFileBrowser, projects::workflow_start_dialog::WorkflowStartDialog,
-        ConfirmationDialog, FileBrowser, Spinner,
+        runs::RunPanel, ConfirmationDialog, FileBrowser, Spinner,
     },
     configuration::Configuration,
     router::IsRouter,
@@ -93,6 +93,8 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
     let mut upload_queue = use_signal(VecDeque::<Result<T::File, T::Error>>::new);
     let mut current_upload: Signal<Option<String>> = use_signal(|| None);
     let mut upload_progress = use_signal(|| 0.0_f64);
+    // Counts started runs, tells the run panel to reload
+    let mut run_refresh = use_signal(|| 0_u32);
 
     let mut start_run = use_action(
         move |(workflow_id, parameters): (i64, Vec<ParameterValue>)| async move {
@@ -104,17 +106,18 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
 
             let config = config.read().clone();
 
-            Client::new(config.base_url().to_string(), config.timeout())
+            let run = Client::new(config.base_url().to_string(), config.timeout())
                 .runs()
                 .start(&jwt, props.id, workflow_id, String::new(), parameters)
                 .await
-                .map_err(Error::<T::Storage>::StartRun)
+                .map_err(Error::<T::Storage>::StartRun)?;
+            *run_refresh.write() += 1;
+            Ok::<_, Error<T::Storage>>(run)
         },
     );
 
-    let mut open_explorer = use_action(move |path: PathBuf| async move {
-        T::open_in_file_explorer(path).await
-    });
+    let mut open_explorer =
+        use_action(move |path: PathBuf| async move { T::open_in_file_explorer(path).await });
 
     let window_file_drop_handling_result = use_resource(T::prevent_window_file_drop_handling);
 
@@ -334,13 +337,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                         }
                     }
                     match start_run.value() {
-                        Some(Ok(run)) => rsx! {
-                            div {
-                                class: "alert alert-success",
-                                role: "alert",
-                                "Run #{run.read().id} of {run.read().workflow_name} queued"
-                            }
-                        },
+                        Some(Ok(_)) => rsx! {},
                         Some(Err(err)) => rsx! {
                             div {
                                 class: "alert alert-danger",
@@ -368,6 +365,10 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                                 "Failed to delete project: {err}" }
                         },
                         _ => rsx! {}
+                    }
+                    RunPanel::<T::Storage> {
+                        project_id: props.id,
+                        refresh: run_refresh,
                     }
                     FileBrowser<T::FileBrowser> {
                         project: *project,

@@ -38,6 +38,13 @@ pub struct Model {
     /// Why the run failed if the reason is not the exit code, e.g. timeout or container runtime missing
     #[sea_orm(nullable)]
     pub error: Option<String>,
+    /// Tasks the engine announced so far, grows during the run
+    pub tasks_total: i32,
+    /// Tasks the engine finished
+    pub tasks_done: i32,
+    /// Latest progress detail reported by the engine
+    #[sea_orm(nullable)]
+    pub progress_message: Option<String>,
     /// A user asked to stop the run while it was running, the worker checks this and moves the run to `Cancelled`
     pub cancel_requested: bool,
     /// Locked runs are never evicted by the retention limit
@@ -101,6 +108,9 @@ impl Model {
             status: self.status,
             exit_code: self.exit_code,
             error: self.error,
+            tasks_total: self.tasks_total,
+            tasks_done: self.tasks_done,
+            progress_message: self.progress_message,
             comment: self.comment,
             cancel_requested: self.cancel_requested,
             locked: self.locked,
@@ -198,6 +208,33 @@ impl Entity {
             .exec(db)
             .await?
             .rows_affected;
+        if updated == 1 {
+            return Ok(());
+        }
+        match Entity::find_by_id(id).one(db).await? {
+            Some(_) => Err(RunError::AlreadyFinished),
+            None => Err(RunError::NotFound),
+        }
+    }
+
+    /// Stores the progress the engine reported. Values are absolute (the worker keeps the counts);
+    /// `message` replaces the previous detail only when given. Terminal runs keep their progress.
+    pub async fn set_progress<C: ConnectionTrait>(
+        db: &C,
+        id: i64,
+        tasks_total: i32,
+        tasks_done: i32,
+        message: Option<String>,
+    ) -> Result<(), RunError> {
+        let mut update = Entity::update_many()
+            .col_expr(Column::TasksTotal, Expr::value(tasks_total.max(0)))
+            .col_expr(Column::TasksDone, Expr::value(tasks_done.max(0)))
+            .filter(Column::Id.eq(id))
+            .filter(Column::Status.is_in([RunStatus::Queued, RunStatus::Running]));
+        if let Some(message) = message {
+            update = update.col_expr(Column::ProgressMessage, Expr::value(message));
+        }
+        let updated = update.exec(db).await?.rows_affected;
         if updated == 1 {
             return Ok(());
         }
@@ -368,6 +405,61 @@ mod tests {
         assert_eq!(ids(&db).await, vec![b, c]);
         assert!(!ids(&db).await.contains(&oldest));
         assert_eq!(RunLogTable::find().all(&db).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn progress_is_stored_for_active_runs_only() {
+        let (db, u, p) = setup().await;
+        let running = add_run(&db, u, p, 2, RunStatus::Running, false).await;
+        let done = add_run(&db, u, p, 1, RunStatus::Succeeded, false).await;
+
+        Entity::set_progress(&db, running, 5, 2, Some("Task 1: foo".into()))
+            .await
+            .unwrap();
+        // without message the previous one stays
+        Entity::set_progress(&db, running, 6, 3, None)
+            .await
+            .unwrap();
+        let run = Entity::find_by_id(running).one(&db).await.unwrap().unwrap();
+        assert_eq!((run.tasks_total, run.tasks_done), (6, 3));
+        assert_eq!(run.progress_message.as_deref(), Some("Task 1: foo"));
+
+        assert!(matches!(
+            Entity::set_progress(&db, done, 1, 1, None).await,
+            Err(RunError::AlreadyFinished)
+        ));
+        assert!(matches!(
+            Entity::set_progress(&db, 9999, 1, 1, None).await,
+            Err(RunError::NotFound)
+        ));
+    }
+
+    #[tokio::test]
+    async fn logs_are_listed_after_cursor() {
+        let (db, u, p) = setup().await;
+        let run = add_run(&db, u, p, 1, RunStatus::Running, false).await; // seq 0 exists
+        for line in ["a", "b", "c"] {
+            RunLogTable::append(&db, run, Default::default(), &[line.to_string()], 0)
+                .await
+                .unwrap();
+        }
+        let all = RunLogTable::list_after(&db, run, None, 10).await.unwrap();
+        assert_eq!(
+            all.iter().map(|c| c.seq).collect::<Vec<_>>(),
+            vec![0, 1, 2, 3]
+        );
+        let rest = RunLogTable::list_after(&db, run, Some(1), 10)
+            .await
+            .unwrap();
+        assert_eq!(rest.iter().map(|c| c.seq).collect::<Vec<_>>(), vec![2, 3]);
+        let page = RunLogTable::list_after(&db, run, Some(1), 1).await.unwrap();
+        assert_eq!(page.len(), 1);
+        assert!(
+            RunLogTable::list_after(&db, run, Some(3), 10)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

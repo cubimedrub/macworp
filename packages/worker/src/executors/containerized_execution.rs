@@ -40,6 +40,9 @@ pub fn containerized_spec(
         args.extend(["-v".into(), format!("{dir}:{dir}:ro")]);
     }
     args.extend(engine_access.iter().cloned());
+    if let Some(progress) = &job.progress {
+        args.extend(progress.run_args.iter().cloned());
+    }
     args.push(image.to_string());
     args.extend(command);
 

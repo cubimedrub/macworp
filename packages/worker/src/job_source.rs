@@ -4,6 +4,7 @@ use thiserror::Error;
 use crate::{
     container_runtime::BoxFuture,
     executors::{Job, Outcome},
+    progress::ProgressUpdate,
 };
 
 #[derive(Debug, Error)]
@@ -22,6 +23,14 @@ pub trait JobSource: Send + Sync {
         run_id: i64,
         stream: LogStream,
         lines: Vec<String>,
+    ) -> BoxFuture<'_, Result<(), SourceError>>;
+
+    /// Stores the progress the engine reported (absolute numbers). An error report is also added
+    /// to the run's log.
+    fn report_progress(
+        &self,
+        run_id: i64,
+        update: ProgressUpdate,
     ) -> BoxFuture<'_, Result<(), SourceError>>;
 
     /// A user asked to stop the run.

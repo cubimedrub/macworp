@@ -80,6 +80,7 @@ mod tests {
             run_id: 5,
             project_dir: "/data/p1".into(),
             configuration,
+            progress: None,
         }
     }
 

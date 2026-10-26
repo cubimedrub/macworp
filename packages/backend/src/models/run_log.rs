@@ -1,5 +1,18 @@
-use macworp_core::entities::LogStream;
-use sea_orm::{ConnectionTrait, QuerySelect, Set, entity::prelude::*};
+use macworp_core::{entities::LogStream, responses::RunLogChunk};
+use sea_orm::{ConnectionTrait, QueryOrder, QuerySelect, Set, entity::prelude::*};
+
+impl Model {
+    /// Converts to the API representation
+    pub fn into_response(self) -> RunLogChunk {
+        RunLogChunk {
+            seq: self.seq,
+            stream: self.stream,
+            created_at: self.created_at,
+            content: self.content,
+            line_count: self.line_count,
+        }
+    }
+}
 
 /// A persisted chunk of consecutive log lines of one stream, deleted together with its run.
 ///
@@ -87,6 +100,23 @@ impl Entity {
                 Err(e) => return Err(e),
             }
         }
+    }
+
+    /// Up to `limit` chunks of a run with `seq > after`, oldest first. Pass `None` for the first call
+    /// and the last returned `seq` afterwards.
+    pub async fn list_after<C: ConnectionTrait>(
+        db: &C,
+        run_id: i64,
+        after: Option<i64>,
+        limit: u64,
+    ) -> Result<Vec<Model>, DbErr> {
+        Entity::find()
+            .filter(Column::RunId.eq(run_id))
+            .filter(Column::Seq.gt(after.unwrap_or(-1)))
+            .order_by_asc(Column::Seq)
+            .limit(limit)
+            .all(db)
+            .await
     }
 
     /// Next free `seq` and stored content size in bytes of a run

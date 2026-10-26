@@ -47,14 +47,15 @@ impl IsProjectEdit for FileImmutableProjectEdit {
 
     async fn wait_for_change(path: PathBuf) -> Result<(), Self::Error> {
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-        let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-            // Reads do not change the listing
-            if let Ok(event) = event {
-                if !event.kind.is_access() {
-                    sender.send(()).ok();
+        let mut watcher =
+            notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+                // Reads do not change the listing
+                if let Ok(event) = event {
+                    if !event.kind.is_access() {
+                        sender.send(()).ok();
+                    }
                 }
-            }
-        })?;
+            })?;
         watcher.watch(&path, RecursiveMode::NonRecursive)?;
 
         // The watcher lives in this future, dropping it stops watching

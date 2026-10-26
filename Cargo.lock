@@ -4403,8 +4403,10 @@ dependencies = [
 name = "macworp_ui_core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "dioxus",
  "futures",
+ "gloo-timers",
  "http",
  "macworp_core",
  "manganis",
@@ -4413,6 +4415,7 @@ dependencies = [
  "serde",
  "strum 0.28.0",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "urlencoding",
 ]
@@ -4436,9 +4439,11 @@ dependencies = [
 name = "macworp_worker"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "clap",
  "git2",
  "macworp_core",
+ "rand 0.10.0",
  "reqwest 0.13.2",
  "serde",
  "serde_json",

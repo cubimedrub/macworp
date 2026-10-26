@@ -66,6 +66,12 @@ impl NextflowExecutor {
                 return Err(ExecutorError::UnsupportedSource("image".into()));
             }
         }
+        if let Some(progress) = &job.progress {
+            command.extend([
+                "-with-weblog".into(),
+                format!("{}/nextflow", progress.base_url),
+            ]);
+        }
         command.extend(render_args(config)?);
 
         Ok(containerized_spec(
@@ -102,6 +108,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::log_proxy::ProgressEndpoint;
 
     fn job(source: Source) -> Job {
         let mut configuration =
@@ -118,11 +125,39 @@ mod tests {
             run_id: 7,
             project_dir: "/data/p1".into(),
             configuration,
+            progress: None,
         }
     }
 
     fn executor() -> NextflowExecutor {
         NextflowExecutor::new("podman", "img:1")
+    }
+
+    #[test]
+    fn progress_endpoint_adds_weblog_and_host_mapping() {
+        let mut job = job(Source::Local(LocalSource::new(
+            "/w".into(),
+            "main.nf".into(),
+        )));
+        job.progress = Some(ProgressEndpoint {
+            base_url: "http://host.docker.internal:4000/tok".into(),
+            run_args: vec![
+                "--add-host".into(),
+                "host.docker.internal:host-gateway".into(),
+            ],
+        });
+        let args = executor().launch_spec(&job).unwrap().args;
+        // run option before the image, engine option after the script
+        let image = args.iter().position(|a| a == "img:1").unwrap();
+        let add_host = args.iter().position(|a| a == "--add-host").unwrap();
+        assert!(add_host < image);
+        assert_eq!(args[add_host + 1], "host.docker.internal:host-gateway");
+        let weblog = args.iter().position(|a| a == "-with-weblog").unwrap();
+        assert!(weblog > image);
+        assert_eq!(
+            args[weblog + 1],
+            "http://host.docker.internal:4000/tok/nextflow"
+        );
     }
 
     #[test]

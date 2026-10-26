@@ -30,6 +30,7 @@ use macworp_worker::{
         snakemake::{self, SnakemakeExecutor},
         Executor,
     },
+    log_proxy::{HostAccess, ProgressReceiver},
     worker::{Worker, WorkerOptions},
 };
 use tokio::sync::watch;
@@ -318,11 +319,25 @@ async fn start_worker(
         .into_iter()
         .filter(|executor| runtime.supports_engine(&executor.engine()))
         .collect();
-    let worker = Worker::new(
+    let mut worker = Worker::new(
         Arc::new(DbJobSource::new(db, max_log_bytes)),
         executors,
         WorkerOptions::default(),
     );
+    if let Some(access) = HostAccess::for_runtime(runtime.kind()) {
+        match ProgressReceiver::start(access).await {
+            Ok(receiver) => {
+                tracing::info!(
+                    "Engine progress receiver listening on port {}",
+                    receiver.port()
+                );
+                worker = worker.with_progress_receiver(Arc::new(receiver));
+            }
+            Err(e) => tracing::warn!(
+                "Cannot start the engine progress receiver, runs show no progress: {e}"
+            ),
+        }
+    }
 
     let (stop, stopped) = watch::channel(false);
     let handle = tokio::spawn(async move { worker.run_until(stopped).await });

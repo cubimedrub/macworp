@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -10,7 +10,7 @@ use axum::{
 use macworp_core::{
     entities::RunStatus,
     requests::WorkflowStartRequest,
-    responses::RunResponse,
+    responses::{RunLogsResponse, RunResponse},
     routing::RunsRouting,
     workflow_configuration::render::{apply_values, render_args},
 };
@@ -18,12 +18,13 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
     TransactionError, TransactionTrait,
 };
+use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
     authentication::middleware::RequireAuth,
     models::{
-        ActiveRun, Project, ProjectTable, Run, RunColumn, RunTable, User,
+        ActiveRun, Project, ProjectTable, Run, RunColumn, RunLogTable, RunTable, User,
         WorkflowIntegrationColumn, WorkflowIntegrationTable,
     },
     state::State as AppState,
@@ -96,6 +97,17 @@ impl IntoResponse for Error {
     }
 }
 
+/// Page size cap of the log endpoint
+const MAX_LOG_CHUNKS_PER_REQUEST: u64 = 200;
+
+/// Query of the log endpoint
+#[derive(Debug, Deserialize)]
+struct LogsQuery {
+    /// Return chunks with a larger `seq`
+    after: Option<i64>,
+    limit: Option<u64>,
+}
+
 /// Endpoints to start, list, inspect and cancel runs of a project
 pub struct RunsController;
 
@@ -107,7 +119,30 @@ impl RunsController {
             .route(RunsRouting::INDEX_PATH, get(Self::index))
             .route(RunsRouting::GET_PATH, get(Self::get))
             .route(RunsRouting::CANCEL_PATH, post(Self::cancel))
+            .route(RunsRouting::LOGS_PATH, get(Self::logs))
             .with_state(state)
+    }
+
+    /// Log chunks of a run after the cursor `after` (a chunk `seq`, none = from the start), plus
+    /// the run itself for status and progress. At most [`MAX_LOG_CHUNKS_PER_REQUEST`] chunks.
+    async fn logs(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+        Path(id): Path<i64>,
+        Query(query): Query<LogsQuery>,
+    ) -> Result<Json<RunLogsResponse>, Error> {
+        let run = Self::run_of(&state, &user, id).await?;
+        let limit = query
+            .limit
+            .unwrap_or(MAX_LOG_CHUNKS_PER_REQUEST)
+            .clamp(1, MAX_LOG_CHUNKS_PER_REQUEST);
+        let chunks = RunLogTable::list_after(state.db(), id, query.after, limit)
+            .await?
+            .into_iter()
+            .map(|chunk| chunk.into_response())
+            .collect();
+        let Json(run) = Self::respond(&state, run).await?;
+        Ok(Json(RunLogsResponse { chunks, run }))
     }
 
     /// Loads a project and checks the user owns it

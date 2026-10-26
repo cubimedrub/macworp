@@ -76,6 +76,14 @@ impl SnakemakeExecutor {
         {
             command.extend(["--cores".into(), "all".into()]);
         }
+        if let Some(progress) = &job.progress {
+            command.extend([
+                "--wms-monitor".into(),
+                format!("{}/snakemake", progress.base_url),
+                "--wms-monitor-arg".into(),
+                format!("project_id={}", job.run_id),
+            ]);
+        }
         command.extend(render_args(config)?);
 
         Ok(containerized_spec(
@@ -113,6 +121,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::log_proxy::ProgressEndpoint;
 
     fn job(source: Source, engine_parameters: Vec<EngineParameter>) -> Job {
         let mut configuration =
@@ -130,6 +139,7 @@ mod tests {
             run_id: 3,
             project_dir: "/data/p1".into(),
             configuration,
+            progress: None,
         }
     }
 
@@ -139,6 +149,27 @@ mod tests {
 
     fn executor() -> SnakemakeExecutor {
         SnakemakeExecutor::new("podman", "img:1")
+    }
+
+    #[test]
+    fn progress_endpoint_adds_wms_monitor() {
+        let mut job = job(local(), vec![]);
+        job.progress = Some(ProgressEndpoint {
+            base_url: "http://host.docker.internal:4000/tok".into(),
+            run_args: vec![
+                "--add-host".into(),
+                "host.docker.internal:host-gateway".into(),
+            ],
+        });
+        let args = executor().launch_spec(&job).unwrap().args;
+        let monitor = args.iter().position(|a| a == "--wms-monitor").unwrap();
+        assert_eq!(
+            args[monitor + 1],
+            "http://host.docker.internal:4000/tok/snakemake"
+        );
+        assert_eq!(args[monitor + 2], "--wms-monitor-arg");
+        assert_eq!(args[monitor + 3], "project_id=3");
+        assert!(args.contains(&"--add-host".to_string()));
     }
 
     #[test]

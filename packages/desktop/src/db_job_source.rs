@@ -6,6 +6,7 @@ use macworp_worker::{
     container_runtime::BoxFuture,
     executors::{Job, Outcome},
     job_source::{JobSource, SourceError},
+    progress::ProgressUpdate,
 };
 use sea_orm::{DatabaseConnection, EntityTrait};
 
@@ -66,6 +67,7 @@ impl JobSource for DbJobSource {
                             run_id: run.id,
                             project_dir,
                             configuration: run.configuration,
+                            progress: None,
                         }));
                     }
                     None => {
@@ -93,6 +95,23 @@ impl JobSource for DbJobSource {
             RunLogTable::append(&self.db, run_id, stream, &lines, self.max_log_bytes)
                 .await
                 .map_err(source_error)
+        })
+    }
+
+    fn report_progress(
+        &self,
+        run_id: i64,
+        update: ProgressUpdate,
+    ) -> BoxFuture<'_, Result<(), SourceError>> {
+        Box::pin(async move {
+            RunTable::set_progress(&self.db, run_id, update.total, update.done, update.message)
+                .await
+                .map_err(source_error)?;
+            if let Some(error) = update.error {
+                self.append_logs(run_id, LogStream::Engine, vec![error])
+                    .await?;
+            }
+            Ok(())
         })
     }
 

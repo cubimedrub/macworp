@@ -6,7 +6,9 @@ pub mod container_runtime;
 pub mod executors;
 /// Where a worker gets jobs from and reports to
 pub mod job_source;
-/// Proxy for catching workflow engine logs and sending them to the backend for further processing
+/// HTTP receiver for the monitoring events of the engines (weblog / wms-monitor)
 pub mod log_proxy;
+/// Turns engine monitoring events (Nextflow weblog, Snakemake wms-monitor) into progress numbers
+pub mod progress;
 /// Claims jobs and runs them with the executor of their engine
 pub mod worker;

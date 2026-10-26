@@ -191,7 +191,6 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
 
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
     let last_workflow_source = use_signal(|| None::<Source>);
-    let mut dynamic_parameter_to_add = use_signal(Parameter::default);
 
     let workflow_integration_res: Resource<
         Result<Signal<DisassambledWorkflowIntegration>, Error<S>>,
@@ -617,109 +616,36 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                 }
 
                 Separator{
-                    label: "Dynamic paramters"
+                    label: "Dynamic parameters"
                 }
                 p {
                     "These parameters can be changed by the user when selecting the workflow for execution"
                 }
 
-                div {
-                    class: "row row-cols-1 row-cols-xl-2 g-4 mb-2",
-                    for (parameter_idx, parameter) in workflow_integration.read().dynamic_parameters().iter().enumerate() {
-                        div {
-                            class: "col",
-                            div {
-                                class: "card",
-                                div {
-                                    class: "card-body",
-                                    match &*parameter.read() {
-                                        Parameter::Float(_) => rsx! {
-                                            NumericParameter<DynamicParameter, f64> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Glob(_) => rsx! {
-                                            GlobParameter<DynamicParameter> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Integer(_) => rsx! {
-                                            NumericParameter<DynamicParameter, i64> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Path(_) => rsx! {
-                                            PathParameter<DynamicParameter, S> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Text(_) => rsx! {
-                                            TextParameter<DynamicParameter> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                    }
-                                    button {
-                                        class: "btn btn-outline-danger btn-sm ms-2",
-                                        r#type: "button",
-                                        title: "Remove parameter",
-                                        onclick: move |event| {
-                                            event.prevent_default();
-                                            workflow_integration.write().dynamic_parameters_mut().remove(parameter_idx);
-                                        },
-                                        i {
-                                            class: "fas fa-trash"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                ParameterList<DynamicParameter, S> {
+                    parameters: workflow_integration.read().dynamic_parameters().to_vec(),
+                    on_remove: move |idx| {
+                        workflow_integration.write().dynamic_parameters_mut().remove(idx);
+                    },
+                    on_add: move |parameter| {
+                        workflow_integration.write().dynamic_parameters_mut().push(Signal::new(parameter));
+                    },
                 }
-                div {
-                    class: "row",
-                    div {
-                        class: "input-group mb-3",
-                        span {
-                            class: "input-group-text",
-                            id: "workflow-integration-configuration-new-dynamic-parameter",
-                            "Add new parameter"
-                        }
-                        select {
-                            class: "form-select",
-                            aria_label: "Dynamic paramter to add",
-                            onchange: move |event|{
-                                event.prevent_default();
-                                let param_type = event.value();
-                                if let Ok(param_type) = param_type.parse::<Parameter>() {
-                                    dynamic_parameter_to_add.set(param_type);
-                                }
-                            },
-                            for param_type in Parameter::iter() {
-                                option {
-                                    selected: dynamic_parameter_to_add.read().is_same_variant(&param_type),
-                                    value: "{param_type}",
-                                    "{param_type}"
-                                }
-                            }
-                        }
-                        button {
-                            class: "btn btn-outline-secondary",
-                            r#type: "button",
-                            onclick: move |event| {
-                                event.prevent_default();
-                                workflow_integration.write().dynamic_parameters_mut().push(Signal::new(dynamic_parameter_to_add.read().clone()))
-                            },
-                            i {
-                                class: "fas fa-plus"
-                            }
-                        }
-                    }
+
+                Separator{
+                    label: "Fixed parameters"
+                }
+                p {
+                    "These parameters are always passed to the workflow and cannot be changed by the user"
+                }
+                ParameterList<FixedParameter, S> {
+                    parameters: workflow_integration.read().fixed_parameters().to_vec(),
+                    on_remove: move |idx| {
+                        workflow_integration.write().fixed_parameters_mut().remove(idx);
+                    },
+                    on_add: move |parameter| {
+                        workflow_integration.write().fixed_parameters_mut().push(Signal::new(parameter));
+                    },
                 }
             },
             Some(Err(err)) => rsx!(

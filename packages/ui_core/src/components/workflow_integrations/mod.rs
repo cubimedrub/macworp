@@ -1,6 +1,7 @@
 pub mod glob_parameter;
 pub mod numeric_parameter;
 pub mod parameter;
+pub mod parameter_list;
 pub mod path_parameter;
 pub mod separator_parameter;
 pub mod text_parameter;
@@ -10,6 +11,7 @@ pub mod value_select_parameter;
 pub use glob_parameter::GlobParameter;
 pub use numeric_parameter::{NumericKind, NumericParameter};
 pub use parameter::{DynamicParameter, FixedParameter};
+pub use parameter_list::ParameterList;
 pub use path_parameter::PathParameter;
 pub use separator_parameter::SeparatorParameter;
 pub use text_parameter::TextParameter;

@@ -265,6 +265,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                 cancel_callback: Callback::new(move |_| is_delete_confirmation_dialog_open.set(false))
             }
             WorkflowStartDialog::<T::Storage> {
+                project_id: props.id,
                 is_open: is_workflow_start_dialog_open,
                 cancel_callback: Callback::new(move |_| is_workflow_start_dialog_open.set(false)),
                 start_callback: Callback::new(move |(workflow_id, parameters): (i64, Vec<ParameterValue>)| {

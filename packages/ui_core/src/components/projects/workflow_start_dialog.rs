@@ -2,14 +2,19 @@ use dioxus::prelude::*;
 use macworp_core::{
     requests::ParameterValue,
     responses::WorkflowIntegrationResponse,
-    workflow_configuration::{parameters::Parameter, render::value_json},
+    workflow_configuration::{
+        parameters::{parameter::IsParameter, Parameter},
+        render::value_json,
+    },
 };
 use thiserror::Error;
 
 use crate::{
     client::Client,
     components::{
-        projects::workflow_integrations::{GlobParameter, NumericParameter, TextParameter},
+        projects::workflow_integrations::{
+            GlobParameter, NumericParameter, PathParameter, TextParameter, ValueSelectParameter,
+        },
         workflow_integrations::DynamicParameter,
         Spinner,
     },
@@ -30,6 +35,8 @@ pub enum Error<S: IsStorage> {
 
 #[derive(Clone, PartialEq, Props)]
 pub struct WorkflowStartDialogProps {
+    /// Project the workflow is started on, its files can be picked for path parameters
+    pub project_id: i64,
     pub is_open: ReadSignal<bool>,
     pub cancel_callback: Callback<(), ()>,
     pub start_callback: Callback<(i64, Vec<ParameterValue>), ()>,
@@ -176,12 +183,27 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                                 parameter_idx
                                             },
                                         },
-                                        _ => rsx! {
-                                            div {
-                                                class: "alert alert-danger",
-                                                "Unsupported parameter type"
+                                        Parameter::Path(_) => rsx! {
+                                            PathParameter<DynamicParameter, S> {
+                                                parameter: *parameter,
+                                                parameter_idx,
+                                                project_id: props.project_id,
+                                            },
+                                        },
+                                        Parameter::ValueSelect(_) => rsx! {
+                                            ValueSelectParameter<DynamicParameter> {
+                                                parameter: *parameter,
+                                                parameter_idx
+                                            },
+                                        },
+                                        Parameter::Separator(separator) => rsx! {
+                                            hr {}
+                                            h6 { "{separator.label()}" }
+                                            small {
+                                                class: "form-text text-muted",
+                                                "{separator.desc()}"
                                             }
-                                        }
+                                        },
                                     }
                                 }
                             },
@@ -212,6 +234,7 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                     let values = integration
                                         .dynamic_parameters()
                                         .iter()
+                                        .filter(|parameter| !matches!(&*parameter.read(), Parameter::Separator(_)))
                                         .map(|parameter| {
                                             let parameter = parameter.read();
                                             ParameterValue {

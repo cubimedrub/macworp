@@ -77,6 +77,9 @@ impl RunsRouting {
     pub const CANCEL_PATH: &str = "/cancel/{id}";
     /// GET: log chunks of a run after the query parameter `after` (a chunk `seq`)
     pub const LOGS_PATH: &str = "/logs/{id}";
+    /// GET: newest run of a project that still has a workflow, optionally only for the query
+    /// parameter `workflow_id`; its parameter values prefill the start dialog
+    pub const LAST_PATH: &str = "/last/{project_id}";
 }
 
 impl IsRouting for RunsRouting {

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     entities::{LogStream, RunStatus},
+    requests::ParameterValue,
     workflow_configuration::WorkflowConfiguration,
 };
 
@@ -136,4 +137,12 @@ pub struct RunLogsResponse {
     pub chunks: Vec<RunLogChunk>,
     /// The run itself, includes status and progress, so one request is enough per poll
     pub run: RunResponse,
+}
+
+/// Workflow and parameter values of the last run of a project
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LastRunResponse {
+    pub workflow_id: i64,
+    /// Values as submitted at start, may contain names the workflow no longer defines
+    pub parameters: Vec<ParameterValue>,
 }

@@ -4,7 +4,7 @@ use macworp_core::{
     responses::WorkflowIntegrationResponse,
     workflow_configuration::{
         parameters::{parameter::IsParameter, Parameter},
-        render::value_json,
+        render::{apply_values_lenient, value_json},
     },
 };
 use thiserror::Error;
@@ -31,6 +31,28 @@ pub enum Error<S: IsStorage> {
     NotLoggedIn,
     #[error("{0}")]
     Storage(S::Error),
+}
+
+/// Applies the values of the project's last run of `integration` to its dynamic parameters.
+/// Without usable history (none yet, request failed) the stored defaults stay.
+async fn with_history<S: IsStorage + 'static>(
+    storage: Signal<S>,
+    config: Signal<Configuration>,
+    project_id: i64,
+    mut integration: WorkflowIntegrationResponse,
+) -> DisassambledWorkflowIntegration {
+    let jwt = storage.read().jwt().ok().flatten();
+    if let Some(jwt) = jwt {
+        let config = config.read().clone();
+        let last = Client::new(config.base_url().to_string(), config.timeout())
+            .runs()
+            .last(&jwt, project_id, Some(integration.id))
+            .await;
+        if let Ok(last) = last {
+            apply_values_lenient(integration.configuration_mut(), &last.parameters);
+        }
+    }
+    integration.into()
 }
 
 #[derive(Clone, PartialEq, Props)]
@@ -78,6 +100,38 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                 .await
                 .map_err(Error::FetchWorkflowIntegrations)
         });
+
+    // Preselect the workflow of the last run once the dialog is open and the list is loaded.
+    // A manual choice made meanwhile wins.
+    use_effect(move || {
+        if !*props.is_open.read() {
+            return;
+        }
+        let integrations = match &*workflow_integrations.read() {
+            Some(Ok(integrations)) => integrations.clone(),
+            _ => return,
+        };
+        spawn(async move {
+            let jwt = storage.read().jwt().ok().flatten();
+            let Some(jwt) = jwt else { return };
+            let client_config = config.read().clone();
+            let last = Client::new(client_config.base_url().to_string(), client_config.timeout())
+                .runs()
+                .last(&jwt, props.project_id, None)
+                .await;
+            let Some(integration) = last
+                .ok()
+                .and_then(|l| integrations.into_iter().find(|i| i.id == l.workflow_id))
+            else {
+                return;
+            };
+            let prefilled =
+                with_history(storage, config, props.project_id, integration).await;
+            if selected.peek().is_none() {
+                selected.set(Some(prefilled));
+            }
+        });
+    });
 
     let modal_class = use_memo(move || {
         props
@@ -133,7 +187,19 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                                     class: "list-group-item list-group-item-action",
                                                     onclick: {
                                                         let integration = integration.clone();
-                                                        move |_| selected.set(Some(integration.clone().into()))
+                                                        move |_| {
+                                                            let integration = integration.clone();
+                                                            spawn(async move {
+                                                                let prefilled = with_history(
+                                                                    storage,
+                                                                    config,
+                                                                    props.project_id,
+                                                                    integration,
+                                                                )
+                                                                .await;
+                                                                selected.set(Some(prefilled));
+                                                            });
+                                                        }
                                                     },
                                                     "{integration.name}"
                                                 }

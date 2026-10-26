@@ -14,7 +14,7 @@ use macworp_core::{
         WorkflowStartRequest,
     },
     responses::{
-        LoginProviderResponse, ProjectResponse, RunLogsResponse, RunResponse, UserResponse,
+        LastRunResponse, LoginProviderResponse, ProjectResponse, RunLogsResponse, RunResponse, UserResponse,
         WorkflowIntegrationResponse,
     },
     routing::*,
@@ -938,6 +938,23 @@ impl<'a> RunsClient<'a> {
             request = request.query(&[("after", after)]);
         }
         self.send(request, jwt, "fetch run logs").await
+    }
+
+    /// Workflow and parameter values of the newest run of the project, optionally only of
+    /// `workflow_id`. Fails with a backend error (404) if there is no such run yet.
+    pub async fn last(
+        &self,
+        jwt: &str,
+        project_id: i64,
+        workflow_id: Option<i64>,
+    ) -> Result<LastRunResponse, Error> {
+        let url =
+            self.url(&RunsRouting::LAST_PATH.replace("{project_id}", &project_id.to_string()));
+        let mut request = reqwest::Client::new().get(&url);
+        if let Some(workflow_id) = workflow_id {
+            request = request.query(&[("workflow_id", workflow_id)]);
+        }
+        self.send(request, jwt, "fetch last run").await
     }
 
     /// Cancels a queued run or asks the worker to stop a running one

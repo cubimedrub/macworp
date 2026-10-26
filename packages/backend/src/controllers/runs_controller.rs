@@ -9,8 +9,8 @@ use axum::{
 };
 use macworp_core::{
     entities::RunStatus,
-    requests::WorkflowStartRequest,
-    responses::{RunLogsResponse, RunResponse},
+    requests::{ParameterValue, WorkflowStartRequest},
+    responses::{LastRunResponse, RunLogsResponse, RunResponse},
     routing::RunsRouting,
     workflow_configuration::render::{apply_values, render_args},
 };
@@ -108,6 +108,13 @@ struct LogsQuery {
     limit: Option<u64>,
 }
 
+/// Query of the last run endpoint
+#[derive(Debug, Deserialize)]
+struct LastQuery {
+    /// Only consider runs of this workflow
+    workflow_id: Option<i64>,
+}
+
 /// Endpoints to start, list, inspect and cancel runs of a project
 pub struct RunsController;
 
@@ -120,6 +127,7 @@ impl RunsController {
             .route(RunsRouting::GET_PATH, get(Self::get))
             .route(RunsRouting::CANCEL_PATH, post(Self::cancel))
             .route(RunsRouting::LOGS_PATH, get(Self::logs))
+            .route(RunsRouting::LAST_PATH, get(Self::last))
             .with_state(state)
     }
 
@@ -143,6 +151,32 @@ impl RunsController {
             .collect();
         let Json(run) = Self::respond(&state, run).await?;
         Ok(Json(RunLogsResponse { chunks, run }))
+    }
+
+    /// Workflow and parameter values of the newest run of the project, optionally restricted to
+    /// the query parameter `workflow_id`. 404 if there is none.
+    async fn last(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+        Path(project_id): Path<i64>,
+        Query(query): Query<LastQuery>,
+    ) -> Result<Json<LastRunResponse>, Error> {
+        Self::project_of(&state, &user, project_id).await?;
+        let run = RunTable::latest_for_project(state.db(), project_id, query.workflow_id)
+            .await?
+            .ok_or(Error::RunNotFound)?;
+        let parameters = match run.parameters {
+            serde_json::Value::Object(map) => map
+                .into_iter()
+                .map(|(name, value)| ParameterValue { name, value })
+                .collect(),
+            _ => Vec::new(),
+        };
+        Ok(Json(LastRunResponse {
+            // The query excludes runs without a workflow
+            workflow_id: run.workflow_id.ok_or(Error::RunNotFound)?,
+            parameters,
+        }))
     }
 
     /// Loads a project and checks the user owns it

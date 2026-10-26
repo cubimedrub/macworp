@@ -244,6 +244,25 @@ impl Entity {
         }
     }
 
+    /// Newest run of a project whose workflow still exists, optionally of one workflow only.
+    /// Its `parameters` are the history that prefills the start dialog.
+    pub async fn latest_for_project<C: ConnectionTrait>(
+        db: &C,
+        project_id: i64,
+        workflow_id: Option<i64>,
+    ) -> Result<Option<Model>, RunError> {
+        let mut query = Entity::find().filter(Column::ProjectId.eq(project_id));
+        query = match workflow_id {
+            Some(id) => query.filter(Column::WorkflowId.eq(id)),
+            None => query.filter(Column::WorkflowId.is_not_null()),
+        };
+        Ok(query
+            .order_by_desc(Column::CreatedAt)
+            .order_by_desc(Column::Id)
+            .one(db)
+            .await?)
+    }
+
     /// Whether a user asked to stop the run
     pub async fn is_cancel_requested<C: ConnectionTrait>(
         db: &C,
@@ -656,5 +675,48 @@ mod tests {
             .unwrap();
         let run = Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
         assert_eq!(run.workflow_id, None);
+    }
+
+    #[tokio::test]
+    async fn latest_for_project_picks_newest_with_workflow() {
+        let (db, u, p) = setup().await;
+        let mut wfs = Vec::new();
+        for name in ["a", "b"] {
+            wfs.push(
+                crate::models::ActiveWorkflowIntegration {
+                    owner_id: Set(u),
+                    is_public: Set(false),
+                    name: Set(name.into()),
+                    description: Set("d".into()),
+                    configuration: Set(WorkflowConfiguration::default()),
+                    ..Default::default()
+                }
+                .insert(&db)
+                .await
+                .unwrap()
+                .id,
+            );
+        }
+        assert!(Entity::latest_for_project(&db, p, None).await.unwrap().is_none());
+
+        let old = add_run(&db, u, p, 30, RunStatus::Succeeded, false).await;
+        let mid = add_run(&db, u, p, 20, RunStatus::Failed, false).await;
+        let new = add_run(&db, u, p, 10, RunStatus::Succeeded, false).await;
+        // Newest run, but without a workflow: skipped
+        add_run(&db, u, p, 1, RunStatus::Succeeded, false).await;
+        for (id, wf) in [(old, wfs[0]), (mid, wfs[1]), (new, wfs[0])] {
+            Entity::update_many()
+                .col_expr(Column::WorkflowId, Expr::value(wf))
+                .filter(Column::Id.eq(id))
+                .exec(&db)
+                .await
+                .unwrap();
+        }
+
+        let latest = |wf| Entity::latest_for_project(&db, p, wf);
+        assert_eq!(latest(None).await.unwrap().unwrap().id, new);
+        assert_eq!(latest(Some(wfs[1])).await.unwrap().unwrap().id, mid);
+        assert_eq!(latest(Some(wfs[0])).await.unwrap().unwrap().id, new);
+        assert!(latest(Some(wfs[1] + 100)).await.unwrap().is_none());
     }
 }

@@ -247,6 +247,27 @@ pub fn apply_values(
     Ok(())
 }
 
+/// Like [`apply_values`] for values that may predate the current definition (e.g. a previous
+/// run): values for unknown names, separators, or of a type or range that no longer fits are
+/// skipped instead of failing. Returns the names that were skipped.
+pub fn apply_values_lenient(
+    config: &mut WorkflowConfiguration,
+    values: &[ParameterValue],
+) -> Vec<String> {
+    let mut skipped = Vec::new();
+    for v in values {
+        let applied = config
+            .dynamic_parameters_mut()
+            .iter_mut()
+            .find(|p| p.name() == v.name)
+            .is_some_and(|p| set_value(p, &v.value).is_ok());
+        if !applied {
+            skipped.push(v.name.clone());
+        }
+    }
+    skipped
+}
+
 /// Renders the value of a parameter as it is passed on the command line, `None` if unset.
 fn value_string(parameter: &Parameter) -> Option<String> {
     match parameter {
@@ -567,5 +588,22 @@ mod tests {
         ));
         apply_values(&mut c, &[pv("input", json!("/a/b.fq"))]).unwrap();
         assert_eq!(&render_args(&c).unwrap()[2..], ["--input", "a/b.fq"]);
+    }
+
+    #[test]
+    fn lenient_skips_stale_values() {
+        let mut c = config(Engine::Nextflow);
+        let skipped = apply_values_lenient(
+            &mut c,
+            &[
+                pv("threads", json!(4)),
+                pv("gone", json!("x")),
+                pv("name", json!(5)),
+                pv("input", json!(["a.fq"])),
+            ],
+        );
+        assert_eq!(skipped, ["gone", "name"]);
+        assert_eq!(value_json(&c.dynamic_parameters()[0]), json!(4));
+        assert_eq!(value_json(&c.dynamic_parameters()[2]), json!(["a.fq"]));
     }
 }

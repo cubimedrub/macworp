@@ -30,6 +30,7 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 macworp_database_migration = { workspace = true }
 tempfile = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
 
 [features]
 default = ["desktop"]

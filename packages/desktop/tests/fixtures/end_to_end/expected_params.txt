@@ -1,0 +1,27 @@
+fixed_text => fixed single line
+fixed_multiline => fixed line one
+fixed line two
+fixed_integer => 7
+fixed_float => 2.5
+fixed_glob => data/fixed/*.txt
+fixed_glob_matches => g1.txt,g2.txt
+fixed_file => data/fixed_file.txt
+fixed_files => data/fixed_files/a.txt,data/fixed_files/b.txt
+fixed_folder => fixed_folder
+fixed_folders => fixed_folders/one,fixed_folders/two
+fixed_select => beta
+fixed_multiselect => x,z
+dyn_text => dyn override text
+dyn_multiline => dyn line one
+dyn line two
+dyn_integer => 4
+dyn_float => 0.25
+dyn_glob => data/dyn/*.txt
+dyn_glob_matches => g1.txt,g2.txt
+dyn_file => data/dyn_file_override.txt
+dyn_files => data/dyn_files/a.txt,data/dyn_files/b.txt
+dyn_folder => dyn_folder
+dyn_folders => dyn_folders/two
+dyn_select => alpha
+dyn_multiselect => y,z
+token => {{token}}

@@ -17,8 +17,12 @@ pub mod number;
 /// Generic paramerter for simple data
 pub mod parameter;
 pub mod path;
+/// Visual divider without value
+pub mod separator;
 /// Single and multiline text
 pub mod text;
+/// Choice of fixed options
+pub mod value_select;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -38,6 +42,10 @@ pub enum Parameter {
     Glob(glob::Glob),
     /// A path to a file or folder
     Path(path::Path),
+    /// Divider in the start dialog, carries no value
+    Separator(separator::Separator),
+    /// One or several of a fixed set of options
+    ValueSelect(value_select::ValueSelect),
 }
 
 impl Parameter {
@@ -56,6 +64,8 @@ impl Deref for Parameter {
             Parameter::Float(float) => float,
             Parameter::Glob(glob) => glob,
             Parameter::Path(path) => path,
+            Parameter::Separator(separator) => separator,
+            Parameter::ValueSelect(select) => select,
         }
     }
 }
@@ -68,6 +78,8 @@ impl DerefMut for Parameter {
             Parameter::Float(float) => float,
             Parameter::Glob(glob) => glob,
             Parameter::Path(path) => path,
+            Parameter::Separator(separator) => separator,
+            Parameter::ValueSelect(select) => select,
         }
     }
 }
@@ -80,6 +92,8 @@ impl Display for Parameter {
             Parameter::Float(_) => "Float",
             Parameter::Glob(_) => "Glob",
             Parameter::Path(_) => "Path",
+            Parameter::Separator(_) => "Separator",
+            Parameter::ValueSelect(_) => "ValueSelect",
         };
 
         write!(f, "{text}")
@@ -96,6 +110,10 @@ impl FromStr for Parameter {
             "float" => Ok(Parameter::Float(number::Float::default())),
             "glob" => Ok(Parameter::Glob(glob::Glob::default())),
             "path" => Ok(Parameter::Path(path::Path::default())),
+            "separator" => Ok(Parameter::Separator(separator::Separator::default())),
+            "valueselect" | "value-select" => {
+                Ok(Parameter::ValueSelect(value_select::ValueSelect::default()))
+            }
             _ => Err(Error::UnsupporterParameter(s.to_string())),
         }
     }

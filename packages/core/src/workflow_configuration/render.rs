@@ -19,6 +19,9 @@ pub enum RenderError {
     /// The JSON value does not fit the parameter type (parameter name, expected type)
     #[error("Value of parameter `{0}` has the wrong type, expected {1}")]
     TypeMismatch(String, &'static str),
+    /// A value for a parameter that takes none (separator)
+    #[error("Parameter `{0}` takes no value")]
+    NoValueAllowed(String),
     /// Number outside `min`/`max` or more paths than `limit` (parameter name, reason)
     #[error("Value of parameter `{0}` is out of range: {1}")]
     OutOfRange(String, String),
@@ -143,6 +146,46 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError
             }
             *p.value_mut() = paths;
         }
+        Parameter::ValueSelect(p) => {
+            let values: Option<Vec<String>> = match value {
+                Value::Null => None,
+                Value::String(s) => Some(vec![s.clone()]),
+                Value::Array(items) => Some(
+                    items
+                        .iter()
+                        .map(|i| {
+                            i.as_str().map(str::to_string).ok_or_else(|| {
+                                RenderError::TypeMismatch(name.clone(), "array of strings")
+                            })
+                        })
+                        .collect::<Result<_, _>>()?,
+                ),
+                _ => return Err(RenderError::TypeMismatch(name, "array of strings")),
+            };
+            if let Some(values) = &values {
+                if values.len() > 1 && !p.is_multiselect() {
+                    return Err(RenderError::OutOfRange(
+                        name,
+                        format!("{} values, only one allowed", values.len()),
+                    ));
+                }
+                if let Some(bad) = values
+                    .iter()
+                    .find(|v| !p.options().iter().any(|o| &o.value == *v))
+                {
+                    return Err(RenderError::OutOfRange(
+                        name,
+                        format!("`{bad}` is not one of the options"),
+                    ));
+                }
+            }
+            *p.value_mut() = values;
+        }
+        Parameter::Separator(_) => {
+            if !value.is_null() {
+                return Err(RenderError::NoValueAllowed(name));
+            }
+        }
     }
     Ok(())
 }
@@ -161,6 +204,10 @@ pub fn value_json(parameter: &Parameter) -> Value {
                 .map(|p| Value::from(p.display().to_string()))
                 .collect()
         }),
+        Parameter::ValueSelect(p) => p.value().map_or(Value::Null, |values| {
+            values.iter().map(|v| Value::from(v.as_str())).collect()
+        }),
+        Parameter::Separator(_) => Value::Null,
     }
 }
 
@@ -197,6 +244,8 @@ fn value_string(parameter: &Parameter) -> Option<String> {
                 .collect::<Vec<_>>()
                 .join(",")
         }),
+        Parameter::ValueSelect(p) => p.value().map(|values| values.join(",")),
+        Parameter::Separator(_) => None,
     }
 }
 
@@ -247,7 +296,8 @@ pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Render
     let params = config
         .fixed_parameters()
         .iter()
-        .chain(config.dynamic_parameters());
+        .chain(config.dynamic_parameters())
+        .filter(|p| !matches!(p, Parameter::Separator(_)));
     match config.engine() {
         Engine::Nextflow => {
             for p in params {
@@ -281,6 +331,7 @@ fn render_container_args(config: &WorkflowConfiguration) -> Result<Vec<String>, 
         .fixed_parameters()
         .iter()
         .chain(config.dynamic_parameters())
+        .filter(|p| !matches!(p, Parameter::Separator(_)))
     {
         validate_name(p.name())?;
         if let Some(v) = value_string(p) {
@@ -298,7 +349,13 @@ mod tests {
     use super::*;
     use crate::workflow_configuration::{
         engine::EngineParameter,
-        parameters::{number::Integer, path, text::Text},
+        parameters::{
+            number::Integer,
+            path,
+            separator::Separator,
+            text::Text,
+            value_select::{SelectOption, ValueSelect},
+        },
     };
 
     fn pv(name: &str, value: Value) -> ParameterValue {
@@ -430,5 +487,68 @@ mod tests {
             render_args(&config(Engine::Cwl)),
             Err(RenderError::UnsupportedEngine(_))
         ));
+    }
+
+    fn select(multi: bool) -> ValueSelect {
+        let mut s = ValueSelect::new("mode2".into(), "M".into(), "".into());
+        s.options_mut().extend(["a", "b"].map(|v| SelectOption {
+            label: v.to_uppercase(),
+            value: v.into(),
+        }));
+        *s.is_multiselect_mut() = multi;
+        s
+    }
+
+    #[test]
+    fn value_select() {
+        let mut c = config(Engine::Nextflow);
+        c.dynamic_parameters_mut()
+            .push(Parameter::ValueSelect(select(false)));
+        apply_values(&mut c, &[pv("mode2", json!("b"))]).unwrap();
+        assert_eq!(&render_args(&c).unwrap()[2..], ["--mode2", "b"]);
+        assert!(matches!(
+            apply_values(&mut c, &[pv("mode2", json!("z"))]),
+            Err(RenderError::OutOfRange(..))
+        ));
+        assert!(matches!(
+            apply_values(&mut c, &[pv("mode2", json!(["a", "b"]))]),
+            Err(RenderError::OutOfRange(..))
+        ));
+    }
+
+    #[test]
+    fn value_select_multi() {
+        let mut c = config(Engine::Nextflow);
+        c.dynamic_parameters_mut()
+            .push(Parameter::ValueSelect(select(true)));
+        apply_values(&mut c, &[pv("mode2", json!(["a", "b"]))]).unwrap();
+        assert_eq!(&render_args(&c).unwrap()[2..], ["--mode2", "a,b"]);
+        assert_eq!(
+            value_json(c.dynamic_parameters().last().unwrap()),
+            json!(["a", "b"])
+        );
+    }
+
+    #[test]
+    fn separator_is_skipped() {
+        let mut c = config(Engine::Nextflow);
+        c.dynamic_parameters_mut()
+            .push(Parameter::Separator(Separator::new("S".into(), "".into())));
+        assert_eq!(render_args(&c).unwrap(), ["--mode", "fast"]);
+    }
+
+    #[test]
+    fn path_is_confined() {
+        let mut c = config(Engine::Nextflow);
+        assert!(matches!(
+            apply_values(&mut c, &[pv("input", json!(["../x"]))]),
+            Err(RenderError::InvalidPath(_))
+        ));
+        assert!(matches!(
+            apply_values(&mut c, &[pv("input", json!(""))]),
+            Err(RenderError::InvalidPath(_))
+        ));
+        apply_values(&mut c, &[pv("input", json!("/a/b.fq"))]).unwrap();
+        assert_eq!(&render_args(&c).unwrap()[2..], ["--input", "a/b.fq"]);
     }
 }

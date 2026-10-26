@@ -258,11 +258,15 @@ fn checks_for(info: &RuntimeInfo) -> Vec<Check> {
         .map(|engine| engine.to_string())
         .collect();
     if !unsupported.is_empty() {
+        let hint = match kind {
+            RuntimeKind::Podman => "install docker",
+            _ => "install podman or docker",
+        };
         checks.push(Check {
             name: "engines".to_string(),
             status: CheckStatus::Warn,
             message: format!(
-                "{kind} cannot run {} workflows, install podman or docker for those",
+                "{kind} cannot run {} workflows, {hint} for those",
                 unsupported.join(", ")
             ),
         });
@@ -338,7 +342,13 @@ mod tests {
     async fn rootless_podman_is_ok() {
         let report = doctor_with(vec![Mock::ok(RuntimeKind::Podman, "5.2.1", true)]).await;
         assert!(report.is_ok());
-        assert!(report.checks.iter().all(|c| c.status == CheckStatus::Ok));
+        // only the engines check warns (Snakemake is Docker-only)
+        assert!(
+            report
+                .checks
+                .iter()
+                .all(|c| c.status == CheckStatus::Ok || c.name == "engines")
+        );
         assert!(report.into_runtime().is_ok());
     }
 
@@ -403,13 +413,27 @@ mod tests {
 
     #[cfg(windows)]
     #[tokio::test]
-    async fn podman_keeps_all_engines_and_wslc_loses_to_it() {
+    async fn podman_only_loses_snakemake_and_wslc_loses_to_it() {
+        use macworp_core::workflow_configuration::engine::Engine;
+
         let report = doctor_with(vec![
             Mock::ok(RuntimeKind::Podman, "5.2.1", true),
             Mock::ok(RuntimeKind::Wslc, "2.9.4.0", true),
         ])
         .await;
-        assert!(report.unavailable_engines().is_empty());
+        assert_eq!(report.unavailable_engines(), vec![Engine::Snakemake]);
+    }
+
+    #[tokio::test]
+    async fn podman_cannot_run_snakemake_docker_can() {
+        use macworp_core::workflow_configuration::engine::Engine;
+
+        let podman = doctor_with(vec![Mock::ok(RuntimeKind::Podman, "5.2.1", true)]).await;
+        assert_eq!(podman.unavailable_engines(), vec![Engine::Snakemake]);
+        assert!(podman.to_string().contains("cannot run Snakemake"));
+
+        let docker = doctor_with(vec![Mock::ok(RuntimeKind::Docker, "27.0.1", true)]).await;
+        assert!(docker.unavailable_engines().is_empty());
     }
 
     #[tokio::test]

@@ -18,6 +18,17 @@ MaCWorP is a web application to give workflow developers a simple way to make th
 * What it **does not** for you
     * Scaling - This is still the job of the workflow engine. E.g. you can configure Nextflow to use K8s or Slurm when started by MAcWorP workers but setting these executors up is still a separate job for an admin.
 
+## Supported engines per container runtime
+Engines run inside containers, so a container runtime (Podman or Docker) is required.
+
+| Runtime | Nextflow | Snakemake | CWL | Container |
+| --- | --- | --- | --- | --- |
+| Docker | yes | yes | yes | yes |
+| Podman | yes | no | yes | yes |
+| WSL Containers (`wslc`, Windows) | no | no | no | yes |
+
+Snakemake needs Docker. CWL support is still planned.
+
 ## Installation
 
 ### Desktop

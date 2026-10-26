@@ -1,17 +1,22 @@
-//! Full stack test: backend + SQLite + embedded worker + a real Nextflow engine container.
+//! Full stack tests: backend + SQLite + embedded worker + a real container runtime.
 //!
-//! Uses every parameter type as fixed and as dynamic parameter, runs
-//! `tests/fixtures/end_to_end/workflow`, and checks the files the workflow wrote.
+//! One scenario runs once per engine (Nextflow, Container): every parameter type as fixed and as
+//! dynamic parameter, the same project, the same expectations (`expected_params.txt`, touched and
+//! untouched files). The Nextflow workflow is `tests/fixtures/end_to_end/workflow`, the Container
+//! workflow is the image built from `tests/fixtures/end_to_end/container`, which does the same.
+//! A further test checks that Snakemake is rejected when the runtime cannot run it (podman).
 //!
-//! Needs podman or docker and the `macworp-nextflow:latest` image (see
-//! `docker/engine-nextflow.dockerfile`), so it is ignored by default:
+//! Needs podman or docker, so the tests are ignored by default. Nextflow also needs the
+//! `macworp-nextflow:latest` image (see `docker/engine-nextflow.dockerfile`), the Container test
+//! builds its image itself (pulls `alpine:3`). A test skips with a message when the selected
+//! runtime cannot run its engine.
 //!
 //! ```text
 //! cargo test -p macworp_desktop end_to_end_test -- --ignored --nocapture
 //! ```
 //!
-//! `MACWORP_CONTAINER_RUNTIME=podman|docker` enforces the container runtime (as for the app and
-//! the worker binary), by default podman is preferred over docker.
+//! `MACWORP_CONTAINER_RUNTIME=podman|docker|wslc` enforces the container runtime (as for the app
+//! and the worker binary), by default podman is preferred over docker.
 //!
 //! The project lives in a temporary directory below `$MACWORP_E2E_DIR` (default: the home
 //! directory), because VM based runtimes on macOS only share the home directory with containers.
@@ -19,6 +24,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -31,7 +37,10 @@ use macworp_core::{
     workflow_configuration::{engine::Engine, WorkflowConfiguration},
 };
 use macworp_ui_core::client::Client;
-use macworp_worker::{container_runtime::RuntimePreference, executors::nextflow::DEFAULT_IMAGE};
+use macworp_worker::{
+    container_runtime::{ContainerRuntime, RuntimePreference},
+    executors::nextflow::DEFAULT_IMAGE,
+};
 use serde_json::{json, Value};
 
 const USER_NAME: &str = "admin";
@@ -122,17 +131,29 @@ fn parameter_set(prefix: &str, v: &Values) -> Vec<Value> {
     ]
 }
 
-fn workflow_configuration(workflow_dir: &Path) -> WorkflowConfiguration {
+/// Image built from `tests/fixtures/end_to_end/container` for the `Container` engine
+const CONTAINER_IMAGE: &str = "macworp-e2e-container:latest";
+
+/// Workflow definition for `engine` with every parameter type as fixed and as dynamic parameter
+fn workflow_configuration(engine: &Engine, workflow_dir: &Path) -> WorkflowConfiguration {
     let mut dynamic = parameter_set("dyn", &DYNAMIC_DEFAULTS);
     // No default: the test always sends it
     dynamic.push(text("token", false, ""));
     if let Some(Value::Object(token)) = dynamic.last_mut().and_then(|t| t.get_mut("Text")) {
         token.insert("value".into(), Value::Null);
     }
+    let (engine_parameters, source) = match engine {
+        Engine::Nextflow => (
+            json!([{"name": "ansi-log", "value": "false"}]),
+            json!({"Local": {"location": workflow_dir, "script": "main.nf"}}),
+        ),
+        Engine::Container => (json!([]), json!({"Image": {"image": CONTAINER_IMAGE}})),
+        other => panic!("no end-to-end workflow for {other}"),
+    };
     serde_json::from_value(json!({
-        "engine": "Nextflow",
-        "engine_parameters": [{"name": "ansi-log", "value": "false"}],
-        "source": {"Local": {"location": workflow_dir, "script": "main.nf"}},
+        "engine": engine,
+        "engine_parameters": engine_parameters,
+        "source": source,
         "fixed_parameters": parameter_set("fixed", &FIXED),
         "dynamic_parameters": dynamic,
     }))
@@ -286,146 +307,259 @@ async fn wait_for_run(client: &Client, jwt: &str, run_id: i64) -> RunResponse {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs a container runtime and the macworp-nextflow image"]
-async fn runs_nextflow_workflow_with_all_parameter_types() {
+/// Backend, SQLite database and embedded worker, started like in the desktop app. Everything lives
+/// in one temporary directory that is removed on drop.
+struct TestApp {
+    client: Client,
+    jwt: String,
+    project_dir: PathBuf,
+    workflow_dir: PathBuf,
+    shutdown: tokio::sync::oneshot::Sender<()>,
+    backend: tokio::task::JoinHandle<Result<(), macworp_backend::error::Error>>,
+    stop: tokio::sync::watch::Sender<bool>,
+    worker: tokio::task::JoinHandle<()>,
+    _temp: tempfile::TempDir,
+}
+
+impl TestApp {
+    async fn start(runtime: Arc<dyn ContainerRuntime>, unavailable_engines: Vec<Engine>) -> Self {
+        let temp = tempfile::Builder::new()
+            .prefix("macworp-e2e-")
+            .tempdir_in(base_directory())
+            .unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let workflow_dir = root.join("workflow");
+        let project_dir = root.join("project");
+        fs::create_dir_all(&workflow_dir).unwrap();
+        fs::copy(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/end_to_end/workflow/main.nf"
+            ),
+            workflow_dir.join("main.nf"),
+        )
+        .unwrap();
+
+        let password = "end-to-end-password";
+        let database_url = format!("sqlite://{}", root.join("db.sqlite").display());
+        let mut backend_config = macworp_backend::configuration::Configuration::default();
+        let max_log_bytes = backend_config.max_log_bytes_per_run();
+        *backend_config.database_url_mut() = database_url.clone();
+        *backend_config.secret_mut() = macworp_backend::configuration::generate_secret();
+        *backend_config.unavailable_engines_mut() = unavailable_engines;
+        *backend_config.interface_mut() = "127.0.0.1".to_string();
+        *backend_config.worker_mut().password_mut() =
+            password_auth::generate_hash(password.as_bytes());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        *backend_config.port_mut() = listener.local_addr().unwrap().port();
+        let (shutdown, shutdown_receiver) = tokio::sync::oneshot::channel::<()>();
+        let backend = tokio::spawn(async move {
+            Backend::<LocalFilesystem>::start(
+                listener,
+                Box::pin(async move {
+                    shutdown_receiver.await.ok();
+                }),
+                backend_config,
+                USER_NAME.to_string(),
+            )
+            .await
+        });
+
+        let client = Client::new(base_url, 20);
+        let started = Instant::now();
+        while client.utilities().healthcheck().await.is_err() {
+            assert!(!backend.is_finished(), "backend stopped during startup");
+            assert!(
+                started.elapsed() < Duration::from_secs(30),
+                "backend did not come up"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let jwt = client
+            .login()
+            .local_login(USER_NAME.into(), password.into())
+            .await
+            .unwrap();
+        let (stop, worker) = crate::start_worker(&database_url, max_log_bytes, runtime)
+            .await
+            .unwrap();
+        Self {
+            client,
+            jwt,
+            project_dir,
+            workflow_dir,
+            shutdown,
+            backend,
+            stop,
+            worker,
+            _temp: temp,
+        }
+    }
+
+    /// Creates the workflow integration and a project for it, then starts a run
+    async fn start_run(
+        &self,
+        configuration: WorkflowConfiguration,
+        values: Vec<ParameterValue>,
+    ) -> Result<RunResponse, macworp_ui_core::client::Error> {
+        let workflow = self
+            .client
+            .workflow_integrations()
+            .new_workflow_integration(&self.jwt, "End to end".into(), "All parameter types".into())
+            .await
+            .unwrap();
+        self.client
+            .workflow_integrations()
+            .update_workflow_integration(
+                &self.jwt,
+                workflow.id,
+                "End to end".into(),
+                "All parameter types".into(),
+                false,
+                configuration,
+            )
+            .await
+            .unwrap();
+        let project = self
+            .client
+            .projects()
+            .new_project(&self.jwt, "End to end".into(), self.project_dir.clone())
+            .await
+            .unwrap();
+        self.client
+            .runs()
+            .start(
+                &self.jwt,
+                project.id,
+                workflow.id,
+                "end to end".into(),
+                values,
+            )
+            .await
+    }
+
+    /// Waits for the run to end, returns it with its log text
+    async fn finished_run(&self, run_id: i64) -> (RunResponse, String) {
+        let run = wait_for_run(&self.client, &self.jwt, run_id).await;
+        let logs = self
+            .client
+            .runs()
+            .logs(&self.jwt, run_id, None)
+            .await
+            .unwrap();
+        let log_text = logs
+            .chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        (run, log_text)
+    }
+
+    /// Stops worker and backend. The returned directory holds the test data, it is removed when
+    /// dropped.
+    async fn stop(self) -> tempfile::TempDir {
+        self.stop.send(true).unwrap();
+        self.worker.await.unwrap();
+        self.shutdown.send(()).unwrap();
+        self.backend.await.unwrap().unwrap();
+        self._temp
+    }
+}
+
+/// The runtime enforced by `MACWORP_CONTAINER_RUNTIME` (or the preferred one) with its doctor
+/// report. `None` and a message when there is none, or it cannot run `engine`: some runtimes only
+/// run some engines, those tests are skipped.
+async fn require_runtime(engine: &Engine) -> Option<(Arc<dyn ContainerRuntime>, Vec<Engine>)> {
     let report = macworp_worker::container_runtime::doctor(runtime_preference()).await;
     if !report.is_ok() {
         eprintln!("SKIPPED, no container runtime:\n{report}");
-        return;
+        return None;
     }
+    let unavailable_engines = report.unavailable_engines();
     let runtime = report.into_runtime().unwrap();
-    // e.g. wslc only runs plain container workflows
-    if !runtime.supports_engine(&Engine::Nextflow) {
-        eprintln!("SKIPPED, {} cannot run Nextflow workflows", runtime.kind());
-        return;
+    if !runtime.supports_engine(engine) {
+        eprintln!("SKIPPED, {} cannot run {engine} workflows", runtime.kind());
+        return None;
     }
-    let has_image = tokio::process::Command::new(runtime.binary())
-        .args(["image", "inspect", DEFAULT_IMAGE])
+    Some((runtime, unavailable_engines))
+}
+
+async fn image_exists(runtime: &dyn ContainerRuntime, image: &str) -> bool {
+    tokio::process::Command::new(runtime.binary())
+        .args(["image", "inspect", image])
         .output()
         .await
         .map(|o| o.status.success())
-        .unwrap_or(false);
-    if !has_image {
-        eprintln!(
-            "SKIPPED, image {DEFAULT_IMAGE} not found (see docker/engine-nextflow.dockerfile)"
-        );
+        .unwrap_or(false)
+}
+
+/// Makes sure the image of the engine exists. `false` (with a message) means skip the test.
+async fn prepare_image(runtime: &dyn ContainerRuntime, engine: &Engine) -> bool {
+    match engine {
+        Engine::Nextflow => {
+            if image_exists(runtime, DEFAULT_IMAGE).await {
+                return true;
+            }
+            eprintln!(
+                "SKIPPED, image {DEFAULT_IMAGE} not found (see docker/engine-nextflow.dockerfile)"
+            );
+            false
+        }
+        Engine::Container => {
+            let build = tokio::process::Command::new(runtime.binary())
+                .args(["build", "-t", CONTAINER_IMAGE])
+                .arg(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/fixtures/end_to_end/container"
+                ))
+                .output()
+                .await
+                .unwrap();
+            if build.status.success() {
+                return true;
+            }
+            let output = format!(
+                "{}{}",
+                String::from_utf8_lossy(&build.stdout),
+                String::from_utf8_lossy(&build.stderr)
+            );
+            // wslc has no documented `build`, tolerate a prebuilt image there only
+            if runtime.kind().to_string() == "wslc" {
+                eprintln!("SKIPPED, wslc cannot build {CONTAINER_IMAGE}:\n{output}");
+                return image_exists(runtime, CONTAINER_IMAGE).await;
+            }
+            panic!("cannot build {CONTAINER_IMAGE}:\n{output}");
+        }
+        other => panic!("no end-to-end workflow for {other}"),
+    }
+}
+
+/// Runs the workflow of `engine` with all parameter types and checks what it wrote. The same
+/// parameters, project and expectations for every engine.
+async fn run_scenario(engine: Engine) {
+    let Some((runtime, unavailable_engines)) = require_runtime(&engine).await else {
+        return;
+    };
+    if !prepare_image(runtime.as_ref(), &engine).await {
         return;
     }
 
-    // Everything below lives in one temporary directory that is removed on drop
-    let temp = tempfile::Builder::new()
-        .prefix("macworp-e2e-")
-        .tempdir_in(base_directory())
-        .unwrap();
-    let root = temp.path().canonicalize().unwrap();
-    let workflow_dir = root.join("workflow");
-    let project_dir = root.join("project");
-    fs::create_dir_all(&workflow_dir).unwrap();
-    fs::copy(
-        concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/end_to_end/workflow/main.nf"
-        ),
-        workflow_dir.join("main.nf"),
-    )
-    .unwrap();
-    seed_project(&project_dir);
+    let app = TestApp::start(runtime, unavailable_engines).await;
+    seed_project(&app.project_dir);
     let token = format!("e2e-{}", uuid::Uuid::now_v7());
 
-    // Backend
-    let password = "end-to-end-password";
-    let database_url = format!("sqlite://{}", root.join("db.sqlite").display());
-    let mut backend_config = macworp_backend::configuration::Configuration::default();
-    let max_log_bytes = backend_config.max_log_bytes_per_run();
-    *backend_config.database_url_mut() = database_url.clone();
-    *backend_config.secret_mut() = macworp_backend::configuration::generate_secret();
-    *backend_config.interface_mut() = "127.0.0.1".to_string();
-    *backend_config.worker_mut().password_mut() = password_auth::generate_hash(password.as_bytes());
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base_url = format!("http://{}", listener.local_addr().unwrap());
-    *backend_config.port_mut() = listener.local_addr().unwrap().port();
-    let (shutdown, shutdown_receiver) = tokio::sync::oneshot::channel::<()>();
-    let backend = tokio::spawn(async move {
-        Backend::<LocalFilesystem>::start(
-            listener,
-            Box::pin(async move {
-                shutdown_receiver.await.ok();
-            }),
-            backend_config,
-            USER_NAME.to_string(),
-        )
-        .await
-    });
-
-    let client = Client::new(base_url, 20);
-    let started = Instant::now();
-    while client.utilities().healthcheck().await.is_err() {
-        assert!(!backend.is_finished(), "backend stopped during startup");
-        assert!(
-            started.elapsed() < Duration::from_secs(30),
-            "backend did not come up"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    let jwt = client
-        .login()
-        .local_login(USER_NAME.into(), password.into())
-        .await
-        .unwrap();
-
-    // Workflow integration and project
-    let workflow = client
-        .workflow_integrations()
-        .new_workflow_integration(&jwt, "End to end".into(), "All parameter types".into())
-        .await
-        .unwrap();
-    client
-        .workflow_integrations()
-        .update_workflow_integration(
-            &jwt,
-            workflow.id,
-            "End to end".into(),
-            "All parameter types".into(),
-            false,
-            workflow_configuration(&workflow_dir),
-        )
-        .await
-        .unwrap();
-    let project = client
-        .projects()
-        .new_project(&jwt, "End to end".into(), project_dir.clone())
-        .await
-        .unwrap();
-
-    // Run with the embedded worker, wired as in the desktop app
-    let (stop, worker) = crate::start_worker(&database_url, max_log_bytes, runtime)
-        .await
-        .unwrap();
-    let run = client
-        .runs()
-        .start(
-            &jwt,
-            project.id,
-            workflow.id,
-            "end to end".into(),
+    let run = app
+        .start_run(
+            workflow_configuration(&engine, &app.workflow_dir),
             overrides(&token),
         )
         .await
         .unwrap();
-    let run = wait_for_run(&client, &jwt, run.id).await;
-    let logs = client.runs().logs(&jwt, run.id, None).await.unwrap();
-    let log_text = logs
-        .chunks
-        .iter()
-        .map(|c| c.content.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    stop.send(true).unwrap();
-    worker.await.unwrap();
-    shutdown.send(()).unwrap();
-    backend.await.unwrap().unwrap();
+    let (run, log_text) = app.finished_run(run.id).await;
+    let project_dir = app.project_dir.clone();
+    let _temp = app.stop().await;
 
     assert_eq!(
         run.status,
@@ -433,10 +567,16 @@ async fn runs_nextflow_workflow_with_all_parameter_types() {
         "{run:?}\n--- log ---\n{log_text}"
     );
     assert_eq!(run.exit_code, Some(0));
+    // Only Nextflow reports tasks, a container workflow has an indeterminate progress
+    let expected_progress = if engine == Engine::Nextflow {
+        (1, 1)
+    } else {
+        (0, 0)
+    };
     assert_eq!(
         (run.tasks_total, run.tasks_done),
-        (1, 1),
-        "progress not reported"
+        expected_progress,
+        "progress not as expected"
     );
     assert!(!log_text.is_empty(), "no log lines stored");
 
@@ -446,4 +586,53 @@ async fn runs_nextflow_workflow_with_all_parameter_types() {
     );
     assert_files(&project_dir, &token);
     assert_folders(&project_dir, &token);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a container runtime and the macworp-nextflow image"]
+async fn runs_nextflow_workflow_with_all_parameter_types() {
+    run_scenario(Engine::Nextflow).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a container runtime and network access to build the test image"]
+async fn runs_container_workflow_with_all_parameter_types() {
+    run_scenario(Engine::Container).await;
+}
+
+/// Podman cannot run Snakemake, the backend answers 409 instead of queueing a run that fails
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a container runtime"]
+async fn snakemake_is_rejected_when_runtime_cannot_run_it() {
+    let report = macworp_worker::container_runtime::doctor(runtime_preference()).await;
+    if !report.is_ok() {
+        eprintln!("SKIPPED, no container runtime:\n{report}");
+        return;
+    }
+    let unavailable_engines = report.unavailable_engines();
+    let runtime = report.into_runtime().unwrap();
+    if runtime.supports_engine(&Engine::Snakemake) {
+        eprintln!("SKIPPED, {} can run Snakemake workflows", runtime.kind());
+        return;
+    }
+
+    let app = TestApp::start(runtime, unavailable_engines).await;
+    let configuration: WorkflowConfiguration = serde_json::from_value(json!({
+        "engine": "Snakemake",
+        "engine_parameters": [],
+        "source": {"Local": {"location": app.workflow_dir, "script": "Snakefile"}},
+        "fixed_parameters": [],
+        "dynamic_parameters": [],
+    }))
+    .unwrap();
+    let result = app.start_run(configuration, Vec::new()).await;
+    app.stop().await;
+
+    let error = result
+        .expect_err("Snakemake run must be rejected")
+        .to_string();
+    assert!(
+        error.contains("409") && error.contains("not available"),
+        "unexpected error: {error}"
+    );
 }

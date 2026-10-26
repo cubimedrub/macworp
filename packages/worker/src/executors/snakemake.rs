@@ -175,13 +175,15 @@ mod tests {
     #[test]
     fn local_source_defaults_to_all_cores() {
         let spec = executor().launch_spec(&job(local(), vec![])).unwrap();
+        let name = spec.container_name.clone().unwrap();
+        assert!(name.starts_with("macworp-run-3-"), "{name}");
         assert_eq!(
             spec.args,
             [
                 "run",
                 "--rm",
                 "--name",
-                "macworp-run-3",
+                name.as_str(),
                 "-v",
                 "/data/p1:/data/p1",
                 "-w",

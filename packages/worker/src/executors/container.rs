@@ -89,13 +89,15 @@ mod tests {
         let spec = ContainerExecutor::new("docker")
             .launch_spec(&job(Source::Image(ImageSource::new("hello:1".into()))))
             .unwrap();
+        let name = spec.container_name.clone().unwrap();
+        assert!(name.starts_with("macworp-run-5-"), "{name}");
         assert_eq!(
             spec.args,
             [
                 "run",
                 "--rm",
                 "--name",
-                "macworp-run-5",
+                name.as_str(),
                 "-v",
                 "/data/p1:/data/p1",
                 "-w",
@@ -103,7 +105,6 @@ mod tests {
                 "hello:1"
             ]
         );
-        assert_eq!(spec.container_name.as_deref(), Some("macworp-run-5"));
     }
 
     #[test]

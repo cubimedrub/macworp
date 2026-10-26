@@ -169,14 +169,15 @@ mod tests {
             ))))
             .unwrap();
         assert_eq!(spec.program, PathBuf::from("podman"));
-        assert_eq!(spec.container_name.as_deref(), Some("macworp-run-7"));
+        let name = spec.container_name.clone().unwrap();
+        assert!(name.starts_with("macworp-run-7-"), "{name}");
         assert_eq!(
             spec.args,
             [
                 "run",
                 "--rm",
                 "--name",
-                "macworp-run-7",
+                name.as_str(),
                 "-v",
                 "/data/p1:/data/p1",
                 "-w",

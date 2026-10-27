@@ -2,28 +2,28 @@ use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
-    extract::{Json, Path, Query, Request, State},
+    extract::{Json, Query, Request, State},
     response::IntoResponse,
     routing::{get, post},
 };
 
 use http::{HeaderMap, StatusCode};
 use macworp_core::{
+    entities::Role,
     http::headers::ContentRangeHeaderValue,
     requests::{NewProjectRequest, ProjectCreateFolderRequest, ProjectPathDeletionRequest},
     responses::ProjectResponse,
     routing::ProjectsRouting,
 };
-use sea_orm::{
-    ColumnTrait, EntityTrait, ModelTrait, QueryFilter, TransactionError, TransactionTrait,
-};
+use sea_orm::{EntityTrait, ModelTrait, QueryFilter, TransactionError, TransactionTrait};
 use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
     authentication::middleware::RequireAuth,
+    authorization::{Authorized, Editor, Owner, Principal, Resource, Viewer},
     filesystems::is_filesystem::IsFilesystem,
-    models::{ActiveProject, Project, ProjectColumn, ProjectTable},
+    models::{ActiveProject, Project, ProjectTable, User},
     state::State as AppState,
 };
 
@@ -33,10 +33,8 @@ pub enum ProjectsControllerError {
     Database(#[from] sea_orm::DbErr),
     #[error("{0}")]
     Authentication(#[from] crate::authentication::error::Error),
-    #[error("Project not found")]
-    ProjectNotFound,
-    #[error("Access to this project is forbidden")]
-    Forbidden,
+    #[error("{0}")]
+    Share(#[from] crate::authorization::ShareError),
     #[error("Errors while accessing filesystem: {0}")]
     Filesystem(#[from] crate::filesystems::errors::Error),
     #[error("Missing Content-Range header")]
@@ -49,12 +47,6 @@ impl IntoResponse for ProjectsControllerError {
     fn into_response(self) -> axum::response::Response {
         tracing::error!("{self}");
         match self {
-            ProjectsControllerError::Forbidden => {
-                (StatusCode::FORBIDDEN, self.to_string()).into_response()
-            }
-            ProjectsControllerError::ProjectNotFound => {
-                (StatusCode::NOT_FOUND, self.to_string()).into_response()
-            }
             ProjectsControllerError::Authentication(e) => e.into_response(),
             ProjectsControllerError::Filesystem(
                 crate::filesystems::errors::Error::SymlinkNotAllowed(_),
@@ -103,24 +95,26 @@ where
         State(state): State<Arc<AppState>>,
         RequireAuth(user): RequireAuth,
     ) -> Result<Json<Vec<ProjectResponse>>, ProjectsControllerError> {
-        let owned_projects: Vec<Project> = ProjectTable::find()
-            .filter(ProjectColumn::OwnerId.eq(user.id))
+        let projects: Vec<Project> = ProjectTable::find()
+            .filter(Project::visible_to(user.id, Role::Viewer))
             .all(state.db())
             .await
             .map_err(ProjectsControllerError::Database)?;
+        let owners = User::usernames(state.db(), projects.iter().map(|p| p.owner_id)).await?;
 
         Ok(Json(
-            owned_projects
+            projects
                 .into_iter()
                 .map(|project| ProjectResponse {
                     id: project.id,
                     name: project.name,
                     created_at: project.created_at,
-                    owner_username: user.username.clone(),
+                    owner_username: owners.get(&project.owner_id).cloned().unwrap_or_default(),
                     current: PathBuf::new(),
                     files: Vec::new(),
                     directories: Vec::new(),
                     local_path: None,
+                    my_role: None,
                 })
                 .collect(),
         ))
@@ -149,6 +143,10 @@ where
                         .map_err(ProjectsControllerError::Database)?
                         .into();
 
+                    Project::shares(txn, project.id)
+                        .grant(Principal::User(user.id), Role::Owner)
+                        .await?;
+
                     F::create_project_directory(state_clone.as_ref(), &project)
                         .await
                         .map_err(ProjectsControllerError::Filesystem)?;
@@ -171,26 +169,19 @@ where
             files: Vec::new(),
             directories: Vec::new(),
             local_path: None,
+            my_role: Some(Role::Owner),
         }))
     }
 
     pub async fn edit(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
-        Path(id): Path<i64>,
+        Authorized {
+            model: project,
+            role,
+            ..
+        }: Authorized<Project, Viewer>,
         Query(query_params): Query<ProjectQueryParams>,
     ) -> Result<Json<ProjectResponse>, ProjectsControllerError> {
-        let project = ProjectTable::find_by_id(id)
-            .one(state.db())
-            .await
-            .map_err(ProjectsControllerError::Database)?
-            .ok_or(ProjectsControllerError::ProjectNotFound)?;
-
-        // TODO: once implemented add group check.
-        if project.owner_id != user.id {
-            return Err(ProjectsControllerError::Forbidden);
-        }
-
         let content = F::content(state.as_ref(), &project, query_params.subpath)
             .map_err(ProjectsControllerError::Filesystem)?;
         let local_path = F::local_path(state.as_ref(), &project);
@@ -199,28 +190,22 @@ where
             id: project.id,
             name: project.name,
             created_at: project.created_at,
-            owner_username: user.username.clone(),
+            owner_username: User::usernames(state.db(), [project.owner_id])
+                .await?
+                .remove(&project.owner_id)
+                .unwrap_or_default(),
             current: content.current,
             files: content.files,
             directories: content.directories,
             local_path,
+            my_role: Some(role),
         }))
     }
 
     async fn delete(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
-        Path(id): Path<i64>,
+        Authorized { model: project, .. }: Authorized<Project, Owner>,
     ) -> Result<StatusCode, ProjectsControllerError> {
-        let project = ProjectTable::find_by_id(id)
-            .one(state.db())
-            .await
-            .map_err(ProjectsControllerError::Database)?
-            .ok_or(ProjectsControllerError::ProjectNotFound)?;
-
-        if project.owner_id != user.id {
-            return Err(ProjectsControllerError::Forbidden);
-        }
         state
             .clone()
             .db()
@@ -230,6 +215,10 @@ where
                         .await
                         .map_err(ProjectsControllerError::Filesystem)?;
 
+                    Project::shares(txn, project.id)
+                        .delete_all()
+                        .await
+                        .map_err(ProjectsControllerError::Database)?;
                     project
                         .delete(txn)
                         .await
@@ -249,22 +238,11 @@ where
 
     pub async fn upload_file(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
-        Path(id): Path<i64>,
+        Authorized { model: project, .. }: Authorized<Project, Editor>,
         Query(params): Query<ProjectFileUploadQuery>,
         headers: HeaderMap,
         request: Request,
     ) -> Result<StatusCode, ProjectsControllerError> {
-        let project = ProjectTable::find_by_id(id)
-            .one(state.db())
-            .await
-            .map_err(ProjectsControllerError::Database)?
-            .ok_or(ProjectsControllerError::ProjectNotFound)?;
-
-        if project.owner_id != user.id {
-            return Err(ProjectsControllerError::Forbidden);
-        }
-
         let content_header_value = headers
             .get("Content-Range")
             .ok_or(ProjectsControllerError::MissingContentRangeHeader)?;
@@ -286,20 +264,9 @@ where
 
     pub async fn create_folder(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
-        Path(id): Path<i64>,
+        Authorized { model: project, .. }: Authorized<Project, Editor>,
         Json(payload): Json<ProjectCreateFolderRequest>,
     ) -> Result<StatusCode, ProjectsControllerError> {
-        let project = ProjectTable::find_by_id(id)
-            .one(state.db())
-            .await
-            .map_err(ProjectsControllerError::Database)?
-            .ok_or(ProjectsControllerError::ProjectNotFound)?;
-
-        if project.owner_id != user.id {
-            return Err(ProjectsControllerError::Forbidden);
-        }
-
         F::create_folder(state.as_ref(), &project, payload.folder_path)
             .await
             .map_err(ProjectsControllerError::Filesystem)?;
@@ -309,20 +276,9 @@ where
 
     pub async fn delete_path(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
-        Path(id): Path<i64>,
+        Authorized { model: project, .. }: Authorized<Project, Editor>,
         Json(payload): Json<ProjectPathDeletionRequest>,
     ) -> Result<StatusCode, ProjectsControllerError> {
-        let project = ProjectTable::find_by_id(id)
-            .one(state.db())
-            .await
-            .map_err(ProjectsControllerError::Database)?
-            .ok_or(ProjectsControllerError::ProjectNotFound)?;
-
-        if project.owner_id != user.id {
-            return Err(ProjectsControllerError::Forbidden);
-        }
-
         F::delete_path(state.as_ref(), &project, payload.path)
             .await
             .map_err(ProjectsControllerError::Filesystem)?;

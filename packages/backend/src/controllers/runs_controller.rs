@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use macworp_core::{
-    entities::RunStatus,
+    entities::{Role, RunStatus},
     requests::{ParameterValue, WorkflowStartRequest},
     responses::{LastRunResponse, RunLogsResponse, RunResponse},
     routing::RunsRouting,
@@ -23,8 +23,11 @@ use thiserror::Error;
 
 use crate::{
     authentication::middleware::RequireAuth,
+    authorization::{
+        Authorized, Editor, Error as AuthorizationError, MinRole, Resource, Viewer, authorize,
+    },
     models::{
-        ActiveRun, Project, ProjectTable, Run, RunColumn, RunLogTable, RunTable, User,
+        ActiveRun, Project, Run, RunColumn, RunLogTable, RunTable, User, WorkflowIntegration,
         WorkflowIntegrationColumn, WorkflowIntegrationTable,
     },
     state::State as AppState,
@@ -48,7 +51,7 @@ pub enum Error {
     /// No run with the given id, 404
     #[error("Run not found")]
     RunNotFound,
-    /// The user does not own the project or workflow, 403
+    /// The user lacks the role on the project, 403
     #[error("Access is forbidden")]
     Forbidden,
     /// Submitted parameter values do not fit the workflow, or it cannot be rendered, 400
@@ -63,6 +66,17 @@ pub enum Error {
     /// The run is already finished and cannot be cancelled, 409
     #[error("Run already finished")]
     AlreadyFinished,
+}
+
+impl From<AuthorizationError> for Error {
+    fn from(err: AuthorizationError) -> Self {
+        match err {
+            AuthorizationError::Authentication(e) => Self::Authentication(e),
+            AuthorizationError::Database(e) => Self::Database(e),
+            AuthorizationError::InvalidPath | AuthorizationError::NotFound => Self::ProjectNotFound,
+            AuthorizationError::Forbidden => Self::Forbidden,
+        }
+    }
 }
 
 impl From<crate::models::RunError> for Error {
@@ -139,7 +153,8 @@ impl RunsController {
         Path(id): Path<i64>,
         Query(query): Query<LogsQuery>,
     ) -> Result<Json<RunLogsResponse>, Error> {
-        let run = Self::run_of(&state, &user, id).await?;
+        let user_id = user.id;
+        let run = Self::run_of::<Viewer>(&state, user, id).await?;
         let limit = query
             .limit
             .unwrap_or(MAX_LOG_CHUNKS_PER_REQUEST)
@@ -149,7 +164,7 @@ impl RunsController {
             .into_iter()
             .map(|chunk| chunk.into_response())
             .collect();
-        let Json(run) = Self::respond(&state, run).await?;
+        let Json(run) = Self::respond(&state, user_id, run).await?;
         Ok(Json(RunLogsResponse { chunks, run }))
     }
 
@@ -157,11 +172,10 @@ impl RunsController {
     /// the query parameter `workflow_id`. 404 if there is none.
     async fn last(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
-        Path(project_id): Path<i64>,
+        Authorized { model: project, .. }: Authorized<Project, Viewer>,
         Query(query): Query<LastQuery>,
     ) -> Result<Json<LastRunResponse>, Error> {
-        Self::project_of(&state, &user, project_id).await?;
+        let project_id = project.id;
         let run = RunTable::latest_for_project(state.db(), project_id, query.workflow_id)
             .await?
             .ok_or(Error::RunNotFound)?;
@@ -179,37 +193,30 @@ impl RunsController {
         }))
     }
 
-    /// Loads a project and checks the user owns it
-    // TODO P2: replace the owner checks by `Authorized<R, Role>`
-    async fn project_of(state: &AppState, user: &User, project_id: i64) -> Result<Project, Error> {
-        let project = ProjectTable::find_by_id(project_id)
-            .one(state.db())
-            .await?
-            .ok_or(Error::ProjectNotFound)?;
-        if project.owner_id != user.id {
-            return Err(Error::Forbidden);
-        }
-        Ok(project)
-    }
-
-    /// Loads a run and checks the user may access its project
-    async fn run_of(state: &AppState, user: &User, run_id: i64) -> Result<Run, Error> {
+    /// Loads a run and checks the user holds at least the role `M` on its project
+    async fn run_of<M: MinRole>(state: &AppState, user: User, run_id: i64) -> Result<Run, Error> {
         let run = RunTable::find_by_id(run_id)
             .one(state.db())
             .await?
             .ok_or(Error::RunNotFound)?;
-        Self::project_of(state, user, run.project_id).await?;
+        authorize::<Project, M>(state, user, run.project_id).await?;
         Ok(run)
     }
 
     /// Names of the workflows the runs reference, by workflow id. Deleted workflows are missing.
-    async fn workflow_names(state: &AppState, runs: &[Run]) -> Result<HashMap<i64, String>, Error> {
+    /// Workflows the user cannot see are missing as well.
+    async fn workflow_names(
+        state: &AppState,
+        user_id: i64,
+        runs: &[Run],
+    ) -> Result<HashMap<i64, String>, Error> {
         let ids: Vec<i64> = runs.iter().filter_map(|r| r.workflow_id).collect();
         if ids.is_empty() {
             return Ok(HashMap::new());
         }
         Ok(WorkflowIntegrationTable::find()
             .filter(WorkflowIntegrationColumn::Id.is_in(ids))
+            .filter(WorkflowIntegration::visible_to(user_id, Role::Viewer))
             .all(state.db())
             .await?
             .into_iter()
@@ -224,19 +231,25 @@ impl RunsController {
     /// project's run limit in the same transaction.
     async fn start(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
-        Path(project_id): Path<i64>,
+        Authorized {
+            user,
+            model: project,
+            ..
+        }: Authorized<Project, Editor>,
         Json(payload): Json<WorkflowStartRequest>,
     ) -> Result<Json<RunResponse>, Error> {
-        let project = Self::project_of(&state, &user, project_id).await?;
-
-        let workflow = WorkflowIntegrationTable::find_by_id(payload.workflow_id)
-            .one(state.db())
-            .await?
-            .ok_or(Error::WorkflowNotFound)?;
-        if workflow.owner_id != user.id {
-            return Err(Error::Forbidden);
-        }
+        // Running needs to see the workflow, which is independent of the role on the project
+        let workflow = match authorize::<WorkflowIntegration, Viewer>(
+            &state,
+            user.clone(),
+            payload.workflow_id,
+        )
+        .await
+        {
+            Ok(authorized) => authorized.model,
+            Err(AuthorizationError::NotFound) => return Err(Error::WorkflowNotFound),
+            Err(e) => return Err(e.into()),
+        };
 
         let engine = workflow.configuration.engine();
         if state.config().unavailable_engines().contains(engine) {
@@ -286,23 +299,26 @@ impl RunsController {
                 TransactionError::Transaction(err) => err,
             })?;
 
-        Self::respond(&state, run).await
+        Self::respond(&state, user_id, run).await
     }
 
     /// Runs of a project, newest first
     async fn index(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
-        Path(project_id): Path<i64>,
+        Authorized {
+            user,
+            model: project,
+            ..
+        }: Authorized<Project, Viewer>,
     ) -> Result<Json<Vec<RunResponse>>, Error> {
-        Self::project_of(&state, &user, project_id).await?;
+        let project_id = project.id;
         let runs = RunTable::find()
             .filter(RunColumn::ProjectId.eq(project_id))
             .order_by_desc(RunColumn::CreatedAt)
             .order_by_desc(RunColumn::Id)
             .all(state.db())
             .await?;
-        let names = Self::workflow_names(&state, &runs).await?;
+        let names = Self::workflow_names(&state, user.id, &runs).await?;
         Ok(Json(
             runs.into_iter()
                 .map(|run| {
@@ -322,8 +338,9 @@ impl RunsController {
         RequireAuth(user): RequireAuth,
         Path(id): Path<i64>,
     ) -> Result<Json<RunResponse>, Error> {
-        let run = Self::run_of(&state, &user, id).await?;
-        Self::respond(&state, run).await
+        let user_id = user.id;
+        let run = Self::run_of::<Viewer>(&state, user, id).await?;
+        Self::respond(&state, user_id, run).await
     }
 
     /// Cancels a queued run or flags a running run for its worker to stop, see [`Run::request_cancel`]
@@ -332,14 +349,15 @@ impl RunsController {
         RequireAuth(user): RequireAuth,
         Path(id): Path<i64>,
     ) -> Result<Json<RunResponse>, Error> {
-        let run = Self::run_of(&state, &user, id).await?;
+        let user_id = user.id;
+        let run = Self::run_of::<Editor>(&state, user, id).await?;
         let run = run.request_cancel(state.db()).await?;
-        Self::respond(&state, run).await
+        Self::respond(&state, user_id, run).await
     }
 
     /// Builds the response for a run, looking up its workflow name
-    async fn respond(state: &AppState, run: Run) -> Result<Json<RunResponse>, Error> {
-        let name = Self::workflow_names(state, std::slice::from_ref(&run))
+    async fn respond(state: &AppState, user_id: i64, run: Run) -> Result<Json<RunResponse>, Error> {
+        let name = Self::workflow_names(state, user_id, std::slice::from_ref(&run))
             .await?
             .remove(&workflow_id_of(&run))
             .unwrap_or_default();

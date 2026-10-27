@@ -16,3 +16,15 @@ pub struct Model {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl crate::authorization::Resource for Model {
+    type Entity = Entity;
+
+    const RESOURCE_TYPE: crate::authorization::ResourceType =
+        crate::authorization::ResourceType::Project;
+    const MAX_PUBLIC_ROLE: macworp_core::entities::Role = macworp_core::entities::Role::Owner;
+
+    fn id_column() -> Column {
+        Column::Id
+    }
+}

@@ -1,33 +1,24 @@
 mod group;
-mod group_share;
 mod project;
 pub mod run;
 mod run_log;
+pub mod share;
 pub mod user;
-mod user_share;
-mod users_groups;
+pub(crate) mod users_groups;
 mod workflow_integration;
 
 // Re-exporting the models for easier access from other modules
 pub use group::{ActiveModel as ActiveGroup, Entity as GroupTable, Model as Group};
-// pub use group_share::{
-// Entity as GroupShareTable,
-// Model as GroupShare, ActiveModel as ActiveGroupShare
-// };
 pub use project::{
     ActiveModel as ActiveProject, Column as ProjectColumn, Entity as ProjectTable, Model as Project,
 };
-pub use user::{ActiveModel as ActiveUser, Entity as UserTable, Model as User};
-// pub use user_share::{
-// Entity as UserShareTable,
-// Model as UserShare, ActiveModel as ActiveUserShare
-// };
 pub use run::{
     ActiveModel as ActiveRun, Column as RunColumn, Entity as RunTable, Model as Run, RunError,
 };
 pub use run_log::{
     ActiveModel as ActiveRunLog, Column as RunLogColumn, Entity as RunLogTable, Model as RunLog,
 };
+pub use user::{ActiveModel as ActiveUser, Entity as UserTable, Model as User};
 pub use users_groups::{
     ActiveModel as ActiveUsersGroups, Entity as UsersGroupsTable, Model as UsersGroups,
 };

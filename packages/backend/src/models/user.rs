@@ -30,3 +30,20 @@ pub struct Model {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Model {
+    /// Usernames of the given users by id, for showing who created shared resources. Unknown ids
+    /// are missing from the map.
+    pub async fn usernames(
+        db: &impl ConnectionTrait,
+        ids: impl IntoIterator<Item = i64>,
+    ) -> Result<std::collections::HashMap<i64, String>, DbErr> {
+        Ok(Entity::find()
+            .filter(Column::Id.is_in(ids))
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|user| (user.id, user.username))
+            .collect())
+    }
+}

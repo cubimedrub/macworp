@@ -30,6 +30,20 @@ impl From<Model> for WorkflowIntegrationResponse {
             name: value.name,
             description: value.description,
             configuration: value.configuration,
+            my_role: None,
         }
+    }
+}
+
+impl crate::authorization::Resource for Model {
+    type Entity = Entity;
+
+    const RESOURCE_TYPE: crate::authorization::ResourceType =
+        crate::authorization::ResourceType::Workflow;
+    // Others may see and run a workflow, editing stays with users and groups.
+    const MAX_PUBLIC_ROLE: macworp_core::entities::Role = macworp_core::entities::Role::Viewer;
+
+    fn id_column() -> Column {
+        Column::Id
     }
 }

@@ -697,7 +697,12 @@ mod tests {
                 .id,
             );
         }
-        assert!(Entity::latest_for_project(&db, p, None).await.unwrap().is_none());
+        assert!(
+            Entity::latest_for_project(&db, p, None)
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         let old = add_run(&db, u, p, 30, RunStatus::Succeeded, false).await;
         let mid = add_run(&db, u, p, 20, RunStatus::Failed, false).await;

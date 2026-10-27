@@ -1,5 +1,7 @@
 /// Authentication
 pub mod authentication;
+/// Role checks on shared resources
+pub mod authorization;
 /// Backend configuration
 pub mod configuration;
 /// Controllers providing the web API endpoints

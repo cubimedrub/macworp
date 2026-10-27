@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entities::{LogStream, RunStatus},
+    entities::{LogStream, Role, RunStatus},
     requests::ParameterValue,
     workflow_configuration::WorkflowConfiguration,
 };
@@ -34,6 +34,9 @@ pub struct ProjectResponse {
     /// Project directory on the user's machine, only set when the backend runs locally (desktop)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_path: Option<PathBuf>,
+    /// Role of the requesting user, only set by endpoints returning a single project
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub my_role: Option<Role>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,6 +74,9 @@ pub struct WorkflowIntegrationResponse {
     pub name: String,
     pub description: String,
     pub configuration: WorkflowConfiguration,
+    /// Role of the requesting user, only set by endpoints returning a single workflow
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub my_role: Option<Role>,
 }
 
 impl WorkflowIntegrationResponse {

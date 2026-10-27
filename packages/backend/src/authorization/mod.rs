@@ -1,0 +1,339 @@
+use std::{marker::PhantomData, sync::Arc};
+
+use axum::{
+    Extension, RequestPartsExt,
+    extract::{FromRequestParts, Path},
+    http::{StatusCode, request::Parts},
+    response::{IntoResponse, Response},
+};
+use macworp_core::entities::Role;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use thiserror::Error;
+
+/// The visibility filter behind [`Resource::visible_to`]
+mod query;
+/// The [`Resource`] trait
+mod resource;
+/// Stored forms of roles, principal types and resource types
+mod role;
+#[cfg(all(test, feature = "integration"))]
+mod share_tests;
+/// Granting, changing and removing the shares of a resource
+mod shares;
+
+pub use resource::Resource;
+pub use role::{PrincipalType, ResourceType};
+pub use shares::{Principal, ShareError, Shares};
+
+use crate::{authentication::middleware::RequireAuth, models::User, state::State};
+
+/// Lowest role an endpoint requires, a type so it can be a generic parameter of [`Authorized`].
+pub trait MinRole {
+    /// The role itself
+    const ROLE: Role;
+}
+
+/// [`MinRole`] for [`Role::Viewer`]
+pub struct Viewer;
+/// [`MinRole`] for [`Role::Editor`]
+pub struct Editor;
+/// [`MinRole`] for [`Role::Owner`]
+pub struct Owner;
+
+impl MinRole for Viewer {
+    const ROLE: Role = Role::Viewer;
+}
+impl MinRole for Editor {
+    const ROLE: Role = Role::Editor;
+}
+impl MinRole for Owner {
+    const ROLE: Role = Role::Owner;
+}
+
+/// Why an authorization check failed, mapped to an HTTP status by the `IntoResponse` impl
+#[derive(Error, Debug)]
+pub enum Error {
+    /// Missing or invalid credentials, response decided by the authentication error
+    #[error("{0}")]
+    Authentication(#[from] crate::authentication::error::Error),
+    /// Database failure, 500
+    #[error("{0}")]
+    Database(#[from] sea_orm::DbErr),
+    /// The route has no single integer path parameter, 400
+    #[error("The path has no resource id")]
+    InvalidPath,
+    /// No such resource, or the user may not even see it, 404
+    #[error("Not found")]
+    NotFound,
+    /// The user can see the resource but lacks the role, 403
+    #[error("Access is forbidden")]
+    Forbidden,
+}
+
+impl IntoResponse for Error {
+    /// Not found and forbidden carry their message, database errors are logged and hidden.
+    fn into_response(self) -> Response {
+        match self {
+            Error::Authentication(e) => e.into_response(),
+            Error::InvalidPath => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
+            Error::NotFound => (StatusCode::NOT_FOUND, self.to_string()).into_response(),
+            Error::Forbidden => (StatusCode::FORBIDDEN, self.to_string()).into_response(),
+            Error::Database(_) => {
+                tracing::error!("{self}");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        }
+    }
+}
+
+/// Authenticates the user and loads the resource whose id is the route's only path parameter, if the
+/// user holds at least the role `M` on it.
+///
+/// Resources the user cannot see at all are reported as not found so ids do not leak.
+pub struct Authorized<R: Resource, M> {
+    /// The authenticated user
+    pub user: User,
+    /// The loaded resource
+    pub model: <R::Entity as EntityTrait>::Model,
+    /// Effective role of the user on the resource, at least `M`
+    pub role: Role,
+    _min: PhantomData<M>,
+}
+
+impl<R, M, S> FromRequestParts<S> for Authorized<R, M>
+where
+    R: Resource,
+    <R::Entity as EntityTrait>::Model: Send,
+    M: MinRole,
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    /// Authenticates, reads the id from the path and checks the role, see [`authorize`].
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let RequireAuth(user) = RequireAuth::from_request_parts(parts, state).await?;
+        let Path(id) = parts
+            .extract::<Path<i64>>()
+            .await
+            .map_err(|_| Error::InvalidPath)?;
+        let Extension(app_state) = parts
+            .extract::<Extension<Arc<State>>>()
+            .await
+            .map_err(crate::authentication::error::Error::StateMissing)?;
+
+        authorize::<R, M>(&app_state, user, id).await
+    }
+}
+
+/// The check behind [`Authorized`], for handlers that get ids from other places than the path.
+pub async fn authorize<R, M>(state: &State, user: User, id: i64) -> Result<Authorized<R, M>, Error>
+where
+    R: Resource,
+    M: MinRole,
+{
+    let role = R::shares(state.db(), id)
+        .role_of(user.id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    if role < M::ROLE {
+        return Err(Error::Forbidden);
+    }
+    let model = R::Entity::find()
+        .filter(R::id_column().eq(id))
+        .one(state.db())
+        .await?
+        .ok_or(Error::NotFound)?;
+    Ok(Authorized {
+        user,
+        model,
+        role,
+        _min: PhantomData,
+    })
+}
+
+/// Tests of [`authorize`] against a SQLite database.
+#[cfg(all(test, feature = "integration"))]
+mod tests {
+    use macworp_database_migration::{Migrator, MigratorTrait};
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+
+    use super::*;
+    use crate::{
+        configuration::Configuration,
+        models::{
+            ActiveProject, ActiveUser, ActiveWorkflowIntegration, Project, WorkflowIntegration,
+        },
+    };
+
+    /// Database with two users (`owner`, `outsider`) and a project and workflow owned by `owner`.
+    struct World {
+        state: State,
+        _dir: tempfile::TempDir,
+        owner: User,
+        outsider: User,
+        project: i64,
+        workflow: i64,
+    }
+
+    /// Inserts a user named `name`.
+    async fn user(state: &State, name: &str) -> User {
+        ActiveUser {
+            username: Set(name.into()),
+            firstname: Set(name.into()),
+            lastname: Set(name.into()),
+            email: Set(format!("{name}@example.org")),
+            ..Default::default()
+        }
+        .insert(state.db())
+        .await
+        .unwrap()
+    }
+
+    /// Creates a migrated SQLite database in a temp dir with the fixtures of [`World`].
+    async fn world() -> World {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Configuration::default();
+        *config.database_url_mut() = format!("sqlite://{}/test.db?mode=rwc", dir.path().display());
+        let state = State::new_for_integration(config).await.unwrap();
+        Migrator::up(state.db(), None).await.unwrap();
+
+        let owner = user(&state, "owner").await;
+        let outsider = user(&state, "outsider").await;
+        let project = ActiveProject {
+            owner_id: Set(owner.id),
+            name: Set("p".into()),
+            ..Default::default()
+        }
+        .insert(state.db())
+        .await
+        .unwrap();
+        let workflow = ActiveWorkflowIntegration {
+            owner_id: Set(owner.id),
+            is_public: Set(false),
+            name: Set("w".into()),
+            description: Set(String::new()),
+            ..Default::default()
+        }
+        .insert(state.db())
+        .await
+        .unwrap();
+        Project::shares(state.db(), project.id)
+            .grant(Principal::User(owner.id), Role::Owner)
+            .await
+            .unwrap();
+        WorkflowIntegration::shares(state.db(), workflow.id)
+            .grant(Principal::User(owner.id), Role::Owner)
+            .await
+            .unwrap();
+        World {
+            state,
+            _dir: dir,
+            owner,
+            outsider,
+            project: project.id,
+            workflow: workflow.id,
+        }
+    }
+
+    /// An owner passes the check for every role.
+    #[tokio::test]
+    async fn owner_passes_every_role() {
+        let w = world().await;
+        let ok = authorize::<Project, Owner>(&w.state, w.owner.clone(), w.project)
+            .await
+            .unwrap();
+        assert_eq!(ok.role, Role::Owner);
+        assert_eq!(ok.model.id, w.project);
+    }
+
+    /// Resources a user cannot see, or that do not exist, are not found, so ids do not leak.
+    #[tokio::test]
+    async fn invisible_resource_is_not_found_not_forbidden() {
+        let w = world().await;
+        let err = authorize::<Project, Viewer>(&w.state, w.outsider.clone(), w.project)
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(err, Error::NotFound));
+        let missing = authorize::<Project, Viewer>(&w.state, w.owner.clone(), 9999)
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(missing, Error::NotFound));
+    }
+
+    /// A viewer passes the viewer check but is forbidden from editor endpoints.
+    #[tokio::test]
+    async fn viewer_is_forbidden_from_editing() {
+        let w = world().await;
+        Project::shares(w.state.db(), w.project)
+            .grant(Principal::User(w.outsider.id), Role::Viewer)
+            .await
+            .unwrap();
+        assert!(
+            authorize::<Project, Viewer>(&w.state, w.outsider.clone(), w.project)
+                .await
+                .is_ok()
+        );
+        let err = authorize::<Project, Editor>(&w.state, w.outsider.clone(), w.project)
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(err, Error::Forbidden));
+    }
+
+    /// Running needs project Editor and workflow Viewer, the two are independent.
+    #[tokio::test]
+    async fn public_workflow_and_editor_project_allow_running() {
+        let w = world().await;
+        Project::shares(w.state.db(), w.project)
+            .grant(Principal::User(w.outsider.id), Role::Editor)
+            .await
+            .unwrap();
+        assert!(
+            authorize::<Project, Editor>(&w.state, w.outsider.clone(), w.project)
+                .await
+                .is_ok()
+        );
+        assert!(
+            authorize::<WorkflowIntegration, Viewer>(&w.state, w.outsider.clone(), w.workflow)
+                .await
+                .is_err()
+        );
+        WorkflowIntegration::shares(w.state.db(), w.workflow)
+            .grant(Principal::Public, Role::Viewer)
+            .await
+            .unwrap();
+        assert!(
+            authorize::<WorkflowIntegration, Viewer>(&w.state, w.outsider.clone(), w.workflow)
+                .await
+                .is_ok()
+        );
+        // Public viewing a workflow gives no right to edit it.
+        assert!(matches!(
+            authorize::<WorkflowIntegration, Editor>(&w.state, w.outsider.clone(), w.workflow)
+                .await
+                .err(),
+            Some(Error::Forbidden)
+        ));
+    }
+
+    /// The worker identity is not in the database and holds no shares, so it sees nothing.
+    #[tokio::test]
+    async fn worker_identity_has_no_access() {
+        let w = world().await;
+        let worker = User {
+            id: i64::MIN,
+            username: "worker".into(),
+            firstname: String::new(),
+            lastname: String::new(),
+            email: String::new(),
+            password: None,
+        };
+        let err = authorize::<Project, Viewer>(&w.state, worker, w.project)
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(err, Error::NotFound));
+    }
+}

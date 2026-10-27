@@ -39,6 +39,9 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 urlencoding = { workspace = true }
 
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [features]
 default = ["standalone"]
 standalone = ["dep:clap", "dep:rpassword", "dep:toml", "sqlx/postgres", "sqlx/runtime-tokio", "sea-orm/sqlx-postgres"]

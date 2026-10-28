@@ -33,6 +33,13 @@ Snakemake needs Docker. CWL support is still planned.
 
 ### Desktop
 
+Data is located in
+| OS | Path |
+| --- | --- |
+| macOS | `~/Library/Application Support/de.ruhr-uni-bochum.CUBiMed.RUB.macworp_desktop` |
+| Linux | `$XDG_DATA_HOME/macworp_desktop` (default `~/.local/share/macworp_desktop`) |
+| Windows | `%APPDATA%\CUBiMed.RUB\macworp_desktop` (`C:\Users\<user>\AppData\Roaming\CUBiMed.RUB\macworp_desktop`) |
+
 #### macOS
 Comming soon
 
@@ -54,6 +61,58 @@ Code, shared between all components, can be found in the [core-crate](packages/c
 MAcWorPs worker component lives in the [worker-crate](packages/worker) as a separate binary.
 
 All styling is done via SASS which is transpiled and bundled via [manganis](https://crates.io/crates/manganis).
+
+
+#### Requirements
+* Rust: Follow [the install page](https://rust-lang.org/tools/install/) (use `rustup`)
+  * x86_64 target: Depends on your operating system
+  * WASM target: `rustup target add wasm32-unknown-unknown`
+* Dioxus CLI: `curl -sSL https://dioxus.dev/install.sh | bash` or `cargo binstall dioxus-cli --force` or `cargo install dioxus-cli`
+* On Linux or Mac, Procfile application: [Ultraman](https://github.com/yukihirop/ultraman) (Rust based) or use Procfile application like [foreman](https://github.com/ddollar/foreman) (Ruby basesd) or [honcho](https://github.com/nickstenning/honcho) (Python based)
+* Container engine
+  * Docker and docker-compose: Needed for PostgreSQL. Instruction depend on your operating system
+  * Podman: Optional for testing and validation. Instruction depend on your operating system
+  * WSL (Container): Optional for testing and validation. Instruction depend on your operating system
+  
+#### Running the desktop edition
+`dx serve --package macworp_desktop --desktop --args='-vvv -a dev'`
+
+To avoid collision between development and production `-a dev` adds a suffix `-dev` to the application directory, data is stored in:
+| OS | Path |
+| --- | --- |
+| macOS | `~/Library/Application Support/de.ruhr-uni-bochum.CUBiMed.RUB.macworp_desktop-dev` |
+| Linux | `$XDG_DATA_HOME/macworp_desktop-dev` (default `~/.local/share/macworp_desktop-dev`) |
+| Windows | `%APPDATA%\CUBiMed.RUB\macworp_desktop-dev` (`C:\Users\<user>\AppData\Roaming\CUBiMed.RUB\macworp_desktop-dev`) |
+
+
+#### Running the web edition
+
+##### Linux / macOS
+```
+dev/setup.sh
+ultraman start
+```
+
+##### Windows
+```
+# terminal 1
+pwsh dev/setup.ps1
+docker-compose up
+```
+
+```
+# terminal 2
+cargo run -p macworp_backend -- db-migrate dev/config.toml && cargo run -p macworp_backend -- serve dev/config.toml
+```
+
+```
+# terminal 3
+MACWORP_BASE_URL=http://127.0.0.1:3001 dx serve --package macworp_web --web --port 5001
+```
+
+##### Resetting all operating systems
+Stop all the started processes from above and run `docker compose down --remove-orphans`
+
 
 ## For workflow developers
 Follow the [workflow intregration guide](https://cubimedrub.github.io/macworp/latest/workflow_integration/). 

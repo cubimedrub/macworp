@@ -74,6 +74,10 @@ enum SubCommand {
 #[derive(Debug, Parser)]
 #[command(name = env!("CARGO_PKG_NAME"))]
 struct CommandLineInterface {
+    /// Optional suffix for app folder. Useful for development or troubleshooting
+    /// to avoid collision with production. Adds `-{app_folder_suffix}` to the the directory
+    #[arg(short, long)]
+    app_folder_suffix: Option<String>,
     /// Verbosity level
     /// 0 - Error,
     /// 1 - Warn,
@@ -109,7 +113,7 @@ async fn main() -> Result<(), Error> {
     } else {
         init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
         runtime_status::set_preference(cli_args.worker.container_runtime);
-        match start().await {
+        match start(cli_args.app_folder_suffix).await {
             Ok(_) => tracing::info!("Application stopped successfully"),
             Err(e) => tracing::error!("Application stopped with error: {e}"),
         }
@@ -120,10 +124,15 @@ async fn main() -> Result<(), Error> {
 
 /// Starts the desktop application with the backend running in the background
 ///
-async fn start() -> Result<(), Error> {
-    let app_directory =
-        ProjectDirs::from("de.ruhr-uni-bochum", "CUBiMed.RUB", env!("CARGO_PKG_NAME"))
-            .ok_or(Error::ProjectDirectoryNotFound)?;
+/// Pa
+async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
+    let application_name = if let Some(app_folder_suffix) = app_folder_suffix {
+        format!("{}-{}", env!("CARGO_PKG_NAME"), app_folder_suffix)
+    } else {
+        env!("CARGO_PKG_NAME").to_string()
+    };
+    let app_directory = ProjectDirs::from("de.ruhr-uni-bochum", "CUBiMed.RUB", &application_name)
+        .ok_or(Error::ProjectDirectoryNotFound)?;
 
     let app_data_directory = app_directory.data_dir();
 

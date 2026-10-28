@@ -18,7 +18,10 @@ impl IsRouting for UtilitiesRouting {
 
 pub struct UsersRouting;
 impl UsersRouting {
+    /// GET: the authenticated user
     pub const CURRENT_PATH: &str = "/current";
+    /// GET: users whose username starts with the query parameter `q`, to pick share principals
+    pub const SEARCH_PATH: &str = "/search";
 }
 
 impl IsRouting for UsersRouting {
@@ -84,4 +87,42 @@ impl RunsRouting {
 
 impl IsRouting for RunsRouting {
     const CONTROLLER_PATH: &str = "/runs";
+}
+
+/// Routes for groups of users
+pub struct GroupsRouting;
+impl GroupsRouting {
+    /// GET: groups the user owns or is a member of
+    pub const INDEX_PATH: &str = "/index";
+    /// POST: create a group owned by the user
+    pub const NEW_PATH: &str = "/new";
+    /// GET: one group with its members
+    pub const EDIT_PATH: &str = "/edit/{id}";
+    /// POST: rename a group or change its description, owner only
+    pub const UPDATE_PATH: &str = "/update/{id}";
+    /// POST: delete a group and the shares granted to it, owner only
+    pub const DELETE_PATH: &str = "/delete/{id}";
+    /// POST: add a member, owner only
+    pub const ADD_MEMBER_PATH: &str = "/add-member/{id}";
+    /// POST: remove a member, owner only
+    pub const REMOVE_MEMBER_PATH: &str = "/remove-member/{id}";
+}
+
+impl IsRouting for GroupsRouting {
+    const CONTROLLER_PATH: &str = "/groups";
+}
+
+/// Routes for the shares of projects and workflows; `{kind}` is `projects` or `workflows`
+pub struct SharesRouting;
+impl SharesRouting {
+    /// GET: all shares of a resource, owners only
+    pub const LIST_PATH: &str = "/{kind}/{id}";
+    /// POST: grant a role to a principal or replace its role, owners only
+    pub const GRANT_PATH: &str = "/{kind}/{id}/grant";
+    /// POST: remove the grant of a principal, owners only
+    pub const REVOKE_PATH: &str = "/{kind}/{id}/revoke";
+}
+
+impl IsRouting for SharesRouting {
+    const CONTROLLER_PATH: &str = "/shares";
 }

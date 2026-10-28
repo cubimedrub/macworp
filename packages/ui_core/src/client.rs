@@ -8,14 +8,16 @@ use std::{
 use dioxus::signals::Signal;
 use macworp_core::{
     authentication::TokenType,
+    entities::Role,
     requests::{
-        NewProjectRequest, NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest,
-        ProjectCreateFolderRequest, ProjectPathDeletionRequest, UpdateWorkflowIntegrationRequest,
-        WorkflowStartRequest,
+        GrantShareRequest, GroupMemberRequest, NewGroupRequest, NewProjectRequest,
+        NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest, PrincipalRequest,
+        ProjectCreateFolderRequest, ProjectPathDeletionRequest, RevokeShareRequest,
+        UpdateGroupRequest, UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
     },
     responses::{
-        LastRunResponse, LoginProviderResponse, ProjectResponse, RunLogsResponse, RunResponse,
-        UserResponse, WorkflowIntegrationResponse,
+        GroupResponse, LastRunResponse, LoginProviderResponse, ProjectResponse, RunLogsResponse,
+        RunResponse, ShareResponse, UserResponse, UserSummaryResponse, WorkflowIntegrationResponse,
     },
     routing::*,
     workflow_configuration::WorkflowConfiguration,
@@ -80,6 +82,49 @@ impl Client {
     pub fn runs<'a>(&'a self) -> RunsClient<'a> {
         RunsClient::new(self)
     }
+
+    /// Returns a sub client to access users
+    pub fn users<'a>(&'a self) -> UsersClient<'a> {
+        UsersClient::new(self)
+    }
+
+    /// Returns a sub client to manage groups
+    pub fn groups<'a>(&'a self) -> GroupsClient<'a> {
+        GroupsClient::new(self)
+    }
+
+    /// Returns a sub client to manage the shares of projects and workflows
+    pub fn shares<'a>(&'a self) -> SharesClient<'a> {
+        SharesClient::new(self)
+    }
+
+    /// Sends an authenticated request and returns the successful response; any other status
+    /// becomes [`Error::Backend`] carrying the response text. `what` names the action for the
+    /// error message, e.g. "add group member".
+    async fn send_authenticated(
+        &self,
+        request: reqwest::RequestBuilder,
+        jwt: &str,
+        what: &str,
+    ) -> Result<reqwest::Response, Error> {
+        let response = request
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.timeout))
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!("Failed to {what}: HTTP {status}, response text: {text}");
+            return Err(Error::Backend(format!(
+                "Failed to {what}: HTTP {status}, response text: {text}"
+            )));
+        }
+        Ok(response)
+    }
 }
 
 /// Utilities subclient
@@ -134,7 +179,7 @@ impl<'a> UtilitiesClient<'a> {
     }
 }
 
-/// Login subclient
+/// Users subclient
 ///
 pub struct UsersClient<'a> {
     base_client: &'a Client,
@@ -149,8 +194,7 @@ impl<'a> UsersClient<'a> {
         Self { base_client }
     }
 
-    /// Returns the backend version
-    ///
+    /// Returns the authenticated user
     pub async fn current(&self, jwt: &str) -> Result<UserResponse, Error> {
         let url = format!(
             "{}{}{}",
@@ -158,15 +202,29 @@ impl<'a> UsersClient<'a> {
             UsersRouting::controller_path(),
             UsersRouting::CURRENT_PATH
         );
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&url)
-            .header(http::header::AUTHORIZATION, jwt)
-            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
-            .send()
-            .await?;
-        response
-            .json::<UserResponse>()
+        let request = reqwest::Client::new().get(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "fetch current user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Users whose username starts with `prefix`; the backend returns nothing for very short
+    /// prefixes.
+    pub async fn search(&self, jwt: &str, prefix: &str) -> Result<Vec<UserSummaryResponse>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UsersRouting::controller_path(),
+            UsersRouting::SEARCH_PATH
+        );
+        let request = reqwest::Client::new().get(&url).query(&[("q", prefix)]);
+        self.base_client
+            .send_authenticated(request, jwt, "search users")
+            .await?
+            .json()
             .await
             .map_err(Error::Request)
     }
@@ -742,7 +800,6 @@ impl<'a> WorkflowIntegrationClient<'a> {
         id: i64,
         name: String,
         description: String,
-        is_public: bool,
         configuration: WorkflowConfiguration,
     ) -> Result<WorkflowIntegrationResponse, Error> {
         let url = format!(
@@ -756,7 +813,6 @@ impl<'a> WorkflowIntegrationClient<'a> {
         let body = UpdateWorkflowIntegrationRequest {
             name,
             description,
-            is_public,
             configuration,
         };
         let response = client
@@ -962,5 +1018,237 @@ impl<'a> RunsClient<'a> {
         let url = self.url(&RunsRouting::CANCEL_PATH.replace("{id}", &id.to_string()));
         self.send(reqwest::Client::new().post(&url), jwt, "cancel run")
             .await
+    }
+}
+
+/// Groups subclient
+///
+pub struct GroupsClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> GroupsClient<'a> {
+    /// Creates a groups client on top of the base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Full URL of a groups endpoint, `{id}` in `path` replaced by `id`
+    fn url(&self, path: &str, id: Option<i64>) -> String {
+        let path = match id {
+            Some(id) => path.replace("{id}", &id.to_string()),
+            None => path.to_string(),
+        };
+        format!(
+            "{}{}{path}",
+            self.base_client.base_url(),
+            GroupsRouting::controller_path()
+        )
+    }
+
+    /// Groups the user owns or belongs to, without members
+    pub async fn index(&self, jwt: &str) -> Result<Vec<GroupResponse>, Error> {
+        let request = reqwest::Client::new().get(self.url(GroupsRouting::INDEX_PATH, None));
+        self.base_client
+            .send_authenticated(request, jwt, "list groups")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// One group with its members
+    pub async fn group(&self, jwt: &str, id: i64) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new().get(self.url(GroupsRouting::EDIT_PATH, Some(id)));
+        self.base_client
+            .send_authenticated(request, jwt, "fetch group")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a group owned by the user
+    pub async fn create(
+        &self,
+        jwt: &str,
+        name: String,
+        description: String,
+    ) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(GroupsRouting::NEW_PATH, None))
+            .json(&NewGroupRequest { name, description });
+        self.base_client
+            .send_authenticated(request, jwt, "create group")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Changes name and description of a group
+    pub async fn update(
+        &self,
+        jwt: &str,
+        id: i64,
+        name: String,
+        description: String,
+    ) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(GroupsRouting::UPDATE_PATH, Some(id)))
+            .json(&UpdateGroupRequest { name, description });
+        self.base_client
+            .send_authenticated(request, jwt, "update group")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Deletes a group and the shares granted to it
+    pub async fn delete(&self, jwt: &str, id: i64) -> Result<(), Error> {
+        let request = reqwest::Client::new().post(self.url(GroupsRouting::DELETE_PATH, Some(id)));
+        self.base_client
+            .send_authenticated(request, jwt, "delete group")
+            .await?;
+        Ok(())
+    }
+
+    /// Adds a member, returns the group with its members
+    pub async fn add_member(
+        &self,
+        jwt: &str,
+        id: i64,
+        user_id: i64,
+    ) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(GroupsRouting::ADD_MEMBER_PATH, Some(id)))
+            .json(&GroupMemberRequest { user_id });
+        self.base_client
+            .send_authenticated(request, jwt, "add group member")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Removes a member, returns the group with its members
+    pub async fn remove_member(
+        &self,
+        jwt: &str,
+        id: i64,
+        user_id: i64,
+    ) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(GroupsRouting::REMOVE_MEMBER_PATH, Some(id)))
+            .json(&GroupMemberRequest { user_id });
+        self.base_client
+            .send_authenticated(request, jwt, "remove group member")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+}
+
+/// Kind of resource whose shares are managed, as named in the share routes
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShareKind {
+    /// A project
+    Project,
+    /// A workflow integration
+    Workflow,
+}
+
+impl ShareKind {
+    /// The `{kind}` route segment
+    fn segment(self) -> &'static str {
+        match self {
+            Self::Project => "projects",
+            Self::Workflow => "workflows",
+        }
+    }
+
+    /// Highest role the public may hold on this kind
+    pub fn max_public_role(self) -> Role {
+        match self {
+            Self::Project => Role::Owner,
+            Self::Workflow => Role::Viewer,
+        }
+    }
+}
+
+/// Shares subclient
+///
+pub struct SharesClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> SharesClient<'a> {
+    /// Creates a shares client on top of the base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Full URL of a shares endpoint
+    fn url(&self, path: &str, kind: ShareKind, id: i64) -> String {
+        format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            SharesRouting::controller_path(),
+            path.replace("{kind}", kind.segment())
+                .replace("{id}", &id.to_string())
+        )
+    }
+
+    /// All shares of a resource, owners only
+    pub async fn list(
+        &self,
+        jwt: &str,
+        kind: ShareKind,
+        id: i64,
+    ) -> Result<Vec<ShareResponse>, Error> {
+        let request = reqwest::Client::new().get(self.url(SharesRouting::LIST_PATH, kind, id));
+        self.base_client
+            .send_authenticated(request, jwt, "list shares")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Grants `role` to `principal`, replacing its current role
+    pub async fn grant(
+        &self,
+        jwt: &str,
+        kind: ShareKind,
+        id: i64,
+        principal: PrincipalRequest,
+        role: Role,
+    ) -> Result<(), Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(SharesRouting::GRANT_PATH, kind, id))
+            .json(&GrantShareRequest { principal, role });
+        self.base_client
+            .send_authenticated(request, jwt, "grant share")
+            .await?;
+        Ok(())
+    }
+
+    /// Removes the grant of `principal`
+    pub async fn revoke(
+        &self,
+        jwt: &str,
+        kind: ShareKind,
+        id: i64,
+        principal: PrincipalRequest,
+    ) -> Result<(), Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(SharesRouting::REVOKE_PATH, kind, id))
+            .json(&RevokeShareRequest { principal });
+        self.base_client
+            .send_authenticated(request, jwt, "revoke share")
+            .await?;
+        Ok(())
     }
 }

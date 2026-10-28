@@ -10,7 +10,6 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub owner_id: i64,
-    pub is_public: bool,
     pub name: String,
     pub description: String,
     pub configuration: WorkflowConfiguration,
@@ -26,7 +25,6 @@ impl From<Model> for WorkflowIntegrationResponse {
         Self {
             id: value.id,
             owner_username: String::new(),
-            is_public: value.is_public,
             name: value.name,
             description: value.description,
             configuration: value.configuration,

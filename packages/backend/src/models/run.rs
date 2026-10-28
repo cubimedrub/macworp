@@ -654,7 +654,6 @@ mod tests {
         let (db, u, p) = setup().await;
         let wf = crate::models::ActiveWorkflowIntegration {
             owner_id: Set(u),
-            is_public: Set(false),
             name: Set("w".into()),
             description: Set("d".into()),
             configuration: Set(WorkflowConfiguration::default()),
@@ -685,7 +684,6 @@ mod tests {
             wfs.push(
                 crate::models::ActiveWorkflowIntegration {
                     owner_id: Set(u),
-                    is_public: Set(false),
                     name: Set(name.into()),
                     description: Set("d".into()),
                     configuration: Set(WorkflowConfiguration::default()),

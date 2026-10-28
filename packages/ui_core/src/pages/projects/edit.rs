@@ -1,17 +1,19 @@
 use std::{collections::VecDeque, future::Future, path::PathBuf, rc::Rc};
 
 use dioxus::prelude::*;
-use macworp_core::{requests::ParameterValue, responses::ProjectResponse};
+use macworp_core::{entities::Role, requests::ParameterValue, responses::ProjectResponse};
 use thiserror::Error;
 
 use crate::{
-    client::{Client, IsFileUpload, IsUploadableFile},
+    client::{Client, IsFileUpload, IsUploadableFile, ShareKind},
     components::{
         file_browser::IsFileBrowser, projects::workflow_start_dialog::WorkflowStartDialog,
-        runs::RunPanel, ConfirmationDialog, FileBrowser, Spinner,
+        runs::RunPanel, sharing::share_dialog::ShareDialog, ConfirmationDialog, FileBrowser,
+        Spinner,
     },
     configuration::Configuration,
     router::IsRouter,
+    sharing::SharingEnabled,
     storage::IsStorage,
 };
 
@@ -90,6 +92,8 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
     let mut subpath: Signal<PathBuf> = use_signal(PathBuf::new);
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
     let mut is_workflow_start_dialog_open = use_signal(|| false);
+    let mut is_share_dialog_open = use_signal(|| false);
+    let sharing = SharingEnabled::from_context().is_enabled();
     let mut upload_queue = use_signal(VecDeque::<Result<T::File, T::Error>>::new);
     let mut current_upload: Signal<Option<String>> = use_signal(|| None);
     let mut upload_progress = use_signal(|| 0.0_f64);
@@ -238,6 +242,15 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
         div {
             class: "h-min-100",
             ondrop: move |event| async move {
+                // Dropped files are uploads, which need at least the editor role
+                let can_edit = project_res
+                    .read()
+                    .as_ref()
+                    .and_then(|project| project.as_ref().ok())
+                    .is_some_and(|project| project.read().my_role.is_some_and(|role| role >= Role::Editor));
+                if !can_edit {
+                    return;
+                }
                 let current_path = Rc::new(subpath.read().clone());
                 match T::drop_handler(event, current_path).await {
                     Ok(uploadable_files) => {
@@ -273,6 +286,14 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                     start_run.call((workflow_id, parameters));
                 })
             }
+            if sharing {
+                ShareDialog::<T::Storage> {
+                    kind: ShareKind::Project,
+                    resource_id: props.id,
+                    is_open: is_share_dialog_open,
+                    cancel_callback: Callback::new(move |_| is_share_dialog_open.set(false)),
+                }
+            }
             match &*window_file_drop_handling_result.read() {
                 Some(Ok(_)) => rsx! {},
                 Some(Err(err)) => rsx! {
@@ -294,14 +315,16 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                         }
                         div {
                             class: "d-flex flex-row",
-                            button {
-                                class: "btn btn-sm btn-outline-primary me-2",
-                                title: "Start workflow",
-                                onclick: move |_| is_workflow_start_dialog_open.set(true),
-                                i {
-                                    class: "fa-solid fa-play me-1"
+                            if project.read().my_role.is_some_and(|role| role >= Role::Editor) {
+                                button {
+                                    class: "btn btn-sm btn-outline-primary me-2",
+                                    title: "Start workflow",
+                                    onclick: move |_| is_workflow_start_dialog_open.set(true),
+                                    i {
+                                        class: "fa-solid fa-play me-1"
+                                    }
+                                    "Start workflow"
                                 }
-                                "Start workflow"
                             }
                             button {
                                 class: "btn btn-sm btn-outline-secondary me-2",
@@ -325,15 +348,29 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                                     "Open folder"
                                 }
                             }
-                            button {
-                                id: "delete-btn",
-                                class: "btn btn-sm btn-outline-danger",
-                                title: "Delete project",
-                                onclick: move |_| is_delete_confirmation_dialog_open.set(true),
-                                i {
-                                    class: "fa-solid fa-trash me-1"
+                            if project.read().my_role == Some(Role::Owner) {
+                                if sharing {
+                                    button {
+                                        id: "share-btn",
+                                        class: "btn btn-sm btn-outline-secondary me-2",
+                                        title: "Share project",
+                                        onclick: move |_| is_share_dialog_open.set(true),
+                                        i {
+                                            class: "fa-solid fa-share-nodes me-1"
+                                        }
+                                        "Share"
+                                    }
                                 }
-                                "Delete"
+                                button {
+                                    id: "delete-btn",
+                                    class: "btn btn-sm btn-outline-danger",
+                                    title: "Delete project",
+                                    onclick: move |_| is_delete_confirmation_dialog_open.set(true),
+                                    i {
+                                        class: "fa-solid fa-trash me-1"
+                                    }
+                                    "Delete"
+                                }
                             }
                         }
                     }

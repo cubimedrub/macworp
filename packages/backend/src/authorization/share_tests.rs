@@ -241,7 +241,7 @@ async fn last_owner_is_protected() {
     );
 }
 
-/// The migration turns creators into owners and public workflows into public viewer shares.
+/// The migration turns creators into owners.
 #[tokio::test]
 async fn migration_backfills_existing_rows() {
     let db = Database::connect("sqlite::memory:").await.unwrap();
@@ -253,7 +253,7 @@ async fn migration_backfills_existing_rows() {
         "INSERT INTO projects (id, owner_id, name) VALUES (1, 1, 'p')",
     )
     .await;
-    exec(&db, "INSERT INTO workflow_integrations (id, owner_id, is_public, name, description) VALUES (1, 1, 1, 'pub', ''), (2, 1, 0, 'priv', '')").await;
+    exec(&db, "INSERT INTO workflow_integrations (id, owner_id, name, description) VALUES (1, 1, 'w1', ''), (2, 1, 'w2', '')").await;
     Migrator::up(&db, None).await.unwrap();
 
     assert_eq!(
@@ -273,7 +273,7 @@ async fn migration_backfills_existing_rows() {
             .role_of(2)
             .await
             .unwrap(),
-        Some(Role::Viewer)
+        None
     );
     assert_eq!(
         WorkflowIntegration::shares(&db, 2)
@@ -282,4 +282,60 @@ async fn migration_backfills_existing_rows() {
             .unwrap(),
         None
     );
+}
+
+/// `list` returns every grant of the resource in grant order, and nothing of other resources.
+#[tokio::test]
+async fn list_returns_grants_of_the_resource() {
+    let w = world().await;
+    exec(
+        &w.db,
+        "INSERT INTO projects (id, owner_id, name) VALUES (2, 1, 'other')",
+    )
+    .await;
+    Project::shares(&w.db, 2)
+        .grant(Principal::User(w.owner), Role::Owner)
+        .await
+        .unwrap();
+    let shares = Project::shares(&w.db, w.thing);
+    shares
+        .grant(Principal::Group(w.group), Role::Editor)
+        .await
+        .unwrap();
+    shares.grant(Principal::Public, Role::Viewer).await.unwrap();
+
+    let listed: Vec<_> = shares
+        .list()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|s| (Principal::from_db(s.principal_type, s.principal_id), s.role))
+        .collect();
+    assert_eq!(
+        listed,
+        vec![
+            (Some(Principal::User(w.owner)), Role::Owner as i16),
+            (Some(Principal::Group(w.group)), Role::Editor as i16),
+            (Some(Principal::Public), Role::Viewer as i16),
+        ]
+    );
+}
+
+/// Deleting a group's shares removes them on all resources and leaves other principals alone.
+#[tokio::test]
+async fn delete_group_shares_cleans_up() {
+    let w = world().await;
+    let shares = Project::shares(&w.db, w.thing);
+    shares
+        .grant(Principal::Group(w.group), Role::Editor)
+        .await
+        .unwrap();
+    assert_eq!(shares.role_of(w.member).await.unwrap(), Some(Role::Editor));
+
+    Principal::delete_group_shares(&w.db, w.group)
+        .await
+        .unwrap();
+
+    assert_eq!(shares.role_of(w.member).await.unwrap(), None);
+    assert_eq!(shares.role_of(w.owner).await.unwrap(), Some(Role::Owner));
 }

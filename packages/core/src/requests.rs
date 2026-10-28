@@ -46,8 +46,6 @@ pub struct UpdateWorkflowIntegrationRequest {
     pub name: String,
     /// Description of the integration
     pub description: String,
-    /// Whether the integration is public
-    pub is_public: bool,
     /// Workflow configuration
     pub configuration: WorkflowConfiguration,
 }
@@ -73,4 +71,56 @@ pub struct WorkflowStartRequest {
     pub comment: String,
     /// Values for the dynamic parameters
     pub parameters: Vec<ParameterValue>,
+}
+
+/// Request to create a group
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewGroupRequest {
+    /// Name of the group
+    pub name: String,
+    /// Description of the group
+    pub description: String,
+}
+
+/// Request to change a group's name and description
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateGroupRequest {
+    /// New name
+    pub name: String,
+    /// New description
+    pub description: String,
+}
+
+/// Request to add or remove a group member
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GroupMemberRequest {
+    /// Id of the user
+    pub user_id: i64,
+}
+
+/// Who a share is granted to, as sent by the client
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PrincipalRequest {
+    /// A single user, by id
+    User(i64),
+    /// All members of a group, by id
+    Group(i64),
+    /// Every user
+    Public,
+}
+
+/// Request to grant a role, replacing the principal's current role on the resource
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GrantShareRequest {
+    /// Who receives the role
+    pub principal: PrincipalRequest,
+    /// The role to grant
+    pub role: crate::entities::Role,
+}
+
+/// Request to remove the grant of a principal
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RevokeShareRequest {
+    /// Whose grant is removed
+    pub principal: PrincipalRequest,
 }

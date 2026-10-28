@@ -14,6 +14,10 @@ pub mod pages;
 pub mod router;
 /// Container runtime status bar (only shown if the platform provides a handle)
 pub mod runtime_status;
+/// Logged-in client handle shared by components
+mod session;
+/// Capability flag whether sharing and groups are offered
+pub mod sharing;
 /// Trait defining how to store data, e.g. login etc.
 pub mod storage;
 

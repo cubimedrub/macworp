@@ -15,6 +15,8 @@ pub struct Model {
 
     #[sea_orm(nullable)]
     pub password: Option<String>,
+    /// Whether the user administers the instance
+    pub is_admin: bool,
 
     #[sea_orm(has_many, relation_enum = "OwnedGroups", via_rel = "Owner")]
     pub groups: HasMany<super::group::Entity>,
@@ -32,6 +34,21 @@ pub struct Model {
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
+    /// At most `limit` users whose username starts with `prefix`, sorted by username.
+    pub async fn search(
+        db: &impl ConnectionTrait,
+        prefix: &str,
+        limit: u64,
+    ) -> Result<Vec<Model>, DbErr> {
+        use sea_orm::{QueryOrder, QuerySelect};
+        Entity::find()
+            .filter(Column::Username.starts_with(prefix))
+            .order_by_asc(Column::Username)
+            .limit(limit)
+            .all(db)
+            .await
+    }
+
     /// Usernames of the given users by id, for showing who created shared resources. Unknown ids
     /// are missing from the map.
     pub async fn usernames(

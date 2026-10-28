@@ -404,6 +404,8 @@ fn App() -> Element {
             refreshing.set(false);
         });
     });
+    // One local user owns everything: no sharing, groups or owner column
+    use_context_provider(|| macworp_ui_core::sharing::SharingEnabled(false));
     use_context_provider(|| RuntimeStatusHandle {
         status,
         refreshing,

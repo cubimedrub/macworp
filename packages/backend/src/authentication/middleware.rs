@@ -143,6 +143,7 @@ async fn get_user_from_token(
                     lastname: username.to_string(),
                     email: String::new(),
                     password: None,
+                    is_admin: false,
                 }))
             } else {
                 Ok(None)

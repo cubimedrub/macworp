@@ -14,7 +14,6 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(big_pk_auto("id"))
                     .col(big_integer("owner_id"))
-                    .col(boolean("is_public").default(false))
                     .col(string("name"))
                     .col(string("description"))
                     .col(json_binary("configuration").default(WorkflowConfiguration::default()))

@@ -1,4 +1,4 @@
-mod group;
+pub mod group;
 mod project;
 pub mod run;
 mod run_log;

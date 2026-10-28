@@ -11,4 +11,10 @@ pub trait IsRouter: Routable {
     fn workflow_integration_new_route() -> NavigationTarget<Self>;
     fn workflow_integration_index_route() -> NavigationTarget<Self>;
     fn workflow_integration_route(id: i64) -> NavigationTarget<Self>;
+    /// List of the user's groups
+    fn group_index_route() -> NavigationTarget<Self>;
+    /// Page to create a group
+    fn group_new_route() -> NavigationTarget<Self>;
+    /// Page of one group
+    fn group_route(id: i64) -> NavigationTarget<Self>;
 }

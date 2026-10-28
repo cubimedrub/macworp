@@ -97,17 +97,14 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Existing rows stay accessible: creators become owners, public workflows get a public
-        // viewer share. Discriminants: principal 1 = user, 3 = public; resource 1 = project,
-        // 2 = workflow; role 1 = viewer, 3 = owner.
+        // Existing rows stay accessible: creators become owners. Discriminants: principal 1 = user;
+        // resource 1 = project, 2 = workflow; role 3 = owner.
         let db = manager.get_connection();
         for sql in [
             "INSERT INTO shares (principal_type, principal_id, resource_type, resource_id, role) \
              SELECT 1, owner_id, 1, id, 3 FROM projects",
             "INSERT INTO shares (principal_type, principal_id, resource_type, resource_id, role) \
              SELECT 1, owner_id, 2, id, 3 FROM workflow_integrations",
-            "INSERT INTO shares (principal_type, principal_id, resource_type, resource_id, role) \
-             SELECT 3, NULL, 2, id, 1 FROM workflow_integrations WHERE is_public",
         ] {
             db.execute_unprepared(sql).await?;
         }

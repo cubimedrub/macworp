@@ -26,14 +26,14 @@ use crate::{
 };
 
 #[derive(Error, Debug)]
-pub enum WorkflowIntegrationsControllerError {
+pub enum Error {
     #[error("{0}")]
     Database(#[from] sea_orm::DbErr),
     #[error("{0}")]
     Share(#[from] crate::authorization::ShareError),
 }
 
-impl IntoResponse for WorkflowIntegrationsControllerError {
+impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         tracing::error!("{self}");
         StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -56,13 +56,13 @@ impl WorkflowIntegrationsController {
     async fn index(
         State(state): State<Arc<AppState>>,
         RequireAuth(user): RequireAuth,
-    ) -> Result<Json<Vec<WorkflowIntegrationResponse>>, WorkflowIntegrationsControllerError> {
+    ) -> Result<Json<Vec<WorkflowIntegrationResponse>>, Error> {
         let owned_workflow_integrations: Vec<WorkflowIntegration> =
             WorkflowIntegrationTable::find()
                 .filter(WorkflowIntegration::visible_to(user.id, Role::Viewer))
                 .all(state.db())
                 .await
-                .map_err(WorkflowIntegrationsControllerError::Database)?;
+                .map_err(Error::Database)?;
         let owners = User::usernames(
             state.db(),
             owned_workflow_integrations.iter().map(|w| w.owner_id),
@@ -87,7 +87,7 @@ impl WorkflowIntegrationsController {
         State(state): State<Arc<AppState>>,
         RequireAuth(user): RequireAuth,
         Json(payload): Json<NewWorkflowIntegrationRequest>,
-    ) -> Result<Json<WorkflowIntegrationResponse>, WorkflowIntegrationsControllerError> {
+    ) -> Result<Json<WorkflowIntegrationResponse>, Error> {
         let new_workflow_integration = ActiveWorkflowIntegration::builder()
             .set_name(payload.name.clone())
             .set_description(payload.description)
@@ -115,7 +115,7 @@ impl WorkflowIntegrationsController {
             role,
             ..
         }: Authorized<WorkflowIntegration, Viewer>,
-    ) -> Result<Json<WorkflowIntegrationResponse>, WorkflowIntegrationsControllerError> {
+    ) -> Result<Json<WorkflowIntegrationResponse>, Error> {
         let owner = User::usernames(state.db(), [workflow_integration.owner_id]).await?;
         let owner_username = owner
             .get(&workflow_integration.owner_id)
@@ -134,7 +134,7 @@ impl WorkflowIntegrationsController {
             model: workflow_integration,
             ..
         }: Authorized<WorkflowIntegration, Owner>,
-    ) -> Result<http::StatusCode, WorkflowIntegrationsControllerError> {
+    ) -> Result<http::StatusCode, Error> {
         let txn = state.db().begin().await?;
         WorkflowIntegration::shares(&txn, workflow_integration.id)
             .delete_all()
@@ -153,26 +153,13 @@ impl WorkflowIntegrationsController {
             ..
         }: Authorized<WorkflowIntegration, Editor>,
         Json(payload): Json<UpdateWorkflowIntegrationRequest>,
-    ) -> Result<Json<WorkflowIntegrationResponse>, WorkflowIntegrationsControllerError> {
+    ) -> Result<Json<WorkflowIntegrationResponse>, Error> {
         let mut active: ActiveWorkflowIntegration = workflow_integration.into();
         active.name = Set(payload.name);
         active.description = Set(payload.description);
-        active.is_public = Set(payload.is_public);
         active.configuration = Set(payload.configuration);
 
-        let txn = state.db().begin().await?;
-        let updated: WorkflowIntegration = active.update(&txn).await?;
-        // The flag is kept in sync with the public share until the share UI replaces it.
-        if payload.is_public {
-            WorkflowIntegration::shares(&txn, updated.id)
-                .grant(Principal::Public, Role::Viewer)
-                .await?;
-        } else {
-            WorkflowIntegration::shares(&txn, updated.id)
-                .revoke(Principal::Public)
-                .await?;
-        }
-        txn.commit().await?;
+        let updated: WorkflowIntegration = active.update(state.db()).await?;
 
         let owner = User::usernames(state.db(), [updated.owner_id]).await?;
         let owner_username = owner.get(&updated.owner_id).cloned().unwrap_or_default();

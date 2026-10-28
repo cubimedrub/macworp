@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::{
     client::Client, components::Spinner, configuration::Configuration, router::IsRouter,
-    storage::IsStorage,
+    sharing::SharingEnabled, storage::IsStorage,
 };
 
 #[derive(Debug, Error)]
@@ -64,6 +64,9 @@ pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
                             class: "list-group-item",
                             to: R::project_route(project.id),
                             "{project.name}"
+                            if SharingEnabled::from_context().is_enabled() {
+                                span { class: "badge text-bg-light ms-2", "{project.owner_username}" }
+                            }
                             small {
                                 class: "text-muted ms-2",
                                 {project.created_at.format("%Y-%m-%d %H:%M").to_string()}

@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::{
     client::Client, configuration::Configuration, router::IsRouter,
-    runtime_status::RuntimeStatusBar, storage::IsStorage,
+    runtime_status::RuntimeStatusBar, sharing::SharingEnabled, storage::IsStorage,
 };
 
 enum NavigationState {
@@ -119,6 +119,19 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
                                 class: "fa-solid fa-diagram-project me-3"
                             }
                             "Workflow integration"
+                        }
+                    }
+                    if SharingEnabled::from_context().is_enabled() {
+                        li {
+                            class: "nav-item",
+                            Link {
+                                class: "nav-link",
+                                to: R::group_index_route(),
+                                i {
+                                    class: "fa-solid fa-users me-3"
+                                }
+                                "Groups"
+                            }
                         }
                     }
                 }

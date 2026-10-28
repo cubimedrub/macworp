@@ -22,8 +22,9 @@ mod share_tests;
 mod shares;
 
 pub use resource::Resource;
+pub(crate) use role::RoleDb;
 pub use role::{PrincipalType, ResourceType};
-pub use shares::{Principal, ShareError, Shares};
+pub use shares::{Error as ShareError, Principal, Shares};
 
 use crate::{authentication::middleware::RequireAuth, models::User, state::State};
 
@@ -209,7 +210,6 @@ mod tests {
         .unwrap();
         let workflow = ActiveWorkflowIntegration {
             owner_id: Set(owner.id),
-            is_public: Set(false),
             name: Set("w".into()),
             description: Set(String::new()),
             ..Default::default()
@@ -329,6 +329,7 @@ mod tests {
             lastname: String::new(),
             email: String::new(),
             password: None,
+            is_admin: false,
         };
         let err = authorize::<Project, Viewer>(&w.state, worker, w.project)
             .await

@@ -18,6 +18,9 @@ pub struct UserResponse {
     pub firstname: String,
     pub lastname: String,
     pub email: String,
+    /// Whether the user administers the instance
+    #[serde(default)]
+    pub is_admin: bool,
 }
 
 /// Response of login
@@ -70,7 +73,6 @@ impl Display for LoginProviderResponse {
 pub struct WorkflowIntegrationResponse {
     pub id: i64,
     pub owner_username: String,
-    pub is_public: bool,
     pub name: String,
     pub description: String,
     pub configuration: WorkflowConfiguration,
@@ -151,4 +153,61 @@ pub struct LastRunResponse {
     pub workflow_id: i64,
     /// Values as submitted at start, may contain names the workflow no longer defines
     pub parameters: Vec<ParameterValue>,
+}
+
+/// A user as shown when picking share principals or group members
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct UserSummaryResponse {
+    /// User id
+    pub id: i64,
+    /// Login name
+    pub username: String,
+}
+
+/// A group with its members
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupResponse {
+    /// Group id
+    pub id: i64,
+    /// Name of the group
+    pub name: String,
+    /// Description of the group
+    pub description: String,
+    /// Username of the group's owner
+    pub owner_username: String,
+    /// Whether the requesting user owns the group and may change it
+    pub is_owner: bool,
+    /// Members, only set by the endpoint returning a single group
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub members: Vec<UserSummaryResponse>,
+}
+
+/// Who a share is granted to
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PrincipalResponse {
+    /// A single user
+    User {
+        /// User id
+        id: i64,
+        /// Login name
+        username: String,
+    },
+    /// All members of a group
+    Group {
+        /// Group id
+        id: i64,
+        /// Group name
+        name: String,
+    },
+    /// Every user
+    Public,
+}
+
+/// One grant of a role on a resource
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShareResponse {
+    /// Who holds the role
+    pub principal: PrincipalResponse,
+    /// The granted role
+    pub role: Role,
 }

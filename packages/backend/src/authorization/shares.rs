@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use macworp_core::entities::Role;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QuerySelect, Set,
+    QueryFilter, QueryOrder, QuerySelect, Set,
 };
 
 use super::{PrincipalType, Resource, query::applicable, role::RoleDb};
@@ -21,6 +21,29 @@ pub enum Principal {
 }
 
 impl Principal {
+    /// The principal stored as `principal_type` and `principal_id`, `None` for unknown values.
+    pub fn from_db(principal_type: i16, principal_id: Option<i64>) -> Option<Self> {
+        match (principal_type, principal_id) {
+            (t, Some(id)) if t == PrincipalType::User.to_db() => Some(Self::User(id)),
+            (t, Some(id)) if t == PrincipalType::Group.to_db() => Some(Self::Group(id)),
+            (t, None) if t == PrincipalType::Public.to_db() => Some(Self::Public),
+            _ => None,
+        }
+    }
+
+    /// Removes every share granted to the group `group_id`, on any resource. To be called when
+    /// the group is deleted (shares have no foreign key to it).
+    pub async fn delete_group_shares(
+        db: &impl ConnectionTrait,
+        group_id: i64,
+    ) -> Result<(), DbErr> {
+        share::Entity::delete_many()
+            .filter(Self::Group(group_id).condition())
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
     /// Stored form: type and, except for the public, the principal's id
     fn parts(self) -> (PrincipalType, Option<i64>) {
         match self {
@@ -44,7 +67,7 @@ impl Principal {
 
 /// Why changing a share failed
 #[derive(Debug, thiserror::Error)]
-pub enum ShareError {
+pub enum Error {
     /// Database failure
     #[error("database error: {0}")]
     Database(#[from] DbErr),
@@ -57,6 +80,23 @@ pub enum ShareError {
     /// The change would leave the resource without a user or group owner
     #[error("a resource needs at least one user or group owner")]
     LastOwner,
+}
+
+impl axum::response::IntoResponse for Error {
+    /// Rule violations are the client's to fix (400, 409), database errors are logged and hidden.
+    fn into_response(self) -> axum::response::Response {
+        use axum::http::StatusCode;
+        match self {
+            Self::PublicRoleTooHigh { .. } => {
+                (StatusCode::BAD_REQUEST, self.to_string()).into_response()
+            }
+            Self::LastOwner => (StatusCode::CONFLICT, self.to_string()).into_response(),
+            Self::Database(_) => {
+                tracing::error!("{self}");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        }
+    }
 }
 
 /// The shares of one resource: who holds which role on it. Get it with [`Resource::shares`].
@@ -97,16 +137,16 @@ impl<'a, R: Resource, C: ConnectionTrait> Shares<'a, R, C> {
     /// Sets the role of `principal` on the resource, replacing an existing grant.
     ///
     /// The last-owner check is not safe against concurrent demotions of two different owners.
-    pub async fn grant(&self, principal: Principal, role: Role) -> Result<(), ShareError> {
+    pub async fn grant(&self, principal: Principal, role: Role) -> Result<(), Error> {
         if principal == Principal::Public && role > R::MAX_PUBLIC_ROLE {
-            return Err(ShareError::PublicRoleTooHigh {
+            return Err(Error::PublicRoleTooHigh {
                 max: R::MAX_PUBLIC_ROLE,
             });
         }
         match self.find(principal).await? {
             Some(existing) => {
                 if role < Role::Owner && self.is_last_owner(&existing).await? {
-                    return Err(ShareError::LastOwner);
+                    return Err(Error::LastOwner);
                 }
                 let mut active: share::ActiveModel = existing.into();
                 active.role = Set(role.to_db());
@@ -129,11 +169,20 @@ impl<'a, R: Resource, C: ConnectionTrait> Shares<'a, R, C> {
         Ok(())
     }
 
+    /// All grants on the resource, oldest first.
+    pub async fn list(&self) -> Result<Vec<share::Model>, DbErr> {
+        share::Entity::find()
+            .filter(self.on_resource())
+            .order_by_asc(share::Column::Id)
+            .all(self.db)
+            .await
+    }
+
     /// Removes the grant of `principal`, if any.
-    pub async fn revoke(&self, principal: Principal) -> Result<(), ShareError> {
+    pub async fn revoke(&self, principal: Principal) -> Result<(), Error> {
         if let Some(existing) = self.find(principal).await? {
             if self.is_last_owner(&existing).await? {
-                return Err(ShareError::LastOwner);
+                return Err(Error::LastOwner);
             }
             share::Entity::delete_by_id(existing.id)
                 .exec(self.db)

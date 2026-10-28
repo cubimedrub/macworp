@@ -5,6 +5,8 @@ pub mod projects;
 /// Runs of a project: list, progress bar and logs
 pub mod runs;
 pub mod separator;
+/// Share dialog for projects and workflows
+pub mod sharing;
 pub mod spiner;
 /// Components for workflow integration, e.g. the dynamic paramters.
 pub mod workflow_integrations;

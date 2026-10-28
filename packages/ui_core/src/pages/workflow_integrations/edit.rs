@@ -2,6 +2,7 @@ use std::{path::PathBuf, str::FromStr};
 
 use dioxus::prelude::*;
 use macworp_core::{
+    entities::Role,
     responses::WorkflowIntegrationResponse,
     workflow_configuration::{
         engine::{Engine, EngineParameter},
@@ -13,11 +14,15 @@ use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use crate::{
-    client::Client,
-    components::{separator::Separator, workflow_integrations::*, ConfirmationDialog, Spinner},
+    client::{Client, ShareKind},
+    components::{
+        separator::Separator, sharing::share_dialog::ShareDialog, workflow_integrations::*,
+        ConfirmationDialog, Spinner,
+    },
     configuration::Configuration,
     router::IsRouter,
     runtime_status::engine_hint,
+    sharing::SharingEnabled,
     storage::IsStorage,
 };
 
@@ -191,6 +196,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
     let navigator = navigator();
 
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
+    let mut is_share_dialog_open = use_signal(|| false);
+    let sharing = SharingEnabled::from_context().is_enabled();
     let last_workflow_source = use_signal(|| None::<Source>);
 
     let workflow_integration_res: Resource<
@@ -265,7 +272,6 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                 props.id,
                 response.name.clone(),
                 response.description.clone(),
-                response.is_public,
                 response.configuration().clone(),
             )
             .await
@@ -290,6 +296,14 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     }),
                     cancel_callback: Callback::new(move |_| is_delete_confirmation_dialog_open.set(false))
                 }
+                if sharing {
+                    ShareDialog::<S> {
+                        kind: ShareKind::Workflow,
+                        resource_id: props.id,
+                        is_open: is_share_dialog_open,
+                        cancel_callback: Callback::new(move |_| is_share_dialog_open.set(false)),
+                    }
+                }
                 div {
                     class: "logo d-flex flex-row justify-content-between mb-3",
                     h1 {
@@ -298,25 +312,41 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     }
                     div {
                         class: "d-flex flex-row",
-                        button {
-                            id: "save-btn",
-                            class: "btn btn-sm btn-outline-primary me-2",
-                            title: "Save workflow integration",
-                            onclick: move |_| { save_action.call(); },
-                            i {
-                                class: "fa-solid fa-floppy-disk me-1"
+                        if workflow_integration.read().inner().my_role.is_some_and(|role| role >= Role::Editor) {
+                            button {
+                                id: "save-btn",
+                                class: "btn btn-sm btn-outline-primary me-2",
+                                title: "Save workflow integration",
+                                onclick: move |_| { save_action.call(); },
+                                i {
+                                    class: "fa-solid fa-floppy-disk me-1"
+                                }
+                                "Save"
                             }
-                            "Save"
                         }
-                        button {
-                            id: "delete-btn",
-                            class: "btn btn-sm btn-outline-danger",
-                            title: "Delete button",
-                            onclick: move |_| is_delete_confirmation_dialog_open.set(true),
-                            i {
-                                class: "fa-solid fa-trash me-1"
+                        if workflow_integration.read().inner().my_role == Some(Role::Owner) {
+                            if sharing {
+                                button {
+                                    id: "share-btn",
+                                    class: "btn btn-sm btn-outline-secondary me-2",
+                                    title: "Share workflow integration",
+                                    onclick: move |_| is_share_dialog_open.set(true),
+                                    i {
+                                        class: "fa-solid fa-share-nodes me-1"
+                                    }
+                                    "Share"
+                                }
                             }
-                            "Delete"
+                            button {
+                                id: "delete-btn",
+                                class: "btn btn-sm btn-outline-danger",
+                                title: "Delete button",
+                                onclick: move |_| is_delete_confirmation_dialog_open.set(true),
+                                i {
+                                    class: "fa-solid fa-trash me-1"
+                                }
+                                "Delete"
+                            }
                         }
                     }
                 }
@@ -368,21 +398,6 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         aria_label: "Workflow integration description",
                         value: "{workflow_integration.read().inner().description}",
                         oninput: move |event| workflow_integration.write().inner_mut().description = event.value(),
-                    }
-                }
-                div {
-                    class: "form-check form-switch mb-3",
-                    label {
-                        class: "form-check-label",
-                        r#for: "workflow-integration-is-public",
-                        "Public"
-                    }
-                    input {
-                        r#type: "checkbox",
-                        class: "form-check-input",
-                        id: "workflow-integration-is-public",
-                        checked: "{ workflow_integration.read().inner().is_public }",
-                        oninput: move |evt| workflow_integration.write().inner_mut().is_public = evt.checked(),
                     }
                 }
                 h2 {

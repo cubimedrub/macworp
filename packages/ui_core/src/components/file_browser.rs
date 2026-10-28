@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 use dioxus::prelude::*;
-use macworp_core::responses::ProjectResponse;
+use macworp_core::{entities::Role, responses::ProjectResponse};
 
 use crate::storage::IsStorage;
 
@@ -58,10 +58,19 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
         }
     };
 
+    // Viewers may only browse: creating and deleting need at least the editor role
+    let can_edit = props
+        .project
+        .read()
+        .my_role
+        .is_some_and(|role| role >= Role::Editor);
+
     rsx! {
-        F::CreateFolder{
-            project: props.project,
-            reload_content_callback: props.reload_content_callback,
+        if can_edit {
+            F::CreateFolder{
+                project: props.project,
+                reload_content_callback: props.reload_content_callback,
+            }
         }
         ul {
             class: "list-group",
@@ -86,10 +95,12 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
                         }
                         "{folder}"
                     }
-                    F::PathDelete {
-                        project: props.project,
-                        path: props.project.read().current.join(&folder),
-                        reload_content_callback: props.reload_content_callback,
+                    if can_edit {
+                        F::PathDelete {
+                            project: props.project,
+                            path: props.project.read().current.join(&folder),
+                            reload_content_callback: props.reload_content_callback,
+                        }
                     }
 
                 }
@@ -104,10 +115,12 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
                         }
                         "{file}"
                     }
-                    F::PathDelete {
-                        project: props.project,
-                        path: props.project.read().current.join(file),
-                        reload_content_callback: props.reload_content_callback,
+                    if can_edit {
+                        F::PathDelete {
+                            project: props.project,
+                            path: props.project.read().current.join(file),
+                            reload_content_callback: props.reload_content_callback,
+                        }
                     }
                 }
             }

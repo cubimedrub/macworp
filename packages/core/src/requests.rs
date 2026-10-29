@@ -124,3 +124,42 @@ pub struct RevokeShareRequest {
     /// Whose grant is removed
     pub principal: PrincipalRequest,
 }
+
+/// Request of an administrator to create a user
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NewUserRequest {
+    /// Unique login name
+    pub username: String,
+    /// First name
+    pub firstname: String,
+    /// Last name
+    pub lastname: String,
+    /// Email address
+    pub email: String,
+    /// Whether the user administers the instance
+    #[serde(default)]
+    pub is_admin: bool,
+    /// Initial local password, required: users created here are internal ones, external users are
+    /// provisioned by their login provider
+    pub password: String,
+}
+
+/// Request of an administrator to change a user
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateUserRequest {
+    /// First name
+    pub firstname: String,
+    /// Last name
+    pub lastname: String,
+    /// Email address
+    pub email: String,
+    /// Whether the user administers the instance
+    pub is_admin: bool,
+}
+
+/// Request of an administrator to set a user's local password
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResetPasswordRequest {
+    /// The new password
+    pub password: String,
+}

@@ -51,6 +51,32 @@ impl Model {
             .await
     }
 
+    /// All users sorted by username; with `query` only those whose username, names or email
+    /// contain it.
+    pub async fn list(db: &impl ConnectionTrait, query: Option<&str>) -> Result<Vec<Model>, DbErr> {
+        use sea_orm::{Condition, QueryOrder};
+        let mut select = Entity::find();
+        if let Some(query) = query.map(str::trim).filter(|q| !q.is_empty()) {
+            select = select.filter(
+                Condition::any()
+                    .add(Column::Username.contains(query))
+                    .add(Column::Firstname.contains(query))
+                    .add(Column::Lastname.contains(query))
+                    .add(Column::Email.contains(query)),
+            );
+        }
+        select.order_by_asc(Column::Username).all(db).await
+    }
+
+    /// Number of administrators that are not disabled, i.e. who can still manage the instance.
+    pub async fn enabled_admin_count(db: &impl ConnectionTrait) -> Result<u64, DbErr> {
+        Entity::find()
+            .filter(Column::IsAdmin.eq(true))
+            .filter(Column::Disabled.eq(false))
+            .count(db)
+            .await
+    }
+
     /// Usernames of the given users by id, for showing who created shared resources. Unknown ids
     /// are missing from the map.
     pub async fn usernames(

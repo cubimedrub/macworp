@@ -22,6 +22,18 @@ impl UsersRouting {
     pub const CURRENT_PATH: &str = "/current";
     /// GET: users whose username starts with the query parameter `q`, to pick share principals
     pub const SEARCH_PATH: &str = "/search";
+    /// GET (admin): all users, optionally filtered by the query parameter `q`
+    pub const INDEX_PATH: &str = "/index";
+    /// POST (admin): create a user
+    pub const NEW_PATH: &str = "/new";
+    /// POST (admin): change names, email and admin flag of a user
+    pub const UPDATE_PATH: &str = "/update/{id}";
+    /// POST (admin): set a new local password for a user
+    pub const RESET_PASSWORD_PATH: &str = "/reset-password/{id}";
+    /// POST (admin): block a user from logging in
+    pub const DISABLE_PATH: &str = "/disable/{id}";
+    /// POST (admin): lift the block of a user
+    pub const ENABLE_PATH: &str = "/enable/{id}";
 }
 
 impl IsRouting for UsersRouting {

@@ -87,21 +87,30 @@ impl GroupsController {
             .with_state(state)
     }
 
-    /// Loads a group the user owns or is a member of; others get [`Error::NotFound`].
+    /// Loads a group the user owns or is a member of; others get [`Error::NotFound`]. Instance
+    /// admins can load every group.
     async fn visible(state: &AppState, user: &User, id: i64) -> Result<Group, Error> {
-        let group = GroupTable::find_by_id(id)
-            .filter(Group::visible_to(user.id))
-            .one(state.db())
-            .await?
-            .ok_or(Error::NotFound)?;
-        Ok(group)
+        let mut query = GroupTable::find_by_id(id);
+        if !user.is_admin {
+            query = query.filter(Group::visible_to(user.id));
+        }
+        query.one(state.db()).await?.ok_or(Error::NotFound)
     }
 
-    /// Like [`Self::visible`] but only for the owner of the group.
+    /// Like [`Self::visible`] but only for the owner of the group, or an instance admin (logged
+    /// with target `audit` when the admin is not the owner).
     async fn owned(state: &AppState, user: &User, id: i64) -> Result<Group, Error> {
         let group = Self::visible(state, user, id).await?;
         if group.owner_id != user.id {
-            return Err(Error::NotOwner);
+            if !user.is_admin {
+                return Err(Error::NotOwner);
+            }
+            tracing::info!(
+                target: "audit",
+                admin = %user.username,
+                group = group.id,
+                "admin changes a group they do not own"
+            );
         }
         Ok(group)
     }
@@ -129,7 +138,7 @@ impl GroupsController {
             name: group.name,
             description: group.description,
             owner_username: owner.get(&group.owner_id).cloned().unwrap_or_default(),
-            is_owner: group.owner_id == user.id,
+            is_owner: group.owner_id == user.id || user.is_admin,
             members,
         })
     }

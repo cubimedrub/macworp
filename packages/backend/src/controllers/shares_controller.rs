@@ -134,8 +134,8 @@ impl SharesController {
             .collect())
     }
 
-    /// Checks that `user` owns resource `R` and may share it with `principal`: the user or group
-    /// must exist, and a group must be one the user owns or belongs to.
+    /// Checks that `user` may share with `principal`: the user or group must exist, and a group
+    /// must be one the user owns or belongs to (instance admins may use any group).
     async fn check_principal(
         state: &AppState,
         user: &User,
@@ -155,7 +155,7 @@ impl SharesController {
                     .one(state.db())
                     .await?
                     .ok_or(Error::UnknownPrincipal)?;
-                if !group.is_visible_to(state.db(), user.id).await? {
+                if !user.is_admin && !group.is_visible_to(state.db(), user.id).await? {
                     return Err(Error::UnknownPrincipal);
                 }
                 Ok(Principal::Group(id))

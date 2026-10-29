@@ -127,15 +127,20 @@ where
 }
 
 /// The check behind [`Authorized`], for handlers that get ids from other places than the path.
+///
+/// Instance admins hold [`Role::Owner`] on every existing resource, whatever its shares. Using that
+/// power on a resource the admin has no sufficient share on is logged with target `audit`.
 pub async fn authorize<R, M>(state: &State, user: User, id: i64) -> Result<Authorized<R, M>, Error>
 where
     R: Resource,
     M: MinRole,
 {
-    let role = R::shares(state.db(), id)
-        .role_of(user.id)
-        .await?
-        .ok_or(Error::NotFound)?;
+    let own_role = R::shares(state.db(), id).role_of(user.id).await?;
+    let role = if user.is_admin {
+        Role::Owner
+    } else {
+        own_role.ok_or(Error::NotFound)?
+    };
     if role < M::ROLE {
         return Err(Error::Forbidden);
     }
@@ -144,6 +149,16 @@ where
         .one(state.db())
         .await?
         .ok_or(Error::NotFound)?;
+    if user.is_admin && own_role.is_none_or(|own| own < M::ROLE) {
+        tracing::info!(
+            target: "audit",
+            admin = %user.username,
+            resource = ?R::RESOURCE_TYPE,
+            id,
+            required = ?M::ROLE,
+            "admin access without sufficient share"
+        );
+    }
     Ok(Authorized {
         user,
         model,
@@ -315,6 +330,35 @@ mod tests {
                 .await
                 .err(),
             Some(Error::Forbidden)
+        ));
+    }
+
+    /// An admin is Owner of resources nobody shared with them, but missing rows stay not found.
+    #[tokio::test]
+    async fn admin_is_owner_of_unshared_resources() {
+        let w = world().await;
+        let admin = User {
+            is_admin: true,
+            ..w.outsider.clone()
+        };
+        let project = authorize::<Project, Owner>(&w.state, admin.clone(), w.project)
+            .await
+            .unwrap();
+        assert_eq!(project.role, Role::Owner);
+        let workflow = authorize::<WorkflowIntegration, Owner>(&w.state, admin.clone(), w.workflow)
+            .await
+            .unwrap();
+        assert_eq!(workflow.model.id, w.workflow);
+        assert!(matches!(
+            authorize::<Project, Viewer>(&w.state, admin, 9999).await.err(),
+            Some(Error::NotFound)
+        ));
+        // The same user without the flag stays an outsider.
+        assert!(matches!(
+            authorize::<Project, Viewer>(&w.state, w.outsider.clone(), w.project)
+                .await
+                .err(),
+            Some(Error::NotFound)
         ));
     }
 

@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 use axum::{
     Extension, RequestPartsExt,
-    extract::{FromRef, FromRequestParts},
+    extract::{FromRef, FromRequestParts, Query},
     http::{HeaderValue, request::Parts},
 };
 use base64::prelude::*;
 use macworp_core::authentication::TokenType;
-use sea_orm::EntityTrait;
+use sea_orm::{Condition, EntityTrait};
+use serde::Deserialize;
 
 use crate::{
     authentication::{error::Error, jwt::JsonWebToken, password::verify_password},
@@ -42,6 +43,72 @@ where
             .ok_or(Error::Unauthorized)?;
 
         Ok(RequireAuth(user))
+    }
+}
+
+/// Extractor for endpoints only instance administrators may call, rejects everyone else with 403
+/// (worker identity included).
+pub struct RequireAdmin(pub User);
+
+impl<S> FromRequestParts<S> for RequireAdmin
+where
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let RequireAuth(user) = RequireAuth::from_request_parts(parts, state).await?;
+        if user.is_admin {
+            Ok(RequireAdmin(user))
+        } else {
+            Err(Error::AdminRequired)
+        }
+    }
+}
+
+/// The `?all=` query parameter of list endpoints
+#[derive(Deserialize, Default)]
+struct AllParam {
+    /// Whether to list every item instead of only the visible ones
+    #[serde(default)]
+    all: bool,
+}
+
+/// Extractor for list endpoints: the authenticated user plus whether they asked for `?all=true`.
+/// Only administrators may do that, anyone else gets 403.
+pub struct ListScope {
+    /// The authenticated user
+    pub user: User,
+    /// Whether the list is not restricted to what the user can see
+    pub all: bool,
+}
+
+impl ListScope {
+    /// The condition to filter the list query with: `visible` normally, no restriction for an
+    /// administrator who asked for all items.
+    pub fn filter(&self, visible: Condition) -> Condition {
+        if self.all { Condition::all() } else { visible }
+    }
+}
+
+impl<S> FromRequestParts<S> for ListScope
+where
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let RequireAuth(user) = RequireAuth::from_request_parts(parts, state).await?;
+        let Query(AllParam { all }) = Query::<AllParam>::from_request_parts(parts, state)
+            .await
+            .map_err(Error::InvalidQuery)?;
+        if all {
+            if !user.is_admin {
+                return Err(Error::AdminRequired);
+            }
+            tracing::info!(target: "audit", admin = %user.username, "listing all items");
+        }
+        Ok(ListScope { user, all })
     }
 }
 

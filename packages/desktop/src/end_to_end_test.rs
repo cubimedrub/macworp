@@ -416,7 +416,6 @@ impl TestApp {
                 workflow.id,
                 "End to end".into(),
                 "All parameter types".into(),
-                false,
                 configuration,
             )
             .await

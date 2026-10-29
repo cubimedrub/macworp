@@ -20,7 +20,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    authentication::middleware::RequireAuth,
+    authentication::middleware::{ListScope, RequireAuth},
     authorization::{Authorized, Editor, Owner, Principal, Resource, Viewer},
     filesystems::is_filesystem::IsFilesystem,
     models::{ActiveProject, Project, ProjectTable, User},
@@ -91,12 +91,14 @@ where
             .with_state(state)
     }
 
+    /// Lists the projects the user holds at least the Viewer role on, with `?all=true`
+    /// (administrators only) every project. Without directory content.
     pub async fn index(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        scope: ListScope,
     ) -> Result<Json<Vec<ProjectResponse>>, ProjectsControllerError> {
         let projects: Vec<Project> = ProjectTable::find()
-            .filter(Project::visible_to(user.id, Role::Viewer))
+            .filter(scope.filter(Project::visible_to(scope.user.id, Role::Viewer)))
             .all(state.db())
             .await
             .map_err(ProjectsControllerError::Database)?;

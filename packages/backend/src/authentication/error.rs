@@ -27,6 +27,10 @@ pub enum Error {
     MissingAuthorizationHeader,
     #[error("Authentication token is not valid")]
     Unauthorized,
+    #[error("Administrator rights required")]
+    AdminRequired,
+    #[error("Invalid query parameters: {0}")]
+    InvalidQuery(axum::extract::rejection::QueryRejection),
     #[error("State missing: {0}")]
     StateMissing(axum::extract::rejection::ExtensionRejection),
 }
@@ -37,6 +41,7 @@ impl IntoResponse for Error {
         match self {
             Error::CoreAuthorization(_)
             | Error::InvalidAuthorizationHeader(_)
+            | Error::InvalidQuery(_)
             | Error::MissingAuthorizationHeader => {
                 (StatusCode::BAD_REQUEST, self.to_string()).into_response()
             }
@@ -44,6 +49,7 @@ impl IntoResponse for Error {
             | Error::InvalidTokenSubject
             | Error::InvalidUserOrPassword
             | Error::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()).into_response(),
+            Error::AdminRequired => (StatusCode::FORBIDDEN, self.to_string()).into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }

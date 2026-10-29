@@ -97,7 +97,7 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
 
             Client::new(config.base_url().to_string(), config.timeout())
                 .workflow_integrations()
-                .workflow_integrations(&jwt)
+                .workflow_integrations(&jwt, false)
                 .await
                 .map_err(Error::FetchWorkflowIntegrations)
         });

@@ -308,9 +308,8 @@ impl<'a> ProjectsClient<'a> {
         Self { base_client }
     }
 
-    /// Returns the backend version
-    ///
-    pub async fn projects(&self, jwt: &str) -> Result<Vec<ProjectResponse>, Error> {
+    /// Lists projects. `all` asks for every project instead of the visible ones, administrators only.
+    pub async fn projects(&self, jwt: &str, all: bool) -> Result<Vec<ProjectResponse>, Error> {
         let url = format!(
             "{}{}{}",
             self.base_client.base_url(),
@@ -320,6 +319,7 @@ impl<'a> ProjectsClient<'a> {
         let client = reqwest::Client::new();
         let response = client
             .get(&url)
+            .query(&all_query(all))
             .header(
                 http::header::AUTHORIZATION,
                 format!("{} {jwt}", TokenType::Jwt),
@@ -654,11 +654,12 @@ impl<'a> WorkflowIntegrationClient<'a> {
         Self { base_client }
     }
 
-    /// Returns the backend version
-    ///
+    /// Lists workflows. `all` asks for every workflow instead of the visible ones, administrators
+    /// only.
     pub async fn workflow_integrations(
         &self,
         jwt: &str,
+        all: bool,
     ) -> Result<Vec<WorkflowIntegrationResponse>, Error> {
         let url = format!(
             "{}{}{}",
@@ -669,6 +670,7 @@ impl<'a> WorkflowIntegrationClient<'a> {
         let client = reqwest::Client::new();
         let response = client
             .get(&url)
+            .query(&all_query(all))
             .header(
                 http::header::AUTHORIZATION,
                 format!("{} {jwt}", TokenType::Jwt),
@@ -1046,9 +1048,12 @@ impl<'a> GroupsClient<'a> {
         )
     }
 
-    /// Groups the user owns or belongs to, without members
-    pub async fn index(&self, jwt: &str) -> Result<Vec<GroupResponse>, Error> {
-        let request = reqwest::Client::new().get(self.url(GroupsRouting::INDEX_PATH, None));
+    /// Groups the user owns or belongs to, without members. `all` asks for every group,
+    /// administrators only.
+    pub async fn index(&self, jwt: &str, all: bool) -> Result<Vec<GroupResponse>, Error> {
+        let request = reqwest::Client::new()
+            .get(self.url(GroupsRouting::INDEX_PATH, None))
+            .query(&all_query(all));
         self.base_client
             .send_authenticated(request, jwt, "list groups")
             .await?
@@ -1250,5 +1255,14 @@ impl<'a> SharesClient<'a> {
             .send_authenticated(request, jwt, "revoke share")
             .await?;
         Ok(())
+    }
+}
+
+/// Query parameters of a list request: `all=true` when everything is wanted, otherwise none.
+fn all_query(all: bool) -> Vec<(&'static str, &'static str)> {
+    if all {
+        vec![("all", "true")]
+    } else {
+        Vec::new()
     }
 }

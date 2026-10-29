@@ -19,7 +19,7 @@ use sea_orm::{
 use thiserror::Error;
 
 use crate::{
-    authentication::middleware::RequireAuth,
+    authentication::middleware::{ListScope, RequireAuth},
     authorization::Principal,
     models::{
         ActiveGroup, ActiveUsersGroups, Group, GroupTable, User, UserTable, UsersGroupsTable,
@@ -143,18 +143,21 @@ impl GroupsController {
         })
     }
 
+    /// Lists the groups the user owns or belongs to, with `?all=true` (administrators only) every
+    /// group. Members are not loaded.
     async fn index(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        scope: ListScope,
     ) -> Result<Json<Vec<GroupResponse>>, Error> {
+        let user = &scope.user;
         let groups = GroupTable::find()
-            .filter(Group::visible_to(user.id))
+            .filter(scope.filter(Group::visible_to(user.id)))
             .order_by_asc(crate::models::group::Column::Name)
             .all(state.db())
             .await?;
         let mut responses = Vec::with_capacity(groups.len());
         for group in groups {
-            responses.push(Self::response(&state, &user, group, false).await?);
+            responses.push(Self::response(&state, user, group, false).await?);
         }
         Ok(Json(responses))
     }

@@ -350,7 +350,9 @@ mod tests {
             .unwrap();
         assert_eq!(workflow.model.id, w.workflow);
         assert!(matches!(
-            authorize::<Project, Viewer>(&w.state, admin, 9999).await.err(),
+            authorize::<Project, Viewer>(&w.state, admin, 9999)
+                .await
+                .err(),
             Some(Error::NotFound)
         ));
         // The same user without the flag stays an outsider.
@@ -380,5 +382,79 @@ mod tests {
             .err()
             .unwrap();
         assert!(matches!(err, Error::NotFound));
+    }
+
+    /// Runs the `ListScope` extractor for `user` on a request to `/x?{query}`.
+    async fn scope_for(
+        state: &Arc<State>,
+        user: &User,
+        query: &str,
+    ) -> Result<crate::authentication::middleware::ListScope, crate::authentication::error::Error>
+    {
+        use axum::extract::FromRequestParts;
+        let token =
+            crate::authentication::jwt::JsonWebToken::encode(user.id, state.config()).unwrap();
+        let (mut parts, _) = axum::http::Request::builder()
+            .uri(format!("/x?{query}"))
+            .header(http::header::AUTHORIZATION, format!("JWT {token}"))
+            .extension(state.clone())
+            .body(())
+            .unwrap()
+            .into_parts();
+        crate::authentication::middleware::ListScope::from_request_parts(&mut parts, &()).await
+    }
+
+    /// `?all=true` lists other users' private projects for an admin, a normal list or a
+    /// non-admin asking for all is restricted or rejected.
+    #[tokio::test]
+    async fn list_scope_all_is_admin_only() {
+        let w = world().await;
+        let mut admin = ActiveUser::from(w.outsider.clone());
+        admin.is_admin = Set(true);
+        let admin = admin.update(w.state.db()).await.unwrap();
+        let (owner, project) = (w.owner.clone(), w.project);
+        let db_state = Arc::new(w.state);
+        let ids = |scope: crate::authentication::middleware::ListScope| {
+            let db = db_state.db();
+            async move {
+                crate::models::ProjectTable::find()
+                    .filter(scope.filter(Project::visible_to(scope.user.id, Role::Viewer)))
+                    .all(db)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|p| p.id)
+                    .collect::<Vec<_>>()
+            }
+        };
+
+        // Admin without the flag is an outsider here, with it sees the private project.
+        assert!(
+            ids(scope_for(&db_state, &admin, "").await.unwrap())
+                .await
+                .is_empty()
+        );
+        assert_eq!(
+            ids(scope_for(&db_state, &admin, "all=true").await.unwrap()).await,
+            vec![project]
+        );
+        // The owner sees it normally.
+        assert_eq!(
+            ids(scope_for(&db_state, &owner, "all=false").await.unwrap()).await,
+            vec![project]
+        );
+        // A non-admin may not ask for everything, nor pass a malformed flag.
+        let plain = ActiveUser::from(owner.clone())
+            .update(db_state.db())
+            .await
+            .unwrap();
+        assert!(matches!(
+            scope_for(&db_state, &plain, "all=true").await.err(),
+            Some(crate::authentication::error::Error::AdminRequired)
+        ));
+        assert!(matches!(
+            scope_for(&db_state, &admin, "all=maybe").await.err(),
+            Some(crate::authentication::error::Error::InvalidQuery(_))
+        ));
     }
 }

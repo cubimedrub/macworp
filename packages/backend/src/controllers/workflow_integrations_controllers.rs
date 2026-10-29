@@ -19,7 +19,7 @@ use sea_orm::{
 use thiserror::Error;
 
 use crate::{
-    authentication::middleware::RequireAuth,
+    authentication::middleware::{ListScope, RequireAuth},
     authorization::{Authorized, Editor, Owner, Principal, Resource, Viewer},
     models::{ActiveWorkflowIntegration, User, WorkflowIntegration, WorkflowIntegrationTable},
     state::State as AppState,
@@ -31,10 +31,15 @@ pub enum Error {
     Database(#[from] sea_orm::DbErr),
     #[error("{0}")]
     Share(#[from] crate::authorization::ShareError),
+    #[error("{0}")]
+    Authentication(#[from] crate::authentication::error::Error),
 }
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
+        if let Error::Authentication(e) = self {
+            return e.into_response();
+        }
         tracing::error!("{self}");
         StatusCode::INTERNAL_SERVER_ERROR.into_response()
     }
@@ -53,13 +58,15 @@ impl WorkflowIntegrationsController {
             .with_state(state)
     }
 
+    /// Lists the workflows the user holds at least the Viewer role on, with `?all=true`
+    /// (administrators only) every workflow.
     async fn index(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        scope: ListScope,
     ) -> Result<Json<Vec<WorkflowIntegrationResponse>>, Error> {
         let owned_workflow_integrations: Vec<WorkflowIntegration> =
             WorkflowIntegrationTable::find()
-                .filter(WorkflowIntegration::visible_to(user.id, Role::Viewer))
+                .filter(scope.filter(WorkflowIntegration::visible_to(scope.user.id, Role::Viewer)))
                 .all(state.db())
                 .await
                 .map_err(Error::Database)?;

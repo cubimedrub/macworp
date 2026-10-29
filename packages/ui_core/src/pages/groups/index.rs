@@ -18,7 +18,7 @@ pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
             session
                 .client
                 .groups()
-                .index(&session.jwt)
+                .index(&session.jwt, false)
                 .await
                 .map_err(|e| e.to_string())
         });

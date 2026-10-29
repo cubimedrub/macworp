@@ -23,9 +23,12 @@ pub enum MigrationDirection {
 enum UserSubCommand {
     /// Create a new user
     Create {
-        #[clap(short, long)]
         /// Configuration path
+        #[arg(short, long)]
         config: Option<PathBuf>,
+        /// Flag for making new user admin
+        #[arg(short, long, default_value_t = false, action = clap::ArgAction::SetTrue)]
+        is_admin: bool,
         /// Username of the new user
         username: String,
         /// firstname of the new user
@@ -149,6 +152,7 @@ async fn main() -> Result<(), StandaloneError> {
         SubCommand::User { subcommand } => match subcommand {
             UserSubCommand::Create {
                 config,
+                is_admin,
                 username,
                 firstname,
                 lastname,
@@ -185,7 +189,8 @@ async fn main() -> Result<(), StandaloneError> {
                     .set_firstname(firstname)
                     .set_lastname(lastname)
                     .set_email(email)
-                    .set_password(password_hash);
+                    .set_password(password_hash)
+                    .set_is_admin(is_admin);
 
                 new_user.insert(&db).await.map_err(|err| {
                     macworp_backend::error::Error::Database(

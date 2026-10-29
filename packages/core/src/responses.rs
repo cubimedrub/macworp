@@ -21,6 +21,9 @@ pub struct UserResponse {
     /// Whether the user administers the instance
     #[serde(default)]
     pub is_admin: bool,
+    /// Whether the account is blocked from logging in
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 /// Response of login

@@ -29,6 +29,9 @@ pub enum Error {
     Unauthorized,
     #[error("Administrator rights required")]
     AdminRequired,
+    /// The account was disabled by an administrator.
+    #[error("User account is disabled")]
+    AccountDisabled,
     #[error("Invalid query parameters: {0}")]
     InvalidQuery(axum::extract::rejection::QueryRejection),
     #[error("State missing: {0}")]
@@ -48,6 +51,7 @@ impl IntoResponse for Error {
             Error::ExpiredSession
             | Error::InvalidTokenSubject
             | Error::InvalidUserOrPassword
+            | Error::AccountDisabled
             | Error::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()).into_response(),
             Error::AdminRequired => (StatusCode::FORBIDDEN, self.to_string()).into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),

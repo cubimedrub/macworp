@@ -86,6 +86,11 @@ impl LoginController {
         verify_password(payload.password.as_bytes(), user_password, user.id)
             .map_err(LoginControllerError::Authentication)?;
 
+        // Checked after the password so account state is not revealed without it.
+        if user.disabled {
+            return Err(AuthenticationError::AccountDisabled.into());
+        }
+
         let jwt = JsonWebToken::encode(user.id, state.config())
             .map_err(LoginControllerError::Authentication)?;
 

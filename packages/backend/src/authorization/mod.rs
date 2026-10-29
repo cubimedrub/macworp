@@ -376,6 +376,7 @@ mod tests {
             email: String::new(),
             password: None,
             is_admin: false,
+            disabled: false,
         };
         let err = authorize::<Project, Viewer>(&w.state, worker, w.project)
             .await
@@ -456,5 +457,64 @@ mod tests {
             scope_for(&db_state, &admin, "all=maybe").await.err(),
             Some(crate::authentication::error::Error::InvalidQuery(_))
         ));
+    }
+
+    /// Runs the `RequireAuth` / `RequireAdmin` extractors for `user`'s JWT.
+    async fn auth_for(
+        state: &Arc<State>,
+        user: &User,
+    ) -> (
+        Result<crate::authentication::middleware::RequireAuth, crate::authentication::error::Error>,
+        Result<
+            crate::authentication::middleware::RequireAdmin,
+            crate::authentication::error::Error,
+        >,
+    ) {
+        use axum::extract::FromRequestParts;
+        let token =
+            crate::authentication::jwt::JsonWebToken::encode(user.id, state.config()).unwrap();
+        let request = || {
+            axum::http::Request::builder()
+                .uri("/x")
+                .header(http::header::AUTHORIZATION, format!("JWT {token}"))
+                .extension(state.clone())
+                .body(())
+                .unwrap()
+                .into_parts()
+                .0
+        };
+        let auth =
+            crate::authentication::middleware::RequireAuth::from_request_parts(&mut request(), &())
+                .await;
+        let admin = crate::authentication::middleware::RequireAdmin::from_request_parts(
+            &mut request(),
+            &(),
+        )
+        .await;
+        (auth, admin)
+    }
+
+    /// A disabled user's still-valid JWT is rejected with `AccountDisabled` (also for an admin,
+    /// before the admin check), and works again once the account is re-enabled.
+    #[tokio::test]
+    async fn disabled_user_token_is_rejected() {
+        use crate::authentication::error::Error as AuthError;
+        let w = world().await;
+        let state = Arc::new(w.state);
+        let mut admin = ActiveUser::from(w.outsider.clone());
+        admin.is_admin = Set(true);
+        admin.disabled = Set(true);
+        let mut admin = admin.update(state.db()).await.unwrap();
+
+        let (auth, admin_auth) = auth_for(&state, &admin).await;
+        assert!(matches!(auth.err(), Some(AuthError::AccountDisabled)));
+        assert!(matches!(admin_auth.err(), Some(AuthError::AccountDisabled)));
+
+        let mut enabled = ActiveUser::from(admin.clone());
+        enabled.disabled = Set(false);
+        admin = enabled.update(state.db()).await.unwrap();
+        let (auth, admin_auth) = auth_for(&state, &admin).await;
+        assert!(auth.is_ok());
+        assert!(admin_auth.is_ok());
     }
 }

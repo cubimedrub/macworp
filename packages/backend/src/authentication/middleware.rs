@@ -179,6 +179,10 @@ async fn get_user_from_token(
                 .await
                 .map_err(Error::Database)?;
 
+            if user.as_ref().is_some_and(|user| user.disabled) {
+                return Err(Error::AccountDisabled);
+            }
+
             Ok(user)
         }
         TokenType::Basic => {
@@ -211,6 +215,7 @@ async fn get_user_from_token(
                     email: String::new(),
                     password: None,
                     is_admin: false,
+                    disabled: false,
                 }))
             } else {
                 Ok(None)

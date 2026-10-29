@@ -18,6 +18,7 @@ impl MigrationTrait for Migration {
                     .col(string_len_uniq("email", 128))
                     .col(string_null("password"))
                     .col(boolean("is_admin").default(false))
+                    .col(boolean("disabled").default(false))
                     .to_owned(),
             )
             .await

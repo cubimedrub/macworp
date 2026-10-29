@@ -17,6 +17,8 @@ pub struct Model {
     pub password: Option<String>,
     /// Whether the user administers the instance
     pub is_admin: bool,
+    /// Whether the account is blocked from logging in and using existing tokens
+    pub disabled: bool,
 
     #[sea_orm(has_many, relation_enum = "OwnedGroups", via_rel = "Owner")]
     pub groups: HasMany<super::group::Entity>,

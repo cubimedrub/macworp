@@ -58,6 +58,7 @@ impl UsersController {
             lastname: user.lastname,
             email: user.email,
             is_admin: user.is_admin,
+            disabled: user.disabled,
         };
 
         Ok(Json(response))

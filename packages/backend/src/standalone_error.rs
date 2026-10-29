@@ -17,5 +17,7 @@ pub enum StandaloneError {
     #[error("{0}")]
     Core(#[from] macworp_core::error::Error),
     #[error("{0}")]
+    User(#[from] crate::models::user::Error),
+    #[error("{0}")]
     Backend(#[from] crate::error::Error),
 }

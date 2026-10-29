@@ -1,4 +1,18 @@
-use sea_orm::entity::prelude::*;
+use sea_orm::{TransactionTrait, entity::prelude::*};
+
+/// Why [`Model::set_admin`] failed.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// The database failed.
+    #[error("Database error: {0}")]
+    Database(#[from] DbErr),
+    /// No user has the given username.
+    #[error("No user with this username exists")]
+    NotFound,
+    /// Demoting would leave the instance without an enabled administrator.
+    #[error("Cannot demote the last enabled administrator")]
+    LastAdmin,
+}
 
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
@@ -77,6 +91,41 @@ impl Model {
             .await
     }
 
+    /// Grants or removes the administrator flag of the user named `username`, e.g. from the
+    /// command line. Setting the flag a user already has succeeds without a change. Demoting
+    /// the last enabled administrator is rejected; the check runs in the same transaction as
+    /// the update.
+    pub async fn set_admin(
+        db: &DatabaseConnection,
+        username: &str,
+        is_admin: bool,
+    ) -> Result<Model, Error> {
+        let transaction = db.begin().await?;
+        let user = Entity::find()
+            .filter(Column::Username.eq(username))
+            .one(&transaction)
+            .await?
+            .ok_or(Error::NotFound)?;
+        if user.is_admin == is_admin {
+            return Ok(user);
+        }
+        if !is_admin && !user.disabled && Self::enabled_admin_count(&transaction).await? <= 1 {
+            return Err(Error::LastAdmin);
+        }
+        let mut active = ActiveModel::from(user);
+        active.is_admin = sea_orm::Set(is_admin);
+        let user = active.update(&transaction).await?;
+        transaction.commit().await?;
+
+        tracing::info!(
+            target: "audit",
+            user = %user.username,
+            action = if is_admin { "promote" } else { "demote" },
+            "administrator flag changed via command line"
+        );
+        Ok(user)
+    }
+
     /// Usernames of the given users by id, for showing who created shared resources. Unknown ids
     /// are missing from the map.
     pub async fn usernames(
@@ -90,5 +139,56 @@ impl Model {
             .into_iter()
             .map(|user| (user.id, user.username))
             .collect())
+    }
+}
+
+#[cfg(all(test, feature = "integration"))]
+mod tests {
+    use macworp_database_migration::{Migrator, MigratorTrait};
+    use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+
+    use super::{Error, Model};
+
+    /// Migrated in-memory database with `root` (admin), `alice` and `bob` (plain users).
+    async fn database() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        Migrator::up(&db, None).await.unwrap();
+        for (name, admin) in [("root", 1), ("alice", 0), ("bob", 0)] {
+            db.execute_unprepared(&format!(
+                "INSERT INTO users (username, firstname, lastname, email, is_admin) VALUES ('{name}', 'f', 'l', '{name}@x', {admin})"
+            ))
+            .await
+            .unwrap();
+        }
+        db
+    }
+
+    /// Promoting is idempotent and demoting works while another administrator remains.
+    #[tokio::test]
+    async fn promote_and_demote() {
+        let db = database().await;
+        assert!(Model::set_admin(&db, "alice", true).await.unwrap().is_admin);
+        assert!(Model::set_admin(&db, "alice", true).await.unwrap().is_admin);
+        assert!(!Model::set_admin(&db, "root", false).await.unwrap().is_admin);
+    }
+
+    /// The last enabled administrator cannot be demoted.
+    #[tokio::test]
+    async fn last_admin_cannot_be_demoted() {
+        let db = database().await;
+        assert!(matches!(
+            Model::set_admin(&db, "root", false).await,
+            Err(Error::LastAdmin)
+        ));
+    }
+
+    /// Unknown usernames are reported.
+    #[tokio::test]
+    async fn unknown_user() {
+        let db = database().await;
+        assert!(matches!(
+            Model::set_admin(&db, "nobody", true).await,
+            Err(Error::NotFound)
+        ));
     }
 }

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 use macworp_backend::{
     Backend, configuration::Configuration, filesystems::remote_filesystem::RemoteFilesystem,
-    models::ActiveUser, standalone_error::StandaloneError,
+    models::{ActiveUser, User}, standalone_error::StandaloneError,
 };
 use macworp_core::logging::init_tracing_subscription;
 use macworp_database_migration::{Migrator, MigratorTrait};
@@ -40,6 +40,22 @@ enum UserSubCommand {
     },
     /// Hashs the given password, e.g. for the
     Password {},
+    /// Make an existing user an administrator
+    Promote {
+        /// Configuration path
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+        /// Username of the user to promote
+        username: String,
+    },
+    /// Remove the administrator flag of a user
+    Demote {
+        /// Configuration path
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+        /// Username of the user to demote
+        username: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -62,6 +78,7 @@ enum SubCommand {
         /// Configuration path
         config: Option<PathBuf>,
     },
+    /// Manage users
     User {
         #[command(subcommand)]
         subcommand: UserSubCommand,
@@ -199,6 +216,14 @@ async fn main() -> Result<(), StandaloneError> {
                     )
                 })?;
             }
+            UserSubCommand::Promote { config, username } => {
+                set_admin(config, &username, true).await?;
+                println!("{username} is now an administrator");
+            }
+            UserSubCommand::Demote { config, username } => {
+                set_admin(config, &username, false).await?;
+                println!("{username} is no longer an administrator");
+            }
             UserSubCommand::Password {} => {
                 let password = rpassword::prompt_password("Password: ")
                     .map_err(StandaloneError::PasswordRead)?;
@@ -219,6 +244,29 @@ async fn main() -> Result<(), StandaloneError> {
             println!("{}", env!("CARGO_PKG_VERSION"))
         }
     }
+    Ok(())
+}
+
+/// Connects to the database named in the configuration file and sets the administrator flag of `username`.
+async fn set_admin(
+    config: Option<PathBuf>,
+    username: &str,
+    is_admin: bool,
+) -> Result<(), StandaloneError> {
+    let config = match config {
+        Some(config_path) => {
+            let config_raw = std::fs::read_to_string(config_path)
+                .map_err(StandaloneError::ConfigurationReadError)?;
+
+            toml::from_str::<Configuration>(&config_raw)
+                .map_err(StandaloneError::ConfigurationParseError)?
+        }
+        None => return Err(StandaloneError::ConfigurationMissing),
+    };
+    let db = Database::connect(config.database_url())
+        .await
+        .map_err(StandaloneError::DatabaseConnection)?;
+    User::set_admin(&db, username, is_admin).await?;
     Ok(())
 }
 

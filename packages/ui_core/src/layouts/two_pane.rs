@@ -2,13 +2,12 @@ use std::fmt::Display;
 
 use dioxus::prelude::*;
 
-use macworp_core::responses::UserResponse;
-
 use crate::{
     client::Client,
     components::{AccountDeletionRules, ConfirmationDialog},
     configuration::Configuration,
     current_user::CurrentUser,
+    logout::{return_to_login, LogoutEnabled},
     router::IsRouter,
     runtime_status::RuntimeStatusBar,
     session::Session,
@@ -64,18 +63,46 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
         )
     });
 
-    let current_user_resource = use_resource(move || async move {
+    // Reading the route restarts the resource on every navigation, so a token that was revoked
+    // or expired meanwhile sends the user to the login page instead of failing page by page.
+    let route = use_route::<R>().to_string();
+    let current_user_resource = use_resource(use_reactive!(|route| async move {
+        let _ = route;
         let session = Session::new(storage, config).ok()?;
-        let user: Option<UserResponse> = session.client.users().current(&session.jwt).await.ok();
-        user
-    });
+        match session.client.users().current(&session.jwt).await {
+            Ok(user) => Some(user),
+            Err(err) if err.is_unauthorized() => {
+                return_to_login::<R, S>(
+                    storage,
+                    "Your session is no longer valid, please log in again",
+                );
+                None
+            }
+            Err(_) => None,
+        }
+    }));
     let current_user = use_context_provider(|| CurrentUser::new(current_user_resource));
+
+    let logout_enabled = LogoutEnabled::from_context().is_enabled();
 
     let mut is_delete_account_open = use_signal(|| false);
     let mut delete_account_error: Signal<Option<String>> = use_signal(|| None);
 
     // Deletes the own account, then behaves like a logout: the server rejects the token from now
     // on, so it is dropped and the user returns to the login page.
+    // Logs out everywhere on the server, then forgets the token. A failing request means the
+    // token was already invalid, so the local logout happens regardless.
+    let logout = move |_| {
+        spawn(async move {
+            if let Ok(session) = Session::new(storage, config) {
+                if let Err(err) = session.client.login().logout(&session.jwt).await {
+                    tracing::warn!("Server-side logout failed: {err}");
+                }
+            }
+            return_to_login::<R, S>(storage, "You were logged out");
+        });
+    };
+
     let delete_account = move |_| {
         let Some(user) = current_user.user() else {
             return;
@@ -229,6 +256,31 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
 
             nav {
                 class: "external-nav"
+            }
+
+            // Platforms without login (desktop) have one fixed user, so nothing to show.
+            if let Some(user) = current_user.user().filter(|_| logout_enabled) {
+                div {
+                    class: "current-user d-flex flex-column border-top pt-2 mb-2",
+                    span {
+                        class: "fw-bold",
+                        i { class: "fa-solid fa-user me-2" }
+                        "{user.firstname} {user.lastname}"
+                    }
+                    span {
+                        class: "text-muted small",
+                        "{user.username}"
+                        if user.is_admin {
+                            span { class: "badge text-bg-secondary ms-2", "admin" }
+                        }
+                    }
+                    button {
+                        class: "btn btn-sm btn-outline-secondary mt-2",
+                        onclick: logout,
+                        i { class: "fa-solid fa-right-from-bracket me-2" }
+                        "Log out"
+                    }
+                }
             }
 
             div {

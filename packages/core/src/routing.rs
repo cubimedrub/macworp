@@ -45,6 +45,8 @@ impl IsRouting for UsersRouting {
 pub struct LoginRouting;
 impl LoginRouting {
     pub const WITH_LOCAL: &str = "/with-local";
+    /// Revokes all tokens of the authenticated user.
+    pub const LOGOUT_PATH: &str = "/logout";
     pub const LOGIN_PROVIDERS_PATH: &str = "/login-providers";
     pub const WITH_OPEN_ID_CONNECT: &str = "/with-oidc/{name}";
 }

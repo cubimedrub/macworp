@@ -52,6 +52,7 @@ impl IntoResponse for Error {
             | Error::InvalidTokenSubject
             | Error::InvalidUserOrPassword
             | Error::AccountDisabled
+            | Error::JWTDecryption(_)
             | Error::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()).into_response(),
             Error::AdminRequired => (StatusCode::FORBIDDEN, self.to_string()).into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),

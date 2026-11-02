@@ -183,6 +183,14 @@ async fn get_user_from_token(
                 return Err(Error::AccountDisabled);
             }
 
+            // Tokens issued before the last logout carry an older version.
+            if user
+                .as_ref()
+                .is_some_and(|user| user.token_version != payload.version())
+            {
+                return Err(Error::Unauthorized);
+            }
+
             Ok(user)
         }
         TokenType::Basic => {
@@ -216,6 +224,7 @@ async fn get_user_from_token(
                     password: None,
                     is_admin: false,
                     disabled: false,
+                    token_version: 0,
                 }))
             } else {
                 Ok(None)

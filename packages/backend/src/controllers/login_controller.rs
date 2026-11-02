@@ -16,10 +16,11 @@ use macworp_core::{
 
 use crate::{
     authentication::{
-        error::Error as AuthenticationError, jwt::JsonWebToken, password::verify_password,
+        error::Error as AuthenticationError, jwt::JsonWebToken, middleware::RequireAuth,
+        password::verify_password,
     },
     configuration::LoginProvider,
-    models::UserTable,
+    models::{User, UserTable},
     state::State as AppState,
 };
 
@@ -50,6 +51,7 @@ impl LoginController {
                 LoginRouting::LOGIN_PROVIDERS_PATH,
                 get(Self::login_providers),
             )
+            .route(LoginRouting::LOGOUT_PATH, post(Self::logout))
             .route(
                 LoginRouting::WITH_OPEN_ID_CONNECT,
                 get(Self::with_open_id_connect),
@@ -91,10 +93,19 @@ impl LoginController {
             return Err(AuthenticationError::AccountDisabled.into());
         }
 
-        let jwt = JsonWebToken::encode(user.id, state.config())
+        let jwt = JsonWebToken::encode(user.id, user.token_version, state.config())
             .map_err(LoginControllerError::Authentication)?;
 
         Ok(jwt)
+    }
+
+    /// Revokes all tokens of the caller (this one included) by bumping the user's token version.
+    pub async fn logout(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(user): RequireAuth,
+    ) -> Result<StatusCode, LoginControllerError> {
+        User::revoke_tokens(state.db(), user.id).await?;
+        Ok(StatusCode::NO_CONTENT)
     }
 
     pub async fn login_providers(

@@ -385,6 +385,7 @@ mod tests {
             password: None,
             is_admin: false,
             disabled: false,
+            token_version: 0,
         };
         let err = authorize::<Project, Viewer>(&w.state, worker, w.project)
             .await
@@ -401,8 +402,12 @@ mod tests {
     ) -> Result<crate::authentication::middleware::ListScope, crate::authentication::error::Error>
     {
         use axum::extract::FromRequestParts;
-        let token =
-            crate::authentication::jwt::JsonWebToken::encode(user.id, state.config()).unwrap();
+        let token = crate::authentication::jwt::JsonWebToken::encode(
+            user.id,
+            user.token_version,
+            state.config(),
+        )
+        .unwrap();
         let (mut parts, _) = axum::http::Request::builder()
             .uri(format!("/x?{query}"))
             .header(http::header::AUTHORIZATION, format!("JWT {token}"))
@@ -479,8 +484,12 @@ mod tests {
         >,
     ) {
         use axum::extract::FromRequestParts;
-        let token =
-            crate::authentication::jwt::JsonWebToken::encode(user.id, state.config()).unwrap();
+        let token = crate::authentication::jwt::JsonWebToken::encode(
+            user.id,
+            user.token_version,
+            state.config(),
+        )
+        .unwrap();
         let request = || {
             axum::http::Request::builder()
                 .uri("/x")
@@ -542,5 +551,38 @@ mod tests {
         user.clone().delete(state.db()).await.unwrap();
         let (auth, _) = auth_for(&state, &user).await;
         assert!(matches!(auth.err(), Some(AuthError::Unauthorized)));
+    }
+
+    /// Revoking a user's tokens rejects tokens issued before with `Unauthorized`, accepts a token
+    /// issued right afterwards (same second, the version counter has no clock granularity) and
+    /// leaves other users' tokens untouched.
+    #[tokio::test]
+    async fn revoked_tokens_are_rejected() {
+        use crate::authentication::error::Error as AuthError;
+        let w = world().await;
+        let state = Arc::new(w.state);
+        let user = w.outsider.clone();
+        let other = w.owner.clone();
+
+        let (auth, _) = auth_for(&state, &user).await;
+        assert!(auth.is_ok());
+
+        User::revoke_tokens(state.db(), user.id).await.unwrap();
+
+        // `user` still holds the old version, so this encodes a pre-logout token.
+        let (stale, _) = auth_for(&state, &user).await;
+        assert!(matches!(stale.err(), Some(AuthError::Unauthorized)));
+
+        let reloaded = crate::models::UserTable::find_by_id(user.id)
+            .one(state.db())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(reloaded.token_version, user.token_version + 1);
+        let (fresh, _) = auth_for(&state, &reloaded).await;
+        assert!(fresh.is_ok());
+
+        let (other_auth, _) = auth_for(&state, &other).await;
+        assert!(other_auth.is_ok());
     }
 }

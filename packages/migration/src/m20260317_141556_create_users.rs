@@ -19,6 +19,7 @@ impl MigrationTrait for Migration {
                     .col(string_null("password"))
                     .col(boolean("is_admin").default(false))
                     .col(boolean("disabled").default(false))
+                    .col(integer("token_version").default(0))
                     .to_owned(),
             )
             .await

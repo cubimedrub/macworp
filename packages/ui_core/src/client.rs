@@ -34,6 +34,27 @@ pub enum Error {
     Backend(String),
     #[error("Project file upload failed: {0}")]
     ProjectFileUpload(String),
+    /// The backend answered 401: the token is expired, revoked or invalid, or the account is
+    /// gone or disabled. The user has to log in again.
+    #[error("{0}")]
+    Unauthorized(String),
+}
+
+impl Error {
+    /// The error for a failed backend response: [`Error::Unauthorized`] for HTTP 401, otherwise
+    /// [`Error::Backend`], both carrying `message`.
+    pub fn from_status(status: http::StatusCode, message: String) -> Self {
+        if status == http::StatusCode::UNAUTHORIZED {
+            Self::Unauthorized(message)
+        } else {
+            Self::Backend(message)
+        }
+    }
+
+    /// Whether the user has to log in again.
+    pub fn is_unauthorized(&self) -> bool {
+        matches!(self, Self::Unauthorized(_))
+    }
 }
 
 /// Client to communicate with MAcWorP's backend.
@@ -120,9 +141,10 @@ impl Client {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             tracing::error!("Failed to {what}: HTTP {status}, response text: {text}");
-            return Err(Error::Backend(format!(
-                "Failed to {what}: HTTP {status}, response text: {text}"
-            )));
+            return Err(Error::from_status(
+                status,
+                format!("Failed to {what}: HTTP {status}, response text: {text}"),
+            ));
         }
         Ok(response)
     }
@@ -380,6 +402,21 @@ impl<'a> LoginClient<'a> {
         response.text().await.map_err(Error::Request)
     }
 
+    /// Revokes all tokens of the user, this one included. Errors mean the token was already
+    /// invalid, so callers may ignore them and forget the token anyway.
+    pub async fn logout(&self, jwt: &str) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            LoginRouting::controller_path(),
+            LoginRouting::LOGOUT_PATH
+        );
+        self.base_client
+            .send_authenticated(reqwest::Client::new().post(&url), jwt, "log out")
+            .await
+            .map(|_| ())
+    }
+
     /// Returns the configured login providers
     ///
     pub async fn login_providers(&self) -> Result<Vec<LoginProviderResponse>, Error> {
@@ -451,10 +488,13 @@ impl<'a> ProjectsClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to fetch projects: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         response
@@ -499,10 +539,13 @@ impl<'a> ProjectsClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to fetch projects: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         response
@@ -547,10 +590,13 @@ impl<'a> ProjectsClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to fetch projects: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         response
@@ -587,10 +633,13 @@ impl<'a> ProjectsClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to delete project: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to delete project: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         Ok(response.status().is_success())
@@ -666,10 +715,13 @@ impl<'a> ProjectsClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to create folder: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to create folder: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         Ok(())
@@ -713,10 +765,13 @@ impl<'a> ProjectsClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to delete path: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to delete path: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         Ok(())
@@ -802,10 +857,13 @@ impl<'a> WorkflowIntegrationClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to fetch projects: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         response
@@ -850,10 +908,13 @@ impl<'a> WorkflowIntegrationClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to fetch new workflow integration request: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch new workflow integration request: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         response
@@ -896,10 +957,13 @@ impl<'a> WorkflowIntegrationClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to fetch projects: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         response
@@ -951,10 +1015,13 @@ impl<'a> WorkflowIntegrationClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to update workflow integration: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to update workflow integration: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         response
@@ -991,10 +1058,13 @@ impl<'a> WorkflowIntegrationClient<'a> {
                 status,
                 text
             );
-            return Err(Error::Backend(format!(
-                "Failed to delete project: HTTP {}, response text: {}",
-                status, text
-            )));
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to delete project: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
         }
 
         Ok(response.status().is_success())
@@ -1043,9 +1113,10 @@ impl<'a> RunsClient<'a> {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
             tracing::error!("Failed to {what}: HTTP {status}, response text: {text}");
-            return Err(Error::Backend(format!(
-                "Failed to {what}: HTTP {status}, response text: {text}"
-            )));
+            return Err(Error::from_status(
+                status,
+                format!("Failed to {what}: HTTP {status}, response text: {text}"),
+            ));
         }
 
         response.json::<T>().await.map_err(Error::Request)

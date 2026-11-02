@@ -10,6 +10,8 @@ pub mod configuration;
 pub mod current_user;
 /// App layouts
 pub mod layouts;
+/// Capability flag whether the platform has a logout, and the return-to-login helper
+pub mod logout;
 /// Pages showing a single task (a resource, resource list, resource edit, ...)
 pub mod pages;
 /// Defintion of a router

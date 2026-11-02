@@ -33,6 +33,9 @@ pub struct Model {
     pub is_admin: bool,
     /// Whether the account is blocked from logging in and using existing tokens
     pub disabled: bool,
+    /// Generation of the user's login tokens; a token is valid only while its `ver` claim equals
+    /// this. [`Model::revoke_tokens`] increments it to log the user out everywhere.
+    pub token_version: i32,
 
     #[sea_orm(has_many, relation_enum = "OwnedGroups", via_rel = "Owner")]
     pub groups: HasMany<super::group::Entity>,
@@ -50,6 +53,18 @@ pub struct Model {
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Model {
+    /// Invalidates every token issued so far for the user (logout everywhere) by incrementing
+    /// `token_version`. Atomic, so concurrent logins cannot lose an increment.
+    pub async fn revoke_tokens(db: &impl ConnectionTrait, id: i64) -> Result<(), DbErr> {
+        use sea_orm::{ExprTrait, sea_query::Expr};
+        Entity::update_many()
+            .col_expr(Column::TokenVersion, Expr::col(Column::TokenVersion).add(1))
+            .filter(Column::Id.eq(id))
+            .exec(db)
+            .await
+            .map(|_| ())
+    }
+
     /// At most `limit` users whose username starts with `prefix`, sorted by username.
     pub async fn search(
         db: &impl ConnectionTrait,

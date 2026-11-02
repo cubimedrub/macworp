@@ -17,14 +17,18 @@ pub struct Payload {
     exp: usize,
     /// UTC issued at timestamp
     iat: usize,
+    /// The user's `token_version` when the token was issued. A token is only accepted while it
+    /// equals the stored version, so bumping the version revokes all earlier tokens.
+    ver: i32,
 }
 
 impl Payload {
-    pub fn new(user_id: i64, expires_at: usize, issued_at: usize) -> Self {
+    pub fn new(user_id: i64, expires_at: usize, issued_at: usize, version: i32) -> Self {
         Self {
             sub: user_id.to_string(),
             exp: expires_at,
             iat: issued_at,
+            ver: version,
         }
     }
 
@@ -40,6 +44,11 @@ impl Payload {
     pub fn issued_at(&self) -> usize {
         self.iat
     }
+
+    /// The user's token version at issue time.
+    pub fn version(&self) -> i32 {
+        self.ver
+    }
 }
 
 /// Handler for JWT encoding and decoding
@@ -51,15 +60,16 @@ impl JsonWebToken {
     ///
     /// # Arguments
     /// * `user_id` - The ID of the user for whom the token is being
+    /// * `version` - The user's current `token_version`, embedded so revocation can invalidate the token
     /// * `config` - The application configuration containing the secret and validity period
     ///
-    pub fn encode(user_id: i64, config: &Configuration) -> Result<String, Error> {
+    pub fn encode(user_id: i64, version: i32, config: &Configuration) -> Result<String, Error> {
         let now = Utc::now();
         let validity = config.login_validity().unwrap_or(DEFAULT_LOGIN_VALIDITY);
         let expires_at = (now + Duration::seconds(validity as i64)).timestamp() as usize;
         let issued_at = now.timestamp() as usize;
 
-        let payload = Payload::new(user_id, expires_at, issued_at);
+        let payload = Payload::new(user_id, expires_at, issued_at, version);
 
         encode(
             &Header::default(),
@@ -108,6 +118,7 @@ mod tests {
             sub: sub.to_string(),
             exp: now + 60,
             iat: now,
+            ver: 0,
         };
         encode(
             &Header::default(),
@@ -123,7 +134,7 @@ mod tests {
     #[test]
     fn roundtrip_uses_default_validity() {
         let config = config();
-        let token = JsonWebToken::encode(42, &config).unwrap();
+        let token = JsonWebToken::encode(42, 0, &config).unwrap();
         let payload = JsonWebToken::decode(&token, &config).unwrap();
 
         assert_eq!(payload.user_id().unwrap(), 42);
@@ -149,7 +160,7 @@ mod tests {
     /// `Error::JWTDecryption`, so tokens cannot be forged without knowing the secret.
     #[test]
     fn wrong_secret_is_rejected() {
-        let token = JsonWebToken::encode(1, &config()).unwrap();
+        let token = JsonWebToken::encode(1, 0, &config()).unwrap();
 
         assert!(matches!(
             JsonWebToken::decode(&token, &config()),

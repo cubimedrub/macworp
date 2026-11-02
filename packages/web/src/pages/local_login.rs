@@ -78,7 +78,12 @@ pub fn LocalLogin() -> Element {
                 aria_label: "Username",
                 aria_describedby: "username",
                 value: "{username}",
-                oninput: move |event| username.set(event.value())
+                oninput: move |event| username.set(event.value()),
+                onkeydown: move |e| {
+                    if e.key() == Key::Enter {
+                        login.call();
+                    }
+                },
             }
         }
         div {
@@ -95,7 +100,12 @@ pub fn LocalLogin() -> Element {
                 aria_label: "Password",
                 aria_describedby: "password",
                 value: "{password}",
-                oninput: move |event| password.set(event.value())
+                oninput: move |event| password.set(event.value()),
+                onkeydown: move |e| {
+                    if e.key() == Key::Enter {
+                        login.call();
+                    }
+                },
             }
         }
         div {

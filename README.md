@@ -29,6 +29,25 @@ Engines run inside containers, so a container runtime (Podman or Docker) is requ
 
 Snakemake needs Docker. CWL support is still planned.
 
+### Deleting an account
+
+Every user may delete their own account, administrators may delete any account. It cannot be undone. The user's shares and group memberships are removed, then for every project, workflow and group they touched:
+
+| Case | Project | Workflow | Group |
+| --- | --- | --- | --- |
+| Another user or group still owns it | stays; that owner takes over (the oldest enabled user owner is shown as creator) | same | not applicable, a group has one owner |
+| Nobody owns it, but somebody can still use it | stays **without an owner** while a user, group or the public can edit it (public Owner counts as Editor) | stays without an owner while somebody can view or edit it | stays without an owner while a share uses it and it has members |
+| Nobody is left who can use it | deleted with its files and shares | deleted with its shares | deleted, together with its shares |
+
+- Viewers alone do not keep a project alive, as nobody could maintain it.
+- A group left without members is deleted, even if shares use it. Deleting a group removes its shares, which can leave further projects and workflows without anybody, so the rules repeat until nothing changes.
+- A resource without an owner keeps working for the users who hold a role on it; administrators can manage it and assign a new owner. The last enabled administrator cannot be deleted.
+- Runs the user started are kept, without a starter.
+
+The same rules are shown to the user in the app (`macworp_core::account_deletion::RULES`).
+
+**Workers** run under their own identity, see no projects or workflows through the API and only act on the runs handed to them.
+
 ## Installation
 
 ### Desktop

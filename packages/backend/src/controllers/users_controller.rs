@@ -8,7 +8,8 @@ use axum::{
     routing::{get, post},
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, ModelTrait, QueryFilter,
+    TransactionTrait,
 };
 use thiserror::Error;
 
@@ -20,6 +21,8 @@ use macworp_core::{
 
 use crate::{
     authentication::middleware::{RequireAdmin, RequireAuth},
+    authorization::{Departed, Departure},
+    filesystems::is_filesystem::IsFilesystem,
     models::{ActiveUser, User, UserTable},
     state::State as AppState,
 };
@@ -73,7 +76,8 @@ impl UsersController {
     /// Most users a search returns
     const SEARCH_LIMIT: u64 = 10;
 
-    pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
+    /// Routes of the controller; `F` removes the files of projects deleted along with a user.
+    pub fn routes<F: IsFilesystem + 'static>(state: Arc<AppState>) -> Router<Arc<AppState>> {
         Router::new()
             .route(UsersRouting::CURRENT_PATH, get(Self::current_user))
             .route(UsersRouting::SEARCH_PATH, get(Self::search))
@@ -86,6 +90,7 @@ impl UsersController {
             )
             .route(UsersRouting::DISABLE_PATH, post(Self::disable))
             .route(UsersRouting::ENABLE_PATH, post(Self::enable))
+            .route(UsersRouting::DELETE_PATH, post(Self::delete::<F>))
             .layer(Extension(state.clone()))
             .with_state(state)
     }
@@ -278,6 +283,26 @@ impl UsersController {
         Self::set_disabled(&state, &admin, id, true).await.map(Json)
     }
 
+    /// Deletes a user, see [`Self::apply_delete`]. Every user may delete their own account (right
+    /// to erasure); deleting others is for administrators. Then removes the files of the projects that were
+    /// deleted along with them; a failure there is logged only, the database change is final.
+    async fn delete<F: IsFilesystem + 'static>(
+        State(state): State<Arc<AppState>>,
+        RequireAuth(acting): RequireAuth,
+        Path(id): Path<i64>,
+    ) -> Result<StatusCode, Error> {
+        if acting.id != id && !acting.is_admin {
+            return Err(crate::authentication::error::Error::AdminRequired.into());
+        }
+        let departed = Self::apply_delete(&state, &acting, id).await?;
+        for project in &departed.deleted_projects {
+            if let Err(error) = F::delete_project_directory(state.as_ref(), project).await {
+                tracing::warn!(project = project.id, "cannot delete project files: {error}");
+            }
+        }
+        Ok(StatusCode::OK)
+    }
+
     /// Lifts the block of a user.
     async fn enable(
         State(state): State<Arc<AppState>>,
@@ -316,6 +341,40 @@ impl UsersController {
 
         Self::audit(admin, &user, if disabled { "disable" } else { "enable" });
         Ok(Self::response(user))
+    }
+
+    /// Deletes the user and settles what they leave behind in one transaction, see
+    /// [`Departure`]. `admin` is whoever acts, possibly the user themselves. Rejects deleting the
+    /// last enabled administrator.
+    async fn apply_delete(state: &AppState, admin: &User, id: i64) -> Result<Departed, Error> {
+        let transaction = state.db().begin().await?;
+        let user = Self::find(&transaction, id).await?;
+        Self::ensure_not_last_admin(&transaction, &user).await?;
+        let departed = Departure::of(&transaction, id).settle().await?;
+        // Runs they started stay (`started_by` is cleared by the foreign key).
+        user.clone().delete(&transaction).await?;
+        transaction.commit().await?;
+
+        Self::audit(admin, &user, "delete");
+        for project in &departed.deleted_projects {
+            tracing::info!(target: "audit", project = project.id, user = %user.username, "project deleted with its last owner");
+        }
+        for workflow in &departed.deleted_workflows {
+            tracing::info!(target: "audit", workflow = workflow.id, user = %user.username, "workflow deleted with its last owner");
+        }
+        for id in &departed.deleted_groups {
+            tracing::info!(target: "audit", group = id, user = %user.username, "group deleted with its owner");
+        }
+        for (kind, ids) in [
+            ("project", &departed.ownerless_projects),
+            ("workflow", &departed.ownerless_workflows),
+            ("group", &departed.ownerless_groups),
+        ] {
+            for id in ids {
+                tracing::info!(target: "audit", kind, id, user = %user.username, "left ownerless");
+            }
+        }
+        Ok(departed)
     }
 
     /// Users whose username starts with the query parameter `q`, at most [`Self::SEARCH_LIMIT`].
@@ -603,5 +662,95 @@ mod tests {
             3
         );
         assert_eq!(User::list(state.db(), Some("  ")).await.unwrap().len(), 3);
+    }
+
+    /// Deleting rejects unknown ids and the last enabled admin, allows users to delete themselves,
+    /// removes the user and hands their sole-owned resources to the orphan rules.
+    #[tokio::test]
+    async fn delete_applies_orphan_rules() {
+        use crate::{
+            authorization::{Principal, Resource},
+            models::{ActiveProject, Project, ProjectTable},
+        };
+        use macworp_core::entities::Role;
+
+        let (state, _dir) = state().await;
+        let root = first_admin(&state).await;
+        let alice = make(&state, &root, "alice", false).await;
+        let bob = make(&state, &root, "bob", false).await;
+
+        assert!(matches!(
+            UsersController::apply_delete(&state, &root, 9999).await,
+            Err(Error::NotFound)
+        ));
+        let other_admin = make(&state, &root, "boss", true).await;
+        // `root` is not the last admin while `boss` is enabled, but the reverse is rejected once
+        // `root` is disabled.
+        UsersController::set_disabled(&state, &other_admin, root.id, true)
+            .await
+            .unwrap();
+        assert!(matches!(
+            UsersController::apply_delete(&state, &alice, other_admin.id).await,
+            Err(Error::LastAdmin)
+        ));
+
+        // Alice solely owns one project that Bob can edit and one nobody else sees.
+        let mut ids = Vec::new();
+        for name in ["kept", "dropped"] {
+            let project = ActiveProject {
+                owner_id: Set(Some(alice.id)),
+                name: Set(name.into()),
+                ..Default::default()
+            }
+            .insert(state.db())
+            .await
+            .unwrap();
+            Project::shares(state.db(), project.id)
+                .grant(Principal::User(alice.id), Role::Owner)
+                .await
+                .unwrap();
+            ids.push(project.id);
+        }
+        Project::shares(state.db(), ids[0])
+            .grant(Principal::User(bob.id), Role::Editor)
+            .await
+            .unwrap();
+
+        let departed = UsersController::apply_delete(&state, &other_admin, alice.id)
+            .await
+            .unwrap();
+
+        assert_eq!(departed.ownerless_projects, vec![ids[0]]);
+        assert_eq!(departed.deleted_projects.len(), 1);
+        assert_eq!(departed.deleted_projects[0].id, ids[1]);
+        let kept = ProjectTable::find_by_id(ids[0])
+            .one(state.db())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(kept.owner_id, None);
+        assert!(
+            UserTable::find_by_id(alice.id)
+                .one(state.db())
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // Users may delete themselves, except the last enabled administrator.
+        UsersController::apply_delete(&state, &bob, bob.id)
+            .await
+            .unwrap();
+        assert!(
+            UserTable::find_by_id(bob.id)
+                .one(state.db())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(matches!(
+            UsersController::apply_delete(&state, &other_admin, other_admin.id).await,
+            Err(Error::LastAdmin)
+        ));
     }
 }

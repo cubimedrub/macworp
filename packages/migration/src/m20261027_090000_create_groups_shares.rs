@@ -14,14 +14,15 @@ impl MigrationTrait for Migration {
                     .table("groups")
                     .if_not_exists()
                     .col(big_pk_auto("id"))
-                    .col(big_integer("owner_id"))
+                    // NULL once the owner was deleted: the group is ownerless and managed by administrators
+                    .col(big_integer_null("owner_id"))
                     .col(string_len("name", 512))
                     .col(string("description").default(""))
                     .foreign_key(
                         ForeignKey::create()
                             .from("groups", "owner_id")
                             .to("users", "id")
-                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::SetNull)
                             .on_update(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),

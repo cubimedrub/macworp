@@ -6,7 +6,9 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
-    pub owner_id: i64,
+    /// Creator, `None` once that user was deleted while the project outlived them
+    #[sea_orm(nullable)]
+    pub owner_id: Option<i64>,
     pub path: Option<String>,
     pub name: String,
     pub created_at: DateTimeUtc,
@@ -24,7 +26,15 @@ impl crate::authorization::Resource for Model {
         crate::authorization::ResourceType::Project;
     const MAX_PUBLIC_ROLE: macworp_core::entities::Role = macworp_core::entities::Role::Owner;
 
+    // Editors keep a project alive, viewers alone cannot maintain it.
+    const MIN_ROLE_WITHOUT_OWNER: macworp_core::entities::Role =
+        macworp_core::entities::Role::Editor;
+
     fn id_column() -> Column {
         Column::Id
+    }
+
+    fn owner_id_column() -> Column {
+        Column::OwnerId
     }
 }

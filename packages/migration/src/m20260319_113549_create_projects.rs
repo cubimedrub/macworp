@@ -12,7 +12,8 @@ impl MigrationTrait for Migration {
                     .table("projects")
                     .if_not_exists()
                     .col(big_pk_auto("id"))
-                    .col(big_integer("owner_id"))
+                    // Creator; NULL once that user was deleted and the project outlived them (ownerless or owned by a group)
+                    .col(big_integer_null("owner_id"))
                     .col(text("path").null()) // this used for integrated features only
                     .col(string_len("name", 512))
                     .col(timestamp_with_time_zone("created_at").default(Expr::current_timestamp()))
@@ -20,7 +21,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .from("projects", "owner_id")
                             .to("users", "id")
-                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::SetNull)
                             .on_update(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),

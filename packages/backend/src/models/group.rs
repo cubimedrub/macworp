@@ -6,7 +6,9 @@ use sea_orm::{Condition, QueryOrder, entity::prelude::*, sea_query::Query};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
-    pub owner_id: i64,
+    /// Owner, `None` once that user was deleted: the group is ownerless and managed by administrators
+    #[sea_orm(nullable)]
+    pub owner_id: Option<i64>,
     pub name: String,
     pub description: String,
 

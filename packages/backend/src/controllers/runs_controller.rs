@@ -279,7 +279,7 @@ impl RunsController {
                     Ok(ActiveRun {
                         project_id: Set(project.id),
                         workflow_id: Set(Some(workflow.id)),
-                        started_by: Set(user_id),
+                        started_by: Set(Some(user_id)),
                         configuration: Set(configuration),
                         parameters: Set(serde_json::Value::Object(parameters)),
                         comment: Set(comment),

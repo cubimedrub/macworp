@@ -10,20 +10,28 @@ use macworp_core::entities::Role;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use thiserror::Error;
 
+/// What happens to the resources and groups of a deleted user
+mod departure;
+#[cfg(all(test, feature = "integration"))]
+mod departure_tests;
 /// The visibility filter behind [`Resource::visible_to`]
 mod query;
 /// The [`Resource`] trait
 mod resource;
 /// Stored forms of roles, principal types and resource types
 mod role;
+/// Deciding what becomes of a resource that lost its owner
+mod settle;
 #[cfg(all(test, feature = "integration"))]
 mod share_tests;
 /// Granting, changing and removing the shares of a resource
 mod shares;
 
+pub use departure::{Departed, Departure};
 pub use resource::Resource;
 pub(crate) use role::RoleDb;
 pub use role::{PrincipalType, ResourceType};
+pub use settle::Settled;
 pub use shares::{Error as ShareError, Principal, Shares};
 
 use crate::{authentication::middleware::RequireAuth, models::User, state::State};
@@ -216,7 +224,7 @@ mod tests {
         let owner = user(&state, "owner").await;
         let outsider = user(&state, "outsider").await;
         let project = ActiveProject {
-            owner_id: Set(owner.id),
+            owner_id: Set(Some(owner.id)),
             name: Set("p".into()),
             ..Default::default()
         }
@@ -224,7 +232,7 @@ mod tests {
         .await
         .unwrap();
         let workflow = ActiveWorkflowIntegration {
-            owner_id: Set(owner.id),
+            owner_id: Set(Some(owner.id)),
             name: Set("w".into()),
             description: Set(String::new()),
             ..Default::default()
@@ -516,5 +524,23 @@ mod tests {
         let (auth, admin_auth) = auth_for(&state, &admin).await;
         assert!(auth.is_ok());
         assert!(admin_auth.is_ok());
+    }
+
+    /// The still-valid JWT of a deleted user is rejected with `Unauthorized`: deleting one's own
+    /// account ends the session on the server, the client only has to forget the token.
+    #[tokio::test]
+    async fn deleted_user_token_is_rejected() {
+        use crate::authentication::error::Error as AuthError;
+        use sea_orm::ModelTrait;
+        let w = world().await;
+        let state = Arc::new(w.state);
+        let user = w.outsider.clone();
+
+        let (auth, _) = auth_for(&state, &user).await;
+        assert!(auth.is_ok());
+
+        user.clone().delete(state.db()).await.unwrap();
+        let (auth, _) = auth_for(&state, &user).await;
+        assert!(matches!(auth.err(), Some(AuthError::Unauthorized)));
     }
 }

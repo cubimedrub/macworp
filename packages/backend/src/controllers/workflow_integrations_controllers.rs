@@ -72,7 +72,9 @@ impl WorkflowIntegrationsController {
                 .map_err(Error::Database)?;
         let owners = User::usernames(
             state.db(),
-            owned_workflow_integrations.iter().map(|w| w.owner_id),
+            owned_workflow_integrations
+                .iter()
+                .filter_map(|w| w.owner_id),
         )
         .await?;
 
@@ -80,7 +82,9 @@ impl WorkflowIntegrationsController {
             owned_workflow_integrations
                 .into_iter()
                 .map(|workflow_integration| {
-                    let owner = owners.get(&workflow_integration.owner_id).cloned();
+                    let owner = workflow_integration
+                        .owner_id
+                        .and_then(|id| owners.get(&id).cloned());
                     let mut response = WorkflowIntegrationResponse::from(workflow_integration);
                     response.owner_username = owner.unwrap_or_default();
                     response
@@ -123,10 +127,10 @@ impl WorkflowIntegrationsController {
             ..
         }: Authorized<WorkflowIntegration, Viewer>,
     ) -> Result<Json<WorkflowIntegrationResponse>, Error> {
-        let owner = User::usernames(state.db(), [workflow_integration.owner_id]).await?;
-        let owner_username = owner
-            .get(&workflow_integration.owner_id)
-            .cloned()
+        let owner_username = User::usernames(state.db(), workflow_integration.owner_id)
+            .await?
+            .into_values()
+            .next()
             .unwrap_or_default();
         let mut response = WorkflowIntegrationResponse::from(workflow_integration);
         response.owner_username = owner_username;
@@ -168,8 +172,11 @@ impl WorkflowIntegrationsController {
 
         let updated: WorkflowIntegration = active.update(state.db()).await?;
 
-        let owner = User::usernames(state.db(), [updated.owner_id]).await?;
-        let owner_username = owner.get(&updated.owner_id).cloned().unwrap_or_default();
+        let owner_username = User::usernames(state.db(), updated.owner_id)
+            .await?
+            .into_values()
+            .next()
+            .unwrap_or_default();
         let mut response = WorkflowIntegrationResponse::from(updated);
         response.owner_username = owner_username;
         response.my_role = Some(role);

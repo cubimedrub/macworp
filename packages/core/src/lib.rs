@@ -1,3 +1,5 @@
+/// What happens to a user's resources when the account is deleted
+pub mod account_deletion;
 /// Shared code for authentication
 pub mod authentication;
 /// Entities to work with. These are basically clones of the backend's models

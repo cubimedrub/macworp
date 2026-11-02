@@ -101,7 +101,7 @@ impl GroupsController {
     /// with target `audit` when the admin is not the owner).
     async fn owned(state: &AppState, user: &User, id: i64) -> Result<Group, Error> {
         let group = Self::visible(state, user, id).await?;
-        if group.owner_id != user.id {
+        if group.owner_id != Some(user.id) {
             if !user.is_admin {
                 return Err(Error::NotOwner);
             }
@@ -122,7 +122,7 @@ impl GroupsController {
         group: Group,
         with_members: bool,
     ) -> Result<GroupResponse, Error> {
-        let owner = User::usernames(state.db(), [group.owner_id]).await?;
+        let owner = User::usernames(state.db(), group.owner_id).await?;
         let members = if with_members {
             group
                 .member_names(state.db())
@@ -137,8 +137,11 @@ impl GroupsController {
             id: group.id,
             name: group.name,
             description: group.description,
-            owner_username: owner.get(&group.owner_id).cloned().unwrap_or_default(),
-            is_owner: group.owner_id == user.id || user.is_admin,
+            owner_username: group
+                .owner_id
+                .and_then(|id| owner.get(&id).cloned())
+                .unwrap_or_default(),
+            is_owner: group.owner_id == Some(user.id) || user.is_admin,
             members,
         })
     }
@@ -172,7 +175,7 @@ impl GroupsController {
             return Err(Error::EmptyName);
         }
         let group = ActiveGroup {
-            owner_id: Set(user.id),
+            owner_id: Set(Some(user.id)),
             name: Set(payload.name.trim().to_string()),
             description: Set(payload.description),
             ..Default::default()
@@ -254,7 +257,7 @@ impl GroupsController {
         Json(payload): Json<GroupMemberRequest>,
     ) -> Result<Json<GroupResponse>, Error> {
         let group = Self::owned(&state, &user, id).await?;
-        if payload.user_id == group.owner_id {
+        if Some(payload.user_id) == group.owner_id {
             return Err(Error::RemoveOwner);
         }
         UsersGroupsTable::delete_many()

@@ -113,7 +113,7 @@ where
             )
             .nest(
                 UsersRouting::controller_path(),
-                UsersController::routes(state.clone()),
+                UsersController::routes::<F>(state.clone()),
             )
             .nest(
                 ProjectsRouting::controller_path(),

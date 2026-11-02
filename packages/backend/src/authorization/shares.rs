@@ -44,6 +44,17 @@ impl Principal {
         Ok(())
     }
 
+    /// Removes every share granted to the user `user_id`, on any resource. To be called when the
+    /// user is deleted (shares have no foreign key to it). Unlike [`Shares::revoke`] this does not
+    /// protect the last owner: see [`super::Departure`] for what happens to such resources.
+    pub async fn delete_user_shares(db: &impl ConnectionTrait, user_id: i64) -> Result<(), DbErr> {
+        share::Entity::delete_many()
+            .filter(Self::User(user_id).condition())
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
     /// Stored form: type and, except for the public, the principal's id
     fn parts(self) -> (PrincipalType, Option<i64>) {
         match self {
@@ -55,7 +66,7 @@ impl Principal {
 
     /// Filter matching the shares granted to exactly this principal; the public has a `NULL`
     /// principal id.
-    fn condition(self) -> Condition {
+    pub(super) fn condition(self) -> Condition {
         let (kind, id) = self.parts();
         let cond = Condition::all().add(share::Column::PrincipalType.eq(kind.to_db()));
         match id {
@@ -104,9 +115,9 @@ impl axum::response::IntoResponse for Error {
 /// Run changes inside a transaction when the resource is created or deleted in the same request.
 pub struct Shares<'a, R, C> {
     /// Connection or transaction used for all queries
-    db: &'a C,
+    pub(super) db: &'a C,
     /// Id of the shared project or workflow
-    resource_id: i64,
+    pub(super) resource_id: i64,
     /// The kind of resource, decides the `resource_type` and the public role cap
     resource: PhantomData<fn() -> R>,
 }
@@ -202,7 +213,7 @@ impl<'a, R: Resource, C: ConnectionTrait> Shares<'a, R, C> {
     }
 
     /// Filter matching all shares of this resource.
-    fn on_resource(&self) -> Condition {
+    pub(super) fn on_resource(&self) -> Condition {
         Condition::all()
             .add(share::Column::ResourceType.eq(R::RESOURCE_TYPE.to_db()))
             .add(share::Column::ResourceId.eq(self.resource_id))

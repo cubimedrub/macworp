@@ -13,7 +13,8 @@ impl MigrationTrait for Migration {
                     .table("workflow_integrations")
                     .if_not_exists()
                     .col(big_pk_auto("id"))
-                    .col(big_integer("owner_id"))
+                    // Creator; NULL once that user was deleted and the workflow outlived them
+                    .col(big_integer_null("owner_id"))
                     .col(string("name"))
                     .col(string("description"))
                     .col(json_binary("configuration").default(WorkflowConfiguration::default()))
@@ -21,7 +22,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .from("workflow_integrations", "owner_id")
                             .to("users", "id")
-                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::SetNull)
                             .on_update(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),

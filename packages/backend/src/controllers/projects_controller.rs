@@ -102,7 +102,8 @@ where
             .all(state.db())
             .await
             .map_err(ProjectsControllerError::Database)?;
-        let owners = User::usernames(state.db(), projects.iter().map(|p| p.owner_id)).await?;
+        let owners =
+            User::usernames(state.db(), projects.iter().filter_map(|p| p.owner_id)).await?;
 
         Ok(Json(
             projects
@@ -111,7 +112,10 @@ where
                     id: project.id,
                     name: project.name,
                     created_at: project.created_at,
-                    owner_username: owners.get(&project.owner_id).cloned().unwrap_or_default(),
+                    owner_username: project
+                        .owner_id
+                        .and_then(|id| owners.get(&id).cloned())
+                        .unwrap_or_default(),
                     current: PathBuf::new(),
                     files: Vec::new(),
                     directories: Vec::new(),
@@ -192,9 +196,10 @@ where
             id: project.id,
             name: project.name,
             created_at: project.created_at,
-            owner_username: User::usernames(state.db(), [project.owner_id])
+            owner_username: User::usernames(state.db(), project.owner_id)
                 .await?
-                .remove(&project.owner_id)
+                .into_values()
+                .next()
                 .unwrap_or_default(),
             current: content.current,
             files: content.files,

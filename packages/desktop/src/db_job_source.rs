@@ -174,7 +174,7 @@ mod tests {
         .await
         .unwrap();
         let project = ActiveProject {
-            owner_id: Set(user.id),
+            owner_id: Set(Some(user.id)),
             name: Set("p".into()),
             path: Set(Some(dir.path().display().to_string())),
             ..Default::default()
@@ -188,7 +188,7 @@ mod tests {
     async fn queue(db: &DatabaseConnection, user: i64, project: i64) -> i64 {
         ActiveRun {
             project_id: Set(project),
-            started_by: Set(user),
+            started_by: Set(Some(user)),
             configuration: Set(WorkflowConfiguration::default()),
             parameters: Set(serde_json::Value::Object(Default::default())),
             comment: Set(String::new()),
@@ -238,7 +238,7 @@ mod tests {
     async fn run_without_project_path_fails_and_next_is_claimed() {
         let (db, user, project, _dir) = setup().await;
         let orphan_project = ActiveProject {
-            owner_id: Set(user),
+            owner_id: Set(Some(user)),
             name: Set("no path".into()),
             ..Default::default()
         }

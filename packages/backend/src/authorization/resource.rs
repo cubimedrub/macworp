@@ -14,8 +14,16 @@ pub trait Resource {
     /// Highest role the public principal may hold.
     const MAX_PUBLIC_ROLE: Role;
 
+    /// Lowest role that keeps a resource alive when its last owner is gone: the resource becomes
+    /// ownerless if somebody (user, group or the public; a public owner counts as editor) still
+    /// holds at least this role, and is deleted otherwise.
+    const MIN_ROLE_WITHOUT_OWNER: Role;
+
     /// Primary key column, matched against `shares.resource_id`.
     fn id_column() -> <Self::Entity as EntityTrait>::Column;
+
+    /// Column with the creator, `NULL` while the resource has no creator to show.
+    fn owner_id_column() -> <Self::Entity as EntityTrait>::Column;
 
     /// The shares of the resource with the given id.
     fn shares<C: ConnectionTrait>(db: &C, id: i64) -> Shares<'_, Self, C>

@@ -23,8 +23,9 @@ pub struct Model {
     /// `None` once the workflow was deleted, the run keeps its `configuration` snapshot
     #[sea_orm(nullable)]
     pub workflow_id: Option<i64>,
-    /// User who started the run
-    pub started_by: i64,
+    /// User who started the run, `None` once that user was deleted
+    #[sea_orm(nullable)]
+    pub started_by: Option<i64>,
     /// Snapshot of the workflow configuration at start
     pub configuration: WorkflowConfiguration,
     /// Snapshot of the user supplied parameter values
@@ -354,7 +355,7 @@ mod tests {
         .await
         .unwrap();
         let project = ActiveProject {
-            owner_id: Set(user.id),
+            owner_id: Set(Some(user.id)),
             name: Set("p".into()),
             ..Default::default()
         }
@@ -374,7 +375,7 @@ mod tests {
     ) -> i64 {
         let run = ActiveModel {
             project_id: Set(project),
-            started_by: Set(user),
+            started_by: Set(Some(user)),
             configuration: Set(WorkflowConfiguration::default()),
             parameters: Set(Json::Object(Default::default())),
             comment: Set(String::new()),
@@ -653,7 +654,7 @@ mod tests {
     async fn deleting_workflow_nulls_reference() {
         let (db, u, p) = setup().await;
         let wf = crate::models::ActiveWorkflowIntegration {
-            owner_id: Set(u),
+            owner_id: Set(Some(u)),
             name: Set("w".into()),
             description: Set("d".into()),
             configuration: Set(WorkflowConfiguration::default()),
@@ -683,7 +684,7 @@ mod tests {
         for name in ["a", "b"] {
             wfs.push(
                 crate::models::ActiveWorkflowIntegration {
-                    owner_id: Set(u),
+                    owner_id: Set(Some(u)),
                     name: Set(name.into()),
                     description: Set("d".into()),
                     configuration: Set(WorkflowConfiguration::default()),

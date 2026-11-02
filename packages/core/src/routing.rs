@@ -34,6 +34,8 @@ impl UsersRouting {
     pub const DISABLE_PATH: &str = "/disable/{id}";
     /// POST (admin): lift the block of a user
     pub const ENABLE_PATH: &str = "/enable/{id}";
+    /// POST (admin, or the user themselves): delete a user; resources they owned are handed over, left ownerless or deleted
+    pub const DELETE_PATH: &str = "/delete/{id}";
 }
 
 impl IsRouting for UsersRouting {

@@ -14,7 +14,8 @@ impl MigrationTrait for Migration {
                     .col(big_pk_auto("id"))
                     .col(big_integer("project_id"))
                     .col(big_integer_null("workflow_id"))
-                    .col(big_integer("started_by"))
+                    // NULL once the user who started the run was deleted
+                    .col(big_integer_null("started_by"))
                     // Snapshots: runs stay reproducible after the workflow is edited or deleted
                     .col(json_binary("configuration"))
                     .col(json_binary("parameters"))
@@ -52,7 +53,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .from("runs", "started_by")
                             .to("users", "id")
-                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::SetNull)
                             .on_update(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),

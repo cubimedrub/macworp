@@ -211,6 +211,24 @@ impl<'a> UsersClient<'a> {
             .map_err(Error::Request)
     }
 
+    /// Deletes the user with the given id: any user may delete themselves, administrators any
+    /// user. Deleting the authenticated user also invalidates `jwt` on the server, so the caller
+    /// has to drop it (`IsStorage::set_jwt(None)`) and return to the login page.
+    pub async fn delete(&self, jwt: &str, id: i64) -> Result<(), Error> {
+        let path = UsersRouting::DELETE_PATH.replace("{id}", &id.to_string());
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UsersRouting::controller_path(),
+            path
+        );
+        let request = reqwest::Client::new().post(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "delete user")
+            .await?;
+        Ok(())
+    }
+
     /// Users whose username starts with `prefix`; the backend returns nothing for very short
     /// prefixes.
     pub async fn search(&self, jwt: &str, prefix: &str) -> Result<Vec<UserSummaryResponse>, Error> {

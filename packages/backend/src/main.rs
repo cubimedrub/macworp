@@ -2,8 +2,11 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use macworp_backend::{
-    Backend, configuration::Configuration, filesystems::remote_filesystem::RemoteFilesystem,
-    models::{ActiveUser, User}, standalone_error::StandaloneError,
+    Backend,
+    configuration::Configuration,
+    filesystems::remote_filesystem::RemoteFilesystem,
+    models::{ActiveUser, User},
+    standalone_error::StandaloneError,
 };
 use macworp_core::logging::init_tracing_subscription;
 use macworp_database_migration::{Migrator, MigratorTrait};

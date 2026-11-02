@@ -104,6 +104,9 @@ where
             .map_err(ProjectsControllerError::Database)?;
         let owners =
             User::usernames(state.db(), projects.iter().filter_map(|p| p.owner_id)).await?;
+        let ownerless = Project::ownerless_among(state.db(), projects.iter().map(|p| p.id))
+            .await
+            .map_err(ProjectsControllerError::Database)?;
 
         Ok(Json(
             projects
@@ -116,6 +119,7 @@ where
                         .owner_id
                         .and_then(|id| owners.get(&id).cloned())
                         .unwrap_or_default(),
+                    ownerless: ownerless.contains(&project.id),
                     current: PathBuf::new(),
                     files: Vec::new(),
                     directories: Vec::new(),
@@ -171,6 +175,7 @@ where
             name: project.name,
             created_at: project.created_at,
             owner_username: user.username.clone(),
+            ownerless: false,
             current: PathBuf::new(),
             files: Vec::new(),
             directories: Vec::new(),
@@ -201,6 +206,10 @@ where
                 .into_values()
                 .next()
                 .unwrap_or_default(),
+            ownerless: Project::ownerless_among(state.db(), [project.id])
+                .await
+                .map_err(ProjectsControllerError::Database)?
+                .contains(&project.id),
             current: content.current,
             files: content.files,
             directories: content.directories,

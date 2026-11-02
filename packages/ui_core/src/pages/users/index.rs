@@ -53,10 +53,10 @@ pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
                             "{user.username}"
                             span { class: "text-muted ms-2", "{user.firstname} {user.lastname}" }
                             if user.is_admin {
-                                span { class: "badge text-bg-primary ms-2", "admin" }
+                                span { class: "badge text-bg-primary ms-2", "role: admin" }
                             }
                             if user.disabled {
-                                span { class: "badge text-bg-secondary ms-2", "disabled" }
+                                span { class: "badge text-bg-secondary ms-2", "status: disabled" }
                             }
                         }
                     }

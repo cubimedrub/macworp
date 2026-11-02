@@ -173,7 +173,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                             class: "mb-0",
                             "{loaded.username}"
                             if disabled {
-                                span { class: "badge text-bg-secondary ms-2 fs-6", "disabled" }
+                                span { class: "badge text-bg-secondary ms-2 fs-6", "status: disabled" }
                             }
                         }
                         div {

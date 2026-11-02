@@ -339,3 +339,40 @@ async fn delete_group_shares_cleans_up() {
     assert_eq!(shares.role_of(w.member).await.unwrap(), None);
     assert_eq!(shares.role_of(w.owner).await.unwrap(), Some(Role::Owner));
 }
+
+/// `ownerless_among` reports projects without a user or group Owner: viewer-only and public-owner
+/// projects are ownerless, user-owned and group-owned ones are not.
+#[tokio::test]
+async fn ownerless_among_ignores_viewers_and_public_owners() {
+    let w = world().await;
+    for id in 2..=4 {
+        exec(
+            &w.db,
+            &format!("INSERT INTO projects (id, owner_id, name) VALUES ({id}, 1, 'p{id}')"),
+        )
+        .await;
+    }
+    Project::shares(&w.db, 2)
+        .grant(Principal::User(w.member), Role::Viewer)
+        .await
+        .unwrap();
+    Project::shares(&w.db, 3)
+        .grant(Principal::Group(w.group), Role::Owner)
+        .await
+        .unwrap();
+    Project::shares(&w.db, 4)
+        .grant(Principal::Public, Role::Owner)
+        .await
+        .unwrap();
+
+    let ownerless = Project::ownerless_among(&w.db, [w.thing, 2, 3, 4])
+        .await
+        .unwrap();
+    assert_eq!(ownerless, std::collections::HashSet::from([2, 4]));
+    assert!(
+        Project::ownerless_among(&w.db, [])
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}

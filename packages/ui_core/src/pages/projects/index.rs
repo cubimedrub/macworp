@@ -3,8 +3,12 @@ use macworp_core::responses::ProjectResponse;
 use thiserror::Error;
 
 use crate::{
-    client::Client, components::Spinner, configuration::Configuration, router::IsRouter,
-    sharing::SharingEnabled, storage::IsStorage,
+    client::Client,
+    components::{OwnerlessBadge, ShowAll, ShowAllToggle, Spinner},
+    configuration::Configuration,
+    router::IsRouter,
+    sharing::SharingEnabled,
+    storage::IsStorage,
 };
 
 #[derive(Debug, Error)]
@@ -24,6 +28,7 @@ pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
     let storage = use_context::<Signal<S>>();
     let config = use_context::<Signal<Configuration>>();
 
+    let show_all = ShowAll::<S>::from_context();
     let mut projects: Resource<Result<Vec<ProjectResponse>, Error<S>>> =
         use_resource(move || async move {
             let jwt = storage
@@ -33,10 +38,11 @@ pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
                 .ok_or(Error::NotLoggedIn)?;
 
             let config = config.read().clone();
+            let all = show_all.is_active();
 
             Client::new(config.base_url().to_string(), config.timeout())
                 .projects()
-                .projects(&jwt, false)
+                .projects(&jwt, all)
                 .await
                 .map_err(Error::FetchProjects)
         });
@@ -47,11 +53,15 @@ pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
             h1 {
                 "Projects"
             }
-            Link {
-                class: "btn btn-primary h-fit-content",
-                to: R::project_new_route(),
-                i {
-                    class: "fas fa-plus"
+            div {
+                class: "d-flex",
+                ShowAllToggle::<S> {}
+                Link {
+                    class: "btn btn-primary h-fit-content",
+                    to: R::project_new_route(),
+                    i {
+                        class: "fas fa-plus"
+                    }
                 }
             }
         }
@@ -65,7 +75,11 @@ pub fn Index<S: IsStorage + 'static, R: IsRouter>() -> Element {
                             to: R::project_route(project.id),
                             "{project.name}"
                             if SharingEnabled::from_context().is_enabled() {
-                                span { class: "badge text-bg-light ms-2", "{project.owner_username}" }
+                                if project.ownerless {
+                                    OwnerlessBadge {}
+                                } else if !project.owner_username.is_empty() {
+                                    span { class: "badge text-bg-light ms-2", "owner: {project.owner_username}" }
+                                }
                             }
                             small {
                                 class: "text-muted ms-2",

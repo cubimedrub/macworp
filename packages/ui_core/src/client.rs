@@ -10,10 +10,10 @@ use macworp_core::{
     authentication::TokenType,
     entities::Role,
     requests::{
-        GrantShareRequest, GroupMemberRequest, NewGroupRequest, NewProjectRequest,
-        NewUserRequest, NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest,
-        PrincipalRequest, ProjectCreateFolderRequest, ProjectPathDeletionRequest,
-        ResetPasswordRequest, RevokeShareRequest, UpdateGroupRequest, UpdateUserRequest,
+        GrantShareRequest, GroupMemberRequest, NewGroupRequest, NewProjectRequest, NewUserRequest,
+        NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest, PrincipalRequest,
+        ProjectCreateFolderRequest, ProjectPathDeletionRequest, ResetPasswordRequest,
+        RevokeShareRequest, UpdateGroupRequest, UpdateUserRequest,
         UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
     },
     responses::{

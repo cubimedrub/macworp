@@ -43,6 +43,26 @@ impl IsStorage for Storage {
             .map_err(|_| Error::LocalStorageAccess)
     }
 
+    fn show_all(&self) -> Result<bool, Self::Error> {
+        Ok(self
+            .inner_storage
+            .get_item(Self::SHOW_ALL_KEY)
+            .map_err(|_| Error::LocalStorageAccess)?
+            .is_some_and(|value| value == "true"))
+    }
+
+    fn set_show_all(&mut self, show_all: bool) -> Result<(), Self::Error> {
+        if show_all {
+            self.inner_storage
+                .set_item(Self::SHOW_ALL_KEY, "true")
+                .map_err(|_| Error::LocalStorageAccess)
+        } else {
+            self.inner_storage
+                .remove_item(Self::SHOW_ALL_KEY)
+                .map_err(|_| Error::LocalStorageAccess)
+        }
+    }
+
     fn set_jwt(&mut self, jwt: Option<String>) -> Result<(), Self::Error> {
         match jwt {
             Some(jwt) => self

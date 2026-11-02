@@ -98,7 +98,9 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
                     let stored = storage.write().set_jwt(None);
                     let nav = navigator();
                     match stored {
-                        Ok(()) => nav.push(R::login_route(Some("Your account was deleted".to_string()))),
+                        Ok(()) => {
+                            nav.push(R::login_route(Some("Your account was deleted".to_string())))
+                        }
                         Err(err) => nav.push(R::error_route(format!("{err}"))),
                     };
                 }

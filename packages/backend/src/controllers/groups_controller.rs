@@ -141,6 +141,7 @@ impl GroupsController {
                 .owner_id
                 .and_then(|id| owner.get(&id).cloned())
                 .unwrap_or_default(),
+            ownerless: group.owner_id.is_none(),
             is_owner: group.owner_id == Some(user.id) || user.is_admin,
             members,
         })

@@ -27,6 +27,7 @@ impl From<Model> for WorkflowIntegrationResponse {
         Self {
             id: value.id,
             owner_username: String::new(),
+            ownerless: false,
             name: value.name,
             description: value.description,
             configuration: value.configuration,

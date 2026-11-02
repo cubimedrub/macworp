@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use macworp_core::responses::{GroupResponse, UserSummaryResponse};
 
 use crate::{
-    components::{ConfirmationDialog, Spinner},
+    components::{ConfirmationDialog, OwnerlessBadge, Spinner},
     configuration::Configuration,
     router::IsRouter,
     session::Session,
@@ -164,7 +164,13 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                 rsx! {
                     div {
                         class: "d-flex flex-row justify-content-between mb-3",
-                        h1 { class: "mb-0", "{group.name}" }
+                        h1 {
+                            class: "mb-0",
+                            "{group.name}"
+                            if group.ownerless {
+                                OwnerlessBadge {}
+                            }
+                        }
                         if is_owner {
                             div {
                                 class: "d-flex flex-row",

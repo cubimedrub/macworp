@@ -17,7 +17,7 @@ use crate::{
     client::{Client, ShareKind},
     components::{
         separator::Separator, sharing::share_dialog::ShareDialog, workflow_integrations::*,
-        ConfirmationDialog, Spinner,
+        ConfirmationDialog, OwnerlessBadge, Spinner,
     },
     configuration::Configuration,
     router::IsRouter,
@@ -309,6 +309,9 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     h1 {
                         class: "mb-0",
                         "{workflow_integration.read().inner().name}"
+                        if workflow_integration.read().inner().ownerless {
+                            OwnerlessBadge {}
+                        }
                     }
                     div {
                         class: "d-flex flex-row",

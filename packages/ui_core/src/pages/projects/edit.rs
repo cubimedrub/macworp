@@ -9,7 +9,7 @@ use crate::{
     components::{
         file_browser::IsFileBrowser, projects::workflow_start_dialog::WorkflowStartDialog,
         runs::RunPanel, sharing::share_dialog::ShareDialog, ConfirmationDialog, FileBrowser,
-        Spinner,
+        OwnerlessBadge, Spinner,
     },
     configuration::Configuration,
     router::IsRouter,
@@ -312,6 +312,9 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                         h1 {
                             class: "mb-0",
                             "{project.read().name}"
+                            if project.read().ownerless {
+                                OwnerlessBadge {}
+                            }
                         }
                         div {
                             class: "d-flex flex-row",

@@ -77,16 +77,23 @@ impl WorkflowIntegrationsController {
                 .filter_map(|w| w.owner_id),
         )
         .await?;
+        let ownerless = WorkflowIntegration::ownerless_among(
+            state.db(),
+            owned_workflow_integrations.iter().map(|w| w.id),
+        )
+        .await?;
 
         Ok(Json(
             owned_workflow_integrations
                 .into_iter()
                 .map(|workflow_integration| {
+                    let is_ownerless = ownerless.contains(&workflow_integration.id);
                     let owner = workflow_integration
                         .owner_id
                         .and_then(|id| owners.get(&id).cloned());
                     let mut response = WorkflowIntegrationResponse::from(workflow_integration);
                     response.owner_username = owner.unwrap_or_default();
+                    response.ownerless = is_ownerless;
                     response
                 })
                 .collect(),
@@ -132,8 +139,12 @@ impl WorkflowIntegrationsController {
             .into_values()
             .next()
             .unwrap_or_default();
+        let ownerless = WorkflowIntegration::ownerless_among(state.db(), [workflow_integration.id])
+            .await?
+            .contains(&workflow_integration.id);
         let mut response = WorkflowIntegrationResponse::from(workflow_integration);
         response.owner_username = owner_username;
+        response.ownerless = ownerless;
         response.my_role = Some(role);
 
         Ok(Json(response))
@@ -177,8 +188,12 @@ impl WorkflowIntegrationsController {
             .into_values()
             .next()
             .unwrap_or_default();
+        let ownerless = WorkflowIntegration::ownerless_among(state.db(), [updated.id])
+            .await?
+            .contains(&updated.id);
         let mut response = WorkflowIntegrationResponse::from(updated);
         response.owner_username = owner_username;
+        response.ownerless = ownerless;
         response.my_role = Some(role);
 
         Ok(Json(response))

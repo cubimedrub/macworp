@@ -10,9 +10,9 @@ pub struct Model {
     pub group_id: i64,
 
     #[sea_orm(belongs_to, from = "user_id", to = "id")]
-    pub user: Option<super::user::Entity>,
+    pub user: HasOne<super::user::Entity>,
     #[sea_orm(belongs_to, from = "group_id", to = "id")]
-    pub group: Option<super::group::Entity>,
+    pub group: HasOne<super::group::Entity>,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

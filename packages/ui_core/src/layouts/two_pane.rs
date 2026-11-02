@@ -83,6 +83,7 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
     }));
     let current_user = use_context_provider(|| CurrentUser::new(current_user_resource));
 
+    let sharing_enabled = SharingEnabled::from_context().is_enabled();
     let logout_enabled = LogoutEnabled::from_context().is_enabled();
 
     let mut is_delete_account_open = use_signal(|| false);
@@ -214,7 +215,7 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
                             "Workflow integration"
                         }
                     }
-                    if SharingEnabled::from_context().is_enabled() {
+                    if sharing_enabled {
                         li {
                             class: "nav-item",
                             Link {
@@ -237,17 +238,6 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
                                     }
                                     "Users"
                                 }
-                            }
-                        }
-                        li {
-                            class: "nav-item",
-                            button {
-                                class: "nav-link btn btn-link text-start",
-                                onclick: move |_| is_delete_account_open.set(true),
-                                i {
-                                    class: "fa-solid fa-user-slash me-3"
-                                }
-                                "Delete my account"
                             }
                         }
                     }
@@ -279,6 +269,14 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
                         onclick: logout,
                         i { class: "fa-solid fa-right-from-bracket me-2" }
                         "Log out"
+                    }
+                    if sharing_enabled {
+                        button {
+                            class: "btn btn-sm btn-outline-danger mt-2",
+                            onclick: move |_| is_delete_account_open.set(true),
+                            i { class: "fa-solid fa-user-slash me-2" }
+                            "Delete my account"
+                        }
                     }
                 }
             }

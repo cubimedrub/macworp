@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use macworp_backend::{
@@ -40,9 +40,16 @@ enum UserSubCommand {
         lastname: String,
         /// email of the new user
         email: String,
+        /// Read the password from this file instead of prompting
+        #[arg(long)]
+        password_file: Option<PathBuf>,
     },
     /// Hashs the given password, e.g. for the
-    Password {},
+    Password {
+        /// Read the password from this file instead of prompting
+        #[arg(long)]
+        password_file: Option<PathBuf>,
+    },
     /// Make an existing user an administrator
     Promote {
         /// Configuration path
@@ -177,7 +184,10 @@ async fn main() -> Result<(), StandaloneError> {
                 firstname,
                 lastname,
                 email,
+                password_file,
             } => {
+                let password = read_password(password_file.as_deref())?;
+
                 let config = match config {
                     Some(config_path) => {
                         let config_raw = std::fs::read_to_string(config_path)
@@ -192,15 +202,6 @@ async fn main() -> Result<(), StandaloneError> {
                 let db = Database::connect(config.database_url())
                     .await
                     .map_err(StandaloneError::DatabaseConnection)?;
-
-                let password = rpassword::prompt_password("Password: ")
-                    .map_err(StandaloneError::PasswordRead)?;
-                let password_confirmation = rpassword::prompt_password("Repeat password: ")
-                    .map_err(StandaloneError::PasswordRead)?;
-
-                if password != password_confirmation {
-                    return Err(StandaloneError::PasswordConfirmation);
-                }
 
                 let password_hash = password_auth::generate_hash(password.as_bytes());
 
@@ -227,16 +228,8 @@ async fn main() -> Result<(), StandaloneError> {
                 set_admin(config, &username, false).await?;
                 println!("{username} is no longer an administrator");
             }
-            UserSubCommand::Password {} => {
-                let password = rpassword::prompt_password("Password: ")
-                    .map_err(StandaloneError::PasswordRead)?;
-
-                let password_confirmation = rpassword::prompt_password("Repeat password: ")
-                    .map_err(StandaloneError::PasswordRead)?;
-
-                if password != password_confirmation {
-                    return Err(StandaloneError::PasswordConfirmation);
-                }
+            UserSubCommand::Password { password_file } => {
+                let password = read_password(password_file.as_deref())?;
 
                 let password_hash = password_auth::generate_hash(password.as_bytes());
 
@@ -248,6 +241,40 @@ async fn main() -> Result<(), StandaloneError> {
         }
     }
     Ok(())
+}
+
+/// Reads a new password from `password_file` (one trailing line break removed, no confirmation)
+/// or, without a file, prompts for it twice.
+fn read_password(password_file: Option<&Path>) -> Result<String, StandaloneError> {
+    let password = match password_file {
+        Some(path) => {
+            let mut password =
+                std::fs::read_to_string(path).map_err(StandaloneError::PasswordRead)?;
+            if password.ends_with('\n') {
+                password.pop();
+                if password.ends_with('\r') {
+                    password.pop();
+                }
+            }
+            password
+        }
+        None => {
+            let password = rpassword::prompt_password("Password: ")
+                .map_err(StandaloneError::PasswordRead)?;
+            let password_confirmation = rpassword::prompt_password("Repeat password: ")
+                .map_err(StandaloneError::PasswordRead)?;
+
+            if password != password_confirmation {
+                return Err(StandaloneError::PasswordConfirmation);
+            }
+            password
+        }
+    };
+
+    if password.is_empty() {
+        return Err(StandaloneError::PasswordEmpty);
+    }
+    Ok(password)
 }
 
 /// Connects to the database named in the configuration file and sets the administrator flag of `username`.
@@ -291,5 +318,60 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => {},
         _ = terminate => {},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Writes `content` to a unique temporary file and returns its path.
+    fn password_file(name: &str, content: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "macworp_password_{}_{name}",
+            std::process::id()
+        ));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    /// One trailing line break (LF or CRLF) is removed, other whitespace is kept.
+    #[test]
+    fn password_file_strips_one_line_break_only() {
+        let lf = password_file("lf", " se cret \n");
+        let crlf = password_file("crlf", "secret\r\n");
+        let double = password_file("double", "secret\n\n");
+
+        assert_eq!(read_password(Some(&lf)).unwrap(), " se cret ");
+        assert_eq!(read_password(Some(&crlf)).unwrap(), "secret");
+        assert_eq!(read_password(Some(&double)).unwrap(), "secret\n");
+
+        for path in [lf, crlf, double] {
+            std::fs::remove_file(path).unwrap();
+        }
+    }
+
+    /// An empty password file (or one holding only a line break) is rejected.
+    #[test]
+    fn empty_password_file_is_rejected() {
+        let empty = password_file("empty", "\n");
+
+        assert!(matches!(
+            read_password(Some(&empty)),
+            Err(StandaloneError::PasswordEmpty)
+        ));
+
+        std::fs::remove_file(empty).unwrap();
+    }
+
+    /// A missing password file is reported as a read error.
+    #[test]
+    fn missing_password_file_is_a_read_error() {
+        let missing = std::env::temp_dir().join("macworp_password_does_not_exist");
+
+        assert!(matches!(
+            read_password(Some(&missing)),
+            Err(StandaloneError::PasswordRead(_))
+        ));
     }
 }

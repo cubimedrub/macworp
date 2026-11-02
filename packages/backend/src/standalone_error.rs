@@ -10,8 +10,10 @@ pub enum StandaloneError {
     ConfigurationParseError(#[source] toml::de::Error),
     #[error("Unable to connect to database: {0}")]
     DatabaseConnection(sea_orm::DbErr),
-    #[error("Failed to read password file: {0}")]
+    #[error("Failed to read password: {0}")]
     PasswordRead(std::io::Error),
+    #[error("Password must not be empty")]
+    PasswordEmpty,
     #[error("Password confirmation does not match")]
     PasswordConfirmation,
     #[error("{0}")]

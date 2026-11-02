@@ -11,9 +11,10 @@ use macworp_core::{
     entities::Role,
     requests::{
         GrantShareRequest, GroupMemberRequest, NewGroupRequest, NewProjectRequest,
-        NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest, PrincipalRequest,
-        ProjectCreateFolderRequest, ProjectPathDeletionRequest, RevokeShareRequest,
-        UpdateGroupRequest, UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
+        NewUserRequest, NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest,
+        PrincipalRequest, ProjectCreateFolderRequest, ProjectPathDeletionRequest,
+        ResetPasswordRequest, RevokeShareRequest, UpdateGroupRequest, UpdateUserRequest,
+        UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
     },
     responses::{
         GroupResponse, LastRunResponse, LoginProviderResponse, ProjectResponse, RunLogsResponse,
@@ -192,6 +193,102 @@ impl<'a> UsersClient<'a> {
     /// * `base_client` - Base client
     pub fn new(base_client: &'a Client) -> Self {
         Self { base_client }
+    }
+
+    /// Full URL of a users endpoint; `{id}` in `path` is replaced by `id` when given
+    fn url(&self, path: &str, id: Option<i64>) -> String {
+        let path = match id {
+            Some(id) => path.replace("{id}", &id.to_string()),
+            None => path.to_string(),
+        };
+        format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UsersRouting::controller_path(),
+            path
+        )
+    }
+
+    /// Lists all users (administrators only), optionally restricted to usernames matching `query`
+    pub async fn index(&self, jwt: &str, query: &str) -> Result<Vec<UserResponse>, Error> {
+        let request = reqwest::Client::new()
+            .get(self.url(UsersRouting::INDEX_PATH, None))
+            .query(&[("q", query)]);
+        self.base_client
+            .send_authenticated(request, jwt, "list users")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a user (administrators only)
+    pub async fn create(&self, jwt: &str, user: &NewUserRequest) -> Result<UserResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(UsersRouting::NEW_PATH, None))
+            .json(user);
+        self.base_client
+            .send_authenticated(request, jwt, "create user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Changes names, email and admin flag of a user (administrators only)
+    pub async fn update(
+        &self,
+        jwt: &str,
+        id: i64,
+        user: &UpdateUserRequest,
+    ) -> Result<UserResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(UsersRouting::UPDATE_PATH, Some(id)))
+            .json(user);
+        self.base_client
+            .send_authenticated(request, jwt, "update user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Sets a new local password for a user (administrators only)
+    pub async fn reset_password(
+        &self,
+        jwt: &str,
+        id: i64,
+        password: &ResetPasswordRequest,
+    ) -> Result<(), Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(UsersRouting::RESET_PASSWORD_PATH, Some(id)))
+            .json(password);
+        self.base_client
+            .send_authenticated(request, jwt, "reset password")
+            .await?;
+        Ok(())
+    }
+
+    /// Blocks a user from logging in (administrators only)
+    pub async fn disable(&self, jwt: &str, id: i64) -> Result<UserResponse, Error> {
+        let request = reqwest::Client::new().post(self.url(UsersRouting::DISABLE_PATH, Some(id)));
+        self.base_client
+            .send_authenticated(request, jwt, "disable user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Lifts the login block of a user (administrators only)
+    pub async fn enable(&self, jwt: &str, id: i64) -> Result<UserResponse, Error> {
+        let request = reqwest::Client::new().post(self.url(UsersRouting::ENABLE_PATH, Some(id)));
+        self.base_client
+            .send_authenticated(request, jwt, "enable user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
     }
 
     /// Returns the authenticated user

@@ -2,9 +2,18 @@ use std::fmt::Display;
 
 use dioxus::prelude::*;
 
+use macworp_core::responses::UserResponse;
+
 use crate::{
-    client::Client, configuration::Configuration, router::IsRouter,
-    runtime_status::RuntimeStatusBar, sharing::SharingEnabled, storage::IsStorage,
+    client::Client,
+    components::{AccountDeletionRules, ConfirmationDialog},
+    configuration::Configuration,
+    current_user::CurrentUser,
+    router::IsRouter,
+    runtime_status::RuntimeStatusBar,
+    session::Session,
+    sharing::SharingEnabled,
+    storage::IsStorage,
 };
 
 enum NavigationState {
@@ -55,6 +64,49 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
         )
     });
 
+    let current_user_resource = use_resource(move || async move {
+        let session = Session::new(storage, config).ok()?;
+        let user: Option<UserResponse> = session.client.users().current(&session.jwt).await.ok();
+        user
+    });
+    let current_user = use_context_provider(|| CurrentUser::new(current_user_resource));
+
+    let mut is_delete_account_open = use_signal(|| false);
+    let mut delete_account_error: Signal<Option<String>> = use_signal(|| None);
+
+    // Deletes the own account, then behaves like a logout: the server rejects the token from now
+    // on, so it is dropped and the user returns to the login page.
+    let delete_account = move |_| {
+        let Some(user) = current_user.user() else {
+            return;
+        };
+        spawn(async move {
+            let result = match Session::new(storage, config) {
+                Ok(session) => session
+                    .client
+                    .users()
+                    .delete(&session.jwt, user.id)
+                    .await
+                    .map_err(|e| e.to_string()),
+                Err(e) => Err(e),
+            };
+            match result {
+                Ok(()) => {
+                    is_delete_account_open.set(false);
+                    delete_account_error.set(None);
+                    let mut storage = storage;
+                    let stored = storage.write().set_jwt(None);
+                    let nav = navigator();
+                    match stored {
+                        Ok(()) => nav.push(R::login_route(Some("Your account was deleted".to_string()))),
+                        Err(err) => nav.push(R::error_route(format!("{err}"))),
+                    };
+                }
+                Err(e) => delete_account_error.set(Some(e)),
+            }
+        });
+    };
+
     let toggle_navigation = move |_| {
         let new_state = match *navigation_state.read() {
             NavigationState::Open => NavigationState::Close,
@@ -65,6 +117,18 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
 
     rsx!(div {
         class: "layout-two-pane d-flex flex-row",
+
+        ConfirmationDialog {
+            is_open: is_delete_account_open,
+            title: "Delete my account".to_string(),
+            confirmation_button_label: "Delete account".to_string(),
+            confirmation_callback: Callback::new(delete_account),
+            cancel_callback: Callback::new(move |_| is_delete_account_open.set(false)),
+            AccountDeletionRules {}
+            if let Some(message) = delete_account_error() {
+                div { class: "alert alert-danger", role: "alert", "{message}" }
+            }
+        }
 
         nav {
             class: "navigation-panel d-flex flex-column min-vh-100 p-1 border-end border-3 border-black {navigation_state}",
@@ -131,6 +195,30 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
                                     class: "fa-solid fa-users me-3"
                                 }
                                 "Groups"
+                            }
+                        }
+                        if current_user.is_admin() {
+                            li {
+                                class: "nav-item",
+                                Link {
+                                    class: "nav-link",
+                                    to: R::user_index_route(),
+                                    i {
+                                        class: "fa-solid fa-user-gear me-3"
+                                    }
+                                    "Users"
+                                }
+                            }
+                        }
+                        li {
+                            class: "nav-item",
+                            button {
+                                class: "nav-link btn btn-link text-start",
+                                onclick: move |_| is_delete_account_open.set(true),
+                                i {
+                                    class: "fa-solid fa-user-slash me-3"
+                                }
+                                "Delete my account"
                             }
                         }
                     }

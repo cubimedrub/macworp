@@ -11,7 +11,7 @@ use crate::{
 
 /// Response of login
 ///
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserResponse {
     pub id: i64,
     pub username: String,

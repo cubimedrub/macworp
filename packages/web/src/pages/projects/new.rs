@@ -76,7 +76,12 @@ pub fn New() -> Element {
                 aria_label: "Project name",
                 aria_describedby: "project-name",
                 value: "{project_name}",
-                oninput: move |event| project_name.set(event.value())
+                oninput: move |event| project_name.set(event.value()),
+                onkeydown: move |e| {
+                    if e.key() == Key::Enter {
+                        new_project.call();
+                    }
+                },
             }
         }
         div {

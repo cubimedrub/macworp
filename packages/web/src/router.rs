@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use macworp_ui_core::{
     layouts::{one_pane::OnePane, two_pane::TwoPane},
-    pages::{error::Error, groups::*, projects::*, workflow_integrations::*},
+    pages::{error::Error, groups::*, projects::*, users::*, workflow_integrations::*},
     router::IsRouter,
 };
 
@@ -48,6 +48,13 @@ pub enum Router {
         GroupNew,
         #[route("/groups/:id", GroupEdit<Storage, Router>)]
         GroupEdit{ id: i64 },
+
+        #[route("/users", UserIndex<Storage, Router>)]
+        UserIndex,
+        #[route("/users/new", UserNew<Storage, Router>)]
+        UserNew,
+        #[route("/users/:id", UserEdit<Storage, Router>)]
+        UserEdit{ id: i64 },
 }
 
 impl IsRouter for Router {
@@ -95,5 +102,17 @@ impl IsRouter for Router {
 
     fn group_route(id: i64) -> NavigationTarget<Self> {
         NavigationTarget::Internal(Router::GroupEdit { id })
+    }
+
+    fn user_index_route() -> NavigationTarget<Self> {
+        NavigationTarget::Internal(Router::UserIndex)
+    }
+
+    fn user_new_route() -> NavigationTarget<Self> {
+        NavigationTarget::Internal(Router::UserNew)
+    }
+
+    fn user_route(id: i64) -> NavigationTarget<Self> {
+        NavigationTarget::Internal(Router::UserEdit { id })
     }
 }

@@ -3,7 +3,12 @@ use dioxus::prelude::*;
 #[derive(Clone, PartialEq, Props)]
 pub struct ConfirmationDialogProps {
     pub title: String,
+    /// Plain text of the dialog, omitted when empty
+    #[props(default)]
     pub body: String,
+    /// Additional content below the body, e.g. a list of consequences
+    #[props(default)]
+    pub children: Element,
     pub confirmation_button_label: String,
     pub confirmation_callback: Callback<(), ()>,
     pub is_open: ReadSignal<bool>,
@@ -15,6 +20,7 @@ pub struct ConfirmationDialogProps {
 /// # Arguments
 /// * `title` - The title of the dialog
 /// * `body` - The body of the dialog
+/// * `children` - Additional content below the body
 /// * `confirmation_button_label` - The label of the confirmation button
 /// * `confirmation_callback` - The callback to call when the confirmation button is clicked
 /// * `is_open` - A signal that indicates whether the dialog is open or not
@@ -64,9 +70,12 @@ pub fn ConfirmationDialog(props: ConfirmationDialogProps) -> Element {
                     }
                     div {
                         class: "modal-body",
-                        p {
-                            "{props.body}"
+                        if !props.body.is_empty() {
+                            p {
+                                "{props.body}"
+                            }
                         }
+                        {props.children}
                     }
                     div {
                         class: "modal-footer",

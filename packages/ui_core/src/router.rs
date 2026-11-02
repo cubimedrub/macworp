@@ -17,4 +17,10 @@ pub trait IsRouter: Routable {
     fn group_new_route() -> NavigationTarget<Self>;
     /// Page of one group
     fn group_route(id: i64) -> NavigationTarget<Self>;
+    /// List of all users (administrators)
+    fn user_index_route() -> NavigationTarget<Self>;
+    /// Page to create a user (administrators)
+    fn user_new_route() -> NavigationTarget<Self>;
+    /// Page of one user (administrators)
+    fn user_route(id: i64) -> NavigationTarget<Self>;
 }

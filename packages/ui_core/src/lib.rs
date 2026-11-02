@@ -6,6 +6,8 @@ pub mod client;
 pub mod components;
 /// UI configuration
 pub mod configuration;
+/// The logged in user as context, e.g. to show admin-only navigation
+pub mod current_user;
 /// App layouts
 pub mod layouts;
 /// Pages showing a single task (a resource, resource list, resource edit, ...)

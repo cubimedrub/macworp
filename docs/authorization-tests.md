@@ -1,0 +1,117 @@
+# Authentication and authorization test matrix
+
+Which automated test covers which authentication or authorization scenario, for reviews and audits. The rules themselves are in the README ("Permissions") and `docs/adr/0003-authz-model.md`.
+
+**Keep this file in sync:** a new or changed rule needs a row here, and a renamed or deleted test needs its row updated. Gaps are listed at the end, not hidden.
+
+Run everything (SQLite, no external services):
+
+```bash
+cargo test -p macworp_backend --lib --no-default-features --features integration
+```
+
+## Test levels
+
+| Level | Where | What it exercises |
+| --- | --- | --- |
+| **Unit** | `authentication/jwt.rs` | Token encode/decode, secret validation |
+| **Model** | `authorization/share_tests.rs`, `authorization/departure_tests.rs`, `models/user.rs` | Shares, visibility SQL and account-departure rules directly on the database, no HTTP |
+| **`authorize`** | `authorization/mod.rs` (`tests`), `authorization/role_tests.rs` | The `authorize` function and extractors (`RequireAuth`, `ListScope`) with real tokens, no router |
+| **Controller function** | `controllers/users_controller.rs` (`tests`) | Controller logic called as functions, without HTTP routing |
+| **HTTP** | `controllers/authorization_http_tests.rs` | Full router (all controllers, auth extractors, JSON), driven with `tower::ServiceExt::oneshot`; fixtures in `test_support.rs` (`TestApp`) |
+
+Test paths below are relative to the `macworp_backend` crate. Short names: `auth::tests` = `authorization::tests`, `http` = `controllers::authorization_http_tests`, `users` = `controllers::users_controller::tests`.
+
+## 1. Authentication (who is calling)
+
+| Scenario | Test | Level | Expected |
+| --- | --- | --- | --- |
+| Token round trip uses the default validity (no unlimited tokens) | `authentication::jwt::tests::roundtrip_uses_default_validity` | Unit | expiry = `DEFAULT_LOGIN_VALIDITY` |
+| Token signed with another secret | `authentication::jwt::tests::wrong_secret_is_rejected` | Unit | `JWTDecryption`, no forging |
+| Token whose subject is not a number | `authentication::jwt::tests::non_numeric_subject_is_error` | Unit | 401 `InvalidTokenSubject`, no panic |
+| Weak or default JWT secret in configuration | `authentication::jwt::tests::weak_secrets_fail_validation` | Unit | validation fails for `"development"` and secrets < 32 bytes |
+| Request without credentials | `http::anonymous_requests_are_rejected` | HTTP | 400 or 401 on projects, workflows, groups, user routes |
+| Disabled account with a valid token | `auth::tests::disabled_user_token_is_rejected` | `authorize` | rejected (`AccountDisabled`), works again after re-enable |
+| Token of a deleted account | `auth::tests::deleted_user_token_is_rejected` | `authorize` | 401 |
+| Logout / revoked tokens (`token_version` bump) | `auth::tests::revoked_tokens_are_rejected` | `authorize` | old token 401, fresh token ok, other users unaffected |
+| Worker (Basic auth) identity holds no shares | `auth::tests::worker_identity_has_no_access` | `authorize` | 404 on resources |
+
+## 2. Visibility and roles (what a user may see and do)
+
+| Scenario | Test | Level | Expected |
+| --- | --- | --- | --- |
+| Private by default | `authorization::share_tests::private_by_default` | Model | only the owner sees the project |
+| Owner passes every role check | `auth::tests::owner_passes_every_role` | `authorize` | Viewer/Editor/Owner all pass |
+| Invisible or missing resource | `auth::tests::invisible_resource_is_not_found_not_forbidden` | `authorize` | 404, never 403 (ids do not leak) |
+| Visible but role too low | `auth::tests::viewer_is_forbidden_from_editing` | `authorize` | Viewer passes Viewer, 403 on Editor |
+| Workflow shared to a user as Viewer / Editor / Owner | `authorization::role_tests::workflow_user_shares_per_role` | `authorize` | role granted exactly, higher minimums refused |
+| Group share reaches members only; leaving the group removes access | `authorization::role_tests::group_share_follows_membership`, `authorization::share_tests::group_share_applies_to_members_only` | `authorize`, Model | member gets the role, outsider 404, ex-member 404 |
+| Effective role = highest of user, group, public share | `authorization::share_tests::effective_role_is_the_maximum` | Model | maximum wins |
+| Role change takes effect immediately (up and down) | `authorization::role_tests::role_change_takes_effect` | `authorize` | next check uses the new role |
+| Running needs project Editor AND workflow Viewer | `auth::tests::public_workflow_and_editor_project_allow_running` | `authorize` | both independent |
+
+## 3. Endpoint role matrix over HTTP
+
+| Scenario | Test | Expected |
+| --- | --- | --- |
+| Project list: own + user/group/public shares only, no private ones of others, owner name shown, no `my_role` in lists | `http::project_list_is_scoped` | |
+| Workflow list scoped the same way | `http::workflow_list_is_scoped` | |
+| Project endpoints: edit = Viewer, create-folder / delete-path = Editor, delete = Owner (also removes shares) | `http::project_endpoints_need_their_role` | owner/admin/editor/viewer/outsider: 200 / 403 / 404 as per role; `my_role` set on single endpoint |
+| Workflow endpoints: view = Viewer, update = Editor, delete = Owner (also removes shares) | `http::workflow_endpoints_need_their_role` | same matrix |
+| Run read endpoints (`index`, `get`, `logs`) = project Viewer; `cancel` = project Editor | `http::run_endpoints_need_their_role` | outsider 404, viewer cancel 403 |
+| Workflow names of runs the caller cannot see are blanked | `http::run_endpoints_need_their_role` | empty `workflow_name` for the viewer |
+| Run start: no project access 404, project Viewer 403, project Editor + invisible workflow 404, both roles pass | `http::run_start_needs_both_roles` | authorization passes (request may fail later) |
+| Public Editor on project + public Viewer on workflow lets anyone run | `http::public_editor_project_allows_running` | authorization passes |
+| Creating gives the creator an Owner share and `my_role = Owner` | `http::creator_becomes_owner` | one share row |
+
+## 4. Sharing rules
+
+| Scenario | Test | Level | Expected |
+| --- | --- | --- | --- |
+| Public share cap: workflow max Viewer, project up to Owner | `authorization::share_tests::public_role_is_capped`, `http::public_share_caps_apply_over_http` | Model, HTTP | 400 `PublicRoleTooHigh` for workflow Editor/Owner |
+| Only Owners manage shares | `http::only_owners_manage_shares` | HTTP | Editor 403, Owner 200 |
+| Last owner cannot be demoted or removed | `authorization::share_tests::last_owner_is_protected` | Model | `LastOwner`; a second owner frees the first |
+| Regrant replaces instead of duplicating | `authorization::share_tests::regrant_replaces_instead_of_duplicating` | Model | one row |
+| Share listing is per resource | `authorization::share_tests::list_returns_grants_of_the_resource` | Model | |
+| Deleting a group removes its shares everywhere | `authorization::share_tests::delete_group_shares_cleans_up` | Model | other principals untouched |
+| Migration backfills creators as Owner | `authorization::share_tests::migration_backfills_existing_rows` | Model | |
+| `ownerless` ignores viewers and public owners | `authorization::share_tests::ownerless_among_ignores_viewers_and_public_owners`, `http::ownerless_flag_is_reported` | Model, HTTP | flag in responses |
+
+## 5. Administrator
+
+| Scenario | Test | Level | Expected |
+| --- | --- | --- | --- |
+| Admin is Owner on unshared resources; missing rows stay 404 | `auth::tests::admin_is_owner_of_unshared_resources`, `authorization::role_tests::admin_owns_everything` | `authorize` | |
+| Admin passes every project and workflow endpoint | `http::project_endpoints_need_their_role`, `http::workflow_endpoints_need_their_role` | HTTP | admin row in the matrix |
+| `?all=true` lists everything for admins, 403 for others (projects, workflows, groups) | `http::show_all_is_admin_only`, `auth::tests::list_scope_all_is_admin_only` | HTTP, `authorize` | without the flag admin sees only own/shared |
+| User administration (index, disable, enable, delete others) is admin-only | `http::user_administration_is_admin_only` | HTTP | non-admin 403; `current` open to any user |
+| Create / update / disable / enable / reset password logic | `users::create_validates_and_hashes`, `users::update_protects_last_admin`, `users::disable_and_enable`, `users::reset_password_replaces_hash`, `users::list_filters` | Controller function | last enabled admin protected, no self-disable |
+| Promote / demote via CLI model function | `models::user::tests::promote_and_demote`, `last_admin_cannot_be_demoted`, `unknown_user` | Model | last admin cannot be demoted |
+
+## 6. Account deletion and orphan rules
+
+| Scenario | Test | Level |
+| --- | --- | --- |
+| Delete user: sole-owned resources go through the orphan rules | `users::delete_applies_orphan_rules` | Controller function |
+| Another owner left: oldest enabled owner becomes creator | `authorization::departure_tests::project_with_another_owner_goes_to_the_oldest_enabled_owner` | Model |
+| Only a group owner left: stays owned, no creator shown | `authorization::departure_tests::project_with_only_a_group_owner_has_no_creator` | Model |
+| Editors left: project becomes ownerless | `authorization::departure_tests::project_with_editors_becomes_ownerless` | Model |
+| No owner and no editor: project and shares deleted | `authorization::departure_tests::project_without_owner_and_editor_is_deleted` | Model |
+| Ownerless project losing its last editor is deleted | `authorization::departure_tests::ownerless_project_losing_its_last_editor_is_deleted` | Model |
+| Workflow rules (viewer/editor keeps it ownerless, nobody deletes) | `authorization::departure_tests::workflow_rules` | Model |
+| Group rules (ownerless if used and has members, else deleted) | `authorization::departure_tests::group_rules` | Model |
+| Deleting a group re-settles resources it owned | `authorization::departure_tests::deleting_a_group_settles_resources_again` | Model |
+| Runs keep no starter | `authorization::departure_tests::runs_keep_no_starter` | Model |
+
+## Known gaps
+
+Not covered by any test today (see PLAN.md P2 for the open items):
+
+- Worker (Basic-auth) identity over HTTP, including user-facing routes it should not reach (open item "Worker identity reaches routes meant for users").
+- Share `grant` probing the principal before the caller's right (404 vs 403 order), see PLAN.md.
+- Concurrent last-owner demotions (race), SQLite single-writer only.
+- Group owner not being a member (open item), no test asserts the owner gets the group's share role.
+- `upload-file` endpoint role check; successful run start (only the authorization outcome is asserted).
+- Login endpoints (local password, OIDC), password change, brute-force or rate limiting.
+- HTTP-level tests for the groups controller (membership rules) and user delete (self-deletion, 409 `LastAdmin`).
+- Postgres: all tests run on SQLite.

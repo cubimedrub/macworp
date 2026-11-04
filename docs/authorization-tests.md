@@ -63,6 +63,7 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | Run start: no project access 404, project Viewer 403, project Editor + invisible workflow 404, both roles pass | `http::run_start_needs_both_roles` | authorization passes (request may fail later) |
 | Public Editor on project + public Viewer on workflow lets anyone run | `http::public_editor_project_allows_running` | authorization passes |
 | Creating gives the creator an Owner share and `my_role = Owner` | `http::creator_becomes_owner` | one share row |
+| A group created through the API lists its owner as member, so a group share reaches them; the owner cannot be removed | `http::group_owner_is_a_member` | |
 
 ## 4. Sharing rules
 
@@ -110,8 +111,7 @@ Not covered by any test today (see PLAN.md P2 for the open items):
 - Worker (Basic-auth) identity over HTTP, including user-facing routes it should not reach (open item "Worker identity reaches routes meant for users").
 - Share `grant` probing the principal before the caller's right (404 vs 403 order), see PLAN.md.
 - Concurrent last-owner demotions (race), SQLite single-writer only.
-- Group owner not being a member (open item), no test asserts the owner gets the group's share role.
 - `upload-file` endpoint role check; successful run start (only the authorization outcome is asserted).
 - Login endpoints (local password, OIDC), password change, brute-force or rate limiting.
-- HTTP-level tests for the groups controller (membership rules) and user delete (self-deletion, 409 `LastAdmin`).
+- HTTP-level tests for the rest of the groups controller (only the owner-is-member rule is covered) and user delete (self-deletion, 409 `LastAdmin`).
 - Postgres: all tests run on SQLite.

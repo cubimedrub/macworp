@@ -518,3 +518,66 @@ async fn anonymous_requests_are_rejected() {
         );
     }
 }
+
+/// A group created through the API lists its owner as member, so a share granted to the group
+/// reaches the owner; the owner stays a member while others come and go and cannot be removed.
+#[tokio::test]
+async fn group_owner_is_a_member() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let bob = app.user("bob").await;
+    let carol = app.user("carol").await;
+
+    let (status, group) = app
+        .post(
+            &alice,
+            "/groups/new",
+            Some(json!({"name": "g", "description": ""})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{group}");
+    let id = group["id"].as_i64().unwrap();
+    let usernames = |group: &Value| -> Vec<String> {
+        let mut names: Vec<String> = group["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| member["username"].as_str().unwrap().to_string())
+            .collect();
+        names.sort();
+        names
+    };
+    assert_eq!(usernames(&group), ["alice"]);
+
+    let project = app.project(&bob, "shared").await;
+    app.share::<Project>(project.id, Principal::Group(id), Role::Viewer)
+        .await;
+    let (status, list) = app.get(&alice, "/projects/index").await;
+    assert_eq!(status, StatusCode::OK, "{list}");
+    assert_eq!(names(&list), ["shared"]);
+
+    let (_, group) = app
+        .post(
+            &alice,
+            &format!("/groups/add-member/{id}"),
+            Some(json!({"user_id": carol.id})),
+        )
+        .await;
+    assert_eq!(usernames(&group), ["alice", "carol"]);
+    let (_, group) = app
+        .post(
+            &alice,
+            &format!("/groups/remove-member/{id}"),
+            Some(json!({"user_id": carol.id})),
+        )
+        .await;
+    assert_eq!(usernames(&group), ["alice"]);
+    let (status, _) = app
+        .post(
+            &alice,
+            &format!("/groups/remove-member/{id}"),
+            Some(json!({"user_id": alice.id})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+}

@@ -162,7 +162,8 @@ impl TestApp {
         .unwrap()
     }
 
-    /// Inserts a group owned by `owner` with `members` (the owner is not added automatically).
+    /// Inserts a group owned by `owner` with `members`; the owner is a member too, as for groups
+    /// created through the API (listing them in `members` as well is harmless).
     pub async fn group(&self, owner: &User, name: &str, members: &[&User]) -> Group {
         let group = ActiveGroup {
             owner_id: Set(Some(owner.id)),
@@ -173,7 +174,13 @@ impl TestApp {
         .insert(self.state.db())
         .await
         .unwrap();
+        let mut everyone = vec![owner];
         for member in members {
+            if member.id != owner.id {
+                everyone.push(member);
+            }
+        }
+        for member in everyone {
             ActiveUsersGroups {
                 user_id: Set(member.id),
                 group_id: Set(group.id),

@@ -175,14 +175,23 @@ impl GroupsController {
         if payload.name.trim().is_empty() {
             return Err(Error::EmptyName);
         }
+        // The owner is a member from the start, so shares granted to the group reach them too.
+        let transaction = state.db().begin().await?;
         let group = ActiveGroup {
             owner_id: Set(Some(user.id)),
             name: Set(payload.name.trim().to_string()),
             description: Set(payload.description),
             ..Default::default()
         }
-        .insert(state.db())
+        .insert(&transaction)
         .await?;
+        ActiveUsersGroups {
+            user_id: Set(user.id),
+            group_id: Set(group.id),
+        }
+        .insert(&transaction)
+        .await?;
+        transaction.commit().await?;
         Ok(Json(Self::response(&state, &user, group, true).await?))
     }
 

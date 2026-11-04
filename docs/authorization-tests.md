@@ -71,6 +71,7 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | --- | --- | --- | --- |
 | Public share cap: workflow max Viewer, project up to Owner | `authorization::share_tests::public_role_is_capped`, `http::public_share_caps_apply_over_http` | Model, HTTP | 400 `PublicRoleTooHigh` for workflow Editor/Owner |
 | Only Owners manage shares | `http::only_owners_manage_shares` | HTTP | Editor 403, Owner 200 |
+| Grant/revoke checks the resource before the principal | `http::grant_checks_resource_before_principal` | HTTP | unknown principal: outsider 404, Viewer 403, Owner 404 (principal error) |
 | Last owner cannot be demoted or removed | `authorization::share_tests::last_owner_is_protected` | Model | `LastOwner`; a second owner frees the first |
 | Regrant replaces instead of duplicating | `authorization::share_tests::regrant_replaces_instead_of_duplicating` | Model | one row |
 | Share listing is per resource | `authorization::share_tests::list_returns_grants_of_the_resource` | Model | |
@@ -109,7 +110,6 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 Not covered by any test today (see PLAN.md P2 for the open items):
 
 - Worker (Basic-auth) identity over HTTP, including user-facing routes it should not reach (open item "Worker identity reaches routes meant for users").
-- Share `grant` probing the principal before the caller's right (404 vs 403 order), see PLAN.md.
 - Concurrent last-owner demotions (race), SQLite single-writer only.
 - `upload-file` endpoint role check; successful run start (only the authorization outcome is asserted).
 - Login endpoints (local password, OIDC), password change, brute-force or rate limiting.

@@ -134,7 +134,7 @@ impl SharesController {
             .collect())
     }
 
-    /// Checks that `user` may share with `principal`: the user or group must exist, and a group
+    /// Checks, after the resource check, that `user` may share with `principal`: the user or group must exist, and a group
     /// must be one the user owns or belongs to (instance admins may use any group).
     async fn check_principal(
         state: &AppState,
@@ -181,23 +181,40 @@ impl SharesController {
         Path((kind, id)): Path<(String, i64)>,
         Json(payload): Json<GrantShareRequest>,
     ) -> Result<StatusCode, Error> {
-        let kind = Kind::parse(&kind)?;
-        let principal = Self::check_principal(&state, &user, payload.principal).await?;
-        match kind {
+        match Kind::parse(&kind)? {
             Kind::Project => {
-                authorize::<Project, Owner>(&state, user, id).await?;
-                Project::shares(state.db(), id)
-                    .grant(principal, payload.role)
-                    .await?;
+                Self::grant_on::<Project>(&state, user, id, payload.principal, payload.role).await?
             }
             Kind::Workflow => {
-                authorize::<WorkflowIntegration, Owner>(&state, user, id).await?;
-                WorkflowIntegration::shares(state.db(), id)
-                    .grant(principal, payload.role)
-                    .await?;
+                Self::grant_on::<WorkflowIntegration>(
+                    &state,
+                    user,
+                    id,
+                    payload.principal,
+                    payload.role,
+                )
+                .await?
             }
         }
         Ok(StatusCode::OK)
+    }
+
+    /// Grants `role` on resource `R` to `principal`. The caller's Owner right on the resource is
+    /// checked first, so a caller without access never learns whether a principal exists.
+    async fn grant_on<R: Resource + Send>(
+        state: &AppState,
+        user: User,
+        id: i64,
+        principal: PrincipalRequest,
+        role: macworp_core::entities::Role,
+    ) -> Result<(), Error>
+    where
+        <R::Entity as EntityTrait>::Model: Send,
+    {
+        authorize::<R, Owner>(state, user.clone(), id).await?;
+        let principal = Self::check_principal(state, &user, principal).await?;
+        R::shares(state.db(), id).grant(principal, role).await?;
+        Ok(())
     }
 
     async fn revoke(

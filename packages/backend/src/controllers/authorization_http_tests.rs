@@ -304,6 +304,48 @@ async fn only_owners_manage_shares() {
     assert_eq!(status, StatusCode::OK);
 }
 
+/// Granting or revoking authorizes the resource before looking at the principal: callers without
+/// access never learn whether a user or group id exists. Owners still get the principal error.
+#[tokio::test]
+async fn grant_checks_resource_before_principal() {
+    let app = TestApp::new().await;
+    let owner = app.user("owner").await;
+    let outsider = app.user("outsider").await;
+    let viewer = app.user("viewer").await;
+    let project = app.project(&owner, "p").await;
+    let workflow = app.workflow(&owner, "w").await;
+    app.share::<Project>(project.id, Principal::User(viewer.id), Role::Viewer)
+        .await;
+    app.share::<WorkflowIntegration>(workflow.id, Principal::User(viewer.id), Role::Viewer)
+        .await;
+
+    let unknown_user = json!({"principal": {"User": 999_999}, "role": "Viewer"});
+    let unknown_group = json!({"principal": {"Group": 999_999}, "role": "Viewer"});
+    let revoke_body = json!({"principal": {"User": 999_999}});
+
+    for (kind, id) in [("projects", project.id), ("workflows", workflow.id)] {
+        let grant = format!("/shares/{kind}/{id}/grant");
+        let revoke = format!("/shares/{kind}/{id}/revoke");
+
+        for body in [&unknown_user, &unknown_group] {
+            let (status, _) = app.post(&outsider, &grant, Some(body.clone())).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{kind}");
+            let (status, _) = app.post(&viewer, &grant, Some(body.clone())).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{kind}");
+        }
+        let (status, _) = app
+            .post(&outsider, &revoke, Some(revoke_body.clone()))
+            .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{kind}");
+        let (status, _) = app.post(&viewer, &revoke, Some(revoke_body.clone())).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{kind}");
+
+        // The owner is told about the unknown principal.
+        let (status, _) = app.post(&owner, &grant, Some(unknown_user.clone())).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{kind}");
+    }
+}
+
 /// Starting a run needs project Editor and workflow Viewer.
 #[tokio::test]
 async fn run_start_needs_both_roles() {

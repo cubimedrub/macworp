@@ -4,10 +4,11 @@
 use macworp_core::entities::Role;
 use macworp_database_migration::{Migrator, MigratorTrait};
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    ColumnTrait, ConnectionTrait, Database, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, TransactionTrait,
 };
 
-use super::{Principal, Resource, ShareError};
+use super::{Principal, Resource, ShareError, role::RoleDb};
 use crate::models::{Project, ProjectColumn, ProjectTable, WorkflowIntegration, share};
 
 /// Migrated in-memory database: users `owner`, `member` (in `group`) and `outsider`, and one project `thing` shared only with `owner`.
@@ -239,6 +240,76 @@ async fn last_owner_is_protected() {
             .unwrap(),
         Some(Role::Owner)
     );
+}
+
+/// A demotion waits for a concurrent transaction holding the resource lock and then hits the
+/// last-owner guard (file-backed database so the transactions use separate connections).
+#[tokio::test]
+async fn concurrent_demotions_keep_one_owner() {
+    let directory = tempfile::tempdir().unwrap();
+    let db = Database::connect(format!(
+        "sqlite://{}/race.db?mode=rwc",
+        directory.path().display()
+    ))
+    .await
+    .unwrap();
+    Migrator::up(&db, None).await.unwrap();
+    exec(
+        &db,
+        "INSERT INTO users (id, username, firstname, lastname, email) VALUES (1, 'a', 'f', 'l', 'a@x')",
+    )
+    .await;
+    exec(
+        &db,
+        "INSERT INTO groups (id, owner_id, name) VALUES (1, 1, 'g')",
+    )
+    .await;
+    exec(
+        &db,
+        "INSERT INTO projects (id, owner_id, name) VALUES (1, 1, 'p')",
+    )
+    .await;
+    Project::shares(&db, 1)
+        .grant(Principal::User(1), Role::Owner)
+        .await
+        .unwrap();
+    Project::shares(&db, 1)
+        .grant(Principal::Group(1), Role::Owner)
+        .await
+        .unwrap();
+
+    /// Demotes `principal` to Viewer inside its own transaction.
+    async fn demote(db: &DatabaseConnection, principal: Principal) -> Result<(), ShareError> {
+        let transaction = db.begin().await?;
+        Project::shares(&transaction, 1)
+            .grant(principal, Role::Viewer)
+            .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+    // The first transaction takes the lock; the second demotion must wait for its commit, so it
+    // cannot count owners before the first one wrote.
+    let first = db.begin().await.unwrap();
+    Project::shares(&first, 1).lock().await.unwrap();
+    let second_db = db.clone();
+    let second = tokio::spawn(async move { demote(&second_db, Principal::Group(1)).await });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!second.is_finished(), "second demotion ran without waiting");
+    Project::shares(&first, 1)
+        .grant(Principal::User(1), Role::Viewer)
+        .await
+        .unwrap();
+    first.commit().await.unwrap();
+    assert!(matches!(
+        second.await.unwrap(),
+        Err(ShareError::LastOwner)
+    ));
+    let owners = share::Entity::find()
+        .filter(share::Column::Role.eq(Role::Owner.to_db()))
+        .all(&db)
+        .await
+        .unwrap();
+    assert_eq!(owners.len(), 1);
 }
 
 /// The migration turns creators into owners.

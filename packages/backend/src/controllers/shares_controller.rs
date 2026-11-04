@@ -12,7 +12,7 @@ use macworp_core::{
     responses::{PrincipalResponse, ShareResponse},
     routing::SharesRouting,
 };
-use sea_orm::EntityTrait;
+use sea_orm::{EntityTrait, TransactionTrait};
 use thiserror::Error;
 
 use crate::{
@@ -213,7 +213,9 @@ impl SharesController {
     {
         authorize::<R, Owner>(state, user.clone(), id).await?;
         let principal = Self::check_principal(state, &user, principal).await?;
-        R::shares(state.db(), id).grant(principal, role).await?;
+        let transaction = state.db().begin().await?;
+        R::shares(&transaction, id).grant(principal, role).await?;
+        transaction.commit().await?;
         Ok(())
     }
 
@@ -231,13 +233,17 @@ impl SharesController {
         match Kind::parse(&kind)? {
             Kind::Project => {
                 authorize::<Project, Owner>(&state, user, id).await?;
-                Project::shares(state.db(), id).revoke(principal).await?;
+                let transaction = state.db().begin().await?;
+                Project::shares(&transaction, id).revoke(principal).await?;
+                transaction.commit().await?;
             }
             Kind::Workflow => {
                 authorize::<WorkflowIntegration, Owner>(&state, user, id).await?;
-                WorkflowIntegration::shares(state.db(), id)
+                let transaction = state.db().begin().await?;
+                WorkflowIntegration::shares(&transaction, id)
                     .revoke(principal)
                     .await?;
+                transaction.commit().await?;
             }
         }
         Ok(StatusCode::OK)

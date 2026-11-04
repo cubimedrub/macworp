@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use macworp_core::entities::Role;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    QueryFilter, QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 
 use super::{PrincipalType, Resource, query::applicable, role::RoleDb};
@@ -145,15 +145,32 @@ impl<'a, R: Resource, C: ConnectionTrait> Shares<'a, R, C> {
         Ok(roles.into_iter().filter_map(Role::from_db).max())
     }
 
+    /// Serializes writers of this resource's shares until the surrounding transaction ends.
+    ///
+    /// Issues a no-op `UPDATE` of the resource row, which takes a row lock on Postgres and the
+    /// database write lock on SQLite. It only holds if the handle was built on a transaction,
+    /// and it must be the first statement of that transaction so later reads see the state
+    /// left by the previous lock holder. A missing resource row locks nothing.
+    pub async fn lock(&self) -> Result<(), DbErr> {
+        R::Entity::update_many()
+            .col_expr(R::id_column(), Expr::col(R::id_column()).into())
+            .filter(R::id_column().eq(self.resource_id))
+            .exec(self.db)
+            .await?;
+        Ok(())
+    }
+
     /// Sets the role of `principal` on the resource, replacing an existing grant.
     ///
-    /// The last-owner check is not safe against concurrent demotions of two different owners.
+    /// Takes [`Self::lock`] first, so with a transaction-backed handle the last-owner check is
+    /// safe against concurrent demotions of different owners.
     pub async fn grant(&self, principal: Principal, role: Role) -> Result<(), Error> {
         if principal == Principal::Public && role > R::MAX_PUBLIC_ROLE {
             return Err(Error::PublicRoleTooHigh {
                 max: R::MAX_PUBLIC_ROLE,
             });
         }
+        self.lock().await?;
         match self.find(principal).await? {
             Some(existing) => {
                 if role < Role::Owner && self.is_last_owner(&existing).await? {
@@ -189,8 +206,9 @@ impl<'a, R: Resource, C: ConnectionTrait> Shares<'a, R, C> {
             .await
     }
 
-    /// Removes the grant of `principal`, if any.
+    /// Removes the grant of `principal`, if any. Takes [`Self::lock`] first.
     pub async fn revoke(&self, principal: Principal) -> Result<(), Error> {
+        self.lock().await?;
         if let Some(existing) = self.find(principal).await? {
             if self.is_last_owner(&existing).await? {
                 return Err(Error::LastOwner);

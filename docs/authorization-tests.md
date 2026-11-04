@@ -110,7 +110,7 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 Not covered by any test today (see PLAN.md P2 for the open items):
 
 - Worker (Basic-auth) identity over HTTP, including user-facing routes it should not reach (open item "Worker identity reaches routes meant for users").
-- Concurrent last-owner demotions (race), SQLite single-writer only.
+- Concurrent last-owner demotions: `share_tests::concurrent_demotions_keep_one_owner` checks that a demotion waits for the resource lock (SQLite only; not mutation-sensitive, SQLite's own write lock already serializes there). Postgres row-lock path untested.
 - `upload-file` endpoint role check; successful run start (only the authorization outcome is asserted).
 - Login endpoints (local password, OIDC), password change, brute-force or rate limiting.
 - HTTP-level tests for the rest of the groups controller (only the owner-is-member rule is covered) and user delete (self-deletion, 409 `LastAdmin`).

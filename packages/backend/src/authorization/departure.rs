@@ -61,6 +61,15 @@ impl<'a, C: ConnectionTrait> Departure<'a, C> {
         let mut workflows = self.touched_resources::<WorkflowIntegration>().await?;
         let mut groups = self.touched_groups().await?;
 
+        // Serialize with concurrent share changes on these resources (ids are sorted, so two
+        // departures lock in the same order).
+        for id in &projects {
+            Project::shares(self.db, *id).lock().await?;
+        }
+        for id in &workflows {
+            WorkflowIntegration::shares(self.db, *id).lock().await?;
+        }
+
         Principal::delete_user_shares(self.db, self.user_id).await?;
         users_groups::Entity::delete_many()
             .filter(users_groups::Column::UserId.eq(self.user_id))

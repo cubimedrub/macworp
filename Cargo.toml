@@ -41,7 +41,8 @@ tempfile = "3"
 thiserror = { version = "2.0.18" }
 tokio = { version = "1.50.0" }
 tokio-util = "0.7.18"
-toml = { version = "1.0.6+spec-1.1.0" }
+# implements TOML spec 1.1.0
+toml = { version = "1.0.6" }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6.8" }
 tracing = { version = "0.1.37" }

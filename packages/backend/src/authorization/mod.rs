@@ -20,6 +20,9 @@ mod query;
 mod resource;
 /// Stored forms of roles, principal types and resource types
 mod role;
+/// `authorize` checks per principal type and role over the test router fixtures
+#[cfg(all(test, feature = "integration"))]
+mod role_tests;
 /// Deciding what becomes of a resource that lost its owner
 mod settle;
 #[cfg(all(test, feature = "integration"))]

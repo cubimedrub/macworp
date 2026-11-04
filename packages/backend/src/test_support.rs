@@ -1,0 +1,245 @@
+use std::sync::Arc;
+
+use axum::{Extension, Router, body::Body};
+use http::{Method, Request, StatusCode, header};
+use macworp_core::{
+    entities::Role,
+    routing::{
+        GroupsRouting, IsRouting, ProjectsRouting, RunsRouting, SharesRouting, UsersRouting,
+        WorkflowIntegrationsRouting,
+    },
+    workflow_configuration::WorkflowConfiguration,
+};
+use macworp_database_migration::{Migrator, MigratorTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+use serde_json::Value;
+use tower::ServiceExt;
+
+use crate::{
+    authentication::jwt::JsonWebToken,
+    authorization::{Principal, Resource},
+    configuration::Configuration,
+    controllers::*,
+    filesystems::local_filesystem::LocalFilesystem,
+    models::{
+        ActiveGroup, ActiveProject, ActiveRun, ActiveUser, ActiveUsersGroups,
+        ActiveWorkflowIntegration, Group, Project, Run, User, WorkflowIntegration,
+    },
+    state::State,
+};
+
+/// A migrated SQLite database in a temp dir plus the full API router, driven in-process with
+/// `tower::ServiceExt::oneshot` (no socket). Shared by the HTTP-level tests.
+pub struct TestApp {
+    /// State the router was built from
+    pub state: Arc<State>,
+    /// Router with all controllers nested at their routing paths
+    router: Router,
+    /// Keeps the database and project directories alive
+    pub directory: tempfile::TempDir,
+}
+
+impl TestApp {
+    /// Creates the database, runs the migrations and builds the router.
+    pub async fn new() -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let mut configuration = Configuration::default();
+        *configuration.database_url_mut() =
+            format!("sqlite://{}/test.db?mode=rwc", directory.path().display());
+        let state = State::new_for_integration(configuration).await.unwrap();
+        Migrator::up(state.db(), None).await.unwrap();
+        let state = Arc::new(state);
+
+        let router = Router::new()
+            .nest(
+                UsersRouting::controller_path(),
+                UsersController::routes::<LocalFilesystem>(state.clone()),
+            )
+            .nest(
+                ProjectsRouting::controller_path(),
+                ProjectsController::<LocalFilesystem>::routes(state.clone()),
+            )
+            .nest(
+                WorkflowIntegrationsRouting::controller_path(),
+                WorkflowIntegrationsController::routes(state.clone()),
+            )
+            .nest(
+                RunsRouting::controller_path(),
+                RunsController::routes(state.clone()),
+            )
+            .nest(
+                GroupsRouting::controller_path(),
+                GroupsController::routes(state.clone()),
+            )
+            .nest(
+                SharesRouting::controller_path(),
+                SharesController::routes(state.clone()),
+            )
+            .layer(Extension(state.clone()))
+            .with_state(state.clone());
+
+        Self {
+            state,
+            router,
+            directory,
+        }
+    }
+
+    /// Inserts a regular user named `name`.
+    pub async fn user(&self, name: &str) -> User {
+        ActiveUser {
+            username: Set(name.into()),
+            firstname: Set(name.into()),
+            lastname: Set(name.into()),
+            email: Set(format!("{name}@example.org")),
+            ..Default::default()
+        }
+        .insert(self.state.db())
+        .await
+        .unwrap()
+    }
+
+    /// Inserts an administrator named `name`.
+    pub async fn admin(&self, name: &str) -> User {
+        let mut user: ActiveUser = self.user(name).await.into();
+        user.is_admin = Set(true);
+        user.update(self.state.db()).await.unwrap()
+    }
+
+    /// Inserts a project whose directory exists below the temp dir, with `owner` as Owner.
+    pub async fn project(&self, owner: &User, name: &str) -> Project {
+        let path = self.directory.path().join(format!("project-{name}"));
+        std::fs::create_dir_all(&path).unwrap();
+        let project = ActiveProject {
+            owner_id: Set(Some(owner.id)),
+            name: Set(name.into()),
+            path: Set(Some(path.display().to_string())),
+            ..Default::default()
+        }
+        .insert(self.state.db())
+        .await
+        .unwrap();
+        Project::shares(self.state.db(), project.id)
+            .grant(Principal::User(owner.id), Role::Owner)
+            .await
+            .unwrap();
+        project
+    }
+
+    /// Inserts a workflow with `owner` as Owner.
+    pub async fn workflow(&self, owner: &User, name: &str) -> WorkflowIntegration {
+        let workflow = ActiveWorkflowIntegration {
+            owner_id: Set(Some(owner.id)),
+            name: Set(name.into()),
+            description: Set(String::new()),
+            ..Default::default()
+        }
+        .insert(self.state.db())
+        .await
+        .unwrap();
+        WorkflowIntegration::shares(self.state.db(), workflow.id)
+            .grant(Principal::User(owner.id), Role::Owner)
+            .await
+            .unwrap();
+        workflow
+    }
+
+    /// Inserts a queued run of `workflow` on `project`.
+    pub async fn run(&self, project: &Project, workflow: &WorkflowIntegration) -> Run {
+        ActiveRun {
+            project_id: Set(project.id),
+            workflow_id: Set(Some(workflow.id)),
+            configuration: Set(WorkflowConfiguration::default()),
+            parameters: Set(Value::Object(Default::default())),
+            comment: Set(String::new()),
+            cancel_requested: Set(false),
+            locked: Set(false),
+            created_at: Set(chrono::Utc::now()),
+            ..Default::default()
+        }
+        .insert(self.state.db())
+        .await
+        .unwrap()
+    }
+
+    /// Inserts a group owned by `owner` with `members` (the owner is not added automatically).
+    pub async fn group(&self, owner: &User, name: &str, members: &[&User]) -> Group {
+        let group = ActiveGroup {
+            owner_id: Set(Some(owner.id)),
+            name: Set(name.into()),
+            description: Set(String::new()),
+            ..Default::default()
+        }
+        .insert(self.state.db())
+        .await
+        .unwrap();
+        for member in members {
+            ActiveUsersGroups {
+                user_id: Set(member.id),
+                group_id: Set(group.id),
+            }
+            .insert(self.state.db())
+            .await
+            .unwrap();
+        }
+        group
+    }
+
+    /// Sends a request as `user` (anonymous for `None`) and returns the status and JSON body
+    /// (`Value::Null` when the body is empty or not JSON).
+    pub async fn send(
+        &self,
+        user: Option<&User>,
+        method: Method,
+        uri: &str,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        let mut request = Request::builder().method(method).uri(uri);
+        if let Some(user) = user {
+            let token =
+                JsonWebToken::encode(user.id, user.token_version, self.state.config()).unwrap();
+            request = request.header(header::AUTHORIZATION, format!("JWT {token}"));
+        }
+        let request = match body {
+            Some(body) => request
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string())),
+            None => request.body(Body::empty()),
+        }
+        .unwrap();
+
+        let response = self.router.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    /// `GET uri` as `user`.
+    pub async fn get(&self, user: &User, uri: &str) -> (StatusCode, Value) {
+        self.send(Some(user), Method::GET, uri, None).await
+    }
+
+    /// `POST uri` as `user` with an optional JSON body.
+    pub async fn post(&self, user: &User, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
+        self.send(Some(user), Method::POST, uri, body).await
+    }
+
+    /// Grants `role` on `resource` to `principal` directly in the database.
+    pub async fn share<R: Resource>(&self, id: i64, principal: Principal, role: Role) {
+        R::shares(self.state.db(), id)
+            .grant(principal, role)
+            .await
+            .unwrap();
+    }
+}
+
+/// Whether `status` means the authorization check passed (the request may still fail later for
+/// unrelated reasons such as a missing file or invalid parameters).
+pub fn passed_authorization(status: StatusCode) -> bool {
+    status != StatusCode::FORBIDDEN && status != StatusCode::NOT_FOUND
+}

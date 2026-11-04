@@ -16,3 +16,7 @@ pub use shares_controller::SharesController;
 pub use users_controller::UsersController;
 pub use utilities_controller::UtilitiesController;
 pub use workflow_integrations_controllers::WorkflowIntegrationsController;
+
+/// HTTP-level authorization tests over the full router
+#[cfg(all(test, feature = "integration"))]
+mod authorization_http_tests;

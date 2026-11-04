@@ -259,8 +259,8 @@ fn read_password(password_file: Option<&Path>) -> Result<String, StandaloneError
             password
         }
         None => {
-            let password = rpassword::prompt_password("Password: ")
-                .map_err(StandaloneError::PasswordRead)?;
+            let password =
+                rpassword::prompt_password("Password: ").map_err(StandaloneError::PasswordRead)?;
             let password_confirmation = rpassword::prompt_password("Repeat password: ")
                 .map_err(StandaloneError::PasswordRead)?;
 
@@ -327,10 +327,8 @@ mod tests {
 
     /// Writes `content` to a unique temporary file and returns its path.
     fn password_file(name: &str, content: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "macworp_password_{}_{name}",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("macworp_password_{}_{name}", std::process::id()));
         std::fs::write(&path, content).unwrap();
         path
     }

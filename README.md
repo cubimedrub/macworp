@@ -29,24 +29,73 @@ Engines run inside containers, so a container runtime (Podman or Docker) is requ
 
 Snakemake needs Docker. CWL support is still planned.
 
+## Permissions
+
+Projects and workflows are private: only users (or groups) they are shared with can see them. A user's role on a resource is the highest of the roles granted to them directly, to a group they belong to and to everybody (public). The sharing UI exists on the web deployment only (the backend routes are mounted in both builds); the desktop app has a single local user who owns everything.
+
+Roles on a **project** or **workflow** (each includes the rights of the roles to its left):
+
+| Action | Viewer | Editor | Owner |
+| --- | :---: | :---: | :---: |
+| **Project**: see it in lists, open it, browse its files and runs, read run logs | yes | yes | yes |
+| Project: upload files, create folders, delete files and folders | | yes | yes |
+| Project: start runs (also needs at least Viewer on the workflow) | | yes | yes |
+| Project: cancel runs (only the project role is checked) | | yes | yes |
+| Project: delete it | | | yes |
+| Project: manage shares (users, groups, public) | | | yes |
+| **Workflow**: see it, select it to run it on a project | yes | yes | yes |
+| Workflow: edit its definition (engine, source, parameters) | | yes | yes |
+| Workflow: delete it | | | yes |
+| Workflow: manage shares (users, groups, public) | | | yes |
+
+- Running needs both rights: Editor or Owner on the project and Viewer or higher on the workflow. A role on a workflow gives no rights on anybody's project.
+- The public (everybody) can hold at most Viewer on a workflow; on a project it can hold any role. Editor and Owner on a workflow go to users or groups.
+- While sharing, a resource always keeps at least one user or group Owner: the last one cannot be removed or demoted. Only deleting an account can leave a resource without an owner, see below.
+- A resource the user cannot see behaves as if it does not exist (404); one they can see but lack the role for is refused (403).
+- Granting a role to a group is only possible for groups the granting user owns or belongs to.
+
+Other actions:
+
+| Action | Any logged-in user | Group member | Group owner | Admin |
+| --- | :---: | :---: | :---: | :---: |
+| Create projects, workflows and groups (the creator becomes Owner) | yes | | | yes |
+| Search users by username (to share or add members) | yes | | | yes |
+| See a group and its members | | yes | yes | yes |
+| Rename or delete a group, add or remove members | | | yes | yes |
+| Be named as share principal through a group | | yes | yes | yes (any group) |
+| Read, edit, delete and share any project or workflow | | | | yes |
+| List all projects, workflows and groups | | | | yes |
+| Create, edit, disable users and reset passwords | | | | yes |
+| Delete a user account (any user may delete their own) | own account | | | yes |
+
+**Admin:** users have an `is_admin` flag (set with `macworp_backend user promote|demote <username>` or by another admin). An admin has full create, read, update and delete rights on all projects, workflows, groups and users, can list everything (the "Show all" switch above the project, workflow and group lists, web only) and can disable users and reset passwords. The last enabled admin cannot be demoted, disabled or deleted, and admins cannot disable their own account. Admin actions are logged (tracing target `audit`): every admin user action (including on their own account), admin use of rights beyond their shares, `?all=true` listings and account deletions. A project, workflow or group nobody owns anymore is marked **ownerless** in lists and on its page; an admin can assign a new owner.
+
+### Accounts and API behaviour
+
+- Logging out invalidates all tokens of the user.
+- A disabled user can neither log in nor use existing tokens (401). Their shares and group memberships stay.
+- User search needs at least 2 characters, matches the username prefix and returns at most 10 users.
+- `?all=true` on list endpoints is refused for non-admins (403).
+- Sharing errors: public role above the allowed maximum 400, removing or demoting the last owner 409, unknown principal 404.
+
 ### Deleting an account
 
 Every user may delete their own account, administrators may delete any account. It cannot be undone. The user's shares and group memberships are removed, then for every project, workflow and group they touched:
 
 | Case | Project | Workflow | Group |
 | --- | --- | --- | --- |
-| Another user or group still owns it | stays; that owner takes over (the oldest enabled user owner is shown as creator) | same | not applicable, a group has one owner |
+| Another user or group still owns it | stays; that owner takes over (the owner with the oldest share is shown as creator) | same | not applicable, a group has one owner |
 | Nobody owns it, but somebody can still use it | stays **without an owner** while a user, group or the public can edit it (public Owner counts as Editor) | stays without an owner while somebody can view or edit it | stays without an owner while a share uses it and it has members |
 | Nobody is left who can use it | deleted with its files and shares | deleted with its shares | deleted, together with its shares |
 
 - Viewers alone do not keep a project alive, as nobody could maintain it.
-- A group left without members is deleted, even if shares use it. Deleting a group removes its shares, which can leave further projects and workflows without anybody, so the rules repeat until nothing changes.
+- A group whose owner is deleted is removed when it has no members or no share uses it; a group that still has an owner stays, even without members. Deleting a group removes its shares, which can leave further projects and workflows without anybody, so the rules repeat until nothing changes.
 - A resource without an owner keeps working for the users who hold a role on it; administrators can manage it and assign a new owner. The last enabled administrator cannot be deleted.
 - Runs the user started are kept, without a starter.
 
 The same rules are shown to the user in the app (`macworp_core::account_deletion::RULES`).
 
-**Workers** run under their own identity, see no projects or workflows through the API and only act on the runs handed to them.
+**Workers** authenticate with a static credential from the configuration. They are not database users, hold no shares and therefore see no projects or workflows through the API.
 
 ## Installation
 

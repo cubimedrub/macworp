@@ -105,6 +105,26 @@ impl IsRouting for RunsRouting {
     const CONTROLLER_PATH: &str = "/runs";
 }
 
+/// Routes workers call. `claim` is authenticated with the worker credential (Basic), everything
+/// else with the per-run token returned by `claim` (`Run <token>`).
+pub struct WorkerRouting;
+impl WorkerRouting {
+    /// POST: lease the oldest queued run, 204 if none is queued
+    pub const CLAIM_PATH: &str = "/claim";
+    /// POST: extend the lease, the response says whether the run should be cancelled
+    pub const HEARTBEAT_PATH: &str = "/heartbeat/{run_id}";
+    /// POST: append log lines of the run
+    pub const LOGS_PATH: &str = "/logs/{run_id}";
+    /// POST: report the task progress of the engine
+    pub const PROGRESS_PATH: &str = "/progress/{run_id}";
+    /// POST: report how the run ended; the token stops working afterwards
+    pub const FINISH_PATH: &str = "/finish/{run_id}";
+}
+
+impl IsRouting for WorkerRouting {
+    const CONTROLLER_PATH: &str = "/worker";
+}
+
 /// Routes for groups of users
 pub struct GroupsRouting;
 impl GroupsRouting {

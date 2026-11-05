@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Extension, RequestPartsExt,
-    extract::{FromRef, FromRequestParts, Query},
+    extract::{FromRef, FromRequestParts, Path, Query},
     http::{HeaderValue, request::Parts},
 };
 use base64::prelude::*;
@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::{
     authentication::{error::Error, jwt::JsonWebToken, password::verify_password},
-    models::{User, UserTable},
+    models::{Run, RunTable, User, UserTable},
     state::State,
 };
 
@@ -67,6 +67,103 @@ where
         } else {
             Ok(RequireUser(user))
         }
+    }
+}
+
+/// Extractor for worker endpoints that have no run yet (claim): requires the static worker
+/// credential (`Basic`). Users and run tokens are rejected, the worker is not a user.
+pub struct RequireWorker {
+    /// Username of the worker credential
+    pub username: String,
+}
+
+impl<S> FromRequestParts<S> for RequireWorker
+where
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    /// Reads the `Authorization` header and checks it against the configured worker credential.
+    ///
+    /// Rejections: 400 if the header is missing or malformed, 401 if the token type is not
+    /// `Basic` (JWTs and run tokens are refused) or username/password do not match.
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let Extension(app_state) = parts
+            .extract::<Extension<Arc<State>>>()
+            .await
+            .map_err(Error::StateMissing)?;
+        let header = parts
+            .headers
+            .get(http::header::AUTHORIZATION)
+            .ok_or(Error::MissingAuthorizationHeader)?;
+        let (token_type, token) = split_authorization_header(header)?;
+        if !matches!(token_type, TokenType::Basic) {
+            return Err(Error::Unauthorized);
+        }
+        let username = worker_username_from_basic(&app_state, token)?.ok_or(Error::Unauthorized)?;
+        Ok(RequireWorker { username })
+    }
+}
+
+/// Extractor for worker endpoints of one run (path parameter `run_id`): requires
+/// `Authorization: Run <token>` with the token issued when the run was claimed. Fails with 401 if
+/// the run is unknown, not running (finished, cancelled, requeued after a lost lease) or the token
+/// belongs to an earlier claim, so a stale worker can never write into a requeued run.
+pub struct RequireRunToken(pub Run);
+
+impl<S> FromRequestParts<S> for RequireRunToken
+where
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let Extension(app_state) = parts
+            .extract::<Extension<Arc<State>>>()
+            .await
+            .map_err(Error::StateMissing)?;
+        let Path(run_id) = parts
+            .extract::<Path<i64>>()
+            .await
+            .map_err(|_| Error::InvalidAuthorizationHeader("invalid run id"))?;
+        let header = parts
+            .headers
+            .get(http::header::AUTHORIZATION)
+            .ok_or(Error::MissingAuthorizationHeader)?;
+        let (token_type, token) = split_authorization_header(header)?;
+        if !matches!(token_type, TokenType::Run) {
+            return Err(Error::Unauthorized);
+        }
+        let run = RunTable::authenticate(app_state.db(), run_id, token)
+            .await
+            .map_err(|error| match error {
+                crate::models::RunError::Database(e) => Error::Database(e),
+                _ => Error::Unauthorized,
+            })?;
+        Ok(RequireRunToken(run))
+    }
+}
+
+/// Checks a Basic token against the configured worker credential and returns its username.
+fn worker_username_from_basic(state: &State, token: &str) -> Result<Option<String>, Error> {
+    let payload = String::from_utf8(
+        BASE64_STANDARD
+            .decode(token)
+            .map_err(Error::BasicAuthDecode)?,
+    )
+    .map_err(|_| Error::InvalidAuthorizationHeader("unable to decode basic auth token"))?;
+    let (username, password) = payload
+        .split_once(":")
+        .ok_or(Error::InvalidAuthorizationHeader(
+            "unable to decode basic auth token",
+        ))?;
+    let worker = state.config().worker();
+    if worker.username() == username
+        && verify_password(password.as_bytes(), worker.password(), WORKER_ID)?
+    {
+        Ok(Some(username.to_string()))
+    } else {
+        Ok(None)
     }
 }
 
@@ -217,6 +314,8 @@ async fn get_user_from_token(
 
             Ok(user)
         }
+        // Run tokens authenticate workers on one run only, never users
+        TokenType::Run => Ok(None),
         TokenType::Basic => {
             let payload = String::from_utf8(
                 BASE64_STANDARD

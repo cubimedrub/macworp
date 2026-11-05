@@ -6,7 +6,7 @@ use macworp_core::{
     entities::Role,
     routing::{
         GroupsRouting, IsRouting, LoginRouting, ProjectsRouting, RunsRouting, SharesRouting,
-        UsersRouting, WorkflowIntegrationsRouting,
+        UsersRouting, WorkerRouting, WorkflowIntegrationsRouting,
     },
     workflow_configuration::WorkflowConfiguration,
 };
@@ -87,6 +87,10 @@ impl TestApp {
             .nest(
                 SharesRouting::controller_path(),
                 SharesController::routes(state.clone()),
+            )
+            .nest(
+                WorkerRouting::controller_path(),
+                WorkerController::<LocalFilesystem>::routes(state.clone()),
             )
             .layer(Extension(state.clone()))
             .with_state(state.clone());
@@ -236,9 +240,9 @@ impl TestApp {
             .await
     }
 
-    /// Sends a request with the given `Authorization` header value and returns the status and
-    /// JSON body.
-    async fn send_authorized(
+    /// Sends a request with the given `Authorization` header value (e.g. `Run <token>`) and
+    /// returns the status and JSON body.
+    pub async fn send_authorized(
         &self,
         authorization: Option<String>,
         method: Method,

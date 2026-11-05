@@ -86,6 +86,7 @@ impl From<crate::models::RunError> for Error {
             RunError::RunLimitReached(limit) => Self::RunLimitReached(limit),
             RunError::NotFound => Self::RunNotFound,
             RunError::AlreadyFinished => Self::AlreadyFinished,
+            RunError::InvalidToken => Self::Forbidden,
             RunError::Database(e) => Self::Database(e),
         }
     }

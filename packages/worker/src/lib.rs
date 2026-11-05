@@ -4,6 +4,8 @@ pub mod configuration;
 pub mod container_runtime;
 /// Workflow executor, for building and running the workflow using an external tool
 pub mod executors;
+/// Job source of remote workers: claims and reports over HTTP
+pub mod http_job_source;
 /// Where a worker gets jobs from and reports to
 pub mod job_source;
 /// HTTP receiver for the monitoring events of the engines (weblog / wms-monitor)

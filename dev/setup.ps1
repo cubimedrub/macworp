@@ -18,10 +18,17 @@ if (-not (Test-Path $config)) {
         (New-Object System.Text.UTF8Encoding $false))
     Write-Host "wrote $config"
 }
+# Password of the default worker credential in the generated config, read by the worker
+$workerPassword = 'dev/worker.password'
+if (-not (Test-Path $workerPassword)) {
+    [System.IO.File]::WriteAllText((Join-Path (Get-Location) $workerPassword), "developer`n", (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "wrote $workerPassword"
+}
 @'
-Next: start the three Procfile processes (`ultraman start`, or one terminal each on Windows):
+Next: start the four Procfile processes (`ultraman start`, or one terminal each on Windows):
   docker compose up db
   cargo run -p macworp_backend -- db-migrate dev/config.toml; cargo run -p macworp_backend -- serve dev/config.toml
+  cargo run -p macworp_worker -- -vv --backend-url http://127.0.0.1:3001 --password-file dev/worker.password --name dev-worker run
   cd packages/web; $env:MACWORP_BASE_URL = 'http://127.0.0.1:3001'; dx serve --web --port 5001
 Then create users (prompts for a password), e.g. in another terminal:
   cargo run -p macworp_backend -- user create alice Alice A alice@example.org

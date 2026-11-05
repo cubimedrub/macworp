@@ -58,6 +58,18 @@ pub struct Model {
     /// When the run reached a terminal status
     #[sea_orm(nullable)]
     pub finished_at: Option<DateTimeUtc>,
+    /// A leased run is requeued when its worker does not heartbeat before this time. `None` for
+    /// runs claimed without a lease (embedded desktop worker) and for runs that are not running.
+    #[sea_orm(nullable)]
+    pub leased_until: Option<DateTimeUtc>,
+    /// Name of the worker holding the lease
+    #[sea_orm(nullable)]
+    pub worker_name: Option<String>,
+    /// SHA-256 (hex) of the per-run token the worker authenticates with, see [`Entity::hash_token`]
+    #[sea_orm(nullable)]
+    pub worker_token_hash: Option<String>,
+    /// How often the run was claimed, a run that exhausts its attempts fails instead of requeueing
+    pub attempts: i32,
 
     #[sea_orm(belongs_to, relation_enum = "Project", from = "project_id", to = "id")]
     pub project: HasOne<super::project::Entity>,
@@ -89,8 +101,32 @@ pub enum Error {
     /// The run is already in a terminal status
     #[error("Run already finished")]
     AlreadyFinished,
+    /// The run is not running or the worker token does not belong to it
+    #[error("Invalid run token")]
+    InvalidToken,
     #[error("Database error: {0}")]
     Database(#[from] DbErr),
+}
+
+/// Lease parameters of a claim by a remote worker
+struct Lease<'a> {
+    /// Worker taking the run
+    worker: &'a str,
+    /// Lease duration in seconds
+    seconds: i64,
+    /// Hash of the per-run token issued with the claim
+    token_hash: String,
+}
+
+/// Outcome of [`Entity::requeue_expired`]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Requeued {
+    /// Runs moved back to `Queued`
+    pub requeued: u64,
+    /// Runs failed because no attempts were left
+    pub failed: u64,
+    /// Runs cancelled because a cancel was pending
+    pub cancelled: u64,
 }
 
 impl Model {
@@ -162,8 +198,44 @@ impl Model {
 impl Entity {
     /// Moves the oldest queued run to `Running` and returns it, `None` if nothing is queued.
     ///
-    /// The status switch is a conditional update, so concurrent workers never claim the same run.
+    /// No lease is taken: the claimer is trusted to live as long as the run (embedded desktop
+    /// worker, see [`Entity::fail_orphaned_running`]). The status switch is a conditional update,
+    /// so concurrent workers never claim the same run.
     pub async fn claim_next<C: ConnectionTrait>(db: &C) -> Result<Option<Model>, Error> {
+        Self::claim(db, None).await
+    }
+
+    /// Like [`Entity::claim_next`], but for a remote worker: the run is leased to `worker` for
+    /// `lease_seconds` (extend it with [`Entity::heartbeat`]) and a fresh per-run token is
+    /// returned. Only the token's hash is stored, so the plaintext exists in this return value only.
+    pub async fn claim_next_leased<C: ConnectionTrait>(
+        db: &C,
+        worker: &str,
+        lease_seconds: i64,
+    ) -> Result<Option<(Model, String)>, Error> {
+        let token = crate::configuration::generate_secret();
+        let lease = Lease {
+            worker,
+            seconds: lease_seconds,
+            token_hash: Self::hash_token(&token),
+        };
+        Ok(Self::claim(db, Some(lease)).await?.map(|run| (run, token)))
+    }
+
+    /// SHA-256 of a per-run token as lowercase hex. Tokens are random, so a fast hash is enough.
+    pub fn hash_token(token: &str) -> String {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(token.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    /// Shared claim loop of [`Entity::claim_next`] and [`Entity::claim_next_leased`].
+    async fn claim<C: ConnectionTrait>(
+        db: &C,
+        lease: Option<Lease<'_>>,
+    ) -> Result<Option<Model>, Error> {
         loop {
             let Some(next) = Entity::find()
                 .filter(Column::Status.eq(RunStatus::Queued))
@@ -174,19 +246,144 @@ impl Entity {
             else {
                 return Ok(None);
             };
-            let claimed = Entity::update_many()
+            let now = chrono::Utc::now();
+            let mut update = Entity::update_many()
                 .col_expr(Column::Status, Expr::value(RunStatus::Running))
-                .col_expr(Column::StartedAt, Expr::value(chrono::Utc::now()))
+                .col_expr(Column::StartedAt, Expr::value(now))
+                .col_expr(
+                    Column::Attempts,
+                    sea_orm::ExprTrait::add(Expr::col(Column::Attempts), 1),
+                )
                 .filter(Column::Id.eq(next.id))
-                .filter(Column::Status.eq(RunStatus::Queued))
-                .exec(db)
-                .await?
-                .rows_affected;
-            if claimed == 1 {
+                .filter(Column::Status.eq(RunStatus::Queued));
+            if let Some(lease) = &lease {
+                update = update
+                    .col_expr(
+                        Column::LeasedUntil,
+                        Expr::value(now + chrono::Duration::seconds(lease.seconds)),
+                    )
+                    .col_expr(Column::WorkerName, Expr::value(lease.worker))
+                    .col_expr(
+                        Column::WorkerTokenHash,
+                        Expr::value(lease.token_hash.clone()),
+                    );
+            }
+            if update.exec(db).await?.rows_affected == 1 {
                 return Ok(Entity::find_by_id(next.id).one(db).await?);
             }
             // lost the race (or the run was cancelled meanwhile), look at the next one
         }
+    }
+
+    /// The running run `id` if `token` is the one issued at its claim, otherwise
+    /// [`Error::InvalidToken`] (unknown run, wrong token, or the run is no longer running, e.g.
+    /// requeued after the lease expired). Authenticates every worker call except claim.
+    pub async fn authenticate<C: ConnectionTrait>(
+        db: &C,
+        id: i64,
+        token: &str,
+    ) -> Result<Model, Error> {
+        let hash = Self::hash_token(token);
+        Entity::find_by_id(id)
+            .filter(Column::Status.eq(RunStatus::Running))
+            .filter(Column::WorkerTokenHash.eq(hash))
+            .one(db)
+            .await?
+            .ok_or(Error::InvalidToken)
+    }
+
+    /// Extends the lease of a run by `lease_seconds` from now and returns whether a user asked
+    /// to cancel it. Fails with [`Error::InvalidToken`] like [`Entity::authenticate`].
+    pub async fn heartbeat<C: ConnectionTrait>(
+        db: &C,
+        id: i64,
+        token: &str,
+        lease_seconds: i64,
+    ) -> Result<bool, Error> {
+        let run = Self::authenticate(db, id, token).await?;
+        Self::extend_lease(db, id, lease_seconds).await?;
+        Ok(run.cancel_requested)
+    }
+
+    /// Moves the lease of a running run to `lease_seconds` from now. For callers that already
+    /// authenticated the run; a run that is not running is left untouched.
+    pub async fn extend_lease<C: ConnectionTrait>(
+        db: &C,
+        id: i64,
+        lease_seconds: i64,
+    ) -> Result<(), Error> {
+        Entity::update_many()
+            .col_expr(
+                Column::LeasedUntil,
+                Expr::value(chrono::Utc::now() + chrono::Duration::seconds(lease_seconds)),
+            )
+            .filter(Column::Id.eq(id))
+            .filter(Column::Status.eq(RunStatus::Running))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
+    /// Handles runs whose lease expired (the worker died or lost the network): a run with attempts
+    /// left goes back to `Queued` and its token is invalidated, a run that used `max_attempts`
+    /// fails. A run with `cancel_requested` is cancelled instead. Returns what happened.
+    pub async fn requeue_expired<C: ConnectionTrait>(
+        db: &C,
+        max_attempts: i32,
+    ) -> Result<Requeued, Error> {
+        let now = chrono::Utc::now();
+        let expired = Entity::find()
+            .filter(Column::Status.eq(RunStatus::Running))
+            .filter(Column::LeasedUntil.is_not_null())
+            .filter(Column::LeasedUntil.lt(now))
+            .all(db)
+            .await?;
+        let mut result = Requeued::default();
+        for run in expired {
+            // conditional on the status and the exact lease, so a heartbeat that just arrived wins
+            let guarded = Entity::update_many()
+                .filter(Column::Id.eq(run.id))
+                .filter(Column::Status.eq(RunStatus::Running))
+                .filter(Column::LeasedUntil.lt(now));
+            if run.cancel_requested {
+                let updated = guarded
+                    .col_expr(Column::Status, Expr::value(RunStatus::Cancelled))
+                    .col_expr(Column::FinishedAt, Expr::value(now))
+                    .col_expr(Column::LeasedUntil, Expr::value(None::<DateTimeUtc>))
+                    .exec(db)
+                    .await?
+                    .rows_affected;
+                result.cancelled += updated;
+            } else if run.attempts >= max_attempts {
+                let updated = guarded
+                    .col_expr(Column::Status, Expr::value(RunStatus::Failed))
+                    .col_expr(
+                        Column::Error,
+                        Expr::value(format!(
+                            "Worker lost: lease expired after {} attempt(s)",
+                            run.attempts
+                        )),
+                    )
+                    .col_expr(Column::FinishedAt, Expr::value(now))
+                    .col_expr(Column::LeasedUntil, Expr::value(None::<DateTimeUtc>))
+                    .exec(db)
+                    .await?
+                    .rows_affected;
+                result.failed += updated;
+            } else {
+                let updated = guarded
+                    .col_expr(Column::Status, Expr::value(RunStatus::Queued))
+                    .col_expr(Column::StartedAt, Expr::value(None::<DateTimeUtc>))
+                    .col_expr(Column::LeasedUntil, Expr::value(None::<DateTimeUtc>))
+                    .col_expr(Column::WorkerName, Expr::value(None::<String>))
+                    .col_expr(Column::WorkerTokenHash, Expr::value(None::<String>))
+                    .exec(db)
+                    .await?
+                    .rows_affected;
+                result.requeued += updated;
+            }
+        }
+        Ok(result)
     }
 
     /// Moves a run to the terminal `status`. A run that is already terminal (e.g. cancelled while
@@ -719,5 +916,171 @@ mod tests {
         assert_eq!(latest(Some(wfs[1])).await.unwrap().unwrap().id, mid);
         assert_eq!(latest(Some(wfs[0])).await.unwrap().unwrap().id, new);
         assert!(latest(Some(wfs[1] + 100)).await.unwrap().is_none());
+    }
+
+    /// Expires the lease of `id` by moving `leased_until` into the past
+    async fn expire_lease(db: &DatabaseConnection, id: i64) {
+        Entity::update_many()
+            .col_expr(
+                Column::LeasedUntil,
+                Expr::value(Utc::now() - Duration::seconds(5)),
+            )
+            .filter(Column::Id.eq(id))
+            .exec(db)
+            .await
+            .unwrap();
+    }
+
+    /// A leased claim stores lease, worker and token hash (never the token), and the token works
+    #[tokio::test]
+    async fn leased_claim_issues_token() {
+        let (db, user, project) = setup().await;
+        let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
+        let (run, token) = Entity::claim_next_leased(&db, "w1", 60)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.id, id);
+        assert_eq!(run.status, RunStatus::Running);
+        assert_eq!(run.attempts, 1);
+        assert_eq!(run.worker_name.as_deref(), Some("w1"));
+        assert!(run.leased_until.unwrap() > Utc::now());
+        assert_ne!(run.worker_token_hash.as_deref(), Some(token.as_str()));
+        assert!(Entity::authenticate(&db, id, &token).await.is_ok());
+        assert!(matches!(
+            Entity::authenticate(&db, id, "wrong").await,
+            Err(Error::InvalidToken)
+        ));
+        assert!(
+            Entity::claim_next_leased(&db, "w2", 60)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    /// Heartbeat extends the lease and reports a pending cancel
+    #[tokio::test]
+    async fn heartbeat_extends_lease_and_reports_cancel() {
+        let (db, user, project) = setup().await;
+        let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
+        let (_, token) = Entity::claim_next_leased(&db, "w1", 60)
+            .await
+            .unwrap()
+            .unwrap();
+        expire_lease(&db, id).await;
+        assert!(!Entity::heartbeat(&db, id, &token, 60).await.unwrap());
+        assert!(
+            Entity::find_by_id(id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .leased_until
+                .unwrap()
+                > Utc::now()
+        );
+        Entity::update_many()
+            .col_expr(Column::CancelRequested, Expr::value(true))
+            .filter(Column::Id.eq(id))
+            .exec(&db)
+            .await
+            .unwrap();
+        assert!(Entity::heartbeat(&db, id, &token, 60).await.unwrap());
+    }
+
+    /// An expired run is requeued, its old token stops working, and a new claim gets a new token
+    #[tokio::test]
+    async fn expired_lease_requeues_and_invalidates_token() {
+        let (db, user, project) = setup().await;
+        let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
+        let (_, old) = Entity::claim_next_leased(&db, "w1", 60)
+            .await
+            .unwrap()
+            .unwrap();
+        // not expired yet: nothing happens
+        assert_eq!(
+            Entity::requeue_expired(&db, 3).await.unwrap(),
+            Requeued::default()
+        );
+        expire_lease(&db, id).await;
+        let result = Entity::requeue_expired(&db, 3).await.unwrap();
+        assert_eq!(
+            result,
+            Requeued {
+                requeued: 1,
+                ..Default::default()
+            }
+        );
+        assert!(matches!(
+            Entity::authenticate(&db, id, &old).await,
+            Err(Error::InvalidToken)
+        ));
+        assert!(matches!(
+            Entity::heartbeat(&db, id, &old, 60).await,
+            Err(Error::InvalidToken)
+        ));
+        let (run, new) = Entity::claim_next_leased(&db, "w2", 60)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.attempts, 2);
+        assert_ne!(old, new);
+    }
+
+    /// A run that used all attempts fails instead of requeueing; a pending cancel wins
+    #[tokio::test]
+    async fn expired_lease_fails_at_max_attempts_or_cancels() {
+        let (db, user, project) = setup().await;
+        let id = add_run(&db, user, project, 2, RunStatus::Queued, false).await;
+        Entity::claim_next_leased(&db, "w1", 60)
+            .await
+            .unwrap()
+            .unwrap();
+        expire_lease(&db, id).await;
+        let result = Entity::requeue_expired(&db, 1).await.unwrap();
+        assert_eq!(
+            result,
+            Requeued {
+                failed: 1,
+                ..Default::default()
+            }
+        );
+        let run = Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+        assert_eq!(run.status, RunStatus::Failed);
+        assert!(run.error.unwrap().contains("lease expired"));
+
+        let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
+        Entity::claim_next_leased(&db, "w1", 60)
+            .await
+            .unwrap()
+            .unwrap();
+        Entity::update_many()
+            .col_expr(Column::CancelRequested, Expr::value(true))
+            .filter(Column::Id.eq(id))
+            .exec(&db)
+            .await
+            .unwrap();
+        expire_lease(&db, id).await;
+        let result = Entity::requeue_expired(&db, 3).await.unwrap();
+        assert_eq!(
+            result,
+            Requeued {
+                cancelled: 1,
+                ..Default::default()
+            }
+        );
+    }
+
+    /// Runs claimed without a lease (desktop) are never requeued
+    #[tokio::test]
+    async fn unleased_running_runs_are_not_requeued() {
+        let (db, user, project) = setup().await;
+        add_run(&db, user, project, 1, RunStatus::Queued, false).await;
+        Entity::claim_next(&db).await.unwrap().unwrap();
+        assert_eq!(
+            Entity::requeue_expired(&db, 3).await.unwrap(),
+            Requeued::default()
+        );
     }
 }

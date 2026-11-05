@@ -30,7 +30,7 @@ use axum::{Extension, Router};
 use http::Method;
 use macworp_core::routing::{
     GroupsRouting, IsRouting, LoginRouting, ProjectsRouting, RunsRouting, SharesRouting,
-    UsersRouting, UtilitiesRouting, WorkflowIntegrationsRouting,
+    UsersRouting, UtilitiesRouting, WorkerRouting, WorkflowIntegrationsRouting,
 };
 use tokio::net::TcpListener;
 #[cfg(feature = "standalone")]
@@ -91,6 +91,25 @@ impl<F> Backend<F>
 where
     F: IsFilesystem,
 {
+    /// Periodically requeues (or fails) runs whose worker stopped heartbeating, see
+    /// `models::RunTable::requeue_expired`. Runs until aborted.
+    async fn requeue_expired_runs(state: Arc<State>) {
+        let period = std::time::Duration::from_secs(
+            u64::from(state.config().worker_lease_seconds() / 3).max(1),
+        );
+        let max_attempts = i32::try_from(state.config().worker_max_attempts()).unwrap_or(i32::MAX);
+        loop {
+            tokio::time::sleep(period).await;
+            match models::RunTable::requeue_expired(state.db(), max_attempts).await {
+                Ok(result) if result != models::RequeuedRuns::default() => {
+                    tracing::warn!("Worker leases expired: {result:?}");
+                }
+                Ok(_) => {}
+                Err(error) => tracing::error!("Checking worker leases failed: {error}"),
+            }
+        }
+    }
+
     /// Starts the backend on the provides TCP port.
     ///
     /// # Arguments
@@ -138,8 +157,12 @@ where
                 SharesRouting::controller_path(),
                 SharesController::routes(state.clone()),
             )
+            .nest(
+                WorkerRouting::controller_path(),
+                WorkerController::<F>::routes(state.clone()),
+            )
             .layer(Extension(state.clone()))
-            .with_state(state);
+            .with_state(state.clone());
         let router = match cors {
             Some(cors) => router.layer(cors),
             None => router,
@@ -150,10 +173,13 @@ where
             tcp_listener.local_addr().unwrap()
         );
 
-        axum::serve(tcp_listener, router)
+        let requeue = tokio::spawn(Self::requeue_expired_runs(state));
+        let result = axum::serve(tcp_listener, router)
             .with_graceful_shutdown(shutdown_signal)
             .await
-            .map_err(Error::BackendStart)
+            .map_err(Error::BackendStart);
+        requeue.abort();
+        result
     }
 }
 

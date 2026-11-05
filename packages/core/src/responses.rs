@@ -223,3 +223,24 @@ pub struct ShareResponse {
     /// The granted role
     pub role: Role,
 }
+
+/// A run leased to a worker
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WorkerClaimResponse {
+    pub run_id: i64,
+    /// Project directory, valid on the worker too (shared filesystem)
+    pub project_dir: PathBuf,
+    /// Workflow configuration snapshot with the parameter values applied
+    pub configuration: WorkflowConfiguration,
+    /// Per-run token for all further calls, sent as `Authorization: Run <token>`
+    pub token: String,
+    /// Seconds the worker may stay silent; heartbeat several times within it
+    pub lease_seconds: u32,
+}
+
+/// Answer to a heartbeat
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerHeartbeatResponse {
+    /// A user asked to stop the run, the worker should cancel it and report `Cancelled`
+    pub cancel_requested: bool,
+}

@@ -14,7 +14,7 @@ pub use project::{
 };
 pub use run::{
     ActiveModel as ActiveRun, Column as RunColumn, Entity as RunTable, Error as RunError,
-    Model as Run,
+    Model as Run, Requeued as RequeuedRuns,
 };
 pub use run_log::{
     ActiveModel as ActiveRunLog, Column as RunLogColumn, Entity as RunLogTable, Model as RunLog,

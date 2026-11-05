@@ -32,12 +32,7 @@ use macworp_ui_core::{
 use macworp_worker::{
     configuration::WorkerConfiguration,
     container_runtime::ContainerRuntime,
-    executors::{
-        container::ContainerExecutor,
-        nextflow::{self, NextflowExecutor},
-        snakemake::{self, SnakemakeExecutor},
-        Executor,
-    },
+    executors::standard_executors,
     log_proxy::{HostAccess, ProgressReceiver},
     worker::{Worker, WorkerOptions},
 };
@@ -313,32 +308,7 @@ async fn start_worker(
         Err(e) => tracing::warn!("Unable to clean up interrupted runs: {e}"),
     }
 
-    let binary = runtime.binary().to_path_buf();
-    let engine_access = match runtime.info().await {
-        Ok(info) => info.engine_access_args().unwrap_or_default(),
-        Err(e) => {
-            tracing::warn!("Unable to query container runtime: {e}");
-            Vec::new()
-        }
-    };
-    if engine_access.is_empty() {
-        tracing::warn!("No runtime socket found, engines cannot start sibling containers");
-    }
-    let executors: Vec<Arc<dyn Executor>> = vec![
-        Arc::new(
-            NextflowExecutor::new(&binary, nextflow::DEFAULT_IMAGE)
-                .with_engine_access(engine_access.clone()),
-        ),
-        Arc::new(
-            SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE)
-                .with_engine_access(engine_access),
-        ),
-        Arc::new(ContainerExecutor::new(&binary)),
-    ];
-    let executors = executors
-        .into_iter()
-        .filter(|executor| runtime.supports_engine(&executor.engine()))
-        .collect();
+    let executors = standard_executors(&runtime).await;
     let mut worker = Worker::new(
         Arc::new(DbJobSource::new(db, max_log_bytes)),
         executors,

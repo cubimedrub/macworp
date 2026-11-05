@@ -36,6 +36,12 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | Logout / revoked tokens (`token_version` bump) | `auth::tests::revoked_tokens_are_rejected` | `authorize` | old token 401, fresh token ok, other users unaffected |
 | Worker (Basic auth) identity holds no shares | `auth::tests::worker_identity_has_no_access` | `authorize` | 404 on resources |
 | Worker identity on user-facing routes (user, projects, workflows, groups, shares, runs, logout) | `authorization_http_tests::worker_is_rejected_on_user_routes` | HTTP | 403 `UserRequired` (`RequireUser`), wrong worker password 401, user JWT unaffected |
+| Worker endpoints: full protocol with the per-run token | `worker_http_tests::claim_heartbeat_logs_progress_finish` | HTTP | claim 200 + token, heartbeat/logs/progress 2xx, finish stores status, token dead afterwards (401) |
+| `claim` needs the worker credential | `worker_http_tests::claim_requires_worker_credential` | HTTP | user JWT, wrong password, run token 401, no header 400; run stays queued |
+| Run token is scoped to its run; JWT and worker credential rejected on per-run endpoints | `worker_http_tests::run_token_is_scoped_to_its_run` | HTTP | other run's token 401, JWT 401, Basic 401 |
+| Cancel reaches the worker via heartbeat | `worker_http_tests::heartbeat_reports_cancel_request` | HTTP | `cancel_requested: true`, worker can finish `Cancelled` |
+| Stale worker after lease expiry and requeue | `worker_http_tests::requeued_run_rejects_stale_worker`, `models::run::tests::expired_lease_requeues_and_invalidates_token` | HTTP, model | old token 401, new claim gets a new token |
+| Run of a project without directory | `worker_http_tests::claim_fails_runs_of_projects_without_directory` | HTTP | run failed, claim returns 204 |
 
 ## 2. Visibility and roles (what a user may see and do)
 

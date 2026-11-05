@@ -13,6 +13,12 @@ pub const DEFAULT_MAX_RUNS_PER_PROJECT: u64 = 10;
 /// Log bytes stored per run if not configured (10 MiB)
 pub const DEFAULT_MAX_LOG_BYTES_PER_RUN: u64 = 10 * 1024 * 1024;
 
+/// Seconds a remote worker may stay silent before its run is requeued, if not configured
+pub const DEFAULT_WORKER_LEASE_SECONDS: u32 = 60;
+
+/// Times a run is claimed before a lost worker fails it instead of requeueing, if not configured
+pub const DEFAULT_WORKER_MAX_ATTEMPTS: u32 = 3;
+
 /// Minimum length of the JWT secret in bytes
 const MIN_SECRET_LENGTH: usize = 32;
 
@@ -52,6 +58,13 @@ pub struct Configuration {
     /// `0` disables the limit.
     #[serde(default = "default_max_log_bytes_per_run")]
     max_log_bytes_per_run: u64,
+    /// Seconds a remote worker may stay silent before its run is requeued, workers heartbeat
+    /// several times per lease.
+    #[serde(default = "default_worker_lease_seconds")]
+    worker_lease_seconds: u32,
+    /// Times a run is claimed before losing its worker fails it instead of requeueing it
+    #[serde(default = "default_worker_max_attempts")]
+    worker_max_attempts: u32,
     /// Engines the container runtime cannot run, runs of them are rejected. Detected by the
     /// embedding application (desktop), never read from the config file.
     #[serde(skip)]
@@ -64,6 +77,14 @@ fn default_max_runs_per_project() -> u64 {
 
 fn default_max_log_bytes_per_run() -> u64 {
     DEFAULT_MAX_LOG_BYTES_PER_RUN
+}
+
+fn default_worker_lease_seconds() -> u32 {
+    DEFAULT_WORKER_LEASE_SECONDS
+}
+
+fn default_worker_max_attempts() -> u32 {
+    DEFAULT_WORKER_MAX_ATTEMPTS
 }
 
 impl Configuration {
@@ -80,6 +101,16 @@ impl Configuration {
                     "cors_allowed_origins must contain `*` or valid origins, e.g. https://example.org",
                 ));
             }
+        }
+        if self.worker_lease_seconds < 5 {
+            return Err(crate::error::Error::Configuration(
+                "worker_lease_seconds must be at least 5",
+            ));
+        }
+        if self.worker_max_attempts == 0 {
+            return Err(crate::error::Error::Configuration(
+                "worker_max_attempts must be at least 1",
+            ));
         }
         Ok(())
     }
@@ -172,6 +203,22 @@ impl Configuration {
         &mut self.max_log_bytes_per_run
     }
 
+    pub fn worker_lease_seconds(&self) -> u32 {
+        self.worker_lease_seconds
+    }
+
+    pub fn worker_lease_seconds_mut(&mut self) -> &mut u32 {
+        &mut self.worker_lease_seconds
+    }
+
+    pub fn worker_max_attempts(&self) -> u32 {
+        self.worker_max_attempts
+    }
+
+    pub fn worker_max_attempts_mut(&mut self) -> &mut u32 {
+        &mut self.worker_max_attempts
+    }
+
     pub fn unavailable_engines(&self) -> &[Engine] {
         &self.unavailable_engines
     }
@@ -195,6 +242,8 @@ impl Default for Configuration {
             cors_allowed_origins: Vec::new(),
             max_runs_per_project: DEFAULT_MAX_RUNS_PER_PROJECT,
             max_log_bytes_per_run: DEFAULT_MAX_LOG_BYTES_PER_RUN,
+            worker_lease_seconds: DEFAULT_WORKER_LEASE_SECONDS,
+            worker_max_attempts: DEFAULT_WORKER_MAX_ATTEMPTS,
             unavailable_engines: Vec::new(),
         }
     }

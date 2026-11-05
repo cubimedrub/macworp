@@ -28,6 +28,7 @@ rpassword = { workspace = true, optional = true }
 sea-orm = { workspace = true, features = ["macros"] }
 serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

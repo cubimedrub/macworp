@@ -12,3 +12,4 @@ desktop_project/
 
 # Local web deployment config (secrets)
 dev/config.toml
+dev/worker.password

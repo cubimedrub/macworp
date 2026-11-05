@@ -11,8 +11,13 @@ if [ ! -f dev/config.toml ]; then
     > dev/config.toml
   echo "wrote dev/config.toml"
 fi
+# Password of the default worker credential in the generated config, read by the Procfile worker
+if [ ! -f dev/worker.password ]; then
+  echo developer > dev/worker.password
+  echo "wrote dev/worker.password"
+fi
 cat <<'EOF'
-Next: `ultraman start`, then create users (prompts for a password), e.g. in a second terminal:
+Next: `ultraman start` (db, backend, worker, web), then create users (prompts for a password), e.g. in a second terminal:
   cargo run -p macworp_backend -- user create alice Alice A alice@example.org
   cargo run -p macworp_backend -- user create bob Bob B bob@example.org
 Web UI: http://127.0.0.1:5001 (log in in two browser profiles to try sharing).

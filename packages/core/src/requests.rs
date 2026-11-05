@@ -163,3 +163,47 @@ pub struct ResetPasswordRequest {
     /// The new password
     pub password: String,
 }
+
+/// A worker asks for a run
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerClaimRequest {
+    /// Name of the worker process, shown to admins and used to attribute leases
+    pub worker_name: String,
+}
+
+/// Log lines a worker read from the engine
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerLogsRequest {
+    pub stream: crate::entities::LogStream,
+    pub lines: Vec<String>,
+}
+
+/// Task progress of a run as the engine reported it
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerProgressRequest {
+    /// Tasks announced so far
+    pub total: i32,
+    /// Tasks finished
+    pub done: i32,
+    /// Latest detail, replaces the stored one when given
+    pub message: Option<String>,
+    /// Engine error report, appended to the log
+    pub error: Option<String>,
+}
+
+/// How a run ended on the worker
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorkerOutcome {
+    Succeeded,
+    Failed {
+        exit_code: Option<i32>,
+        error: Option<String>,
+    },
+    Cancelled,
+}
+
+/// A worker reports the end of a run
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerFinishRequest {
+    pub outcome: WorkerOutcome,
+}

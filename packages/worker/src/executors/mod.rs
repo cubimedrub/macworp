@@ -12,8 +12,11 @@ pub mod nextflow;
 mod process;
 /// Executor for Snakemake, runs the engine inside an engine image
 pub mod snakemake;
+/// Executors of all engines a container runtime supports
+mod standard;
 
 pub use containerized_execution::{containerized_spec, run_spec};
 pub use executor::{Error as ExecutorError, Executor};
 pub use job::{Job, LogLine, Outcome};
 pub use process::{LaunchSpec, run_process};
+pub use standard::standard_executors;

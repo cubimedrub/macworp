@@ -5,8 +5,8 @@ use http::{Method, Request, StatusCode, header};
 use macworp_core::{
     entities::Role,
     routing::{
-        GroupsRouting, IsRouting, ProjectsRouting, RunsRouting, SharesRouting, UsersRouting,
-        WorkflowIntegrationsRouting,
+        GroupsRouting, IsRouting, LoginRouting, ProjectsRouting, RunsRouting, SharesRouting,
+        UsersRouting, WorkflowIntegrationsRouting,
     },
     workflow_configuration::WorkflowConfiguration,
 };
@@ -28,6 +28,11 @@ use crate::{
     state::State,
 };
 
+/// Username of the worker credential configured in [`TestApp`]
+pub const WORKER_USERNAME: &str = "test-worker";
+/// Password of the worker credential configured in [`TestApp`]
+pub const WORKER_PASSWORD: &str = "test-worker-password";
+
 /// A migrated SQLite database in a temp dir plus the full API router, driven in-process with
 /// `tower::ServiceExt::oneshot` (no socket). Shared by the HTTP-level tests.
 pub struct TestApp {
@@ -44,6 +49,10 @@ impl TestApp {
     pub async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut configuration = Configuration::default();
+        *configuration.worker_mut() = crate::configuration::WorkerCredentials::new(
+            WORKER_USERNAME.into(),
+            password_auth::generate_hash(WORKER_PASSWORD.as_bytes()),
+        );
         *configuration.database_url_mut() =
             format!("sqlite://{}/test.db?mode=rwc", directory.path().display());
         let state = State::new_for_integration(configuration).await.unwrap();
@@ -51,6 +60,10 @@ impl TestApp {
         let state = Arc::new(state);
 
         let router = Router::new()
+            .nest(
+                LoginRouting::controller_path(),
+                LoginController::routes(state.clone()),
+            )
             .nest(
                 UsersRouting::controller_path(),
                 UsersController::routes::<LocalFilesystem>(state.clone()),
@@ -201,11 +214,40 @@ impl TestApp {
         uri: &str,
         body: Option<Value>,
     ) -> (StatusCode, Value) {
-        let mut request = Request::builder().method(method).uri(uri);
-        if let Some(user) = user {
+        let authorization = user.map(|user| {
             let token =
                 JsonWebToken::encode(user.id, user.token_version, self.state.config()).unwrap();
-            request = request.header(header::AUTHORIZATION, format!("JWT {token}"));
+            format!("JWT {token}")
+        });
+        self.send_authorized(authorization, method, uri, body).await
+    }
+
+    /// Sends a request as the worker (Basic authentication with `password`).
+    pub async fn send_as_worker(
+        &self,
+        password: &str,
+        method: Method,
+        uri: &str,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        use base64::prelude::*;
+        let credentials = BASE64_STANDARD.encode(format!("{WORKER_USERNAME}:{password}"));
+        self.send_authorized(Some(format!("Basic {credentials}")), method, uri, body)
+            .await
+    }
+
+    /// Sends a request with the given `Authorization` header value and returns the status and
+    /// JSON body.
+    async fn send_authorized(
+        &self,
+        authorization: Option<String>,
+        method: Method,
+        uri: &str,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        let mut request = Request::builder().method(method).uri(uri);
+        if let Some(authorization) = authorization {
+            request = request.header(header::AUTHORIZATION, authorization);
         }
         let request = match body {
             Some(body) => request

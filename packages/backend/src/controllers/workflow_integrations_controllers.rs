@@ -19,7 +19,7 @@ use sea_orm::{
 use thiserror::Error;
 
 use crate::{
-    authentication::middleware::{ListScope, RequireAuth},
+    authentication::middleware::{ListScope, RequireUser},
     authorization::{Authorized, Editor, Owner, Principal, Resource, Viewer},
     models::{ActiveWorkflowIntegration, User, WorkflowIntegration, WorkflowIntegrationTable},
     state::State as AppState,
@@ -103,7 +103,7 @@ impl WorkflowIntegrationsController {
     #[allow(clippy::new_ret_no_self)]
     async fn new(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Json(payload): Json<NewWorkflowIntegrationRequest>,
     ) -> Result<Json<WorkflowIntegrationResponse>, Error> {
         let new_workflow_integration = ActiveWorkflowIntegration::builder()

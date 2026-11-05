@@ -29,6 +29,9 @@ pub enum Error {
     Unauthorized,
     #[error("Administrator rights required")]
     AdminRequired,
+    /// The endpoint is for human users, the caller is the worker identity.
+    #[error("This endpoint is not available to workers")]
+    UserRequired,
     /// The account was disabled by an administrator.
     #[error("User account is disabled")]
     AccountDisabled,
@@ -54,7 +57,9 @@ impl IntoResponse for Error {
             | Error::AccountDisabled
             | Error::JWTDecryption(_)
             | Error::Unauthorized => (StatusCode::UNAUTHORIZED, self.to_string()).into_response(),
-            Error::AdminRequired => (StatusCode::FORBIDDEN, self.to_string()).into_response(),
+            Error::AdminRequired | Error::UserRequired => {
+                (StatusCode::FORBIDDEN, self.to_string()).into_response()
+            }
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }

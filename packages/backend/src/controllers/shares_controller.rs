@@ -16,7 +16,7 @@ use sea_orm::{EntityTrait, TransactionTrait};
 use thiserror::Error;
 
 use crate::{
-    authentication::middleware::RequireAuth,
+    authentication::middleware::RequireUser,
     authorization::{Owner, Principal, Resource, RoleDb, ShareError, authorize},
     models::{Group, GroupTable, Project, User, UserTable, WorkflowIntegration},
     state::State as AppState,
@@ -165,7 +165,7 @@ impl SharesController {
 
     async fn list(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path((kind, id)): Path<(String, i64)>,
     ) -> Result<Json<Vec<ShareResponse>>, Error> {
         let shares = match Kind::parse(&kind)? {
@@ -177,7 +177,7 @@ impl SharesController {
 
     async fn grant(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path((kind, id)): Path<(String, i64)>,
         Json(payload): Json<GrantShareRequest>,
     ) -> Result<StatusCode, Error> {
@@ -221,7 +221,7 @@ impl SharesController {
 
     async fn revoke(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path((kind, id)): Path<(String, i64)>,
         Json(payload): Json<RevokeShareRequest>,
     ) -> Result<StatusCode, Error> {

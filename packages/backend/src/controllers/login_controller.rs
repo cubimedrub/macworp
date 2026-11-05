@@ -16,7 +16,7 @@ use macworp_core::{
 
 use crate::{
     authentication::{
-        error::Error as AuthenticationError, jwt::JsonWebToken, middleware::RequireAuth,
+        error::Error as AuthenticationError, jwt::JsonWebToken, middleware::RequireUser,
         password::verify_password,
     },
     configuration::LoginProvider,
@@ -102,7 +102,7 @@ impl LoginController {
     /// Revokes all tokens of the caller (this one included) by bumping the user's token version.
     pub async fn logout(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
     ) -> Result<StatusCode, LoginControllerError> {
         User::revoke_tokens(state.db(), user.id).await?;
         Ok(StatusCode::NO_CONTENT)

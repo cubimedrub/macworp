@@ -35,6 +35,7 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | Token of a deleted account | `auth::tests::deleted_user_token_is_rejected` | `authorize` | 401 |
 | Logout / revoked tokens (`token_version` bump) | `auth::tests::revoked_tokens_are_rejected` | `authorize` | old token 401, fresh token ok, other users unaffected |
 | Worker (Basic auth) identity holds no shares | `auth::tests::worker_identity_has_no_access` | `authorize` | 404 on resources |
+| Worker identity on user-facing routes (user, projects, workflows, groups, shares, runs, logout) | `authorization_http_tests::worker_is_rejected_on_user_routes` | HTTP | 403 `UserRequired` (`RequireUser`), wrong worker password 401, user JWT unaffected |
 
 ## 2. Visibility and roles (what a user may see and do)
 
@@ -109,7 +110,6 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 
 Not covered by any test today (see PLAN.md P2 for the open items):
 
-- Worker (Basic-auth) identity over HTTP, including user-facing routes it should not reach (open item "Worker identity reaches routes meant for users").
 - Concurrent last-owner demotions: `share_tests::concurrent_demotions_keep_one_owner` checks that a demotion waits for the resource lock (SQLite only; not mutation-sensitive, SQLite's own write lock already serializes there). Postgres row-lock path untested.
 - `upload-file` endpoint role check; successful run start (only the authorization outcome is asserted).
 - Login endpoints (local password, OIDC), password change, brute-force or rate limiting.

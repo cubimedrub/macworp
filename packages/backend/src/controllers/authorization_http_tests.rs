@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use crate::{
     authorization::{Principal, Resource},
     models::{Project, WorkflowIntegration},
-    test_support::{TestApp, passed_authorization},
+    test_support::{TestApp, WORKER_PASSWORD, passed_authorization},
 };
 
 /// Names of the items in a JSON list response, sorted.
@@ -622,4 +622,44 @@ async fn group_owner_is_a_member() {
         )
         .await;
     assert_eq!(status, StatusCode::CONFLICT);
+}
+
+/// The worker identity gets 403 on every user-facing route (never a 2xx or a 500 from a missing
+/// user row), a wrong worker password 401, and a user JWT still works on the same routes.
+#[tokio::test]
+async fn worker_is_rejected_on_user_routes() {
+    use http::Method;
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let run = app.run(&project, &workflow).await;
+
+    let routes = [
+        (Method::GET, "/user/current".to_string()),
+        (Method::GET, "/user/search?q=al".to_string()),
+        (Method::POST, format!("/user/delete/{}", alice.id)),
+        (Method::GET, "/projects/index".to_string()),
+        (Method::POST, "/projects/new".to_string()),
+        (Method::GET, format!("/projects/edit/{}", project.id)),
+        (Method::GET, "/workflow-integrations/index".to_string()),
+        (Method::GET, "/groups/index".to_string()),
+        (Method::POST, "/groups/new".to_string()),
+        (Method::POST, "/login/logout".to_string()),
+        (Method::GET, format!("/runs/get/{}", run.id)),
+        (Method::GET, format!("/shares/projects/{}", project.id)),
+    ];
+    for (method, uri) in routes {
+        let (status, body) = app
+            .send_as_worker(WORKER_PASSWORD, method.clone(), &uri, Some(json!({})))
+            .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}: {body}");
+        let (status, _) = app
+            .send_as_worker("wrong", method.clone(), &uri, Some(json!({})))
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {uri}");
+    }
+
+    let (status, _) = app.get(&alice, "/user/current").await;
+    assert_eq!(status, StatusCode::OK);
 }

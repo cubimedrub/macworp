@@ -20,7 +20,7 @@ use macworp_core::{
 };
 
 use crate::{
-    authentication::middleware::{RequireAdmin, RequireAuth},
+    authentication::middleware::{RequireAdmin, RequireUser},
     authorization::{Departed, Departure},
     filesystems::is_filesystem::IsFilesystem,
     models::{ActiveUser, User, UserTable},
@@ -95,7 +95,7 @@ impl UsersController {
             .with_state(state)
     }
 
-    async fn current_user(RequireAuth(user): RequireAuth) -> Result<Json<UserResponse>, Error> {
+    async fn current_user(RequireUser(user): RequireUser) -> Result<Json<UserResponse>, Error> {
         Ok(Json(Self::response(user)))
     }
 
@@ -288,7 +288,7 @@ impl UsersController {
     /// deleted along with them; a failure there is logged only, the database change is final.
     async fn delete<F: IsFilesystem + 'static>(
         State(state): State<Arc<AppState>>,
-        RequireAuth(acting): RequireAuth,
+        RequireUser(acting): RequireUser,
         Path(id): Path<i64>,
     ) -> Result<StatusCode, Error> {
         if acting.id != id && !acting.is_admin {
@@ -382,7 +382,7 @@ impl UsersController {
     /// be dumped.
     async fn search(
         State(state): State<Arc<AppState>>,
-        RequireAuth(_user): RequireAuth,
+        RequireUser(_user): RequireUser,
         Query(query): Query<UserSearchQuery>,
     ) -> Result<Json<Vec<UserSummaryResponse>>, Error> {
         let prefix = query.q.trim();

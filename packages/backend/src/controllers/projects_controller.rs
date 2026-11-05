@@ -20,7 +20,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    authentication::middleware::{ListScope, RequireAuth},
+    authentication::middleware::{ListScope, RequireUser},
     authorization::{Authorized, Editor, Owner, Principal, Resource, Viewer},
     filesystems::is_filesystem::IsFilesystem,
     models::{ActiveProject, Project, ProjectTable, User},
@@ -133,7 +133,7 @@ where
     #[allow(clippy::new_ret_no_self)]
     pub async fn new(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Json(payload): Json<NewProjectRequest>,
     ) -> Result<Json<ProjectResponse>, ProjectsControllerError> {
         let state_clone = state.clone();

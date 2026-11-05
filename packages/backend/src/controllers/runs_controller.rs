@@ -22,7 +22,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    authentication::middleware::RequireAuth,
+    authentication::middleware::RequireUser,
     authorization::{
         Authorized, Editor, Error as AuthorizationError, MinRole, Resource, Viewer, authorize,
     },
@@ -149,7 +149,7 @@ impl RunsController {
     /// the run itself for status and progress. At most [`MAX_LOG_CHUNKS_PER_REQUEST`] chunks.
     async fn logs(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path(id): Path<i64>,
         Query(query): Query<LogsQuery>,
     ) -> Result<Json<RunLogsResponse>, Error> {
@@ -335,7 +335,7 @@ impl RunsController {
     /// A single run
     async fn get(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path(id): Path<i64>,
     ) -> Result<Json<RunResponse>, Error> {
         let user_id = user.id;
@@ -346,7 +346,7 @@ impl RunsController {
     /// Cancels a queued run or flags a running run for its worker to stop, see [`Run::request_cancel`]
     async fn cancel(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path(id): Path<i64>,
     ) -> Result<Json<RunResponse>, Error> {
         let user_id = user.id;

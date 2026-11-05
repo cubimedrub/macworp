@@ -16,7 +16,11 @@ use crate::{
     state::State,
 };
 
-/// Extractor for required authentication
+/// Id of the synthetic worker identity (Basic authentication). It has no row in the users table.
+pub const WORKER_ID: i64 = i64::MIN;
+
+/// Extractor for required authentication, accepts users and the worker identity. User-facing
+/// endpoints use [`RequireUser`] instead.
 pub struct RequireAuth(pub User);
 
 impl<S> FromRequestParts<S> for RequireAuth
@@ -46,6 +50,26 @@ where
     }
 }
 
+/// Extractor for user-facing endpoints: requires authentication and rejects the worker identity
+/// with 403 (`Error::UserRequired`), since it has no user row to own or act on anything.
+pub struct RequireUser(pub User);
+
+impl<S> FromRequestParts<S> for RequireUser
+where
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let RequireAuth(user) = RequireAuth::from_request_parts(parts, state).await?;
+        if user.id == WORKER_ID {
+            Err(Error::UserRequired)
+        } else {
+            Ok(RequireUser(user))
+        }
+    }
+}
+
 /// Extractor for endpoints only instance administrators may call, rejects everyone else with 403
 /// (worker identity included).
 pub struct RequireAdmin(pub User);
@@ -57,7 +81,7 @@ where
     type Rejection = Error;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let RequireAuth(user) = RequireAuth::from_request_parts(parts, state).await?;
+        let RequireUser(user) = RequireUser::from_request_parts(parts, state).await?;
         if user.is_admin {
             Ok(RequireAdmin(user))
         } else {
@@ -98,7 +122,7 @@ where
     type Rejection = Error;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let RequireAuth(user) = RequireAuth::from_request_parts(parts, state).await?;
+        let RequireUser(user) = RequireUser::from_request_parts(parts, state).await?;
         let Query(AllParam { all }) = Query::<AllParam>::from_request_parts(parts, state)
             .await
             .map_err(Error::InvalidQuery)?;
@@ -212,11 +236,11 @@ async fn get_user_from_token(
                 && verify_password(
                     password.as_bytes(),
                     state.config().worker().password(),
-                    i64::MIN,
+                    WORKER_ID,
                 )?
             {
                 Ok(Some(User {
-                    id: i64::MIN,
+                    id: WORKER_ID,
                     username: username.to_string(),
                     firstname: username.to_string(),
                     lastname: username.to_string(),

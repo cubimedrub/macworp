@@ -300,10 +300,7 @@ async fn concurrent_demotions_keep_one_owner() {
         .await
         .unwrap();
     first.commit().await.unwrap();
-    assert!(matches!(
-        second.await.unwrap(),
-        Err(ShareError::LastOwner)
-    ));
+    assert!(matches!(second.await.unwrap(), Err(ShareError::LastOwner)));
     let owners = share::Entity::find()
         .filter(share::Column::Role.eq(Role::Owner.to_db()))
         .all(&db)

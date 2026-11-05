@@ -37,7 +37,7 @@ pub use role::{PrincipalType, ResourceType};
 pub use settle::Settled;
 pub use shares::{Error as ShareError, Principal, Shares};
 
-use crate::{authentication::middleware::RequireAuth, models::User, state::State};
+use crate::{authentication::middleware::RequireUser, models::User, state::State};
 
 /// Lowest role an endpoint requires, a type so it can be a generic parameter of [`Authorized`].
 pub trait MinRole {
@@ -123,7 +123,7 @@ where
 
     /// Authenticates, reads the id from the path and checks the role, see [`authorize`].
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let RequireAuth(user) = RequireAuth::from_request_parts(parts, state).await?;
+        let RequireUser(user) = RequireUser::from_request_parts(parts, state).await?;
         let Path(id) = parts
             .extract::<Path<i64>>()
             .await

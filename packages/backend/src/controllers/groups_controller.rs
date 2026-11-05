@@ -19,7 +19,7 @@ use sea_orm::{
 use thiserror::Error;
 
 use crate::{
-    authentication::middleware::{ListScope, RequireAuth},
+    authentication::middleware::{ListScope, RequireUser},
     authorization::Principal,
     models::{
         ActiveGroup, ActiveUsersGroups, Group, GroupTable, User, UserTable, UsersGroupsTable,
@@ -169,7 +169,7 @@ impl GroupsController {
     #[allow(clippy::new_ret_no_self)]
     async fn new(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Json(payload): Json<NewGroupRequest>,
     ) -> Result<Json<GroupResponse>, Error> {
         if payload.name.trim().is_empty() {
@@ -197,7 +197,7 @@ impl GroupsController {
 
     async fn edit(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path(id): Path<i64>,
     ) -> Result<Json<GroupResponse>, Error> {
         let group = Self::visible(&state, &user, id).await?;
@@ -206,7 +206,7 @@ impl GroupsController {
 
     async fn update(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path(id): Path<i64>,
         Json(payload): Json<UpdateGroupRequest>,
     ) -> Result<Json<GroupResponse>, Error> {
@@ -223,7 +223,7 @@ impl GroupsController {
 
     async fn delete(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path(id): Path<i64>,
     ) -> Result<StatusCode, Error> {
         let group = Self::owned(&state, &user, id).await?;
@@ -236,7 +236,7 @@ impl GroupsController {
 
     async fn add_member(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path(id): Path<i64>,
         Json(payload): Json<GroupMemberRequest>,
     ) -> Result<Json<GroupResponse>, Error> {
@@ -262,7 +262,7 @@ impl GroupsController {
 
     async fn remove_member(
         State(state): State<Arc<AppState>>,
-        RequireAuth(user): RequireAuth,
+        RequireUser(user): RequireUser,
         Path(id): Path<i64>,
         Json(payload): Json<GroupMemberRequest>,
     ) -> Result<Json<GroupResponse>, Error> {

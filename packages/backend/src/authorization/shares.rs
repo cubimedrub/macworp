@@ -153,7 +153,7 @@ impl<'a, R: Resource, C: ConnectionTrait> Shares<'a, R, C> {
     /// left by the previous lock holder. A missing resource row locks nothing.
     pub async fn lock(&self) -> Result<(), DbErr> {
         R::Entity::update_many()
-            .col_expr(R::id_column(), Expr::col(R::id_column()).into())
+            .col_expr(R::id_column(), Expr::col(R::id_column()))
             .filter(R::id_column().eq(self.resource_id))
             .exec(self.db)
             .await?;

@@ -13,7 +13,8 @@ pub use project::{
     ActiveModel as ActiveProject, Column as ProjectColumn, Entity as ProjectTable, Model as Project,
 };
 pub use run::{
-    ActiveModel as ActiveRun, Column as RunColumn, Entity as RunTable, Model as Run, RunError,
+    ActiveModel as ActiveRun, Column as RunColumn, Entity as RunTable, Error as RunError,
+    Model as Run,
 };
 pub use run_log::{
     ActiveModel as ActiveRunLog, Column as RunLogColumn, Entity as RunLogTable, Model as RunLog,

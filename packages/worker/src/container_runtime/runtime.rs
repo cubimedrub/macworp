@@ -108,7 +108,7 @@ impl RuntimeInfo {
 }
 
 #[derive(Debug, Error)]
-pub enum RuntimeError {
+pub enum Error {
     #[error("`{0}` not found on PATH")]
     NotFound(String),
     #[error("failed to run `{binary}`: {source}")]
@@ -138,7 +138,7 @@ pub trait ContainerRuntime: fmt::Debug + Send + Sync {
         self.kind().supports_engine(engine)
     }
     /// Queries the runtime; failure means it is installed but not usable (e.g. daemon down).
-    fn info(&self) -> BoxFuture<'_, Result<RuntimeInfo, RuntimeError>>;
+    fn info(&self) -> BoxFuture<'_, Result<RuntimeInfo, Error>>;
 }
 
 /// Runtime driven through its command line client (portable, also works inside WSL).
@@ -172,7 +172,7 @@ impl CliRuntime {
         self.binary.display().to_string()
     }
 
-    async fn query(&self) -> Result<RuntimeInfo, RuntimeError> {
+    async fn query(&self) -> Result<RuntimeInfo, Error> {
         let binary = self.binary_display();
         let args: &[&str] = match self.kind {
             RuntimeKind::Podman => &["info", "--format", "json"],
@@ -190,20 +190,20 @@ impl CliRuntime {
 
         let output = match tokio::time::timeout(self.timeout, output).await {
             Err(_) => {
-                return Err(RuntimeError::Timeout {
+                return Err(Error::Timeout {
                     binary,
                     timeout: self.timeout,
                 });
             }
             Ok(Err(source)) if source.kind() == io::ErrorKind::NotFound => {
-                return Err(RuntimeError::NotFound(binary));
+                return Err(Error::NotFound(binary));
             }
-            Ok(Err(source)) => return Err(RuntimeError::Spawn { binary, source }),
+            Ok(Err(source)) => return Err(Error::Spawn { binary, source }),
             Ok(Ok(output)) => output,
         };
 
         if !output.status.success() {
-            return Err(RuntimeError::Failed {
+            return Err(Error::Failed {
                 binary,
                 status: output.status.to_string(),
                 stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
@@ -225,7 +225,7 @@ impl CliRuntime {
                 });
             }
         };
-        parsed.map_err(|source| RuntimeError::Parse { binary, source })
+        parsed.map_err(|source| Error::Parse { binary, source })
     }
 }
 
@@ -238,7 +238,7 @@ impl ContainerRuntime for CliRuntime {
         &self.binary
     }
 
-    fn info(&self) -> BoxFuture<'_, Result<RuntimeInfo, RuntimeError>> {
+    fn info(&self) -> BoxFuture<'_, Result<RuntimeInfo, Error>> {
         Box::pin(self.query())
     }
 }
@@ -433,10 +433,7 @@ mod tests {
     #[tokio::test]
     async fn missing_binary_is_not_found() {
         let runtime = CliRuntime::with_binary(RuntimeKind::Podman, "/nonexistent/macworp-podman");
-        assert!(matches!(
-            runtime.info().await,
-            Err(RuntimeError::NotFound(_))
-        ));
+        assert!(matches!(runtime.info().await, Err(Error::NotFound(_))));
     }
 
     #[cfg(unix)]
@@ -473,16 +470,13 @@ mod tests {
             .info()
             .await
         {
-            Err(RuntimeError::Failed { stderr, .. }) => assert_eq!(stderr, "cannot connect"),
+            Err(Error::Failed { stderr, .. }) => assert_eq!(stderr, "cannot connect"),
             other => panic!("unexpected: {other:?}"),
         }
 
         let hanging = fake::script(dir.path(), "exec sleep 30");
         let runtime = CliRuntime::with_binary(RuntimeKind::Docker, hanging)
             .with_timeout(Duration::from_millis(200));
-        assert!(matches!(
-            runtime.info().await,
-            Err(RuntimeError::Timeout { .. })
-        ));
+        assert!(matches!(runtime.info().await, Err(Error::Timeout { .. })));
     }
 }

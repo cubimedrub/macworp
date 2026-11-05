@@ -79,7 +79,7 @@ impl ActiveModelBehavior for ActiveModel {}
 
 /// Errors of run operations
 #[derive(Debug, Error)]
-pub enum RunError {
+pub enum Error {
     /// No run can be evicted for a new one: all are locked or still active
     #[error("Run limit of {0} reached, all runs are locked or still active")]
     RunLimitReached(u64),
@@ -122,8 +122,8 @@ impl Model {
     }
 
     /// Cancels the run: a queued run is cancelled right away, a running run is flagged with
-    /// `cancel_requested` for its worker to stop. Finished runs return [`RunError::AlreadyFinished`].
-    pub async fn request_cancel<C: ConnectionTrait>(&self, db: &C) -> Result<Model, RunError> {
+    /// `cancel_requested` for its worker to stop. Finished runs return [`Error::AlreadyFinished`].
+    pub async fn request_cancel<C: ConnectionTrait>(&self, db: &C) -> Result<Model, Error> {
         let mut active = ActiveModel {
             id: Set(self.id),
             ..Default::default()
@@ -134,7 +134,7 @@ impl Model {
                 active.finished_at = Set(Some(chrono::Utc::now()));
             }
             RunStatus::Running => active.cancel_requested = Set(true),
-            _ => return Err(RunError::AlreadyFinished),
+            _ => return Err(Error::AlreadyFinished),
         }
         Ok(active.update(db).await?)
     }
@@ -144,7 +144,7 @@ impl Model {
         &self,
         db: &C,
         locked: bool,
-    ) -> Result<Model, RunError> {
+    ) -> Result<Model, Error> {
         ActiveModel {
             id: Set(self.id),
             locked: Set(locked),
@@ -153,8 +153,8 @@ impl Model {
         .update(db)
         .await
         .map_err(|e| match e {
-            DbErr::RecordNotUpdated => RunError::NotFound,
-            e => RunError::Database(e),
+            DbErr::RecordNotUpdated => Error::NotFound,
+            e => Error::Database(e),
         })
     }
 }
@@ -163,7 +163,7 @@ impl Entity {
     /// Moves the oldest queued run to `Running` and returns it, `None` if nothing is queued.
     ///
     /// The status switch is a conditional update, so concurrent workers never claim the same run.
-    pub async fn claim_next<C: ConnectionTrait>(db: &C) -> Result<Option<Model>, RunError> {
+    pub async fn claim_next<C: ConnectionTrait>(db: &C) -> Result<Option<Model>, Error> {
         loop {
             let Some(next) = Entity::find()
                 .filter(Column::Status.eq(RunStatus::Queued))
@@ -190,14 +190,14 @@ impl Entity {
     }
 
     /// Moves a run to the terminal `status`. A run that is already terminal (e.g. cancelled while
-    /// queued) is left untouched and returns [`RunError::AlreadyFinished`].
+    /// queued) is left untouched and returns [`Error::AlreadyFinished`].
     pub async fn finish<C: ConnectionTrait>(
         db: &C,
         id: i64,
         status: RunStatus,
         exit_code: Option<i32>,
         error: Option<String>,
-    ) -> Result<(), RunError> {
+    ) -> Result<(), Error> {
         debug_assert!(status.is_terminal());
         let updated = Entity::update_many()
             .col_expr(Column::Status, Expr::value(status))
@@ -213,8 +213,8 @@ impl Entity {
             return Ok(());
         }
         match Entity::find_by_id(id).one(db).await? {
-            Some(_) => Err(RunError::AlreadyFinished),
-            None => Err(RunError::NotFound),
+            Some(_) => Err(Error::AlreadyFinished),
+            None => Err(Error::NotFound),
         }
     }
 
@@ -226,7 +226,7 @@ impl Entity {
         tasks_total: i32,
         tasks_done: i32,
         message: Option<String>,
-    ) -> Result<(), RunError> {
+    ) -> Result<(), Error> {
         let mut update = Entity::update_many()
             .col_expr(Column::TasksTotal, Expr::value(tasks_total.max(0)))
             .col_expr(Column::TasksDone, Expr::value(tasks_done.max(0)))
@@ -240,8 +240,8 @@ impl Entity {
             return Ok(());
         }
         match Entity::find_by_id(id).one(db).await? {
-            Some(_) => Err(RunError::AlreadyFinished),
-            None => Err(RunError::NotFound),
+            Some(_) => Err(Error::AlreadyFinished),
+            None => Err(Error::NotFound),
         }
     }
 
@@ -251,7 +251,7 @@ impl Entity {
         db: &C,
         project_id: i64,
         workflow_id: Option<i64>,
-    ) -> Result<Option<Model>, RunError> {
+    ) -> Result<Option<Model>, Error> {
         let mut query = Entity::find().filter(Column::ProjectId.eq(project_id));
         query = match workflow_id {
             Some(id) => query.filter(Column::WorkflowId.eq(id)),
@@ -265,20 +265,17 @@ impl Entity {
     }
 
     /// Whether a user asked to stop the run
-    pub async fn is_cancel_requested<C: ConnectionTrait>(
-        db: &C,
-        id: i64,
-    ) -> Result<bool, RunError> {
+    pub async fn is_cancel_requested<C: ConnectionTrait>(db: &C, id: i64) -> Result<bool, Error> {
         Entity::find_by_id(id)
             .one(db)
             .await?
             .map(|run| run.cancel_requested)
-            .ok_or(RunError::NotFound)
+            .ok_or(Error::NotFound)
     }
 
     /// Fails runs still marked `Running`, for use at start when no worker can be executing them
     /// (embedded desktop worker crashed or was killed). Returns the number of runs changed.
-    pub async fn fail_orphaned_running<C: ConnectionTrait>(db: &C) -> Result<u64, RunError> {
+    pub async fn fail_orphaned_running<C: ConnectionTrait>(db: &C) -> Result<u64, Error> {
         Ok(Entity::update_many()
             .col_expr(Column::Status, Expr::value(RunStatus::Failed))
             .col_expr(
@@ -302,7 +299,7 @@ impl Entity {
         db: &C,
         project_id: i64,
         max_runs: u64,
-    ) -> Result<(), RunError> {
+    ) -> Result<(), Error> {
         if max_runs == 0 {
             return Ok(());
         }
@@ -320,7 +317,7 @@ impl Entity {
             .map(|run| run.id)
             .collect();
         if victims.len() < excess {
-            return Err(RunError::RunLimitReached(max_runs));
+            return Err(Error::RunLimitReached(max_runs));
         }
         if !victims.is_empty() {
             Entity::delete_many()
@@ -446,11 +443,11 @@ mod tests {
 
         assert!(matches!(
             Entity::set_progress(&db, done, 1, 1, None).await,
-            Err(RunError::AlreadyFinished)
+            Err(Error::AlreadyFinished)
         ));
         assert!(matches!(
             Entity::set_progress(&db, 9999, 1, 1, None).await,
-            Err(RunError::NotFound)
+            Err(Error::NotFound)
         ));
     }
 
@@ -499,9 +496,9 @@ mod tests {
         assert!(r.cancel_requested);
 
         let err = get(done).await.request_cancel(&db).await.unwrap_err();
-        assert!(matches!(err, RunError::AlreadyFinished));
+        assert!(matches!(err, Error::AlreadyFinished));
         let err = get(queued).await.request_cancel(&db).await.unwrap_err();
-        assert!(matches!(err, RunError::AlreadyFinished));
+        assert!(matches!(err, Error::AlreadyFinished));
     }
 
     #[tokio::test]
@@ -529,7 +526,7 @@ mod tests {
         add_run(&db, u, p, 30, RunStatus::Succeeded, true).await;
         add_run(&db, u, p, 20, RunStatus::Running, false).await;
         let err = Entity::make_room(&db, p, 2).await.unwrap_err();
-        assert!(matches!(err, RunError::RunLimitReached(2)));
+        assert!(matches!(err, Error::RunLimitReached(2)));
         assert_eq!(ids(&db).await.len(), 2);
     }
 
@@ -585,12 +582,12 @@ mod tests {
         let err = Entity::finish(&db, cancelled, RunStatus::Succeeded, Some(0), None)
             .await
             .unwrap_err();
-        assert!(matches!(err, RunError::AlreadyFinished));
+        assert!(matches!(err, Error::AlreadyFinished));
         assert_eq!(get(cancelled).await.status, RunStatus::Cancelled);
         let err = Entity::finish(&db, 999, RunStatus::Failed, None, None)
             .await
             .unwrap_err();
-        assert!(matches!(err, RunError::NotFound));
+        assert!(matches!(err, Error::NotFound));
     }
 
     #[tokio::test]

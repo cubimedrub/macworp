@@ -5,7 +5,9 @@ use macworp_core::workflow_configuration::engine::Engine;
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
-use super::runtime::{CliRuntime, ContainerRuntime, RuntimeError, RuntimeInfo, RuntimeKind};
+use super::runtime::{
+    CliRuntime, ContainerRuntime, Error as RuntimeError, RuntimeInfo, RuntimeKind,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum RuntimePreference {
@@ -54,7 +56,7 @@ pub struct Check {
 
 #[derive(Debug, Error)]
 #[error("{0}")]
-pub struct DoctorError(String);
+pub struct Error(String);
 
 /// Result of probing the host for a usable container runtime.
 #[derive(Debug)]
@@ -83,10 +85,10 @@ impl DoctorReport {
     }
 
     /// The selected runtime, or the report as error.
-    pub fn into_runtime(self) -> Result<Arc<dyn ContainerRuntime>, DoctorError> {
+    pub fn into_runtime(self) -> Result<Arc<dyn ContainerRuntime>, Error> {
         match self.runtime {
             Some(ref runtime) if self.is_ok() => Ok(runtime.clone()),
-            _ => Err(DoctorError(self.to_string())),
+            _ => Err(Error(self.to_string())),
         }
     }
 }

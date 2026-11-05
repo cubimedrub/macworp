@@ -2,7 +2,7 @@ use http::HeaderValue;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum ContentRangeHeaderValueError {
+pub enum Error {
     #[error(
         "Invalid format, missing {0} in {1} (format: `<unit:string> <range_start:uint>-<range_end:uint>/<size:uint>`)"
     )]
@@ -42,69 +42,48 @@ impl ContentRangeHeaderValue {
 }
 
 impl TryFrom<&HeaderValue> for ContentRangeHeaderValue {
-    type Error = ContentRangeHeaderValueError;
+    type Error = Error;
 
     fn try_from(value: &HeaderValue) -> Result<Self, Self::Error> {
-        let value_str = value.to_str().map_err(|_| {
-            ContentRangeHeaderValueError::Parsing("header value", "string", format!("{value:?}"))
-        })?;
+        let value_str = value
+            .to_str()
+            .map_err(|_| Error::Parsing("header value", "string", format!("{value:?}")))?;
         let mut parts = value_str.split_whitespace();
         let unit = parts
             .next()
-            .ok_or(ContentRangeHeaderValueError::InvalidFormat(
-                "unit",
-                value_str.to_string(),
-            ))?;
-        let range_and_size = parts
-            .next()
-            .ok_or(ContentRangeHeaderValueError::InvalidFormat(
-                "range and size",
-                value_str.to_string(),
-            ))?;
+            .ok_or(Error::InvalidFormat("unit", value_str.to_string()))?;
+        let range_and_size = parts.next().ok_or(Error::InvalidFormat(
+            "range and size",
+            value_str.to_string(),
+        ))?;
         let mut range_and_size_parts = range_and_size.split('/');
-        let range_part =
-            range_and_size_parts
-                .next()
-                .ok_or(ContentRangeHeaderValueError::InvalidFormat(
-                    "range",
-                    value_str.to_string(),
-                ))?;
-        let size_part =
-            range_and_size_parts
-                .next()
-                .ok_or(ContentRangeHeaderValueError::InvalidFormat(
-                    "size",
-                    value_str.to_string(),
-                ))?;
+        let range_part = range_and_size_parts
+            .next()
+            .ok_or(Error::InvalidFormat("range", value_str.to_string()))?;
+        let size_part = range_and_size_parts
+            .next()
+            .ok_or(Error::InvalidFormat("size", value_str.to_string()))?;
 
         let mut range_parts = range_part.split('-');
         let start = range_parts
             .next()
-            .ok_or(ContentRangeHeaderValueError::InvalidFormat(
-                "range start",
-                value_str.to_string(),
-            ))?
+            .ok_or(Error::InvalidFormat("range start", value_str.to_string()))?
             .parse::<u64>()
-            .map_err(|_| {
-                ContentRangeHeaderValueError::Parsing("range start", "u64", value_str.to_string())
-            })?;
+            .map_err(|_| Error::Parsing("range start", "u64", value_str.to_string()))?;
         let end = range_parts
             .next()
-            .ok_or(ContentRangeHeaderValueError::InvalidFormat(
-                "range end",
-                value_str.to_string(),
-            ))?
+            .ok_or(Error::InvalidFormat("range end", value_str.to_string()))?
             .parse::<u64>()
-            .map_err(|_| {
-                ContentRangeHeaderValueError::Parsing("range end", "u64", value_str.to_string())
-            })?;
+            .map_err(|_| Error::Parsing("range end", "u64", value_str.to_string()))?;
 
         let size = if size_part == "*" {
             None
         } else {
-            Some(size_part.parse::<u64>().map_err(|_| {
-                ContentRangeHeaderValueError::Parsing("size", "u64", value_str.to_string())
-            })?)
+            Some(
+                size_part
+                    .parse::<u64>()
+                    .map_err(|_| Error::Parsing("size", "u64", value_str.to_string()))?,
+            )
         };
 
         Ok(Self::new(unit, (start, end), size))

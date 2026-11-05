@@ -6,7 +6,7 @@ use macworp_backend::{
     configuration::Configuration,
     filesystems::remote_filesystem::RemoteFilesystem,
     models::{ActiveUser, User},
-    standalone_error::StandaloneError,
+    standalone_error::Error as StandaloneError,
 };
 use macworp_core::logging::init_tracing_subscription;
 use macworp_database_migration::{Migrator, MigratorTrait};

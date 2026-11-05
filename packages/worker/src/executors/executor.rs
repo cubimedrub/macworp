@@ -1,4 +1,4 @@
-use macworp_core::workflow_configuration::{engine::Engine, render::RenderError};
+use macworp_core::workflow_configuration::{engine::Engine, render::Error as RenderError};
 use thiserror::Error;
 use tokio::sync::{mpsc, watch};
 
@@ -6,7 +6,7 @@ use super::{Job, LogLine, Outcome};
 use crate::container_runtime::BoxFuture;
 
 #[derive(Debug, Error)]
-pub enum ExecutorError {
+pub enum Error {
     #[error("Cannot render workflow parameters: {0}")]
     Render(#[from] RenderError),
     #[error("Workflow source is not supported by this executor: {0}")]

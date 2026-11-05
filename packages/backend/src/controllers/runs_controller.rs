@@ -56,7 +56,7 @@ pub enum Error {
     Forbidden,
     /// Submitted parameter values do not fit the workflow, or it cannot be rendered, 400
     #[error("Invalid parameters: {0}")]
-    InvalidParameters(#[from] macworp_core::workflow_configuration::render::RenderError),
+    InvalidParameters(#[from] macworp_core::workflow_configuration::render::Error),
     /// The container runtime of this instance cannot run the workflow's engine, 409
     #[error("Workflow engine {0} is not available with the detected container runtime")]
     EngineUnavailable(macworp_core::workflow_configuration::engine::Engine),

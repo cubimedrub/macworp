@@ -43,7 +43,7 @@ pub enum RemoteFilesystemError {
     #[error("Missing Content-Range header")]
     MissingContentRangeHeader,
     #[error("Invalid Content-Range header: {0}")]
-    InvalidContentRangeHeader(macworp_core::http::headers::ContentRangeHeaderValueError),
+    InvalidContentRangeHeader(macworp_core::http::headers::Error),
     #[error("Missing file size in Content-Range header")]
     MissingFileSize,
     #[error("Target path is a directory: {0:?}")]

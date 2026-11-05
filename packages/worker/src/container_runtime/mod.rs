@@ -1,7 +1,9 @@
 mod doctor;
 mod runtime;
 
-pub use doctor::{Check, CheckStatus, DoctorError, DoctorReport, RuntimePreference, doctor};
+pub use doctor::{
+    Check, CheckStatus, DoctorReport, Error as DoctorError, RuntimePreference, doctor,
+};
 pub use runtime::{
-    BoxFuture, CliRuntime, ContainerRuntime, RuntimeError, RuntimeInfo, RuntimeKind,
+    BoxFuture, CliRuntime, ContainerRuntime, Error as RuntimeError, RuntimeInfo, RuntimeKind,
 };

@@ -8,7 +8,7 @@ use tokio::{
 
 use crate::{
     executors::{Executor, Job, LogLine, Outcome},
-    job_source::{JobSource, SourceError},
+    job_source::{Error as SourceError, JobSource},
     log_proxy::ProgressReceiver,
     progress::ProgressUpdate,
 };

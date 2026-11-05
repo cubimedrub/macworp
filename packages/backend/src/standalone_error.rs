@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum StandaloneError {
+pub enum Error {
     #[error("Failed to read configuration file")]
     ConfigurationReadError(#[source] std::io::Error),
     #[error("No configuration file given, create one with the `config` command")]

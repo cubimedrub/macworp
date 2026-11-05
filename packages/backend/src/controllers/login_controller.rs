@@ -25,18 +25,18 @@ use crate::{
 };
 
 #[derive(Error, Debug)]
-pub enum LoginControllerError {
+pub enum Error {
     #[error("{0}")]
     Database(#[from] sea_orm::DbErr),
     #[error("{0}")]
     Authentication(#[from] crate::authentication::error::Error),
 }
 
-impl IntoResponse for LoginControllerError {
+impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         tracing::error!("{self}");
         match self {
-            LoginControllerError::Authentication(e) => e.into_response(),
+            Error::Authentication(e) => e.into_response(),
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
@@ -73,11 +73,11 @@ impl LoginController {
     pub async fn with_local(
         State(state): State<Arc<AppState>>,
         Json(payload): Json<PasswordLoginRequest>,
-    ) -> Result<String, LoginControllerError> {
+    ) -> Result<String, Error> {
         let user = UserTable::find_by_username(&payload.username)
             .one(state.db())
             .await
-            .map_err(LoginControllerError::Database)?
+            .map_err(Error::Database)?
             .ok_or(AuthenticationError::InvalidUserOrPassword)?;
 
         let user_password = user
@@ -86,7 +86,7 @@ impl LoginController {
             .ok_or(AuthenticationError::InvalidUserOrPassword)?;
 
         verify_password(payload.password.as_bytes(), user_password, user.id)
-            .map_err(LoginControllerError::Authentication)?;
+            .map_err(Error::Authentication)?;
 
         // Checked after the password so account state is not revealed without it.
         if user.disabled {
@@ -94,7 +94,7 @@ impl LoginController {
         }
 
         let jwt = JsonWebToken::encode(user.id, user.token_version, state.config())
-            .map_err(LoginControllerError::Authentication)?;
+            .map_err(Error::Authentication)?;
 
         Ok(jwt)
     }
@@ -103,7 +103,7 @@ impl LoginController {
     pub async fn logout(
         State(state): State<Arc<AppState>>,
         RequireUser(user): RequireUser,
-    ) -> Result<StatusCode, LoginControllerError> {
+    ) -> Result<StatusCode, Error> {
         User::revoke_tokens(state.db(), user.id).await?;
         Ok(StatusCode::NO_CONTENT)
     }

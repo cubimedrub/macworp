@@ -15,7 +15,7 @@ use crate::{
 
 /// Why parameter values could not be applied or a configuration could not be rendered
 #[derive(Debug, Error, PartialEq)]
-pub enum RenderError {
+pub enum Error {
     /// No dynamic parameter with this name
     #[error("Unknown parameter `{0}`")]
     UnknownParameter(String),
@@ -44,7 +44,7 @@ pub enum RenderError {
 
 /// Names end up in command line flags, so they must not be able to form another flag or contain
 /// separators.
-fn validate_name(name: &str) -> Result<(), RenderError> {
+fn validate_name(name: &str) -> Result<(), Error> {
     let valid = !name.is_empty()
         && !name.starts_with('-')
         && name
@@ -53,7 +53,7 @@ fn validate_name(name: &str) -> Result<(), RenderError> {
     if valid {
         Ok(())
     } else {
-        Err(RenderError::InvalidName(name.to_string()))
+        Err(Error::InvalidName(name.to_string()))
     }
 }
 
@@ -63,11 +63,11 @@ fn check_range<T: PartialOrd + std::fmt::Display + Copy>(
     value: T,
     min: Option<T>,
     max: Option<T>,
-) -> Result<(), RenderError> {
+) -> Result<(), Error> {
     if let Some(min) = min
         && value < min
     {
-        return Err(RenderError::OutOfRange(
+        return Err(Error::OutOfRange(
             name.to_string(),
             format!("{value} < minimum {min}"),
         ));
@@ -75,7 +75,7 @@ fn check_range<T: PartialOrd + std::fmt::Display + Copy>(
     if let Some(max) = max
         && value > max
     {
-        return Err(RenderError::OutOfRange(
+        return Err(Error::OutOfRange(
             name.to_string(),
             format!("{value} > maximum {max}"),
         ));
@@ -84,31 +84,31 @@ fn check_range<T: PartialOrd + std::fmt::Display + Copy>(
 }
 
 /// Validates and normalises a user supplied path with the shared [`crate::paths`] rules.
-fn project_path(name: &str, raw: &str) -> Result<PathBuf, RenderError> {
+fn project_path(name: &str, raw: &str) -> Result<PathBuf, Error> {
     let raw = std::path::Path::new(raw);
     let path = sanitize_relative(raw);
     if !is_confined(raw) || path.as_os_str().is_empty() {
-        return Err(RenderError::InvalidPath(name.to_string()));
+        return Err(Error::InvalidPath(name.to_string()));
     }
     Ok(path)
 }
 
 /// Sets the value of one parameter from its JSON representation, `null` unsets it.
-fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError> {
+fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), Error> {
     let name = parameter.name().to_string();
     match parameter {
         Parameter::Text(p) => {
             *p.value_mut() = match value {
                 Value::Null => None,
                 Value::String(s) => Some(s.clone()),
-                _ => return Err(RenderError::TypeMismatch(name, "string")),
+                _ => return Err(Error::TypeMismatch(name, "string")),
             };
         }
         Parameter::Glob(p) => {
             *p.value_mut() = match value {
                 Value::Null => None,
                 Value::String(s) => Some(s.clone()),
-                _ => return Err(RenderError::TypeMismatch(name, "string")),
+                _ => return Err(Error::TypeMismatch(name, "string")),
             };
         }
         Parameter::Integer(p) => {
@@ -117,7 +117,7 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError
                 v => {
                     let v = v
                         .as_i64()
-                        .ok_or_else(|| RenderError::TypeMismatch(name.clone(), "integer"))?;
+                        .ok_or_else(|| Error::TypeMismatch(name.clone(), "integer"))?;
                     check_range(&name, v, p.min(), p.max())?;
                     Some(v)
                 }
@@ -130,7 +130,7 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError
                     let v = v
                         .as_f64()
                         .filter(|v| v.is_finite())
-                        .ok_or_else(|| RenderError::TypeMismatch(name.clone(), "number"))?;
+                        .ok_or_else(|| Error::TypeMismatch(name.clone(), "number"))?;
                     check_range(&name, v, p.min(), p.max())?;
                     Some(v)
                 }
@@ -145,18 +145,18 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError
                         .iter()
                         .map(|i| {
                             let s = i.as_str().ok_or_else(|| {
-                                RenderError::TypeMismatch(name.clone(), "array of strings")
+                                Error::TypeMismatch(name.clone(), "array of strings")
                             })?;
                             project_path(&name, s)
                         })
                         .collect::<Result<_, _>>()?,
                 ),
-                _ => return Err(RenderError::TypeMismatch(name, "array of strings")),
+                _ => return Err(Error::TypeMismatch(name, "array of strings")),
             };
             if let Some(paths) = &paths
                 && paths.len() > p.limit().get()
             {
-                return Err(RenderError::OutOfRange(
+                return Err(Error::OutOfRange(
                     name,
                     format!("{} paths, at most {} allowed", paths.len(), p.limit()),
                 ));
@@ -172,16 +172,16 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError
                         .iter()
                         .map(|i| {
                             i.as_str().map(str::to_string).ok_or_else(|| {
-                                RenderError::TypeMismatch(name.clone(), "array of strings")
+                                Error::TypeMismatch(name.clone(), "array of strings")
                             })
                         })
                         .collect::<Result<_, _>>()?,
                 ),
-                _ => return Err(RenderError::TypeMismatch(name, "array of strings")),
+                _ => return Err(Error::TypeMismatch(name, "array of strings")),
             };
             if let Some(values) = &values {
                 if values.len() > 1 && !p.is_multiselect() {
-                    return Err(RenderError::OutOfRange(
+                    return Err(Error::OutOfRange(
                         name,
                         format!("{} values, only one allowed", values.len()),
                     ));
@@ -190,7 +190,7 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError
                     .iter()
                     .find(|v| !p.options().iter().any(|o| &o.value == *v))
                 {
-                    return Err(RenderError::OutOfRange(
+                    return Err(Error::OutOfRange(
                         name,
                         format!("`{bad}` is not one of the options"),
                     ));
@@ -200,7 +200,7 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), RenderError
         }
         Parameter::Separator(_) => {
             if !value.is_null() {
-                return Err(RenderError::NoValueAllowed(name));
+                return Err(Error::NoValueAllowed(name));
             }
         }
     }
@@ -235,13 +235,13 @@ pub fn value_json(parameter: &Parameter) -> Value {
 pub fn apply_values(
     config: &mut WorkflowConfiguration,
     values: &[ParameterValue],
-) -> Result<(), RenderError> {
+) -> Result<(), Error> {
     for v in values {
         let parameter = config
             .dynamic_parameters_mut()
             .iter_mut()
             .find(|p| p.name() == v.name)
-            .ok_or_else(|| RenderError::UnknownParameter(v.name.clone()))?;
+            .ok_or_else(|| Error::UnknownParameter(v.name.clone()))?;
         set_value(parameter, &v.value)?;
     }
     Ok(())
@@ -307,19 +307,19 @@ fn container_flag(name: &str) -> String {
 ///   `--name value`, passed to the image
 ///
 /// Parameters without a value are skipped. Executable, script and source are up to the executor.
-pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, RenderError> {
+pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Error> {
     let engine_prefix = match config.engine() {
         Engine::Nextflow => "-",
         Engine::Snakemake => "--",
         Engine::Container => {
             if !config.engine_parameters().is_empty() {
-                return Err(RenderError::EngineParametersUnsupported(
+                return Err(Error::EngineParametersUnsupported(
                     Engine::Container.to_string(),
                 ));
             }
             return render_container_args(config);
         }
-        other => return Err(RenderError::UnsupportedEngine(other.to_string())),
+        other => return Err(Error::UnsupportedEngine(other.to_string())),
     };
 
     let mut args = Vec::new();
@@ -363,7 +363,7 @@ pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Render
     Ok(args)
 }
 
-fn render_container_args(config: &WorkflowConfiguration) -> Result<Vec<String>, RenderError> {
+fn render_container_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Error> {
     let mut args = Vec::new();
     for p in config
         .fixed_parameters()
@@ -475,19 +475,19 @@ mod tests {
         let mut c = config(Engine::Nextflow);
         assert_eq!(
             apply_values(&mut c, &[pv("nope", json!(1))]),
-            Err(RenderError::UnknownParameter("nope".into()))
+            Err(Error::UnknownParameter("nope".into()))
         );
         assert!(matches!(
             apply_values(&mut c, &[pv("threads", json!("4"))]),
-            Err(RenderError::TypeMismatch(..))
+            Err(Error::TypeMismatch(..))
         ));
         assert!(matches!(
             apply_values(&mut c, &[pv("threads", json!(9))]),
-            Err(RenderError::OutOfRange(..))
+            Err(Error::OutOfRange(..))
         ));
         assert!(matches!(
             apply_values(&mut c, &[pv("input", json!(["a", "b", "c"]))]),
-            Err(RenderError::OutOfRange(..))
+            Err(Error::OutOfRange(..))
         ));
     }
 
@@ -496,7 +496,7 @@ mod tests {
         let mut c = config(Engine::Nextflow);
         *c.dynamic_parameters_mut()[1].name_mut() = "-x".into();
         apply_values(&mut c, &[pv("-x", json!("v"))]).unwrap();
-        assert_eq!(render_args(&c), Err(RenderError::InvalidName("-x".into())));
+        assert_eq!(render_args(&c), Err(Error::InvalidName("-x".into())));
     }
 
     #[test]
@@ -515,7 +515,7 @@ mod tests {
             .push(EngineParameter::new("memory".into(), "2g".into()));
         assert!(matches!(
             render_args(&c),
-            Err(RenderError::EngineParametersUnsupported(_))
+            Err(Error::EngineParametersUnsupported(_))
         ));
     }
 
@@ -523,7 +523,7 @@ mod tests {
     fn unsupported_engine() {
         assert!(matches!(
             render_args(&config(Engine::Cwl)),
-            Err(RenderError::UnsupportedEngine(_))
+            Err(Error::UnsupportedEngine(_))
         ));
     }
 
@@ -546,11 +546,11 @@ mod tests {
         assert_eq!(&render_args(&c).unwrap()[2..], ["--mode2", "b"]);
         assert!(matches!(
             apply_values(&mut c, &[pv("mode2", json!("z"))]),
-            Err(RenderError::OutOfRange(..))
+            Err(Error::OutOfRange(..))
         ));
         assert!(matches!(
             apply_values(&mut c, &[pv("mode2", json!(["a", "b"]))]),
-            Err(RenderError::OutOfRange(..))
+            Err(Error::OutOfRange(..))
         ));
     }
 
@@ -580,11 +580,11 @@ mod tests {
         let mut c = config(Engine::Nextflow);
         assert!(matches!(
             apply_values(&mut c, &[pv("input", json!(["../x"]))]),
-            Err(RenderError::InvalidPath(_))
+            Err(Error::InvalidPath(_))
         ));
         assert!(matches!(
             apply_values(&mut c, &[pv("input", json!(""))]),
-            Err(RenderError::InvalidPath(_))
+            Err(Error::InvalidPath(_))
         ));
         apply_values(&mut c, &[pv("input", json!("/a/b.fq"))]).unwrap();
         assert_eq!(&render_args(&c).unwrap()[2..], ["--input", "a/b.fq"]);

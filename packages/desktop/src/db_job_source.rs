@@ -5,7 +5,7 @@ use macworp_core::entities::{LogStream, RunStatus};
 use macworp_worker::{
     container_runtime::BoxFuture,
     executors::{Job, Outcome},
-    job_source::{JobSource, SourceError},
+    job_source::{Error as SourceError, JobSource},
     progress::ProgressUpdate,
 };
 use sea_orm::{DatabaseConnection, EntityTrait};

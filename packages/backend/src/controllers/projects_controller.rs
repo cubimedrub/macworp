@@ -28,7 +28,7 @@ use crate::{
 };
 
 #[derive(Error, Debug)]
-pub enum ProjectsControllerError {
+pub enum Error {
     #[error("{0}")]
     Database(#[from] sea_orm::DbErr),
     #[error("{0}")]
@@ -40,17 +40,17 @@ pub enum ProjectsControllerError {
     #[error("Missing Content-Range header")]
     MissingContentRangeHeader,
     #[error("Invalid Content-Range header: {0}")]
-    InvalidContentRangeHeader(macworp_core::http::headers::ContentRangeHeaderValueError),
+    InvalidContentRangeHeader(macworp_core::http::headers::Error),
 }
 
-impl IntoResponse for ProjectsControllerError {
+impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         tracing::error!("{self}");
         match self {
-            ProjectsControllerError::Authentication(e) => e.into_response(),
-            ProjectsControllerError::Filesystem(
-                crate::filesystems::errors::Error::SymlinkNotAllowed(_),
-            ) => (StatusCode::FORBIDDEN, "Symlinks are not allowed").into_response(),
+            Error::Authentication(e) => e.into_response(),
+            Error::Filesystem(crate::filesystems::errors::Error::SymlinkNotAllowed(_)) => {
+                (StatusCode::FORBIDDEN, "Symlinks are not allowed").into_response()
+            }
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
@@ -96,17 +96,17 @@ where
     pub async fn index(
         State(state): State<Arc<AppState>>,
         scope: ListScope,
-    ) -> Result<Json<Vec<ProjectResponse>>, ProjectsControllerError> {
+    ) -> Result<Json<Vec<ProjectResponse>>, Error> {
         let projects: Vec<Project> = ProjectTable::find()
             .filter(scope.filter(Project::visible_to(scope.user.id, Role::Viewer)))
             .all(state.db())
             .await
-            .map_err(ProjectsControllerError::Database)?;
+            .map_err(Error::Database)?;
         let owners =
             User::usernames(state.db(), projects.iter().filter_map(|p| p.owner_id)).await?;
         let ownerless = Project::ownerless_among(state.db(), projects.iter().map(|p| p.id))
             .await
-            .map_err(ProjectsControllerError::Database)?;
+            .map_err(Error::Database)?;
 
         Ok(Json(
             projects
@@ -135,11 +135,11 @@ where
         State(state): State<Arc<AppState>>,
         RequireUser(user): RequireUser,
         Json(payload): Json<NewProjectRequest>,
-    ) -> Result<Json<ProjectResponse>, ProjectsControllerError> {
+    ) -> Result<Json<ProjectResponse>, Error> {
         let state_clone = state.clone();
         let project = state
             .db()
-            .transaction::<_, Project, ProjectsControllerError>(|txn| {
+            .transaction::<_, Project, Error>(|txn| {
                 Box::pin(async move {
                     let new_project = ActiveProject::builder()
                         .set_name(payload.name.clone())
@@ -150,7 +150,7 @@ where
                     let project: Project = new_project
                         .insert(txn)
                         .await
-                        .map_err(ProjectsControllerError::Database)?
+                        .map_err(Error::Database)?
                         .into();
 
                     Project::shares(txn, project.id)
@@ -159,14 +159,14 @@ where
 
                     F::create_project_directory(state_clone.as_ref(), &project)
                         .await
-                        .map_err(ProjectsControllerError::Filesystem)?;
+                        .map_err(Error::Filesystem)?;
 
                     Ok(project)
                 })
             })
             .await
             .map_err(|err| match err {
-                TransactionError::Connection(err) => ProjectsControllerError::Database(err),
+                TransactionError::Connection(err) => Error::Database(err),
                 TransactionError::Transaction(err) => err,
             })?;
 
@@ -192,9 +192,9 @@ where
             ..
         }: Authorized<Project, Viewer>,
         Query(query_params): Query<ProjectQueryParams>,
-    ) -> Result<Json<ProjectResponse>, ProjectsControllerError> {
+    ) -> Result<Json<ProjectResponse>, Error> {
         let content = F::content(state.as_ref(), &project, query_params.subpath)
-            .map_err(ProjectsControllerError::Filesystem)?;
+            .map_err(Error::Filesystem)?;
         let local_path = F::local_path(state.as_ref(), &project);
 
         Ok(Json(ProjectResponse {
@@ -208,7 +208,7 @@ where
                 .unwrap_or_default(),
             ownerless: Project::ownerless_among(state.db(), [project.id])
                 .await
-                .map_err(ProjectsControllerError::Database)?
+                .map_err(Error::Database)?
                 .contains(&project.id),
             current: content.current,
             files: content.files,
@@ -221,31 +221,28 @@ where
     async fn delete(
         State(state): State<Arc<AppState>>,
         Authorized { model: project, .. }: Authorized<Project, Owner>,
-    ) -> Result<StatusCode, ProjectsControllerError> {
+    ) -> Result<StatusCode, Error> {
         state
             .clone()
             .db()
-            .transaction::<_, (), ProjectsControllerError>(|txn| {
+            .transaction::<_, (), Error>(|txn| {
                 Box::pin(async move {
                     F::delete_project_directory(state.as_ref(), &project)
                         .await
-                        .map_err(ProjectsControllerError::Filesystem)?;
+                        .map_err(Error::Filesystem)?;
 
                     Project::shares(txn, project.id)
                         .delete_all()
                         .await
-                        .map_err(ProjectsControllerError::Database)?;
-                    project
-                        .delete(txn)
-                        .await
-                        .map_err(ProjectsControllerError::Database)?;
+                        .map_err(Error::Database)?;
+                    project.delete(txn).await.map_err(Error::Database)?;
 
                     Ok(())
                 })
             })
             .await
             .map_err(|err| match err {
-                TransactionError::Connection(err) => ProjectsControllerError::Database(err),
+                TransactionError::Connection(err) => Error::Database(err),
                 TransactionError::Transaction(err) => err,
             })?;
 
@@ -258,13 +255,13 @@ where
         Query(params): Query<ProjectFileUploadQuery>,
         headers: HeaderMap,
         request: Request,
-    ) -> Result<StatusCode, ProjectsControllerError> {
+    ) -> Result<StatusCode, Error> {
         let content_header_value = headers
             .get("Content-Range")
-            .ok_or(ProjectsControllerError::MissingContentRangeHeader)?;
+            .ok_or(Error::MissingContentRangeHeader)?;
 
         let content_range = ContentRangeHeaderValue::try_from(content_header_value)
-            .map_err(ProjectsControllerError::InvalidContentRangeHeader)?;
+            .map_err(Error::InvalidContentRangeHeader)?;
 
         F::stream_to_file(
             state.as_ref(),
@@ -282,10 +279,10 @@ where
         State(state): State<Arc<AppState>>,
         Authorized { model: project, .. }: Authorized<Project, Editor>,
         Json(payload): Json<ProjectCreateFolderRequest>,
-    ) -> Result<StatusCode, ProjectsControllerError> {
+    ) -> Result<StatusCode, Error> {
         F::create_folder(state.as_ref(), &project, payload.folder_path)
             .await
-            .map_err(ProjectsControllerError::Filesystem)?;
+            .map_err(Error::Filesystem)?;
 
         Ok(StatusCode::OK)
     }
@@ -294,10 +291,10 @@ where
         State(state): State<Arc<AppState>>,
         Authorized { model: project, .. }: Authorized<Project, Editor>,
         Json(payload): Json<ProjectPathDeletionRequest>,
-    ) -> Result<StatusCode, ProjectsControllerError> {
+    ) -> Result<StatusCode, Error> {
         F::delete_path(state.as_ref(), &project, payload.path)
             .await
-            .map_err(ProjectsControllerError::Filesystem)?;
+            .map_err(Error::Filesystem)?;
 
         Ok(StatusCode::OK)
     }

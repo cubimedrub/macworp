@@ -346,7 +346,7 @@ impl TestApp {
         let max_log_bytes = backend_config.max_log_bytes_per_run();
         *backend_config.database_url_mut() = database_url.clone();
         *backend_config.secret_mut() = macworp_backend::configuration::generate_secret();
-        *backend_config.unavailable_engines_mut() = unavailable_engines;
+        *backend_config.fixed_unavailable_engines_mut() = Some(unavailable_engines);
         *backend_config.interface_mut() = "127.0.0.1".to_string();
         *backend_config.worker_mut().password_mut() =
             password_auth::generate_hash(password.as_bytes());

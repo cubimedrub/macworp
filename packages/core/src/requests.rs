@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::workflow_configuration::WorkflowConfiguration;
+use crate::workflow_configuration::{WorkflowConfiguration, engine::Engine};
 
 /// Request for the login
 ///
@@ -169,6 +169,8 @@ pub struct ResetPasswordRequest {
 pub struct WorkerClaimRequest {
     /// Name of the worker process, shown to admins and used to attribute leases
     pub worker_name: String,
+    /// Engines the worker can run; only runs of these engines are leased to it
+    pub engines: Vec<Engine>,
 }
 
 /// Log lines a worker read from the engine
@@ -206,4 +208,17 @@ pub enum WorkerOutcome {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkerFinishRequest {
     pub outcome: WorkerOutcome,
+}
+
+/// A worker announces what it can run. Sent at start and repeatedly, so the backend knows which
+/// workers are alive and which engines are available.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerAnnounceRequest {
+    /// Name of the worker process, same as in `WorkerClaimRequest`
+    pub worker_name: String,
+    /// Container runtime binary the worker uses, e.g. `podman`
+    pub runtime: String,
+    pub runtime_version: Option<String>,
+    /// Engines the worker can run on that runtime
+    pub engines: Vec<Engine>,
 }

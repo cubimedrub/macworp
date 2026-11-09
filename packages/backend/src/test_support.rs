@@ -6,7 +6,7 @@ use macworp_core::{
     entities::Role,
     routing::{
         GroupsRouting, IsRouting, LoginRouting, ProjectsRouting, RunsRouting, SharesRouting,
-        UsersRouting, WorkerRouting, WorkflowIntegrationsRouting,
+        UsersRouting, UtilitiesRouting, WorkerRouting, WorkflowIntegrationsRouting,
     },
     workflow_configuration::WorkflowConfiguration,
 };
@@ -60,6 +60,10 @@ impl TestApp {
         let state = Arc::new(state);
 
         let router = Router::new()
+            .nest(
+                UtilitiesRouting::controller_path(),
+                UtilitiesController::routes(),
+            )
             .nest(
                 LoginRouting::controller_path(),
                 LoginController::routes(state.clone()),

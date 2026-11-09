@@ -17,7 +17,7 @@ use macworp_core::{
         UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
     },
     responses::{
-        GroupResponse, LastRunResponse, LoginProviderResponse, ProjectResponse, RunLogsResponse,
+        EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse, ProjectResponse, RunLogsResponse,
         RunResponse, ShareResponse, UserResponse, UserSummaryResponse, WorkflowIntegrationResponse,
     },
     routing::*,
@@ -181,6 +181,26 @@ impl<'a> UtilitiesClient<'a> {
             .send()
             .await?;
         response.text().await.map_err(Error::Request)
+    }
+
+    /// Engines no worker can run and the number of workers online
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    pub async fn engines(&self, jwt: &str) -> Result<EnginesResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::ENGINES_PATH
+        );
+        let request = reqwest::Client::new().get(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "fetch engine availability")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
     }
 
     /// Returns true it the backends answers with 200

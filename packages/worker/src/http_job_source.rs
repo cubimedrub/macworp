@@ -3,10 +3,11 @@ use std::{collections::HashMap, sync::Mutex, time::Duration};
 use macworp_core::{
     entities::LogStream,
     requests::{
-        WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest, WorkerOutcome,
+        WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest, WorkerOutcome,
         WorkerProgressRequest,
     },
-    responses::{WorkerClaimResponse, WorkerHeartbeatResponse},
+    responses::{WorkerAnnounceResponse, WorkerClaimResponse, WorkerHeartbeatResponse},
+    workflow_configuration::engine::Engine,
     routing::{IsRouting, WorkerRouting},
 };
 use reqwest::{Client, RequestBuilder, StatusCode};
@@ -35,17 +36,27 @@ pub struct HttpJobSource {
     password: String,
     /// Name reported to the backend, identifies this worker process in leases
     worker_name: String,
+    /// Engines this worker can run, sent with every claim so only matching runs are leased
+    engines: Vec<Engine>,
     /// Tokens of the runs claimed through this source
     tokens: Mutex<HashMap<i64, String>>,
 }
 
 impl HttpJobSource {
-    /// `base_url` is the backend root, e.g. `https://macworp.example.org`.
+    /// Creates the source.
+    ///
+    /// # Arguments
+    /// * `base_url` - backend root, e.g. `https://macworp.example.org`
+    /// * `username` - worker credential
+    /// * `password` - worker credential
+    /// * `worker_name` - name identifying this worker process in leases
+    /// * `engines` - engines this worker can run; the backend leases it only runs of these
     pub fn new(
         base_url: &str,
         username: String,
         password: String,
         worker_name: String,
+        engines: Vec<Engine>,
     ) -> Result<Self, Error> {
         let client = Client::builder()
             .timeout(REQUEST_TIMEOUT)
@@ -57,6 +68,7 @@ impl HttpJobSource {
             username,
             password,
             worker_name,
+            engines,
             tokens: Mutex::new(HashMap::new()),
         })
     }
@@ -111,6 +123,44 @@ impl HttpJobSource {
     }
 }
 
+impl HttpJobSource {
+    /// Tells the backend which runtime and engines this worker offers and that it is alive.
+    /// Returns the seconds the announcement stays valid.
+    ///
+    /// # Arguments
+    /// * `runtime` - container runtime binary name, e.g. `podman`
+    /// * `runtime_version` - its version if known
+    /// * `engines` - engines this worker can run
+    pub async fn announce(
+        &self,
+        runtime: &str,
+        runtime_version: Option<&str>,
+        engines: &[Engine],
+    ) -> Result<u32, Error> {
+        let response = self
+            .client
+            .post(self.url(WorkerRouting::ANNOUNCE_PATH, None))
+            .basic_auth(&self.username, Some(&self.password))
+            .json(&WorkerAnnounceRequest {
+                worker_name: self.worker_name.clone(),
+                runtime: runtime.to_string(),
+                runtime_version: runtime_version.map(str::to_string),
+                engines: engines.to_vec(),
+            })
+            .send()
+            .await
+            .map_err(|e| Error(format!("Backend unreachable: {e}")))?;
+        if !response.status().is_success() {
+            return Err(Error(format!("Backend answered {}", response.status())));
+        }
+        let announced: WorkerAnnounceResponse = response
+            .json()
+            .await
+            .map_err(|e| Error(format!("Invalid announce response: {e}")))?;
+        Ok(announced.ttl_seconds)
+    }
+}
+
 impl JobSource for HttpJobSource {
     fn claim(&self) -> BoxFuture<'_, Result<Option<Job>, Error>> {
         Box::pin(async move {
@@ -120,6 +170,7 @@ impl JobSource for HttpJobSource {
                 .basic_auth(&self.username, Some(&self.password))
                 .json(&WorkerClaimRequest {
                     worker_name: self.worker_name.clone(),
+                    engines: self.engines.clone(),
                 })
                 .send()
                 .await
@@ -323,7 +374,7 @@ mod tests {
     async fn claim_uses_basic_then_run_token() {
         let (url, seen) = backend().await;
         let source =
-            HttpJobSource::new(&format!("{url}/"), "w".into(), "pw".into(), "n".into()).unwrap();
+            HttpJobSource::new(&format!("{url}/"), "w".into(), "pw".into(), "n".into(), vec![Engine::Nextflow]).unwrap();
         let job = source.claim().await.unwrap().unwrap();
         assert_eq!(job.run_id, 7);
         assert_eq!(job.project_dir, std::path::PathBuf::from("/data/p"));
@@ -343,11 +394,37 @@ mod tests {
     #[tokio::test]
     async fn lost_lease_cancels_and_finish_is_dropped() {
         let (url, _) = backend().await;
-        let source = HttpJobSource::new(&url, "w".into(), "pw".into(), "n".into()).unwrap();
+        let source = HttpJobSource::new(&url, "w".into(), "pw".into(), "n".into(), vec![Engine::Nextflow]).unwrap();
         source.claim().await.unwrap().unwrap();
         // the fake only accepts `tok`; swap the stored token for a stale one
         source.tokens.lock().unwrap().insert(7, "stale".into());
         assert!(source.cancel_requested(7).await.unwrap());
         source.finish(7, Outcome::Succeeded).await.unwrap();
+    }
+
+    /// Announce sends Basic credentials and the engines, and returns the backend's ttl
+    #[tokio::test]
+    async fn announce_sends_engines_and_returns_ttl() {
+        async fn announce(
+            headers: HeaderMap,
+            Json(request): Json<WorkerAnnounceRequest>,
+        ) -> Json<WorkerAnnounceResponse> {
+            assert!(headers[AUTHORIZATION].to_str().unwrap().starts_with("Basic "));
+            assert_eq!(request.worker_name, "n");
+            assert_eq!(request.runtime, "podman");
+            assert_eq!(request.engines, vec![Engine::Nextflow]);
+            Json(WorkerAnnounceResponse { ttl_seconds: 45 })
+        }
+        let router = Router::new().route("/worker/announce", post(announce));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+
+        let source = HttpJobSource::new(&url, "w".into(), "pw".into(), "n".into(), vec![Engine::Nextflow]).unwrap();
+        let ttl = source
+            .announce("podman", Some("5.0"), &[Engine::Nextflow])
+            .await
+            .unwrap();
+        assert_eq!(ttl, 45);
     }
 }

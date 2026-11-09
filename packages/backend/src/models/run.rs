@@ -1,5 +1,7 @@
 use macworp_core::{
-    entities::RunStatus, responses::RunResponse, workflow_configuration::WorkflowConfiguration,
+    entities::RunStatus,
+    responses::RunResponse,
+    workflow_configuration::{WorkflowConfiguration, engine::Engine},
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, QueryOrder,
@@ -202,16 +204,26 @@ impl Entity {
     /// worker, see [`Entity::fail_orphaned_running`]). The status switch is a conditional update,
     /// so concurrent workers never claim the same run.
     pub async fn claim_next<C: ConnectionTrait>(db: &C) -> Result<Option<Model>, Error> {
-        Self::claim(db, None).await
+        Self::claim(db, None, None).await
     }
 
     /// Like [`Entity::claim_next`], but for a remote worker: the run is leased to `worker` for
     /// `lease_seconds` (extend it with [`Entity::heartbeat`]) and a fresh per-run token is
     /// returned. Only the token's hash is stored, so the plaintext exists in this return value only.
+    ///
+    /// Only runs whose workflow engine is in `engines` are considered, others stay queued for a
+    /// worker that can run them.
+    ///
+    /// # Arguments
+    /// * `db` - database connection
+    /// * `worker` - identity of the worker taking the run
+    /// * `lease_seconds` - lease duration, extended by heartbeats
+    /// * `engines` - engines the worker can run
     pub async fn claim_next_leased<C: ConnectionTrait>(
         db: &C,
         worker: &str,
         lease_seconds: i64,
+        engines: &[Engine],
     ) -> Result<Option<(Model, String)>, Error> {
         let token = crate::configuration::generate_secret();
         let lease = Lease {
@@ -219,7 +231,9 @@ impl Entity {
             seconds: lease_seconds,
             token_hash: Self::hash_token(&token),
         };
-        Ok(Self::claim(db, Some(lease)).await?.map(|run| (run, token)))
+        Ok(Self::claim(db, Some(lease), Some(engines))
+            .await?
+            .map(|run| (run, token)))
     }
 
     /// SHA-256 of a per-run token as lowercase hex. Tokens are random, so a fast hash is enough.
@@ -231,47 +245,59 @@ impl Entity {
             .collect()
     }
 
-    /// Shared claim loop of [`Entity::claim_next`] and [`Entity::claim_next_leased`].
+    /// Shared claim loop of [`Entity::claim_next`] and [`Entity::claim_next_leased`]: takes the
+    /// oldest queued run (of an engine in `engines`, any engine for `None`).
     async fn claim<C: ConnectionTrait>(
         db: &C,
         lease: Option<Lease<'_>>,
+        engines: Option<&[Engine]>,
     ) -> Result<Option<Model>, Error> {
         loop {
-            let Some(next) = Entity::find()
+            // The engine lives in the JSON configuration, so it is filtered here, not in SQL
+            let queued = Entity::find()
                 .filter(Column::Status.eq(RunStatus::Queued))
                 .order_by_asc(Column::CreatedAt)
                 .order_by_asc(Column::Id)
-                .one(db)
-                .await?
-            else {
-                return Ok(None);
-            };
-            let now = chrono::Utc::now();
-            let mut update = Entity::update_many()
-                .col_expr(Column::Status, Expr::value(RunStatus::Running))
-                .col_expr(Column::StartedAt, Expr::value(now))
-                .col_expr(
-                    Column::Attempts,
-                    sea_orm::ExprTrait::add(Expr::col(Column::Attempts), 1),
-                )
-                .filter(Column::Id.eq(next.id))
-                .filter(Column::Status.eq(RunStatus::Queued));
-            if let Some(lease) = &lease {
-                update = update
+                .all(db)
+                .await?;
+            let mut lost_race = false;
+            for next in queued {
+                if let Some(engines) = engines
+                    && !engines.contains(next.configuration.engine())
+                {
+                    continue;
+                }
+                let now = chrono::Utc::now();
+                let mut update = Entity::update_many()
+                    .col_expr(Column::Status, Expr::value(RunStatus::Running))
+                    .col_expr(Column::StartedAt, Expr::value(now))
                     .col_expr(
-                        Column::LeasedUntil,
-                        Expr::value(now + chrono::Duration::seconds(lease.seconds)),
+                        Column::Attempts,
+                        sea_orm::ExprTrait::add(Expr::col(Column::Attempts), 1),
                     )
-                    .col_expr(Column::WorkerName, Expr::value(lease.worker))
-                    .col_expr(
-                        Column::WorkerTokenHash,
-                        Expr::value(lease.token_hash.clone()),
-                    );
+                    .filter(Column::Id.eq(next.id))
+                    .filter(Column::Status.eq(RunStatus::Queued));
+                if let Some(lease) = &lease {
+                    update = update
+                        .col_expr(
+                            Column::LeasedUntil,
+                            Expr::value(now + chrono::Duration::seconds(lease.seconds)),
+                        )
+                        .col_expr(Column::WorkerName, Expr::value(lease.worker))
+                        .col_expr(
+                            Column::WorkerTokenHash,
+                            Expr::value(lease.token_hash.clone()),
+                        );
+                }
+                if update.exec(db).await?.rows_affected == 1 {
+                    return Ok(Entity::find_by_id(next.id).one(db).await?);
+                }
+                // lost the race (or the run was cancelled meanwhile), try the next one
+                lost_race = true;
             }
-            if update.exec(db).await?.rows_affected == 1 {
-                return Ok(Entity::find_by_id(next.id).one(db).await?);
+            if !lost_race {
+                return Ok(None);
             }
-            // lost the race (or the run was cancelled meanwhile), look at the next one
         }
     }
 
@@ -936,7 +962,7 @@ mod tests {
     async fn leased_claim_issues_token() {
         let (db, user, project) = setup().await;
         let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
-        let (run, token) = Entity::claim_next_leased(&db, "w1", 60)
+        let (run, token) = Entity::claim_next_leased(&db, "w1", 60, &Engine::all())
             .await
             .unwrap()
             .unwrap();
@@ -952,7 +978,7 @@ mod tests {
             Err(Error::InvalidToken)
         ));
         assert!(
-            Entity::claim_next_leased(&db, "w2", 60)
+            Entity::claim_next_leased(&db, "w2", 60, &Engine::all())
                 .await
                 .unwrap()
                 .is_none()
@@ -964,7 +990,7 @@ mod tests {
     async fn heartbeat_extends_lease_and_reports_cancel() {
         let (db, user, project) = setup().await;
         let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
-        let (_, token) = Entity::claim_next_leased(&db, "w1", 60)
+        let (_, token) = Entity::claim_next_leased(&db, "w1", 60, &Engine::all())
             .await
             .unwrap()
             .unwrap();
@@ -994,7 +1020,7 @@ mod tests {
     async fn expired_lease_requeues_and_invalidates_token() {
         let (db, user, project) = setup().await;
         let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
-        let (_, old) = Entity::claim_next_leased(&db, "w1", 60)
+        let (_, old) = Entity::claim_next_leased(&db, "w1", 60, &Engine::all())
             .await
             .unwrap()
             .unwrap();
@@ -1020,7 +1046,7 @@ mod tests {
             Entity::heartbeat(&db, id, &old, 60).await,
             Err(Error::InvalidToken)
         ));
-        let (run, new) = Entity::claim_next_leased(&db, "w2", 60)
+        let (run, new) = Entity::claim_next_leased(&db, "w2", 60, &Engine::all())
             .await
             .unwrap()
             .unwrap();
@@ -1033,7 +1059,7 @@ mod tests {
     async fn expired_lease_fails_at_max_attempts_or_cancels() {
         let (db, user, project) = setup().await;
         let id = add_run(&db, user, project, 2, RunStatus::Queued, false).await;
-        Entity::claim_next_leased(&db, "w1", 60)
+        Entity::claim_next_leased(&db, "w1", 60, &Engine::all())
             .await
             .unwrap()
             .unwrap();
@@ -1051,7 +1077,7 @@ mod tests {
         assert!(run.error.unwrap().contains("lease expired"));
 
         let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
-        Entity::claim_next_leased(&db, "w1", 60)
+        Entity::claim_next_leased(&db, "w1", 60, &Engine::all())
             .await
             .unwrap()
             .unwrap();

@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use macworp_core::workflow_configuration::engine::Engine;
+use macworp_core::{responses::EnginesResponse, workflow_configuration::engine::Engine};
 
 /// Outcome of a single container runtime check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,9 +105,35 @@ impl RuntimeStatus {
 /// Hint why `engine` cannot run, `None` if it can or the platform provides no runtime status.
 /// Reactive: follows refreshes of the status.
 pub fn engine_hint(engine: &Engine) -> Option<String> {
-    let handle = try_consume_context::<RuntimeStatusHandle>()?;
-    let hint = handle.status.read().engine_hint(engine);
-    hint
+    if let Some(handle) = try_consume_context::<RuntimeStatusHandle>() {
+        let hint = handle.status.read().engine_hint(engine);
+        return hint;
+    }
+    let availability = try_consume_context::<EngineAvailability>()?;
+    let response = availability.response.read();
+    worker_engine_hint(response.as_ref()?, engine)
+}
+
+/// Why no worker can run `engine`, `None` if one can.
+///
+/// # Arguments
+/// * `response` - engine availability reported by the backend
+/// * `engine` - engine to check
+pub fn worker_engine_hint(response: &EnginesResponse, engine: &Engine) -> Option<String> {
+    if !response.unavailable.contains(engine) {
+        None
+    } else if response.workers_online == 0 {
+        Some("No worker online".to_string())
+    } else {
+        Some(format!("No online worker can run {engine} workflows"))
+    }
+}
+
+/// Engine availability of the workers behind a remote backend (web). Provided as context by the
+/// layout when the platform has no [`RuntimeStatusHandle`]; `None` until the first answer.
+#[derive(Clone, Copy)]
+pub struct EngineAvailability {
+    pub response: Signal<Option<EnginesResponse>>,
 }
 
 /// Provided as context by platforms that run workflows locally (desktop). `RuntimeStatusBar`
@@ -295,5 +321,28 @@ mod tests {
             none.engine_hint(&Engine::Container).as_deref(),
             Some("No container runtime available")
         );
+    }
+
+    /// Hints from the worker availability: none worker, or only others
+    #[test]
+    fn worker_engine_hints() {
+        let none = EnginesResponse {
+            unavailable: vec![Engine::Nextflow, Engine::Snakemake],
+            workers_online: 0,
+        };
+        assert_eq!(
+            worker_engine_hint(&none, &Engine::Nextflow).as_deref(),
+            Some("No worker online")
+        );
+        assert_eq!(worker_engine_hint(&none, &Engine::Cwl), None);
+        let some = EnginesResponse {
+            unavailable: vec![Engine::Snakemake],
+            workers_online: 2,
+        };
+        assert_eq!(
+            worker_engine_hint(&some, &Engine::Snakemake).as_deref(),
+            Some("No online worker can run Snakemake workflows")
+        );
+        assert_eq!(worker_engine_hint(&some, &Engine::Nextflow), None);
     }
 }

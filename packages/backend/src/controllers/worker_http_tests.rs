@@ -14,7 +14,7 @@ async fn claim(app: &TestApp) -> (StatusCode, Value) {
         WORKER_PASSWORD,
         Method::POST,
         "/worker/claim",
-        Some(json!({"worker_name": "w1"})),
+        Some(json!({"worker_name": "w1", "engines": ["Nextflow", "Snakemake", "Cwl", "Container"]})),
     )
     .await
 }
@@ -117,7 +117,7 @@ async fn claim_requires_worker_credential() {
     let workflow = app.workflow(&alice, "w").await;
     app.run(&project, &workflow).await;
 
-    let body = Some(json!({"worker_name": "w1"}));
+    let body = Some(json!({"worker_name": "w1", "engines": ["Nextflow", "Snakemake", "Cwl", "Container"]}));
     let (status, _) = app
         .send(Some(&alice), Method::POST, "/worker/claim", body.clone())
         .await;
@@ -265,4 +265,159 @@ async fn claim_fails_runs_of_projects_without_directory() {
         .unwrap()
         .unwrap();
     assert_eq!(stored.status, RunStatus::Failed);
+}
+
+/// Announces a worker with the given engines through the API
+async fn announce(app: &TestApp, name: &str, engines: Value) -> (StatusCode, Value) {
+    app.send_as_worker(
+        WORKER_PASSWORD,
+        Method::POST,
+        "/worker/announce",
+        Some(json!({
+            "worker_name": name,
+            "runtime": "podman",
+            "runtime_version": "5.0",
+            "engines": engines,
+        })),
+    )
+    .await
+}
+
+/// Engines `/utilities/engines` reports as unavailable, plus the number of online workers
+async fn engines(app: &TestApp, user: &crate::models::User) -> (Vec<String>, u64) {
+    let (status, body) = app.get(user, "/utilities/engines").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let unavailable = body["unavailable"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|engine| engine.as_str().unwrap().to_string())
+        .collect();
+    (unavailable, body["workers_online"].as_u64().unwrap())
+}
+
+/// Without workers every engine is unavailable and starting a run is refused; announcing
+/// workers frees the union of their engines.
+#[tokio::test]
+async fn announced_workers_define_available_engines() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let start = format!("/runs/start/{}", project.id);
+    let body = json!({"workflow_id": workflow.id, "comment": "", "parameters": []});
+
+    let (unavailable, online) = engines(&app, &alice).await;
+    assert_eq!(unavailable.len(), 4);
+    assert_eq!(online, 0);
+    let (status, _) = app.post(&alice, &start, Some(body.clone())).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let (status, response) = announce(&app, "w1", json!(["Nextflow", "Container"])).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        response["ttl_seconds"],
+        app.state.config().worker_lease_seconds()
+    );
+    let (mut unavailable, online) = engines(&app, &alice).await;
+    unavailable.sort();
+    assert_eq!(unavailable, ["Cwl", "Snakemake"]);
+    assert_eq!(online, 1);
+
+    // A second worker adds its engines
+    announce(&app, "w2", json!(["Snakemake"])).await;
+    let (unavailable, online) = engines(&app, &alice).await;
+    assert_eq!(unavailable, ["Cwl"]);
+    assert_eq!(online, 2);
+}
+
+/// Announce accepts only the worker credential, the engines list only users
+#[tokio::test]
+async fn announce_and_engines_authentication() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let request = json!({"worker_name": "w", "runtime": "podman", "runtime_version": null, "engines": []});
+
+    let (status, _) = app
+        .post(&alice, "/worker/announce", Some(request.clone()))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = app
+        .send_authorized(
+            Some("Run abc".into()),
+            Method::POST,
+            "/worker/announce",
+            Some(request),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (status, _) = app
+        .send_as_worker(WORKER_PASSWORD, Method::GET, "/utilities/engines", None)
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = app
+        .send(None, Method::GET, "/utilities/engines", None)
+        .await;
+    assert_ne!(status, StatusCode::OK);
+}
+
+/// A list fixed by the embedding application (desktop) wins over announcements
+#[tokio::test]
+async fn fixed_engine_list_overrides_workers() {
+    use macworp_core::workflow_configuration::engine::Engine;
+    // Own state, the router of `TestApp` has none fixed
+    let mut configuration = crate::configuration::Configuration::default();
+    *configuration.fixed_unavailable_engines_mut() = Some(vec![Engine::Cwl]);
+    let directory = tempfile::tempdir().unwrap();
+    *configuration.database_url_mut() = format!(
+        "sqlite://{}/fixed.db?mode=rwc",
+        directory.path().display()
+    );
+    let state = crate::state::State::new_for_integration(configuration)
+        .await
+        .unwrap();
+    state
+        .workers()
+        .announce("w/x", vec![Engine::Nextflow], std::time::Instant::now());
+    assert_eq!(state.unavailable_engines(), vec![Engine::Cwl]);
+}
+
+/// A worker is only leased runs of engines it offers; the run waits for one that can run it
+#[tokio::test]
+async fn claim_skips_runs_of_other_engines() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let run = app.run(&project, &workflow).await;
+    let engine = serde_json::to_value(run.configuration.engine()).unwrap();
+    let other = if engine == json!("Snakemake") {
+        json!("Container")
+    } else {
+        json!("Snakemake")
+    };
+    let claim_with = |engines: Value| {
+        app.send_as_worker(
+            WORKER_PASSWORD,
+            Method::POST,
+            "/worker/claim",
+            Some(json!({"worker_name": "w1", "engines": engines})),
+        )
+    };
+
+    let (status, _) = claim_with(json!([other])).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = claim_with(json!([])).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let stored = RunTable::find_by_id(run.id)
+        .one(app.state.db())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.status, RunStatus::Queued);
+
+    let (status, body) = claim_with(json!([other, engine])).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["run_id"], run.id);
 }

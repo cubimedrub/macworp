@@ -253,7 +253,7 @@ impl RunsController {
         };
 
         let engine = workflow.configuration.engine();
-        if state.config().unavailable_engines().contains(engine) {
+        if state.unavailable_engines().contains(engine) {
             return Err(Error::EngineUnavailable(engine.clone()));
         }
 

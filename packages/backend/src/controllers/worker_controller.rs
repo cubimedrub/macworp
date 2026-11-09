@@ -10,10 +10,10 @@ use axum::{
 use macworp_core::{
     entities::{LogStream, RunStatus},
     requests::{
-        WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest, WorkerOutcome,
+        WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest, WorkerOutcome,
         WorkerProgressRequest,
     },
-    responses::{WorkerClaimResponse, WorkerHeartbeatResponse},
+    responses::{WorkerAnnounceResponse, WorkerClaimResponse, WorkerHeartbeatResponse},
     routing::WorkerRouting,
 };
 use sea_orm::EntityTrait;
@@ -75,6 +75,7 @@ pub struct WorkerController<F: IsFilesystem> {
 impl<F: IsFilesystem + 'static> WorkerController<F> {
     pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         Router::new()
+            .route(WorkerRouting::ANNOUNCE_PATH, post(Self::announce))
             .route(WorkerRouting::CLAIM_PATH, post(Self::claim))
             .route(WorkerRouting::HEARTBEAT_PATH, post(Self::heartbeat))
             .route(WorkerRouting::LOGS_PATH, post(Self::logs))
@@ -82,7 +83,29 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
             .route(WorkerRouting::FINISH_PATH, post(Self::finish))
     }
 
-    /// Leases the oldest queued run. Runs whose project is gone or has no directory are failed
+    /// Records which engines the worker can run and that it is alive. Workers call it at start
+    /// and well within the returned ttl.
+    async fn announce(
+        State(state): State<Arc<AppState>>,
+        RequireWorker { username }: RequireWorker,
+        Json(request): Json<WorkerAnnounceRequest>,
+    ) -> Json<WorkerAnnounceResponse> {
+        let worker = format!("{username}/{}", request.worker_name);
+        tracing::debug!(
+            "Worker {worker} announced {} {:?}: {:?}",
+            request.runtime,
+            request.runtime_version,
+            request.engines
+        );
+        state
+            .workers()
+            .announce(&worker, request.engines, std::time::Instant::now());
+        Json(WorkerAnnounceResponse {
+            ttl_seconds: state.config().worker_lease_seconds(),
+        })
+    }
+
+    /// Leases the oldest queued run of an engine the worker offers. Runs whose project is gone or has no directory are failed
     /// and skipped. 204 if nothing is queued.
     async fn claim(
         State(state): State<Arc<AppState>>,
@@ -93,7 +116,13 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
         let lease_seconds = i64::from(state.config().worker_lease_seconds());
         loop {
             let Some((run, token)) =
-                RunTable::claim_next_leased(state.db(), &worker, lease_seconds).await?
+                RunTable::claim_next_leased(
+                state.db(),
+                &worker,
+                lease_seconds,
+                &request.engines,
+            )
+            .await?
             else {
                 return Ok(StatusCode::NO_CONTENT.into_response());
             };

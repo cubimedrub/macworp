@@ -10,6 +10,8 @@ pub struct UtilitiesRouting;
 impl UtilitiesRouting {
     pub const HEALTHCHECK_PATH: &str = "/healthcheck";
     pub const VERSION_PATH: &str = "/version";
+    /// GET: engines no worker can run
+    pub const ENGINES_PATH: &str = "/engines";
 }
 
 impl IsRouting for UtilitiesRouting {
@@ -111,6 +113,8 @@ pub struct WorkerRouting;
 impl WorkerRouting {
     /// POST: lease the oldest queued run, 204 if none is queued
     pub const CLAIM_PATH: &str = "/claim";
+    /// POST: announce runtime and engines (Basic); repeated so the backend knows the worker is alive
+    pub const ANNOUNCE_PATH: &str = "/announce";
     /// POST: extend the lease, the response says whether the run should be cancelled
     pub const HEARTBEAT_PATH: &str = "/heartbeat/{run_id}";
     /// POST: append log lines of the run

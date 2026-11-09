@@ -14,6 +14,7 @@ pub mod filesystems;
 pub mod models;
 /// State of the backend, e.g. connection pool
 mod state;
+mod worker_registry;
 /// Fixtures for the HTTP-level tests
 #[cfg(all(test, feature = "integration"))]
 mod test_support;

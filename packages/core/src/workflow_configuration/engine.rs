@@ -27,6 +27,12 @@ pub enum Engine {
 }
 
 impl Engine {
+    /// Every engine, in declaration order.
+    pub fn all() -> Vec<Engine> {
+        use strum::IntoEnumIterator;
+        Engine::iter().collect()
+    }
+
     /// Source kinds this engine can run, each with default payload.
     pub fn supported_sources(&self) -> Vec<Source> {
         let local = Source::Local(LocalSource::default());

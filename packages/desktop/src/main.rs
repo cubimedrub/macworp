@@ -189,7 +189,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     let mut backend_config = macworp_backend::configuration::Configuration::default();
     *backend_config.database_url_mut() = database_url.clone();
     *backend_config.secret_mut() = jwt_secret;
-    *backend_config.unavailable_engines_mut() = unavailable_engines;
+    *backend_config.fixed_unavailable_engines_mut() = Some(unavailable_engines);
     *backend_config.interface_mut() = "127.0.0.1".to_string();
     *backend_config.worker_mut().password_mut() =
         password_auth::generate_hash(application_password.as_bytes());

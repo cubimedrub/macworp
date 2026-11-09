@@ -9,7 +9,7 @@ use crate::{
     current_user::CurrentUser,
     logout::{return_to_login, LogoutEnabled},
     router::IsRouter,
-    runtime_status::RuntimeStatusBar,
+    runtime_status::{EngineAvailability, RuntimeStatusBar},
     session::Session,
     sharing::SharingEnabled,
     storage::IsStorage,
@@ -82,6 +82,24 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
         }
     }));
     let current_user = use_context_provider(|| CurrentUser::new(current_user_resource));
+
+    // Engines the workers behind the backend can run, refreshed with every navigation. Only read
+    // where the platform has no local runtime status (web).
+    let mut engine_response = use_signal(|| None);
+    use_context_provider(|| EngineAvailability {
+        response: engine_response,
+    });
+    let route_for_engines = use_route::<R>().to_string();
+    use_resource(use_reactive!(|route_for_engines| async move {
+        let _ = route_for_engines;
+        let Ok(session) = Session::new(storage, config) else {
+            return;
+        };
+        match session.client.utilities().engines(&session.jwt).await {
+            Ok(response) => engine_response.set(Some(response)),
+            Err(err) => tracing::debug!("Cannot fetch engine availability: {err}"),
+        }
+    }));
 
     let sharing_enabled = SharingEnabled::from_context().is_enabled();
     let logout_enabled = LogoutEnabled::from_context().is_enabled();

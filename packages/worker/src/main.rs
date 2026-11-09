@@ -9,6 +9,7 @@ use macworp_worker::{
     log_proxy::{HostAccess, ProgressReceiver},
     worker::{Worker, WorkerOptions},
 };
+use macworp_core::workflow_configuration::engine::Engine;
 use tokio::sync::watch;
 use tracing::Level;
 
@@ -80,15 +81,7 @@ async fn run_remote(
     remote: &RemoteWorkerConfiguration,
     runtime: Arc<dyn ContainerRuntime>,
 ) -> Result<(), String> {
-    let source = Arc::new(
-        HttpJobSource::new(
-            remote.backend_url()?,
-            remote.username.clone(),
-            remote.resolve_password()?,
-            remote.worker_name(),
-        )
-        .map_err(|e| e.to_string())?,
-    );
+    let runtime_version = runtime.info().await.ok().map(|info| info.version);
     let executors = standard_executors(&runtime).await;
     if executors.is_empty() {
         return Err(format!(
@@ -96,6 +89,17 @@ async fn run_remote(
             runtime.kind()
         ));
     }
+    let engines: Vec<Engine> = executors.iter().map(|executor| executor.engine()).collect();
+    let source = Arc::new(
+        HttpJobSource::new(
+            remote.backend_url()?,
+            remote.username.clone(),
+            remote.resolve_password()?,
+            remote.worker_name(),
+            engines.clone(),
+        )
+        .map_err(|e| e.to_string())?,
+    );
     let progress = match HostAccess::for_runtime(runtime.kind()) {
         Some(access) => match ProgressReceiver::start(access).await {
             Ok(receiver) => Some(Arc::new(receiver)),
@@ -110,6 +114,13 @@ async fn run_remote(
     };
 
     let (stop, stopped) = watch::channel(false);
+    let announcer = tokio::spawn(announce_loop(
+        source.clone(),
+        runtime.kind().to_string(),
+        runtime_version,
+        engines,
+        stopped.clone(),
+    ));
     let mut slots = Vec::new();
     for _ in 0..remote.capacity {
         let mut worker = Worker::new(source.clone(), executors.clone(), WorkerOptions::default());
@@ -134,5 +145,44 @@ async fn run_remote(
     for slot in slots {
         let _ = slot.await;
     }
+    let _ = announcer.await;
     Ok(())
+}
+
+/// Announces the worker to the backend at start and then every third of the validity the backend
+/// returned (default 10 s until the first answer), until `stopped` turns true. Failures are only
+/// logged: a backend that is down or restarting must not stop the worker.
+///
+/// # Arguments
+/// * `source` - connection to the backend
+/// * `runtime` - container runtime binary name
+/// * `runtime_version` - its version if known
+/// * `engines` - engines the worker's executors run
+/// * `stopped` - turns true when the worker shuts down
+async fn announce_loop(
+    source: Arc<HttpJobSource>,
+    runtime: String,
+    runtime_version: Option<String>,
+    engines: Vec<Engine>,
+    mut stopped: watch::Receiver<bool>,
+) {
+    let mut interval = std::time::Duration::from_secs(10);
+    loop {
+        match source
+            .announce(&runtime, runtime_version.as_deref(), &engines)
+            .await
+        {
+            Ok(ttl_seconds) => {
+                interval = std::time::Duration::from_secs(u64::from(ttl_seconds.max(3)) / 3);
+            }
+            Err(e) => tracing::warn!("Cannot announce to the backend: {e}"),
+        }
+        tokio::select! {
+            _ = tokio::time::sleep(interval) => {}
+            _ = stopped.changed() => return,
+        }
+        if *stopped.borrow() {
+            return;
+        }
+    }
 }

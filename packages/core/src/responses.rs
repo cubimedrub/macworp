@@ -244,3 +244,18 @@ pub struct WorkerHeartbeatResponse {
     /// A user asked to stop the run, the worker should cancel it and report `Cancelled`
     pub cancel_requested: bool,
 }
+
+/// Answer to an announce
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerAnnounceResponse {
+    /// Seconds the announcement stays valid, the worker should announce again well within it
+    pub ttl_seconds: u32,
+}
+
+/// Engines no live worker can run
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnginesResponse {
+    pub unavailable: Vec<crate::workflow_configuration::engine::Engine>,
+    /// Workers with a valid announcement
+    pub workers_online: usize,
+}

@@ -1,15 +1,22 @@
 use sea_orm::{Database, DatabaseConnection};
 
-use crate::{configuration::Configuration, error::Error};
+use macworp_core::workflow_configuration::engine::Engine;
+
+use crate::{configuration::Configuration, error::Error, worker_registry::WorkerRegistry};
 
 pub struct State {
     config: Configuration,
     db: DatabaseConnection,
+    workers: WorkerRegistry,
 }
 
 impl State {
     async fn new(config: Configuration, db: DatabaseConnection) -> Result<Self, Error> {
-        Ok(Self { config, db })
+        Ok(Self {
+            config,
+            db,
+            workers: WorkerRegistry::default(),
+        })
     }
 
     pub fn config(&self) -> &Configuration {
@@ -18,6 +25,25 @@ impl State {
 
     pub fn db(&self) -> &DatabaseConnection {
         &self.db
+    }
+
+    /// Workers that announced themselves
+    pub fn workers(&self) -> &WorkerRegistry {
+        &self.workers
+    }
+
+    /// Engines runs are rejected for: the list the embedding application fixed (desktop), else
+    /// every engine no live worker can run (all of them without a live worker).
+    pub fn unavailable_engines(&self) -> Vec<Engine> {
+        if let Some(fixed) = self.config.fixed_unavailable_engines() {
+            return fixed.to_vec();
+        }
+        let ttl = self.workers.ttl(&self.config);
+        let available = self.workers.live_engines(std::time::Instant::now(), ttl);
+        Engine::all()
+            .into_iter()
+            .filter(|engine| !available.contains(engine))
+            .collect()
     }
 }
 

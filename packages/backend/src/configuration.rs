@@ -65,10 +65,11 @@ pub struct Configuration {
     /// Times a run is claimed before losing its worker fails it instead of requeueing it
     #[serde(default = "default_worker_max_attempts")]
     worker_max_attempts: u32,
-    /// Engines the container runtime cannot run, runs of them are rejected. Detected by the
-    /// embedding application (desktop), never read from the config file.
+    /// Engines the container runtime cannot run, runs of them are rejected. `Some` when the
+    /// embedding application (desktop) detected them itself, never read from the config file.
+    /// `None`: derived from the announcements of live workers, see `State::unavailable_engines`.
     #[serde(skip)]
-    unavailable_engines: Vec<Engine>,
+    fixed_unavailable_engines: Option<Vec<Engine>>,
 }
 
 fn default_max_runs_per_project() -> u64 {
@@ -219,12 +220,12 @@ impl Configuration {
         &mut self.worker_max_attempts
     }
 
-    pub fn unavailable_engines(&self) -> &[Engine] {
-        &self.unavailable_engines
+    pub fn fixed_unavailable_engines(&self) -> Option<&[Engine]> {
+        self.fixed_unavailable_engines.as_deref()
     }
 
-    pub fn unavailable_engines_mut(&mut self) -> &mut Vec<Engine> {
-        &mut self.unavailable_engines
+    pub fn fixed_unavailable_engines_mut(&mut self) -> &mut Option<Vec<Engine>> {
+        &mut self.fixed_unavailable_engines
     }
 }
 
@@ -244,7 +245,7 @@ impl Default for Configuration {
             max_log_bytes_per_run: DEFAULT_MAX_LOG_BYTES_PER_RUN,
             worker_lease_seconds: DEFAULT_WORKER_LEASE_SECONDS,
             worker_max_attempts: DEFAULT_WORKER_MAX_ATTEMPTS,
-            unavailable_engines: Vec::new(),
+            fixed_unavailable_engines: None,
         }
     }
 }

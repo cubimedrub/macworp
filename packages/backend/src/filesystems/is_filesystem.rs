@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use axum::{BoxError, body::Bytes};
 use futures_util::Stream;
-use macworp_core::http::headers::ContentRangeHeaderValue;
+use macworp_core::{http::headers::ContentRangeHeaderValue, responses::StorageProbe};
 
 use crate::{
     filesystems::{errors::Error, project_content::ProjectContent},
@@ -39,6 +39,18 @@ pub trait IsFilesystem {
     /// * `project` - The project to get the path for
     fn local_path(_state: &State, _project: &Project) -> Option<PathBuf> {
         None
+    }
+
+    /// Marker file proving that a worker sees the same project storage as the backend, `None`
+    /// if workers do not need to share it (desktop: the worker runs in the backend process).
+    /// The marker is created on first use and keeps its content afterwards.
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    fn storage_probe(
+        _state: &State,
+    ) -> impl Future<Output = Result<Option<StorageProbe>, Error>> + Send {
+        async { Ok(None) }
     }
 
     /// Creats a project folder if supported by the FS

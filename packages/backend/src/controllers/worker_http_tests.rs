@@ -14,7 +14,9 @@ async fn claim(app: &TestApp) -> (StatusCode, Value) {
         WORKER_PASSWORD,
         Method::POST,
         "/worker/claim",
-        Some(json!({"worker_name": "w1", "engines": ["Nextflow", "Snakemake", "Cwl", "Container"]})),
+        Some(
+            json!({"worker_name": "w1", "engines": ["Nextflow", "Snakemake", "Cwl", "Container"]}),
+        ),
     )
     .await
 }
@@ -117,7 +119,9 @@ async fn claim_requires_worker_credential() {
     let workflow = app.workflow(&alice, "w").await;
     app.run(&project, &workflow).await;
 
-    let body = Some(json!({"worker_name": "w1", "engines": ["Nextflow", "Snakemake", "Cwl", "Container"]}));
+    let body = Some(
+        json!({"worker_name": "w1", "engines": ["Nextflow", "Snakemake", "Cwl", "Container"]}),
+    );
     let (status, _) = app
         .send(Some(&alice), Method::POST, "/worker/claim", body.clone())
         .await;
@@ -336,7 +340,8 @@ async fn announced_workers_define_available_engines() {
 async fn announce_and_engines_authentication() {
     let app = TestApp::new().await;
     let alice = app.user("alice").await;
-    let request = json!({"worker_name": "w", "runtime": "podman", "runtime_version": null, "engines": []});
+    let request =
+        json!({"worker_name": "w", "runtime": "podman", "runtime_version": null, "engines": []});
 
     let (status, _) = app
         .post(&alice, "/worker/announce", Some(request.clone()))
@@ -370,10 +375,8 @@ async fn fixed_engine_list_overrides_workers() {
     let mut configuration = crate::configuration::Configuration::default();
     *configuration.fixed_unavailable_engines_mut() = Some(vec![Engine::Cwl]);
     let directory = tempfile::tempdir().unwrap();
-    *configuration.database_url_mut() = format!(
-        "sqlite://{}/fixed.db?mode=rwc",
-        directory.path().display()
-    );
+    *configuration.database_url_mut() =
+        format!("sqlite://{}/fixed.db?mode=rwc", directory.path().display());
     let state = crate::state::State::new_for_integration(configuration)
         .await
         .unwrap();

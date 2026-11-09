@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
+use macworp_core::workflow_configuration::engine::Engine;
 use macworp_worker::{
     configuration::{RemoteWorkerConfiguration, WorkerConfiguration},
     container_runtime::{self, ContainerRuntime},
@@ -9,7 +10,6 @@ use macworp_worker::{
     log_proxy::{HostAccess, ProgressReceiver},
     worker::{Worker, WorkerOptions},
 };
-use macworp_core::workflow_configuration::engine::Engine;
 use tokio::sync::watch;
 use tracing::Level;
 

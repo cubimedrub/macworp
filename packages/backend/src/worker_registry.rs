@@ -78,7 +78,10 @@ mod tests {
         registry.announce("w/a", vec![Engine::Nextflow], start);
         registry.announce("w/b", vec![Engine::Container], start);
         let engines = registry.live_engines(start, TTL);
-        assert_eq!(engines, HashSet::from([Engine::Nextflow, Engine::Container]));
+        assert_eq!(
+            engines,
+            HashSet::from([Engine::Nextflow, Engine::Container])
+        );
         assert_eq!(registry.online(start, TTL), 2);
     }
 

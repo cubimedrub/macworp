@@ -10,8 +10,8 @@ use axum::{
 use macworp_core::{
     entities::{LogStream, RunStatus},
     requests::{
-        WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest, WorkerOutcome,
-        WorkerProgressRequest,
+        WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest,
+        WorkerOutcome, WorkerProgressRequest,
     },
     responses::{WorkerAnnounceResponse, WorkerClaimResponse, WorkerHeartbeatResponse},
     routing::WorkerRouting,
@@ -34,6 +34,9 @@ pub enum Error {
     /// The run was closed meanwhile (finished, cancelled, deleted)
     #[error("Run already finished")]
     AlreadyFinished,
+    /// The shared storage marker could not be read or created
+    #[error("Shared storage marker unavailable")]
+    Storage,
     #[error("Database error: {0}")]
     Database(#[from] sea_orm::DbErr),
 }
@@ -58,7 +61,7 @@ impl IntoResponse for Error {
                 tracing::warn!("{self}");
                 (StatusCode::CONFLICT, self.to_string()).into_response()
             }
-            Error::Database(_) => {
+            Error::Storage | Error::Database(_) => {
                 tracing::error!("{self}");
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
@@ -89,7 +92,7 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
         State(state): State<Arc<AppState>>,
         RequireWorker { username }: RequireWorker,
         Json(request): Json<WorkerAnnounceRequest>,
-    ) -> Json<WorkerAnnounceResponse> {
+    ) -> Result<Json<WorkerAnnounceResponse>, Error> {
         let worker = format!("{username}/{}", request.worker_name);
         tracing::debug!(
             "Worker {worker} announced {} {:?}: {:?}",
@@ -100,9 +103,14 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
         state
             .workers()
             .announce(&worker, request.engines, std::time::Instant::now());
-        Json(WorkerAnnounceResponse {
+        let storage = F::storage_probe(&state).await.map_err(|e| {
+            tracing::error!("Cannot prepare the storage marker: {e}");
+            Error::Storage
+        })?;
+        Ok(Json(WorkerAnnounceResponse {
             ttl_seconds: state.config().worker_lease_seconds(),
-        })
+            storage,
+        }))
     }
 
     /// Leases the oldest queued run of an engine the worker offers. Runs whose project is gone or has no directory are failed
@@ -116,13 +124,8 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
         let lease_seconds = i64::from(state.config().worker_lease_seconds());
         loop {
             let Some((run, token)) =
-                RunTable::claim_next_leased(
-                state.db(),
-                &worker,
-                lease_seconds,
-                &request.engines,
-            )
-            .await?
+                RunTable::claim_next_leased(state.db(), &worker, lease_seconds, &request.engines)
+                    .await?
             else {
                 return Ok(StatusCode::NO_CONTENT.into_response());
             };

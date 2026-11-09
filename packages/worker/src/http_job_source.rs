@@ -1,14 +1,23 @@
-use std::{collections::HashMap, sync::Mutex, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use macworp_core::{
     entities::LogStream,
     requests::{
-        WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest, WorkerOutcome,
-        WorkerProgressRequest,
+        WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest,
+        WorkerOutcome, WorkerProgressRequest,
     },
-    responses::{WorkerAnnounceResponse, WorkerClaimResponse, WorkerHeartbeatResponse},
-    workflow_configuration::engine::Engine,
+    responses::{
+        StorageProbe, WorkerAnnounceResponse, WorkerClaimResponse, WorkerHeartbeatResponse,
+    },
     routing::{IsRouting, WorkerRouting},
+    workflow_configuration::engine::Engine,
 };
 use reqwest::{Client, RequestBuilder, StatusCode};
 
@@ -38,6 +47,9 @@ pub struct HttpJobSource {
     worker_name: String,
     /// Engines this worker can run, sent with every claim so only matching runs are leased
     engines: Vec<Engine>,
+    /// The project storage matches the backend's (see [`HttpJobSource::announce`]); while it
+    /// does not, nothing is claimed and no engine is announced
+    storage_ok: AtomicBool,
     /// Tokens of the runs claimed through this source
     tokens: Mutex<HashMap<i64, String>>,
 }
@@ -69,6 +81,7 @@ impl HttpJobSource {
             password,
             worker_name,
             engines,
+            storage_ok: AtomicBool::new(true),
             tokens: Mutex::new(HashMap::new()),
         })
     }
@@ -124,8 +137,12 @@ impl HttpJobSource {
 }
 
 impl HttpJobSource {
-    /// Tells the backend which runtime and engines this worker offers and that it is alive.
-    /// Returns the seconds the announcement stays valid.
+    /// Tells the backend which runtime and engines this worker offers and that it is alive, and
+    /// checks the shared project storage with the marker file the backend names in its answer.
+    /// While the marker is unreadable or differs, the worker announces no engines and
+    /// [`JobSource::claim`] takes nothing, so runs wait for a worker that sees the storage
+    /// instead of running on an empty or wrong directory. Returns the seconds the announcement
+    /// stays valid.
     ///
     /// # Arguments
     /// * `runtime` - container runtime binary name, e.g. `podman`
@@ -137,6 +154,11 @@ impl HttpJobSource {
         runtime_version: Option<&str>,
         engines: &[Engine],
     ) -> Result<u32, Error> {
+        let announced_engines: &[Engine] = if self.storage_ok.load(Ordering::Relaxed) {
+            engines
+        } else {
+            &[]
+        };
         let response = self
             .client
             .post(self.url(WorkerRouting::ANNOUNCE_PATH, None))
@@ -145,7 +167,7 @@ impl HttpJobSource {
                 worker_name: self.worker_name.clone(),
                 runtime: runtime.to_string(),
                 runtime_version: runtime_version.map(str::to_string),
-                engines: engines.to_vec(),
+                engines: announced_engines.to_vec(),
             })
             .send()
             .await
@@ -157,13 +179,46 @@ impl HttpJobSource {
             .json()
             .await
             .map_err(|e| Error(format!("Invalid announce response: {e}")))?;
+        let problem = match &announced.storage {
+            Some(probe) => Self::check_storage(probe).await.err(),
+            None => None,
+        };
+        let ok = problem.is_none();
+        if self.storage_ok.swap(ok, Ordering::Relaxed) != ok {
+            match &problem {
+                Some(problem) => tracing::error!("{problem}; not taking runs until it is fixed"),
+                None => tracing::info!("Shared project storage is visible again"),
+            }
+        }
         Ok(announced.ttl_seconds)
+    }
+
+    /// Whether this machine sees the backend's project storage: the marker file exists at the
+    /// same path with the same content. The error says what is wrong.
+    ///
+    /// # Arguments
+    /// * `probe` - marker file as named by the backend
+    async fn check_storage(probe: &StorageProbe) -> Result<(), String> {
+        match tokio::fs::read_to_string(&probe.path).await {
+            Ok(content) if content.trim() == probe.content => Ok(()),
+            Ok(_) => Err(format!(
+                "Shared storage marker {} has a different content than on the backend: the worker sees another filesystem",
+                probe.path.display()
+            )),
+            Err(e) => Err(format!(
+                "Shared storage marker {} is not readable ({e}): mount the backend's projects directory at the same path",
+                probe.path.display()
+            )),
+        }
     }
 }
 
 impl JobSource for HttpJobSource {
     fn claim(&self) -> BoxFuture<'_, Result<Option<Job>, Error>> {
         Box::pin(async move {
+            if !self.storage_ok.load(Ordering::Relaxed) {
+                return Ok(None);
+            }
             let response = self
                 .client
                 .post(self.url(WorkerRouting::CLAIM_PATH, None))
@@ -304,6 +359,9 @@ mod tests {
 
     use super::*;
 
+    /// Engine lists the fake backend received with announcements
+    type Announced = Arc<Mutex<Vec<Vec<Engine>>>>;
+
     /// What the fake backend saw: (path, Authorization header)
     type Seen = Arc<Mutex<Vec<(String, String)>>>;
 
@@ -373,8 +431,14 @@ mod tests {
     #[tokio::test]
     async fn claim_uses_basic_then_run_token() {
         let (url, seen) = backend().await;
-        let source =
-            HttpJobSource::new(&format!("{url}/"), "w".into(), "pw".into(), "n".into(), vec![Engine::Nextflow]).unwrap();
+        let source = HttpJobSource::new(
+            &format!("{url}/"),
+            "w".into(),
+            "pw".into(),
+            "n".into(),
+            vec![Engine::Nextflow],
+        )
+        .unwrap();
         let job = source.claim().await.unwrap().unwrap();
         assert_eq!(job.run_id, 7);
         assert_eq!(job.project_dir, std::path::PathBuf::from("/data/p"));
@@ -394,7 +458,14 @@ mod tests {
     #[tokio::test]
     async fn lost_lease_cancels_and_finish_is_dropped() {
         let (url, _) = backend().await;
-        let source = HttpJobSource::new(&url, "w".into(), "pw".into(), "n".into(), vec![Engine::Nextflow]).unwrap();
+        let source = HttpJobSource::new(
+            &url,
+            "w".into(),
+            "pw".into(),
+            "n".into(),
+            vec![Engine::Nextflow],
+        )
+        .unwrap();
         source.claim().await.unwrap().unwrap();
         // the fake only accepts `tok`; swap the stored token for a stale one
         source.tokens.lock().unwrap().insert(7, "stale".into());
@@ -409,22 +480,101 @@ mod tests {
             headers: HeaderMap,
             Json(request): Json<WorkerAnnounceRequest>,
         ) -> Json<WorkerAnnounceResponse> {
-            assert!(headers[AUTHORIZATION].to_str().unwrap().starts_with("Basic "));
+            assert!(
+                headers[AUTHORIZATION]
+                    .to_str()
+                    .unwrap()
+                    .starts_with("Basic ")
+            );
             assert_eq!(request.worker_name, "n");
             assert_eq!(request.runtime, "podman");
             assert_eq!(request.engines, vec![Engine::Nextflow]);
-            Json(WorkerAnnounceResponse { ttl_seconds: 45 })
+            Json(WorkerAnnounceResponse {
+                ttl_seconds: 45,
+                storage: None,
+            })
         }
         let router = Router::new().route("/worker/announce", post(announce));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
 
-        let source = HttpJobSource::new(&url, "w".into(), "pw".into(), "n".into(), vec![Engine::Nextflow]).unwrap();
+        let source = HttpJobSource::new(
+            &url,
+            "w".into(),
+            "pw".into(),
+            "n".into(),
+            vec![Engine::Nextflow],
+        )
+        .unwrap();
         let ttl = source
             .announce("podman", Some("5.0"), &[Engine::Nextflow])
             .await
             .unwrap();
         assert_eq!(ttl, 45);
+    }
+
+    /// A worker that cannot read the backend's storage marker withdraws: no engines announced,
+    /// nothing claimed; it recovers when the marker matches again
+    #[tokio::test]
+    async fn missing_storage_marker_stops_claims_and_engines() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join(".macworp-storage-id");
+        let announced: Announced = Arc::default();
+        let state = (announced.clone(), marker.clone());
+        async fn announce(
+            State((announced, marker)): State<(Announced, std::path::PathBuf)>,
+            Json(request): Json<WorkerAnnounceRequest>,
+        ) -> Json<WorkerAnnounceResponse> {
+            announced.lock().unwrap().push(request.engines);
+            Json(WorkerAnnounceResponse {
+                ttl_seconds: 45,
+                storage: Some(StorageProbe {
+                    path: marker,
+                    content: "abc".into(),
+                }),
+            })
+        }
+        async fn claim() -> StatusCode {
+            StatusCode::NO_CONTENT
+        }
+        let router = Router::new()
+            .route("/worker/announce", post(announce))
+            .route("/worker/claim", post(claim))
+            .with_state(state);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let source = HttpJobSource::new(
+            &url,
+            "w".into(),
+            "pw".into(),
+            "n".into(),
+            vec![Engine::Nextflow],
+        )
+        .unwrap();
+        let engines = [Engine::Nextflow];
+
+        // Marker missing: announced (the first time optimistically), then withdrawn
+        source.announce("podman", None, &engines).await.unwrap();
+        assert!(!source.storage_ok.load(Ordering::Relaxed));
+        source.announce("podman", None, &engines).await.unwrap();
+        assert_eq!(
+            announced.lock().unwrap().last().unwrap(),
+            &Vec::<Engine>::new()
+        );
+        assert!(source.claim().await.unwrap().is_none());
+
+        // Wrong content: still withdrawn
+        std::fs::write(&marker, "other").unwrap();
+        source.announce("podman", None, &engines).await.unwrap();
+        assert!(!source.storage_ok.load(Ordering::Relaxed));
+
+        // Matching marker: back
+        std::fs::write(&marker, "abc\n").unwrap();
+        source.announce("podman", None, &engines).await.unwrap();
+        assert!(source.storage_ok.load(Ordering::Relaxed));
+        source.announce("podman", None, &engines).await.unwrap();
+        assert_eq!(announced.lock().unwrap().last().unwrap(), &engines.to_vec());
     }
 }

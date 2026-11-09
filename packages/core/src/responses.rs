@@ -250,6 +250,20 @@ pub struct WorkerHeartbeatResponse {
 pub struct WorkerAnnounceResponse {
     /// Seconds the announcement stays valid, the worker should announce again well within it
     pub ttl_seconds: u32,
+    /// File the worker must be able to read to prove it shares the backend's project storage,
+    /// `None` if the backend has no shared storage requirement (desktop)
+    #[serde(default)]
+    pub storage: Option<StorageProbe>,
+}
+
+/// A marker file on the shared project storage. The backend keeps it with a random content; a
+/// worker that reads the same content at the same path sees the same filesystem.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageProbe {
+    /// Absolute path of the marker file, valid on the backend and on every worker
+    pub path: PathBuf,
+    /// Content the file must have
+    pub content: String,
 }
 
 /// Engines no live worker can run

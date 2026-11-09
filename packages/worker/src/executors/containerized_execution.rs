@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use macworp_core::entities::FailureReason;
 use rand::{RngExt, distr::Alphanumeric};
 use tokio::sync::{mpsc, watch};
 
@@ -72,6 +73,7 @@ pub async fn run_spec(
         Err(e) => Outcome::Failed {
             exit_code: None,
             error: Some(e.to_string()),
+            reason: Some(FailureReason::StartFailed),
         },
     }
 }

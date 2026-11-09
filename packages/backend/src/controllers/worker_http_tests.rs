@@ -1,5 +1,5 @@
 use http::{Method, StatusCode};
-use macworp_core::entities::RunStatus;
+use macworp_core::entities::{FailureReason, RunStatus};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::{Value, json};
 
@@ -108,6 +108,51 @@ async fn claim_heartbeat_logs_progress_finish() {
     // token is dead once the run is finished
     let (status, _) = with_token(&app, &token, &format!("/worker/heartbeat/{id}"), None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+/// A worker reporting a failure stores status `Failed` with the given reason, exit code and error;
+/// without a reason the backend falls back to `exit_code`.
+#[tokio::test]
+async fn finish_failed_stores_reason() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let first = app.run(&project, &workflow).await;
+    let second = app.run(&project, &workflow).await;
+
+    for (expected_id, outcome, reason) in [
+        (
+            first.id,
+            json!({"Failed": {"exit_code": null, "error": "Killed by signal 9", "reason": "signal"}}),
+            FailureReason::Signal,
+        ),
+        (
+            second.id,
+            json!({"Failed": {"exit_code": 2, "error": null}}),
+            FailureReason::ExitCode,
+        ),
+    ] {
+        let (status, claimed) = claim(&app).await;
+        assert_eq!(status, StatusCode::OK, "{claimed}");
+        assert_eq!(claimed["run_id"], expected_id);
+        let token = claimed["token"].as_str().unwrap();
+        let (status, _) = with_token(
+            &app,
+            token,
+            &format!("/worker/finish/{expected_id}"),
+            Some(json!({ "outcome": outcome })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let stored = RunTable::find_by_id(expected_id)
+            .one(app.state.db())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.status, RunStatus::Failed);
+        assert_eq!(stored.failure_reason, Some(reason));
+    }
 }
 
 /// Claim needs the worker credential: users, run tokens, wrong passwords and no header fail

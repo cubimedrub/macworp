@@ -8,7 +8,7 @@ use axum::{
     routing::post,
 };
 use macworp_core::{
-    entities::{LogStream, RunStatus},
+    entities::{FailureReason, LogStream, RunStatus},
     requests::{
         WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest,
         WorkerOutcome, WorkerProgressRequest,
@@ -145,6 +145,7 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
                     RunStatus::Failed,
                     None,
                     Some("The project has no directory or was deleted".into()),
+                    Some(FailureReason::StartFailed),
                 )
                 .await
                 .or_else(ignore_closed)?;
@@ -227,12 +228,16 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
         RequireRunToken(run): RequireRunToken,
         Json(request): Json<WorkerFinishRequest>,
     ) -> Result<StatusCode, Error> {
-        let (status, exit_code, error) = match request.outcome {
-            WorkerOutcome::Succeeded => (RunStatus::Succeeded, Some(0), None),
-            WorkerOutcome::Failed { exit_code, error } => (RunStatus::Failed, exit_code, error),
-            WorkerOutcome::Cancelled => (RunStatus::Cancelled, None, None),
+        let (status, exit_code, error, reason) = match request.outcome {
+            WorkerOutcome::Succeeded => (RunStatus::Succeeded, Some(0), None, None),
+            WorkerOutcome::Failed {
+                exit_code,
+                error,
+                reason,
+            } => (RunStatus::Failed, exit_code, error, reason),
+            WorkerOutcome::Cancelled => (RunStatus::Cancelled, None, None, None),
         };
-        RunTable::finish(state.db(), run.id, status, exit_code, error).await?;
+        RunTable::finish(state.db(), run.id, status, exit_code, error, reason).await?;
         Ok(StatusCode::NO_CONTENT)
     }
 }

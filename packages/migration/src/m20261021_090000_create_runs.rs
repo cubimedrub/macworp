@@ -23,6 +23,8 @@ impl MigrationTrait for Migration {
                     .col(string_len("status", 16).default("queued"))
                     .col(integer_null("exit_code"))
                     .col(text_null("error"))
+                    // Machine-readable cause of a failed run (snake_case `FailureReason`), NULL otherwise
+                    .col(string_len_null("failure_reason", 24))
                     // Progress reported by the engine: tasks seen so far (grows during the run) and finished
                     .col(integer("tasks_total").default(0))
                     .col(integer("tasks_done").default(0))

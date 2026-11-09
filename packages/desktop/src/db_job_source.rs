@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use macworp_backend::models::{ProjectTable, Run, RunError, RunLogTable, RunTable};
-use macworp_core::entities::{LogStream, RunStatus};
+use macworp_core::entities::{FailureReason, LogStream, RunStatus};
 use macworp_worker::{
     container_runtime::BoxFuture,
     executors::{Job, Outcome},
@@ -37,12 +37,16 @@ impl DbJobSource {
     }
 
     async fn finish_run(&self, run_id: i64, outcome: Outcome) -> Result<(), SourceError> {
-        let (status, exit_code, error) = match outcome {
-            Outcome::Succeeded => (RunStatus::Succeeded, Some(0), None),
-            Outcome::Failed { exit_code, error } => (RunStatus::Failed, exit_code, error),
-            Outcome::Cancelled => (RunStatus::Cancelled, None, None),
+        let (status, exit_code, error, reason) = match outcome {
+            Outcome::Succeeded => (RunStatus::Succeeded, Some(0), None, None),
+            Outcome::Failed {
+                exit_code,
+                error,
+                reason,
+            } => (RunStatus::Failed, exit_code, error, reason),
+            Outcome::Cancelled => (RunStatus::Cancelled, None, None, None),
         };
-        match RunTable::finish(&self.db, run_id, status, exit_code, error).await {
+        match RunTable::finish(&self.db, run_id, status, exit_code, error, reason).await {
             Ok(()) => Ok(()),
             // the result of a run that was already closed (e.g. deleted or cancelled) is not worth failing for
             Err(RunError::AlreadyFinished | RunError::NotFound) => {
@@ -76,6 +80,7 @@ impl JobSource for DbJobSource {
                             Outcome::Failed {
                                 exit_code: None,
                                 error: Some("The project has no directory or was deleted".into()),
+                                reason: Some(FailureReason::StartFailed),
                             },
                         )
                         .await?;

@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entities::{LogStream, Role, RunStatus},
+    entities::{FailureReason, LogStream, Role, RunStatus},
     requests::ParameterValue,
     workflow_configuration::WorkflowConfiguration,
 };
@@ -115,6 +115,9 @@ pub struct RunResponse {
     pub exit_code: Option<i32>,
     /// Why the run failed when the exit code does not say, e.g. timeout
     pub error: Option<String>,
+    /// Machine-readable cause, only set for failed runs
+    #[serde(default)]
+    pub failure_reason: Option<FailureReason>,
     /// Tasks the engine announced so far, grows during the run (0 if the engine reports none)
     pub tasks_total: i32,
     /// Tasks the engine finished

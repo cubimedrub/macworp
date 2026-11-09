@@ -19,6 +19,9 @@ pub const DEFAULT_WORKER_LEASE_SECONDS: u32 = 60;
 /// Times a run is claimed before a lost worker fails it instead of requeueing, if not configured
 pub const DEFAULT_WORKER_MAX_ATTEMPTS: u32 = 3;
 
+/// Seconds a run may wait in the queue before it fails, if not configured (24 hours)
+pub const DEFAULT_QUEUED_TIMEOUT_SECONDS: u64 = 24 * 60 * 60;
+
 /// Minimum length of the JWT secret in bytes
 const MIN_SECRET_LENGTH: usize = 32;
 
@@ -65,6 +68,14 @@ pub struct Configuration {
     /// Times a run is claimed before losing its worker fails it instead of requeueing it
     #[serde(default = "default_worker_max_attempts")]
     worker_max_attempts: u32,
+    /// Seconds a run may be running before it fails with `timed_out` and its engine is stopped.
+    /// `0` disables the limit (default).
+    #[serde(default)]
+    run_timeout_seconds: u64,
+    /// Seconds a run may wait in the queue (e.g. no worker offers its engine) before it fails
+    /// with `queued_timeout`. `0` disables the limit.
+    #[serde(default = "default_queued_timeout_seconds")]
+    queued_timeout_seconds: u64,
     /// Engines the container runtime cannot run, runs of them are rejected. `Some` when the
     /// embedding application (desktop) detected them itself, never read from the config file.
     /// `None`: derived from the announcements of live workers, see `State::unavailable_engines`.
@@ -82,6 +93,10 @@ fn default_max_log_bytes_per_run() -> u64 {
 
 fn default_worker_lease_seconds() -> u32 {
     DEFAULT_WORKER_LEASE_SECONDS
+}
+
+fn default_queued_timeout_seconds() -> u64 {
+    DEFAULT_QUEUED_TIMEOUT_SECONDS
 }
 
 fn default_worker_max_attempts() -> u32 {
@@ -220,6 +235,40 @@ impl Configuration {
         &mut self.worker_max_attempts
     }
 
+    pub fn run_timeout_seconds(&self) -> u64 {
+        self.run_timeout_seconds
+    }
+
+    pub fn run_timeout_seconds_mut(&mut self) -> &mut u64 {
+        &mut self.run_timeout_seconds
+    }
+
+    pub fn queued_timeout_seconds(&self) -> u64 {
+        self.queued_timeout_seconds
+    }
+
+    pub fn queued_timeout_seconds_mut(&mut self) -> &mut u64 {
+        &mut self.queued_timeout_seconds
+    }
+
+    /// Running time limit, `None` when disabled (`run_timeout_seconds` is `0`)
+    pub fn run_timeout(&self) -> Option<chrono::Duration> {
+        Self::limit(self.run_timeout_seconds)
+    }
+
+    /// Queue time limit, `None` when disabled (`queued_timeout_seconds` is `0`)
+    pub fn queued_timeout(&self) -> Option<chrono::Duration> {
+        Self::limit(self.queued_timeout_seconds)
+    }
+
+    /// Converts a limit in seconds to a duration, `0` and values beyond `i64` mean no limit
+    fn limit(seconds: u64) -> Option<chrono::Duration> {
+        i64::try_from(seconds)
+            .ok()
+            .filter(|seconds| *seconds > 0)
+            .and_then(chrono::Duration::try_seconds)
+    }
+
     pub fn fixed_unavailable_engines(&self) -> Option<&[Engine]> {
         self.fixed_unavailable_engines.as_deref()
     }
@@ -245,6 +294,8 @@ impl Default for Configuration {
             max_log_bytes_per_run: DEFAULT_MAX_LOG_BYTES_PER_RUN,
             worker_lease_seconds: DEFAULT_WORKER_LEASE_SECONDS,
             worker_max_attempts: DEFAULT_WORKER_MAX_ATTEMPTS,
+            run_timeout_seconds: 0,
+            queued_timeout_seconds: DEFAULT_QUEUED_TIMEOUT_SECONDS,
             fixed_unavailable_engines: None,
         }
     }

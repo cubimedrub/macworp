@@ -44,6 +44,7 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | Cancel reaches the worker via heartbeat | `worker_http_tests::heartbeat_reports_cancel_request` | HTTP | `cancel_requested: true`, worker can finish `Cancelled` |
 | Stale worker after lease expiry and requeue | `worker_http_tests::requeued_run_rejects_stale_worker`, `models::run::tests::expired_lease_requeues_and_invalidates_token` | HTTP, model | old token 401, new claim gets a new token |
 | Run of a project without directory | `worker_http_tests::claim_fails_runs_of_projects_without_directory` | HTTP | run failed, claim returns 204 |
+| Worker reports a failure: status `Failed` with reason (default `exit_code`) | `worker_http_tests::finish_failed_stores_reason` | HTTP | reason stored, run token is the only credential |
 
 ## 2. Visibility and roles (what a user may see and do)
 

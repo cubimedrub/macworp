@@ -1,6 +1,10 @@
-use std::{path::PathBuf, process::Stdio, time::Duration};
+use std::{
+    path::PathBuf,
+    process::{ExitStatus, Stdio},
+    time::Duration,
+};
 
-use macworp_core::entities::LogStream;
+use macworp_core::entities::{FailureReason, LogStream};
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, BufReader},
     process::Command,
@@ -11,6 +15,44 @@ use super::{LogLine, Outcome};
 
 /// Grace period for a cancelled container before it is killed
 const STOP_TIMEOUT_SECONDS: u32 = 10;
+
+/// Builds the `Failed` outcome for a process that did not exit successfully.
+///
+/// A plain exit code gives [`FailureReason::ExitCode`]; exit code 137 (128 + SIGKILL, what a
+/// container runtime reports for an out-of-memory kill) adds a hint. A process ended by a signal
+/// has no exit code and gives [`FailureReason::Signal`] with the signal number (Unix only).
+///
+/// # Arguments
+/// * `status` - exit status of the finished, unsuccessful process
+fn failed_outcome(status: ExitStatus) -> Outcome {
+    if let Some(code) = status.code() {
+        let hint = if code == 137 {
+            " (killed, possibly out of memory)"
+        } else {
+            ""
+        };
+        return Outcome::Failed {
+            exit_code: Some(code),
+            error: Some(format!("Exited with code {code}{hint}")),
+            reason: Some(FailureReason::ExitCode),
+        };
+    }
+    #[cfg(unix)]
+    let error = {
+        use std::os::unix::process::ExitStatusExt;
+        match status.signal() {
+            Some(signal) => format!("Killed by signal {signal}"),
+            None => "Terminated without an exit code".to_string(),
+        }
+    };
+    #[cfg(not(unix))]
+    let error = "Terminated without an exit code".to_string();
+    Outcome::Failed {
+        exit_code: None,
+        error: Some(error),
+        reason: Some(FailureReason::Signal),
+    }
+}
 
 /// A process to start, normally `<runtime> run ...`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +83,7 @@ pub async fn run_process(
             return Outcome::Failed {
                 exit_code: None,
                 error: Some(format!("Cannot start {}: {e}", spec.program.display())),
+                reason: Some(FailureReason::StartFailed),
             };
         }
     };
@@ -59,8 +102,12 @@ pub async fn run_process(
     let outcome = tokio::select! {
         status = child.wait() => match status {
             Ok(status) if status.success() => Outcome::Succeeded,
-            Ok(status) => Outcome::Failed { exit_code: status.code(), error: None },
-            Err(e) => Outcome::Failed { exit_code: None, error: Some(format!("Waiting for process failed: {e}")) },
+            Ok(status) => failed_outcome(status),
+            Err(e) => Outcome::Failed {
+                exit_code: None,
+                error: Some(format!("Waiting for process failed: {e}")),
+                reason: Some(FailureReason::StartFailed),
+            },
         },
         _ = cancelled(&mut cancel) => {
             stop(spec, &mut child).await;
@@ -155,7 +202,24 @@ mod tests {
             outcome,
             Outcome::Failed {
                 exit_code: Some(3),
-                error: None
+                error: Some("Exited with code 3".into()),
+                reason: Some(FailureReason::ExitCode),
+            }
+        );
+    }
+
+    /// A process killed by a signal reports no exit code and the `Signal` reason.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn signal_exit_is_failed_with_signal_reason() {
+        let (_tx, cancel) = watch::channel(false);
+        let (outcome, _) = run(sh("kill -9 $$"), cancel).await;
+        assert_eq!(
+            outcome,
+            Outcome::Failed {
+                exit_code: None,
+                error: Some("Killed by signal 9".into()),
+                reason: Some(FailureReason::Signal),
             }
         );
     }
@@ -173,7 +237,8 @@ mod tests {
             outcome,
             Outcome::Failed {
                 exit_code: None,
-                error: Some(_)
+                error: Some(_),
+                reason: Some(FailureReason::StartFailed),
             }
         ));
     }

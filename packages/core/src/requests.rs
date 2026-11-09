@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::entities::FailureReason;
 use crate::workflow_configuration::{WorkflowConfiguration, engine::Engine};
 
 /// Request for the login
@@ -200,6 +201,9 @@ pub enum WorkerOutcome {
     Failed {
         exit_code: Option<i32>,
         error: Option<String>,
+        /// Why it failed; backends treat a missing value as `ExitCode`
+        #[serde(default)]
+        reason: Option<FailureReason>,
     },
     Cancelled,
 }

@@ -322,9 +322,15 @@ impl JobSource for HttpJobSource {
             let body = WorkerFinishRequest {
                 outcome: match outcome {
                     Outcome::Succeeded => WorkerOutcome::Succeeded,
-                    Outcome::Failed { exit_code, error } => {
-                        WorkerOutcome::Failed { exit_code, error }
-                    }
+                    Outcome::Failed {
+                        exit_code,
+                        error,
+                        reason,
+                    } => WorkerOutcome::Failed {
+                        exit_code,
+                        error,
+                        reason,
+                    },
                     Outcome::Cancelled => WorkerOutcome::Cancelled,
                 },
             };

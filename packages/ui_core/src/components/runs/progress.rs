@@ -1,4 +1,7 @@
-use macworp_core::{entities::RunStatus, responses::RunResponse};
+use macworp_core::{
+    entities::{FailureReason, RunStatus},
+    responses::RunResponse,
+};
 
 /// What the progress bar of a run shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +14,21 @@ pub struct ProgressView {
     pub class: &'static str,
     /// The engine reports no task numbers (yet), the bar is full and animated instead
     pub indeterminate: bool,
+}
+
+/// Short text for the cause of a failed run, shown next to "failed".
+///
+/// # Arguments
+/// * `reason` - cause stored on the run
+pub fn failure_reason_label(reason: FailureReason) -> &'static str {
+    match reason {
+        FailureReason::ExitCode => "error exit",
+        FailureReason::Signal => "killed",
+        FailureReason::TimedOut => "timed out",
+        FailureReason::QueuedTimeout => "no worker available",
+        FailureReason::WorkerLost => "worker lost",
+        FailureReason::StartFailed => "could not start",
+    }
 }
 
 /// Derives the progress bar from the run's status and the task numbers its engine reported.
@@ -59,7 +77,10 @@ pub fn progress_view(run: &RunResponse) -> ProgressView {
         },
         RunStatus::Failed => ProgressView {
             percent,
-            label: done_text("failed"),
+            label: match run.failure_reason {
+                Some(reason) => done_text(&format!("failed ({})", failure_reason_label(reason))),
+                None => done_text("failed"),
+            },
             class: "bg-danger",
             indeterminate: false,
         },
@@ -87,6 +108,7 @@ mod tests {
             status,
             exit_code: None,
             error: None,
+            failure_reason: None,
             tasks_total: total,
             tasks_done: done,
             progress_message: None,
@@ -131,6 +153,13 @@ mod tests {
         assert_eq!(view.percent, 25);
         assert_eq!(view.class, "bg-danger");
         assert_eq!(view.label, "1/4 tasks - failed");
+    }
+
+    #[test]
+    fn failed_shows_the_reason() {
+        let mut failed = run(RunStatus::Failed, 0, 0);
+        failed.failure_reason = Some(FailureReason::TimedOut);
+        assert_eq!(progress_view(&failed).label, "failed (timed out)");
     }
 
     #[test]

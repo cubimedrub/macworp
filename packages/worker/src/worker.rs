@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use macworp_core::{entities::LogStream, workflow_configuration::engine::Engine};
+use macworp_core::{
+    entities::{FailureReason, LogStream},
+    workflow_configuration::engine::Engine,
+};
 use tokio::{
     sync::{mpsc, watch},
     time::{MissedTickBehavior, interval},
@@ -25,6 +28,12 @@ pub struct WorkerOptions {
     pub progress_flush_interval: Duration,
     /// Wait between claims when the queue is empty
     pub idle_interval: Duration,
+    /// How often reporting the result to the source is tried before it is given up (the run then
+    /// recovers through lease expiry), at least 1
+    pub finish_attempts: u32,
+    /// Wait between attempts to report the result. Attempts times interval should stay well below
+    /// the backend's lease so a short outage does not make the run execute twice.
+    pub finish_retry_interval: Duration,
 }
 
 impl Default for WorkerOptions {
@@ -35,6 +44,8 @@ impl Default for WorkerOptions {
             cancel_poll_interval: Duration::from_secs(2),
             progress_flush_interval: Duration::from_millis(250),
             idle_interval: Duration::from_secs(2),
+            finish_attempts: 5,
+            finish_retry_interval: Duration::from_secs(5),
         }
     }
 }
@@ -75,8 +86,32 @@ impl Worker {
         let run_id = job.run_id;
         let outcome = self.execute(job).await;
         tracing::info!("Run {run_id} ended: {outcome:?}");
-        self.source.finish(run_id, outcome).await?;
+        self.finish_with_retry(run_id, outcome).await?;
         Ok(true)
+    }
+
+    /// Reports the result to the source, retrying transient failures up to
+    /// `options.finish_attempts` times so a short outage does not throw the result away.
+    ///
+    /// # Arguments
+    /// * `run_id` - run that ended
+    /// * `outcome` - how it ended
+    async fn finish_with_retry(&self, run_id: i64, outcome: Outcome) -> Result<(), SourceError> {
+        let attempts = self.options.finish_attempts.max(1);
+        let mut attempt = 1;
+        loop {
+            match self.source.finish(run_id, outcome.clone()).await {
+                Ok(()) => return Ok(()),
+                Err(e) if attempt >= attempts => return Err(e),
+                Err(e) => {
+                    tracing::warn!(
+                        "Reporting the result of run {run_id} failed (attempt {attempt}/{attempts}): {e}"
+                    );
+                    attempt += 1;
+                    tokio::time::sleep(self.options.finish_retry_interval).await;
+                }
+            }
+        }
     }
 
     /// Runs jobs until `shutdown` turns `true`. A running job is finished first.
@@ -100,6 +135,7 @@ impl Worker {
             return Outcome::Failed {
                 exit_code: None,
                 error: Some(format!("This worker has no executor for {engine}")),
+                reason: Some(FailureReason::StartFailed),
             };
         };
 
@@ -137,7 +173,21 @@ impl Worker {
             self.options.cancel_poll_interval,
         ));
 
-        let outcome = executor.run(&job, log_tx, cancel_rx).await;
+        // Own task, so a panic in the executor fails this run instead of ending the worker loop
+        let executor = executor.clone();
+        let outcome = match tokio::spawn({
+            let job = job.clone();
+            async move { executor.run(&job, log_tx, cancel_rx).await }
+        })
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(e) => Outcome::Failed {
+                exit_code: None,
+                error: Some(format!("The executor crashed: {e}")),
+                reason: Some(FailureReason::StartFailed),
+            },
+        };
 
         cancel_poll.abort();
         // The sender is gone once the executor returned, this flushes the rest
@@ -286,6 +336,8 @@ mod tests {
         finished: Mutex<Vec<(i64, Outcome)>>,
         cancel: Mutex<bool>,
         progress: Mutex<Vec<(i64, ProgressUpdate)>>,
+        /// Number of `finish` calls that still fail before one succeeds
+        finish_failures: Mutex<u32>,
     }
 
     impl JobSource for FakeSource {
@@ -318,6 +370,11 @@ mod tests {
         }
         fn finish(&self, run_id: i64, outcome: Outcome) -> BoxFuture<'_, Result<(), SourceError>> {
             Box::pin(async move {
+                let mut failures = self.finish_failures.lock().unwrap();
+                if *failures > 0 {
+                    *failures -= 1;
+                    return Err(SourceError("transient".into()));
+                }
                 self.finished.lock().unwrap().push((run_id, outcome));
                 Ok(())
             })
@@ -359,9 +416,27 @@ mod tests {
                     Outcome::Failed {
                         exit_code: Some(1),
                         error: None,
+                        reason: Some(FailureReason::ExitCode),
                     }
                 }
             })
+        }
+    }
+
+    /// Panics instead of returning an outcome.
+    struct PanickingExecutor;
+
+    impl Executor for PanickingExecutor {
+        fn engine(&self) -> Engine {
+            Engine::Nextflow
+        }
+        fn run<'a>(
+            &'a self,
+            _: &'a Job,
+            _: mpsc::Sender<LogLine>,
+            _: watch::Receiver<bool>,
+        ) -> BoxFuture<'a, Outcome> {
+            Box::pin(async { panic!("boom") })
         }
     }
 
@@ -471,7 +546,8 @@ mod tests {
                 1,
                 Outcome::Failed {
                     exit_code: Some(1),
-                    error: None
+                    error: None,
+                    reason: Some(FailureReason::ExitCode),
                 }
             )]
         );
@@ -507,5 +583,57 @@ mod tests {
         assert!(
             matches!(&finished[0].1, Outcome::Failed { error: Some(e), .. } if e.contains("no executor"))
         );
+    }
+
+    /// A transient failure while reporting the result is retried, the result is not lost.
+    #[tokio::test]
+    async fn finish_is_retried() {
+        let source = Arc::new(FakeSource::default());
+        source.jobs.lock().unwrap().push(job("Nextflow"));
+        *source.finish_failures.lock().unwrap() = 2;
+        let worker = Worker::new(
+            source.clone(),
+            vec![Arc::new(FakeExecutor { wait: false })],
+            WorkerOptions {
+                finish_retry_interval: Duration::from_millis(5),
+                ..fast()
+            },
+        );
+        worker.run_next().await.unwrap();
+        assert_eq!(source.finished.lock().unwrap().len(), 1);
+    }
+
+    /// When every attempt fails the error is returned after exactly `finish_attempts` tries.
+    #[tokio::test]
+    async fn finish_gives_up_after_the_attempts() {
+        let source = Arc::new(FakeSource::default());
+        source.jobs.lock().unwrap().push(job("Nextflow"));
+        *source.finish_failures.lock().unwrap() = 10;
+        let worker = Worker::new(
+            source.clone(),
+            vec![Arc::new(FakeExecutor { wait: false })],
+            WorkerOptions {
+                finish_attempts: 3,
+                finish_retry_interval: Duration::from_millis(5),
+                ..fast()
+            },
+        );
+        assert!(worker.run_next().await.is_err());
+        assert_eq!(*source.finish_failures.lock().unwrap(), 7);
+        assert!(source.finished.lock().unwrap().is_empty());
+    }
+
+    /// A panicking executor fails its run and the worker keeps working.
+    #[tokio::test]
+    async fn executor_panic_fails_the_run() {
+        let source = Arc::new(FakeSource::default());
+        source.jobs.lock().unwrap().push(job("Nextflow"));
+        let worker = Worker::new(source.clone(), vec![Arc::new(PanickingExecutor)], fast());
+        assert!(worker.run_next().await.unwrap());
+        let finished = source.finished.lock().unwrap();
+        assert!(matches!(
+            &finished[0].1,
+            Outcome::Failed { error: Some(e), reason: Some(FailureReason::StartFailed), .. } if e.contains("crashed")
+        ));
     }
 }

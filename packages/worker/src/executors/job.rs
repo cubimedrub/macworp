@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use macworp_core::{entities::LogStream, workflow_configuration::WorkflowConfiguration};
+use macworp_core::{
+    entities::{FailureReason, LogStream},
+    workflow_configuration::WorkflowConfiguration,
+};
 
 use crate::log_proxy::ProgressEndpoint;
 
@@ -31,6 +34,8 @@ pub enum Outcome {
     Failed {
         exit_code: Option<i32>,
         error: Option<String>,
+        /// Why it failed, `None` is treated as `ExitCode` by the backend
+        reason: Option<FailureReason>,
     },
     Cancelled,
 }

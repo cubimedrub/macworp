@@ -1,5 +1,5 @@
 use macworp_core::{
-    entities::RunStatus,
+    entities::{FailureReason, RunStatus},
     responses::RunResponse,
     workflow_configuration::{WorkflowConfiguration, engine::Engine},
 };
@@ -41,6 +41,9 @@ pub struct Model {
     /// Why the run failed if the reason is not the exit code, e.g. timeout or container runtime missing
     #[sea_orm(nullable)]
     pub error: Option<String>,
+    /// Machine-readable cause of a failed run, `None` for every other status
+    #[sea_orm(nullable)]
+    pub failure_reason: Option<FailureReason>,
     /// Tasks the engine announced so far, grows during the run
     pub tasks_total: i32,
     /// Tasks the engine finished
@@ -131,6 +134,15 @@ pub struct Requeued {
     pub cancelled: u64,
 }
 
+/// Outcome of [`Entity::expire_timeouts`]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Expired {
+    /// Queued runs failed with `QueuedTimeout`
+    pub queued: u64,
+    /// Running runs failed with `TimedOut`
+    pub running: u64,
+}
+
 impl Model {
     /// A run can be evicted by the run limit if it is finished and not locked
     pub fn is_evictable(&self) -> bool {
@@ -147,6 +159,7 @@ impl Model {
             status: self.status,
             exit_code: self.exit_code,
             error: self.error,
+            failure_reason: self.failure_reason,
             tasks_total: self.tasks_total,
             tasks_done: self.tasks_done,
             progress_message: self.progress_message,
@@ -374,6 +387,10 @@ impl Entity {
             if run.cancel_requested {
                 let updated = guarded
                     .col_expr(Column::Status, Expr::value(RunStatus::Cancelled))
+                    .col_expr(
+                        Column::Error,
+                        Expr::value("Cancelled while the worker was lost"),
+                    )
                     .col_expr(Column::FinishedAt, Expr::value(now))
                     .col_expr(Column::LeasedUntil, Expr::value(None::<DateTimeUtc>))
                     .exec(db)
@@ -383,6 +400,10 @@ impl Entity {
             } else if run.attempts >= max_attempts {
                 let updated = guarded
                     .col_expr(Column::Status, Expr::value(RunStatus::Failed))
+                    .col_expr(
+                        Column::FailureReason,
+                        Expr::value(FailureReason::WorkerLost),
+                    )
                     .col_expr(
                         Column::Error,
                         Expr::value(format!(
@@ -412,20 +433,115 @@ impl Entity {
         Ok(result)
     }
 
+    /// Fails runs that waited or ran too long. A queued run older than `queued_timeout` fails with
+    /// [`FailureReason::QueuedTimeout`]; a running run older than `run_timeout` (counted from
+    /// `started_at` of the current attempt) fails with [`FailureReason::TimedOut`]. Running runs
+    /// also get `cancel_requested` and lose lease and token, so the worker stops the engine (an
+    /// unleased desktop worker polls the flag, a remote one gets 401 on its next heartbeat).
+    /// `None` disables the respective limit. Returns the number of runs failed.
+    ///
+    /// # Arguments
+    /// * `db` - database connection
+    /// * `run_timeout` - maximum running time, `None` for no limit
+    /// * `queued_timeout` - maximum time in the queue, `None` for no limit
+    pub async fn expire_timeouts<C: ConnectionTrait>(
+        db: &C,
+        run_timeout: Option<chrono::Duration>,
+        queued_timeout: Option<chrono::Duration>,
+    ) -> Result<Expired, Error> {
+        let now = chrono::Utc::now();
+        let mut result = Expired::default();
+        if let Some(limit) = queued_timeout {
+            result.queued = Entity::update_many()
+                .col_expr(Column::Status, Expr::value(RunStatus::Failed))
+                .col_expr(
+                    Column::FailureReason,
+                    Expr::value(FailureReason::QueuedTimeout),
+                )
+                .col_expr(
+                    Column::Error,
+                    Expr::value(format!(
+                        "No worker picked up the run within {} seconds",
+                        limit.num_seconds()
+                    )),
+                )
+                .col_expr(Column::FinishedAt, Expr::value(now))
+                .filter(Column::Status.eq(RunStatus::Queued))
+                .filter(Column::CreatedAt.lt(now - limit))
+                .exec(db)
+                .await?
+                .rows_affected;
+        }
+        if let Some(limit) = run_timeout {
+            result.running = Entity::update_many()
+                .col_expr(Column::Status, Expr::value(RunStatus::Failed))
+                .col_expr(Column::FailureReason, Expr::value(FailureReason::TimedOut))
+                .col_expr(
+                    Column::Error,
+                    Expr::value(format!(
+                        "Run exceeded the time limit of {} seconds",
+                        limit.num_seconds()
+                    )),
+                )
+                .col_expr(Column::CancelRequested, Expr::value(true))
+                .col_expr(Column::LeasedUntil, Expr::value(None::<DateTimeUtc>))
+                .col_expr(Column::WorkerTokenHash, Expr::value(None::<String>))
+                .col_expr(Column::FinishedAt, Expr::value(now))
+                .filter(Column::Status.eq(RunStatus::Running))
+                .filter(Column::StartedAt.lt(now - limit))
+                .exec(db)
+                .await?
+                .rows_affected;
+        }
+        Ok(result)
+    }
+
     /// Moves a run to the terminal `status`. A run that is already terminal (e.g. cancelled while
     /// queued) is left untouched and returns [`Error::AlreadyFinished`].
+    ///
+    /// A `Failed` report for a run with a pending cancel request is stored as `Cancelled` (the
+    /// engine was stopped on purpose, the error is noise). `Succeeded` is kept: the work completed.
+    /// For `Failed`, a missing `failure_reason` defaults to [`FailureReason::ExitCode`]; for every
+    /// other status the reason is dropped.
+    ///
+    /// # Arguments
+    /// * `db` - database connection
+    /// * `id` - run to finish
+    /// * `status` - terminal status reported by the worker
+    /// * `exit_code` - engine exit code, if it exited
+    /// * `error` - details of a failure
+    /// * `failure_reason` - cause of a failure, only used with `Failed`
     pub async fn finish<C: ConnectionTrait>(
         db: &C,
         id: i64,
         status: RunStatus,
         exit_code: Option<i32>,
         error: Option<String>,
+        failure_reason: Option<FailureReason>,
     ) -> Result<(), Error> {
         debug_assert!(status.is_terminal());
+        let (status, error, failure_reason) = if status == RunStatus::Failed {
+            let cancel_requested = Entity::find_by_id(id)
+                .one(db)
+                .await?
+                .is_some_and(|run| run.cancel_requested);
+            if cancel_requested {
+                (RunStatus::Cancelled, None, None)
+            } else {
+                (
+                    status,
+                    error,
+                    Some(failure_reason.unwrap_or(FailureReason::ExitCode)),
+                )
+            }
+        } else {
+            (status, error, None)
+        };
         let updated = Entity::update_many()
             .col_expr(Column::Status, Expr::value(status))
             .col_expr(Column::ExitCode, Expr::value(exit_code))
             .col_expr(Column::Error, Expr::value(error))
+            .col_expr(Column::FailureReason, Expr::value(failure_reason))
             .col_expr(Column::FinishedAt, Expr::value(chrono::Utc::now()))
             .filter(Column::Id.eq(id))
             .filter(Column::Status.is_in([RunStatus::Queued, RunStatus::Running]))
@@ -501,6 +617,10 @@ impl Entity {
     pub async fn fail_orphaned_running<C: ConnectionTrait>(db: &C) -> Result<u64, Error> {
         Ok(Entity::update_many()
             .col_expr(Column::Status, Expr::value(RunStatus::Failed))
+            .col_expr(
+                Column::FailureReason,
+                Expr::value(FailureReason::WorkerLost),
+            )
             .col_expr(
                 Column::Error,
                 Expr::value("Interrupted: the application stopped while the run was active"),
@@ -792,22 +912,25 @@ mod tests {
             RunStatus::Failed,
             Some(2),
             Some("boom".into()),
+            None,
         )
         .await
         .unwrap();
         let r = get(running).await;
         assert_eq!(r.status, RunStatus::Failed);
+        // no reason given: a failure defaults to the exit code
+        assert_eq!(r.failure_reason, Some(FailureReason::ExitCode));
         assert_eq!(r.exit_code, Some(2));
         assert_eq!(r.error.as_deref(), Some("boom"));
         assert!(r.finished_at.is_some());
 
         let cancelled = add_run(&db, u, p, 1, RunStatus::Cancelled, false).await;
-        let err = Entity::finish(&db, cancelled, RunStatus::Succeeded, Some(0), None)
+        let err = Entity::finish(&db, cancelled, RunStatus::Succeeded, Some(0), None, None)
             .await
             .unwrap_err();
         assert!(matches!(err, Error::AlreadyFinished));
         assert_eq!(get(cancelled).await.status, RunStatus::Cancelled);
-        let err = Entity::finish(&db, 999, RunStatus::Failed, None, None)
+        let err = Entity::finish(&db, 999, RunStatus::Failed, None, None, None)
             .await
             .unwrap_err();
         assert!(matches!(err, Error::NotFound));
@@ -1075,6 +1198,7 @@ mod tests {
         let run = Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
         assert_eq!(run.status, RunStatus::Failed);
         assert!(run.error.unwrap().contains("lease expired"));
+        assert_eq!(run.failure_reason, Some(FailureReason::WorkerLost));
 
         let id = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
         Entity::claim_next_leased(&db, "w1", 60, &Engine::all())
@@ -1108,5 +1232,135 @@ mod tests {
             Entity::requeue_expired(&db, 3).await.unwrap(),
             Requeued::default()
         );
+    }
+
+    /// Queued runs over the queue limit fail with `QueuedTimeout`, younger ones and a disabled
+    /// limit leave runs alone.
+    #[tokio::test]
+    async fn queued_runs_time_out() {
+        let (db, user, project) = setup().await;
+        let old = add_run(&db, user, project, 120, RunStatus::Queued, false).await;
+        let young = add_run(&db, user, project, 1, RunStatus::Queued, false).await;
+        let limit = Some(Duration::minutes(60));
+
+        assert_eq!(
+            Entity::expire_timeouts(&db, None, None).await.unwrap(),
+            Expired::default()
+        );
+        let result = Entity::expire_timeouts(&db, None, limit).await.unwrap();
+        assert_eq!(
+            result,
+            Expired {
+                queued: 1,
+                running: 0
+            }
+        );
+        let old = Entity::find_by_id(old).one(&db).await.unwrap().unwrap();
+        assert_eq!(old.status, RunStatus::Failed);
+        assert_eq!(old.failure_reason, Some(FailureReason::QueuedTimeout));
+        assert!(old.finished_at.is_some());
+        let young = Entity::find_by_id(young).one(&db).await.unwrap().unwrap();
+        assert_eq!(young.status, RunStatus::Queued);
+    }
+
+    /// A running run over the limit fails with `TimedOut`, is flagged for cancellation and loses
+    /// its token, so the worker stops it; a run within the limit is untouched.
+    #[tokio::test]
+    async fn running_runs_time_out() {
+        let (db, user, project) = setup().await;
+        let slow = add_run(&db, user, project, 3, RunStatus::Queued, false).await;
+        let (_, token) = Entity::claim_next_leased(&db, "w1", 60, &Engine::all())
+            .await
+            .unwrap()
+            .unwrap();
+        let fresh = add_run(&db, user, project, 2, RunStatus::Queued, false).await;
+        Entity::claim_next_leased(&db, "w1", 60, &Engine::all())
+            .await
+            .unwrap()
+            .unwrap();
+        Entity::update_many()
+            .col_expr(
+                Column::StartedAt,
+                Expr::value(Utc::now() - Duration::hours(2)),
+            )
+            .filter(Column::Id.eq(slow))
+            .exec(&db)
+            .await
+            .unwrap();
+
+        let result = Entity::expire_timeouts(&db, Some(Duration::hours(1)), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            result,
+            Expired {
+                queued: 0,
+                running: 1
+            }
+        );
+        let slow_run = Entity::find_by_id(slow).one(&db).await.unwrap().unwrap();
+        assert_eq!(slow_run.status, RunStatus::Failed);
+        assert_eq!(slow_run.failure_reason, Some(FailureReason::TimedOut));
+        assert!(slow_run.cancel_requested);
+        assert!(slow_run.leased_until.is_none());
+        assert!(matches!(
+            Entity::heartbeat(&db, slow, &token, 60).await,
+            Err(Error::InvalidToken)
+        ));
+        let fresh_run = Entity::find_by_id(fresh).one(&db).await.unwrap().unwrap();
+        assert_eq!(fresh_run.status, RunStatus::Running);
+    }
+
+    /// A failure report for a run with a pending cancel is stored as cancelled; a success is kept;
+    /// reasons are dropped for other statuses.
+    #[tokio::test]
+    async fn finish_applies_cancel_and_reason_rules() {
+        let (db, user, project) = setup().await;
+        let get = async |id| Entity::find_by_id(id).one(&db).await.unwrap().unwrap();
+
+        let id = add_run(&db, user, project, 3, RunStatus::Running, false).await;
+        get(id).await.request_cancel(&db).await.unwrap();
+        Entity::finish(
+            &db,
+            id,
+            RunStatus::Failed,
+            Some(143),
+            Some("Exited with code 143".into()),
+            Some(FailureReason::ExitCode),
+        )
+        .await
+        .unwrap();
+        let run = get(id).await;
+        assert_eq!(run.status, RunStatus::Cancelled);
+        assert_eq!(run.failure_reason, None);
+
+        let id = add_run(&db, user, project, 2, RunStatus::Running, false).await;
+        get(id).await.request_cancel(&db).await.unwrap();
+        Entity::finish(
+            &db,
+            id,
+            RunStatus::Succeeded,
+            Some(0),
+            None,
+            Some(FailureReason::Signal),
+        )
+        .await
+        .unwrap();
+        let run = get(id).await;
+        assert_eq!(run.status, RunStatus::Succeeded);
+        assert_eq!(run.failure_reason, None);
+
+        let id = add_run(&db, user, project, 1, RunStatus::Running, false).await;
+        Entity::finish(
+            &db,
+            id,
+            RunStatus::Failed,
+            None,
+            Some("Killed by signal 9".into()),
+            Some(FailureReason::Signal),
+        )
+        .await
+        .unwrap();
+        assert_eq!(get(id).await.failure_reason, Some(FailureReason::Signal));
     }
 }

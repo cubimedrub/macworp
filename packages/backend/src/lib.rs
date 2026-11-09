@@ -93,7 +93,8 @@ where
     F: IsFilesystem,
 {
     /// Periodically requeues (or fails) runs whose worker stopped heartbeating, see
-    /// `models::RunTable::requeue_expired`. Runs until aborted.
+    /// `models::RunTable::requeue_expired`, and fails runs over their queue or running time limit,
+    /// see `models::RunTable::expire_timeouts`. Runs until aborted.
     async fn requeue_expired_runs(state: Arc<State>) {
         let period = std::time::Duration::from_secs(
             u64::from(state.config().worker_lease_seconds() / 3).max(1),
@@ -107,6 +108,19 @@ where
                 }
                 Ok(_) => {}
                 Err(error) => tracing::error!("Checking worker leases failed: {error}"),
+            }
+            match models::RunTable::expire_timeouts(
+                state.db(),
+                state.config().run_timeout(),
+                state.config().queued_timeout(),
+            )
+            .await
+            {
+                Ok(result) if result != models::ExpiredRuns::default() => {
+                    tracing::warn!("Runs hit their time limit: {result:?}");
+                }
+                Ok(_) => {}
+                Err(error) => tracing::error!("Checking run time limits failed: {error}"),
             }
         }
     }

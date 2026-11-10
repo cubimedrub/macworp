@@ -136,7 +136,7 @@ async fn symlinks_are_rejected() {
 }
 
 /// A project's top level shows the virtual reference folder (a real project folder of that name
-/// is hidden), its content is the reference data and read-only, and projects cannot write there.
+/// is hidden, and it is always listed first), its content is the reference data and read-only, and projects cannot write there.
 #[tokio::test]
 async fn project_browser_shows_the_reference_folder() {
     let app = TestApp::new().await;
@@ -145,6 +145,8 @@ async fn project_browser_shows_the_reference_folder() {
     let project_directory = std::path::PathBuf::from(project.path.clone().unwrap());
     std::fs::create_dir_all(project_directory.join("macworp_global_reference_data")).unwrap();
     std::fs::create_dir_all(project_directory.join("results")).unwrap();
+    // Sorts before the reference folder name, which must still be listed first
+    std::fs::create_dir_all(project_directory.join("aaa")).unwrap();
     let reference = app.state.reference_directory().get();
     std::fs::create_dir_all(reference.join("hg38")).unwrap();
     std::fs::write(reference.join("hg38/a.fa"), "x").unwrap();
@@ -155,9 +157,19 @@ async fn project_browser_shows_the_reference_folder() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body["directories"],
-        json!(["macworp_global_reference_data", "results"])
+        json!(["macworp_global_reference_data", "aaa", "results"])
     );
     assert_eq!(body["read_only"], json!(false));
+
+    // The folder itself has no trailing separator in `current`
+    let (status, body) = app
+        .get(
+            &alice,
+            &format!("/projects/edit/{}?subpath=macworp_global_reference_data", project.id),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["current"], json!("macworp_global_reference_data"));
 
     let uri = format!(
         "/projects/edit/{}?subpath=macworp_global_reference_data/hg38",

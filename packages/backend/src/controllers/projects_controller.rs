@@ -209,17 +209,23 @@ where
                 let requested = F::join_paths(&base, &rest).map_err(Error::Filesystem)?;
                 let mut content =
                     ProjectContent::try_from((&base, &requested)).map_err(Error::Filesystem)?;
-                content.current = std::path::Path::new(REFERENCE_PREFIX).join(content.current);
+                // `join` with an empty path would append a trailing separator
+                if !content.current.as_os_str().is_empty() {
+                    content.current = std::path::Path::new(REFERENCE_PREFIX).join(content.current);
+                } else {
+                    content.current = std::path::PathBuf::from(REFERENCE_PREFIX);
+                }
                 (content, true)
             }
             None => {
                 let mut content = F::content(state.as_ref(), &project, query_params.subpath)
                     .map_err(Error::Filesystem)?;
                 if content.current.as_os_str().is_empty() {
-                    // A project folder of that name is hidden: the name belongs to the reference data
+                    // A project folder of that name is hidden: the name belongs to the reference
+                    // data, which is always listed first
                     content.directories.retain(|name| name != REFERENCE_PREFIX);
-                    content.directories.push(REFERENCE_PREFIX.to_string());
                     content.directories.sort();
+                    content.directories.insert(0, REFERENCE_PREFIX.to_string());
                 }
                 (content, false)
             }

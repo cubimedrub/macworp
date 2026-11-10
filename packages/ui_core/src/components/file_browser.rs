@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 use dioxus::prelude::*;
-use macworp_core::{entities::Role, responses::ProjectResponse};
+use macworp_core::{entities::Role, paths::REFERENCE_PREFIX, responses::ProjectResponse};
 
 use crate::storage::IsStorage;
 
@@ -50,6 +50,9 @@ pub struct FileBrowserProps {
     pub reload_content_callback: Callback<(), ()>,
 }
 
+/// Lists the folders and files of the current path. At the top level of a project the virtual
+/// reference data folder is always shown first, marked with the DNA icon, described, and without
+/// a delete button.
 #[component]
 pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
     // Callback for goint one level up if browser is not already at top level
@@ -76,6 +79,17 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
             .my_role
             .is_some_and(|role| role >= Role::Editor);
 
+    // The virtual reference folder is shown at the top level of a project, always first, with its
+    // own icon and without a delete button
+    let has_reference_folder = !props.reference
+        && props.project.read().current.as_os_str().is_empty()
+        && props
+            .project
+            .read()
+            .directories
+            .iter()
+            .any(|folder| folder == REFERENCE_PREFIX);
+
     rsx! {
         if can_edit {
             F::CreateFolder{
@@ -94,7 +108,26 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
                     class: "fas fa-turn-up ms-2"
                 }
             }
-            for folder in props.project.read().directories.iter().cloned() {
+            if has_reference_folder {
+                li {
+                    class: "list-group-item cursor-pointer d-flex",
+                    span {
+                        class: "d-flex align-items-center flex-fill",
+                        onclick: move |_| {
+                            props.move_into_folder_callback.call(PathBuf::from(REFERENCE_PREFIX));
+                        },
+                        i {
+                            class: "fa-solid fa-dna me-2"
+                        }
+                        "{REFERENCE_PREFIX}"
+                        small {
+                            class: "text-muted ms-3",
+                            "Shared reference data, e.g. genomes, proteomes, annotations, ... (read-only, managed by administrator)"
+                        }
+                    }
+                }
+            }
+            for folder in props.project.read().directories.iter().filter(|folder| !(has_reference_folder && folder.as_str() == REFERENCE_PREFIX)).cloned() {
                 li {
                     class: "list-group-item cursor-pointer d-flex",
                     span {

@@ -48,6 +48,8 @@ pub enum ResourceType {
     Project = 1,
     /// A workflow, see [`crate::models::WorkflowIntegration`]
     Workflow = 2,
+    /// The global reference data, see [`crate::models::ReferenceData`]
+    ReferenceData = 3,
 }
 
 impl ResourceType {

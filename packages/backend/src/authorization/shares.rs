@@ -6,7 +6,7 @@ use sea_orm::{
     QueryFilter, QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 
-use super::{PrincipalType, Resource, query::applicable, role::RoleDb};
+use super::{PrincipalType, Resource, ResourceType, query::applicable, role::RoleDb};
 use crate::models::share;
 
 /// Who a share is granted to
@@ -91,6 +91,10 @@ pub enum Error {
     /// The change would leave the resource without a user or group owner
     #[error("a resource needs at least one user or group owner")]
     LastOwner,
+    /// The resource type has no owners and a fixed public Viewer share, see
+    /// [`ResourceType::ReferenceData`]
+    #[error("this resource has no owners and its public viewer share cannot be changed")]
+    FixedShares,
 }
 
 impl axum::response::IntoResponse for Error {
@@ -98,7 +102,7 @@ impl axum::response::IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
         match self {
-            Self::PublicRoleTooHigh { .. } => {
+            Self::PublicRoleTooHigh { .. } | Self::FixedShares => {
                 (StatusCode::BAD_REQUEST, self.to_string()).into_response()
             }
             Self::LastOwner => (StatusCode::CONFLICT, self.to_string()).into_response(),
@@ -165,6 +169,11 @@ impl<'a, R: Resource, C: ConnectionTrait> Shares<'a, R, C> {
     /// Takes [`Self::lock`] first, so with a transaction-backed handle the last-owner check is
     /// safe against concurrent demotions of different owners.
     pub async fn grant(&self, principal: Principal, role: Role) -> Result<(), Error> {
+        if R::RESOURCE_TYPE == ResourceType::ReferenceData
+            && (role == Role::Owner || principal == Principal::Public)
+        {
+            return Err(Error::FixedShares);
+        }
         if principal == Principal::Public && role > R::MAX_PUBLIC_ROLE {
             return Err(Error::PublicRoleTooHigh {
                 max: R::MAX_PUBLIC_ROLE,
@@ -208,6 +217,9 @@ impl<'a, R: Resource, C: ConnectionTrait> Shares<'a, R, C> {
 
     /// Removes the grant of `principal`, if any. Takes [`Self::lock`] first.
     pub async fn revoke(&self, principal: Principal) -> Result<(), Error> {
+        if R::RESOURCE_TYPE == ResourceType::ReferenceData && principal == Principal::Public {
+            return Err(Error::FixedShares);
+        }
         self.lock().await?;
         if let Some(existing) = self.find(principal).await? {
             if self.is_last_owner(&existing).await? {

@@ -154,6 +154,7 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
             return Ok(Json(WorkerClaimResponse {
                 run_id: run.id,
                 project_dir,
+                reference_dir: std::path::absolute(state.reference_directory().get()).ok(),
                 configuration: run.configuration,
                 token,
                 lease_seconds: lease_seconds as u32,

@@ -8,7 +8,7 @@ use sea_orm::{
     QueryFilter,
 };
 
-use super::{Departed, Departure, Principal, Resource};
+use super::{Departed, Departure, Principal, Resource, ResourceType};
 use crate::models::{
     GroupTable, Project, ProjectTable, WorkflowIntegration, WorkflowIntegrationTable, share,
 };
@@ -203,7 +203,15 @@ async fn project_without_owner_and_editor_is_deleted() {
 
         assert_eq!(departed.deleted_projects.len(), 1);
         assert!(!project_exists(&db).await);
-        assert_eq!(share::Entity::find().count(&db).await.unwrap(), 0);
+        // Only the seeded public Viewer share of the reference data remains
+        assert_eq!(
+            share::Entity::find()
+                .filter(share::Column::ResourceType.ne(ResourceType::ReferenceData.to_db()))
+                .count(&db)
+                .await
+                .unwrap(),
+            0
+        );
     }
 }
 

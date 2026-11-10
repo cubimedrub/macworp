@@ -8,7 +8,7 @@ use sea_orm::{
     QueryOrder, TransactionTrait,
 };
 
-use super::{Principal, Resource, ShareError, role::RoleDb};
+use super::{Principal, Resource, ResourceType, ShareError, role::RoleDb};
 use crate::models::{Project, ProjectColumn, ProjectTable, WorkflowIntegration, share};
 
 /// Migrated in-memory database: users `owner`, `member` (in `group`) and `outsider`, and one project `thing` shared only with `owner`.
@@ -181,7 +181,11 @@ async fn regrant_replaces_instead_of_duplicating() {
         .grant(Principal::User(w.member), Role::Editor)
         .await
         .unwrap();
-    let rows = share::Entity::find().all(&w.db).await.unwrap();
+    let rows = share::Entity::find()
+        .filter(share::Column::ResourceType.ne(ResourceType::ReferenceData.to_db()))
+        .all(&w.db)
+        .await
+        .unwrap();
     assert_eq!(rows.len(), 3);
 }
 

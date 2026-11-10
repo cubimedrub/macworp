@@ -14,6 +14,9 @@ pub struct Job {
     /// Project data directory, the only place the workflow may write to. Mounted at the same
     /// path inside the engine container so mounts the engine creates resolve on the host.
     pub project_dir: PathBuf,
+    /// Global reference data, mounted read-only at the same path. `Path` values below the
+    /// reference prefix are rewritten onto it. `None` where the instance has none.
+    pub reference_dir: Option<PathBuf>,
     /// Workflow configuration snapshot with the user's parameter values already applied
     pub configuration: WorkflowConfiguration,
     /// Where the engine reports its progress, set by the worker for engines that do

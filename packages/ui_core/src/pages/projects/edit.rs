@@ -81,6 +81,10 @@ pub enum Error<S: IsStorage> {
 pub struct EditProps {
     /// Project ID to fetch
     pub id: i64,
+    /// Show the global reference data (`id` is its singleton id) instead of a project: no runs,
+    /// no delete, shares for admins only
+    #[props(default)]
+    pub reference: bool,
 }
 
 #[component]
@@ -137,8 +141,13 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
 
             let config = config.read().clone();
 
-            let project = Client::new(config.base_url().to_string(), config.timeout())
-                .projects()
+            let client = Client::new(config.base_url().to_string(), config.timeout());
+            let files = if props.reference {
+                client.reference_files()
+            } else {
+                client.projects()
+            };
+            let project = files
                 .project(&jwt, props.id, subpath)
                 .await
                 .map_err(Error::FetchProject)?;
@@ -212,8 +221,12 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
 
                 let file_destination = file.parent().map(PathBuf::from);
 
-                client
-                    .projects()
+                let files = if props.reference {
+                    client.reference_files()
+                } else {
+                    client.projects()
+                };
+                files
                     .upload_file::<T::FileUpload>(
                         &jwt,
                         props.id,
@@ -247,7 +260,10 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                     .read()
                     .as_ref()
                     .and_then(|project| project.as_ref().ok())
-                    .is_some_and(|project| project.read().my_role.is_some_and(|role| role >= Role::Editor));
+                    .is_some_and(|project| {
+                        !project.read().read_only
+                            && project.read().my_role.is_some_and(|role| role >= Role::Editor)
+                    });
                 if !can_edit {
                     return;
                 }
@@ -288,7 +304,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
             }
             if sharing {
                 ShareDialog::<T::Storage> {
-                    kind: ShareKind::Project,
+                    kind: if props.reference { ShareKind::Reference } else { ShareKind::Project },
                     resource_id: props.id,
                     is_open: is_share_dialog_open,
                     cancel_callback: Callback::new(move |_| is_share_dialog_open.set(false)),
@@ -318,7 +334,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                         }
                         div {
                             class: "d-flex flex-row",
-                            if project.read().my_role.is_some_and(|role| role >= Role::Editor) {
+                            if !props.reference && project.read().my_role.is_some_and(|role| role >= Role::Editor) {
                                 button {
                                     class: "btn btn-sm btn-outline-primary me-2",
                                     title: "Start workflow",
@@ -356,7 +372,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                                     button {
                                         id: "share-btn",
                                         class: "btn btn-sm btn-outline-secondary me-2",
-                                        title: "Share project",
+                                        title: if props.reference { "Share reference data" } else { "Share project" },
                                         onclick: move |_| is_share_dialog_open.set(true),
                                         i {
                                             class: "fa-solid fa-share-nodes me-1"
@@ -364,6 +380,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                                         "Share"
                                     }
                                 }
+                                if !props.reference {
                                 button {
                                     id: "delete-btn",
                                     class: "btn btn-sm btn-outline-danger",
@@ -373,6 +390,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                                         class: "fa-solid fa-trash me-1"
                                     }
                                     "Delete"
+                                }
                                 }
                             }
                         }
@@ -407,12 +425,15 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                         },
                         _ => rsx! {}
                     }
-                    RunPanel::<T::Storage> {
-                        project_id: props.id,
-                        refresh: run_refresh,
+                    if !props.reference {
+                        RunPanel::<T::Storage> {
+                            project_id: props.id,
+                            refresh: run_refresh,
+                        }
                     }
                     FileBrowser<T::FileBrowser> {
                         project: *project,
+                        reference: props.reference,
                         move_into_folder_callback: Callback::new(move |new_subpath| {
                             subpath.set(new_subpath);
                         }),

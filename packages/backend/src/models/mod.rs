@@ -1,5 +1,6 @@
 pub mod group;
 mod project;
+pub mod reference_data;
 pub mod run;
 mod run_log;
 pub mod share;
@@ -12,6 +13,7 @@ pub use group::{ActiveModel as ActiveGroup, Entity as GroupTable, Model as Group
 pub use project::{
     ActiveModel as ActiveProject, Column as ProjectColumn, Entity as ProjectTable, Model as Project,
 };
+pub use reference_data::{Entity as ReferenceDataTable, Model as ReferenceData};
 pub use run::{
     ActiveModel as ActiveRun, Column as RunColumn, Entity as RunTable, Error as RunError,
     Expired as ExpiredRuns, Model as Run, Requeued as RequeuedRuns,

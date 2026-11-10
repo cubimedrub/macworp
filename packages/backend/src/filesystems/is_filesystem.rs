@@ -6,7 +6,9 @@ use futures_util::Stream;
 use macworp_core::{http::headers::ContentRangeHeaderValue, responses::StorageProbe};
 
 use crate::{
-    filesystems::{errors::Error, project_content::ProjectContent},
+    filesystems::{
+        directory_files::DirectoryFiles, errors::Error, project_content::ProjectContent,
+    },
     models::Project,
     state::State,
 };
@@ -14,6 +16,10 @@ use crate::{
 /// Defintion of file system acces, e.g. read files and folders of project or store data.
 ///
 pub trait IsFilesystem {
+    /// Whether the files of the global reference data can be changed through the API. Desktop
+    /// users manage their reference folder with the native file browser instead.
+    const REFERENCE_WRITABLE: bool;
+
     /// Returns the content of a project
     ///
     /// # Arguments
@@ -38,6 +44,15 @@ pub trait IsFilesystem {
     /// * `state` - The application state, used to access configuration and other resources
     /// * `project` - The project to get the path for
     fn local_path(_state: &State, _project: &Project) -> Option<PathBuf> {
+        None
+    }
+
+    /// The reference directory on the machine of the user, under the same rule as
+    /// [`Self::local_path`]: only the local filesystem returns it.
+    ///
+    /// # Arguments
+    /// * `_directory` - The current reference directory
+    fn local_reference_path(_directory: &Path) -> Option<PathBuf> {
         None
     }
 
@@ -75,23 +90,7 @@ pub trait IsFilesystem {
     /// * `subpath` - The subpath to join to the base path, only
     ///
     fn join_paths(base: &Path, subpath: &Path) -> Result<PathBuf, Error> {
-        let mut final_path = base.to_path_buf();
-        let mut exists = true;
-        for comp in macworp_core::paths::sanitize_relative(subpath).components() {
-            final_path.push(comp);
-            if exists {
-                match std::fs::symlink_metadata(&final_path) {
-                    Ok(meta) if meta.file_type().is_symlink() => {
-                        return Err(Error::SymlinkNotAllowed(final_path));
-                    }
-                    Ok(_) => {}
-                    // Nothing below a missing path can be a symlink
-                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => exists = false,
-                    Err(err) => return Err(err.into()),
-                }
-            }
-        }
-        Ok(final_path)
+        DirectoryFiles::join_paths(base, subpath)
     }
 
     /// Deletes the project directory if supported by the FS

@@ -30,6 +30,7 @@ manganis = { version = "0.7.3" }
 password-auth = { version = "1.0.0" }
 rand = "0.10.0"
 reqwest = { version = "0.13.2" }
+rfd = "0.18.0"
 rpassword = { version = "7.4.0" }
 serde = { version = "1.0.228" }
 serde_json = { version = "1.0.149" }

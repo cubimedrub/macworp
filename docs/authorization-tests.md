@@ -75,6 +75,20 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | Creating gives the creator an Owner share and `my_role = Owner` | `http::creator_becomes_owner` | one share row |
 | A group created through the API lists its owner as member, so a group share reaches them; the owner cannot be removed | `http::group_owner_is_a_member` | |
 
+### Global reference data
+
+| Scenario | Test | Expected |
+| --- | --- | --- |
+| Every user can browse (role Viewer), files listed | `reference_http_tests::everybody_can_read` | 200, `my_role` Viewer |
+| Anonymous rejected, unknown id invisible | `reference_http_tests::anonymous_and_unknown_id_are_rejected` | 400/401, 404 |
+| Viewer cannot write; user Editor, group Editor and admin pass authorization | `reference_http_tests::writing_needs_editor_or_admin` | 403 / 405 (test filesystem is read-only) |
+| Only admins manage shares; no Owner grant; public Viewer share cannot be changed or revoked | `reference_http_tests::share_rules` | 403 / 400 |
+| Deleting an Editor keeps the data and everybody's read access | `reference_http_tests::user_deletion_keeps_reference_data` | 200, still visible |
+| Symlinks in the folder are not followed | `reference_http_tests::symlinks_are_rejected` | 403 |
+| Project browser shows the virtual `macworp_global_reference_data` folder (hides a real one), its content is read-only, projects cannot write there | `reference_http_tests::project_browser_shows_the_reference_folder` | `read_only` true, 400 on create-folder |
+| `Path` values under the prefix become absolute reference paths, `..` is rejected, missing directory is an error | `render::tests::reference_prefix_is_rewritten_at_render` | |
+| Run container mounts the folder read-only | `executors::nextflow::tests::reference_directory_is_mounted_read_only` | `-v dir:dir:ro` |
+
 ## 4. Sharing rules
 
 | Scenario | Test | Level | Expected |
@@ -118,6 +132,8 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 ## Known gaps
 
 Not covered by any test today (see PLAN.md P2 for the open items):
+
+- Reference data: upload/create/delete with a writable filesystem (the test app uses the read-only desktop filesystem), a real run reading a reference file (no e2e yet), the remote worker storage check for the reference folder.
 
 - Concurrent last-owner demotions: `share_tests::concurrent_demotions_keep_one_owner` checks that a demotion waits for the resource lock (SQLite only; not mutation-sensitive, SQLite's own write lock already serializes there). Postgres row-lock path untested.
 - `upload-file` endpoint role check; successful run start (only the authorization outcome is asserted).

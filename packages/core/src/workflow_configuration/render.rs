@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use thiserror::Error;
@@ -9,7 +9,7 @@ use super::{
     parameters::{Parameter, parameter::IsParameterWithValue},
 };
 use crate::{
-    paths::{is_confined, sanitize_relative},
+    paths::{is_confined, sanitize_relative, strip_reference_prefix},
     requests::ParameterValue,
 };
 
@@ -37,6 +37,10 @@ pub enum Error {
     /// The engine takes no engine parameters (Container)
     #[error("Engine `{0}` does not support engine parameters")]
     EngineParametersUnsupported(String),
+    /// A `Path` value points into the global reference data but the executor has no reference
+    /// directory (parameter name)
+    #[error("Parameter `{0}` uses the global reference data, which is not available here")]
+    ReferenceUnavailable(String),
     /// Rendering exists only for Nextflow, Snakemake and Container so far
     #[error("Command line rendering is not supported for engine `{0}` yet")]
     UnsupportedEngine(String),
@@ -269,22 +273,42 @@ pub fn apply_values_lenient(
 }
 
 /// Renders the value of a parameter as it is passed on the command line, `None` if unset.
-fn value_string(parameter: &Parameter) -> Option<String> {
-    match parameter {
+///
+/// # Arguments
+/// * `parameter` - The parameter to render
+/// * `reference_directory` - Absolute directory of the global reference data. `Path` values below
+///   [`crate::paths::REFERENCE_PREFIX`] are rewritten onto it; without it they are an error
+fn value_string(
+    parameter: &Parameter,
+    reference_directory: Option<&Path>,
+) -> Result<Option<String>, Error> {
+    Ok(match parameter {
         Parameter::Text(p) => p.value().cloned(),
         Parameter::Glob(p) => p.value().cloned(),
         Parameter::Integer(p) => p.value().map(|v| v.to_string()),
         Parameter::Float(p) => p.value().map(|v| v.to_string()),
-        Parameter::Path(p) => p.value().map(|paths| {
-            paths
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect::<Vec<_>>()
-                .join(",")
-        }),
+        Parameter::Path(p) => match p.value() {
+            None => None,
+            Some(paths) => {
+                let mut rendered = Vec::with_capacity(paths.len());
+                for path in paths {
+                    rendered.push(match strip_reference_prefix(path) {
+                        Some(rest) => reference_directory
+                            .ok_or_else(|| {
+                                Error::ReferenceUnavailable(parameter.name().to_string())
+                            })?
+                            .join(rest)
+                            .display()
+                            .to_string(),
+                        None => path.display().to_string(),
+                    });
+                }
+                Some(rendered.join(","))
+            }
+        },
         Parameter::ValueSelect(p) => p.value().map(|values| values.join(",")),
         Parameter::Separator(_) => None,
-    }
+    })
 }
 
 /// Flag for a Container parameter: single character names are short options (`-v`), longer
@@ -307,7 +331,14 @@ fn container_flag(name: &str) -> String {
 ///   `--name value`, passed to the image
 ///
 /// Parameters without a value are skipped. Executable, script and source are up to the executor.
-pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Error> {
+///
+/// # Arguments
+/// * `config` - The workflow configuration with the parameter values applied
+/// * `reference_directory` - Absolute directory of the global reference data, see [`value_string`]
+pub fn render_args(
+    config: &WorkflowConfiguration,
+    reference_directory: Option<&Path>,
+) -> Result<Vec<String>, Error> {
     let engine_prefix = match config.engine() {
         Engine::Nextflow => "-",
         Engine::Snakemake => "--",
@@ -317,7 +348,7 @@ pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Error>
                     Engine::Container.to_string(),
                 ));
             }
-            return render_container_args(config);
+            return render_container_args(config, reference_directory);
         }
         other => return Err(Error::UnsupportedEngine(other.to_string())),
     };
@@ -340,7 +371,7 @@ pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Error>
         Engine::Nextflow => {
             for p in params {
                 validate_name(p.name())?;
-                if let Some(v) = value_string(p) {
+                if let Some(v) = value_string(p, reference_directory)? {
                     args.push(format!("--{}", p.name()));
                     args.push(v);
                 }
@@ -350,7 +381,7 @@ pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Error>
             let mut pairs = Vec::new();
             for p in params {
                 validate_name(p.name())?;
-                if let Some(v) = value_string(p) {
+                if let Some(v) = value_string(p, reference_directory)? {
                     pairs.push(format!("{}={v}", p.name()));
                 }
             }
@@ -363,7 +394,10 @@ pub fn render_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Error>
     Ok(args)
 }
 
-fn render_container_args(config: &WorkflowConfiguration) -> Result<Vec<String>, Error> {
+fn render_container_args(
+    config: &WorkflowConfiguration,
+    reference_directory: Option<&Path>,
+) -> Result<Vec<String>, Error> {
     let mut args = Vec::new();
     for p in config
         .fixed_parameters()
@@ -372,7 +406,7 @@ fn render_container_args(config: &WorkflowConfiguration) -> Result<Vec<String>, 
         .filter(|p| !matches!(p, Parameter::Separator(_)))
     {
         validate_name(p.name())?;
-        if let Some(v) = value_string(p) {
+        if let Some(v) = value_string(p, reference_directory)? {
             args.push(container_flag(p.name()));
             args.push(v);
         }
@@ -438,7 +472,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            render_args(&c).unwrap(),
+            render_args(&c, None).unwrap(),
             [
                 "-profile",
                 "docker",
@@ -458,7 +492,7 @@ mod tests {
         let mut c = config(Engine::Snakemake);
         apply_values(&mut c, &[pv("threads", json!(2)), pv("name", json!("x y"))]).unwrap();
         assert_eq!(
-            render_args(&c).unwrap(),
+            render_args(&c, None).unwrap(),
             ["--config", "mode=fast", "threads=2", "name=x y"]
         );
     }
@@ -467,7 +501,7 @@ mod tests {
     fn unset_is_skipped() {
         let mut c = config(Engine::Snakemake);
         c.fixed_parameters_mut().clear();
-        assert!(render_args(&c).unwrap().is_empty());
+        assert!(render_args(&c, None).unwrap().is_empty());
     }
 
     #[test]
@@ -496,7 +530,7 @@ mod tests {
         let mut c = config(Engine::Nextflow);
         *c.dynamic_parameters_mut()[1].name_mut() = "-x".into();
         apply_values(&mut c, &[pv("-x", json!("v"))]).unwrap();
-        assert_eq!(render_args(&c), Err(Error::InvalidName("-x".into())));
+        assert_eq!(render_args(&c, None), Err(Error::InvalidName("-x".into())));
     }
 
     #[test]
@@ -505,7 +539,10 @@ mod tests {
         let mut short = Text::new("n".into(), "N".into(), "".into());
         *short.value_mut() = Some("3".into());
         c.fixed_parameters_mut().push(Parameter::Text(short));
-        assert_eq!(render_args(&c).unwrap(), ["--mode", "fast", "-n", "3"]);
+        assert_eq!(
+            render_args(&c, None).unwrap(),
+            ["--mode", "fast", "-n", "3"]
+        );
     }
 
     #[test]
@@ -514,7 +551,7 @@ mod tests {
         c.engine_parameters_mut()
             .push(EngineParameter::new("memory".into(), "2g".into()));
         assert!(matches!(
-            render_args(&c),
+            render_args(&c, None),
             Err(Error::EngineParametersUnsupported(_))
         ));
     }
@@ -522,7 +559,7 @@ mod tests {
     #[test]
     fn unsupported_engine() {
         assert!(matches!(
-            render_args(&config(Engine::Cwl)),
+            render_args(&config(Engine::Cwl), None),
             Err(Error::UnsupportedEngine(_))
         ));
     }
@@ -543,7 +580,7 @@ mod tests {
         c.dynamic_parameters_mut()
             .push(Parameter::ValueSelect(select(false)));
         apply_values(&mut c, &[pv("mode2", json!("b"))]).unwrap();
-        assert_eq!(&render_args(&c).unwrap()[2..], ["--mode2", "b"]);
+        assert_eq!(&render_args(&c, None).unwrap()[2..], ["--mode2", "b"]);
         assert!(matches!(
             apply_values(&mut c, &[pv("mode2", json!("z"))]),
             Err(Error::OutOfRange(..))
@@ -560,7 +597,7 @@ mod tests {
         c.dynamic_parameters_mut()
             .push(Parameter::ValueSelect(select(true)));
         apply_values(&mut c, &[pv("mode2", json!(["a", "b"]))]).unwrap();
-        assert_eq!(&render_args(&c).unwrap()[2..], ["--mode2", "a,b"]);
+        assert_eq!(&render_args(&c, None).unwrap()[2..], ["--mode2", "a,b"]);
         assert_eq!(
             value_json(c.dynamic_parameters().last().unwrap()),
             json!(["a", "b"])
@@ -572,7 +609,7 @@ mod tests {
         let mut c = config(Engine::Nextflow);
         c.dynamic_parameters_mut()
             .push(Parameter::Separator(Separator::new("S".into(), "".into())));
-        assert_eq!(render_args(&c).unwrap(), ["--mode", "fast"]);
+        assert_eq!(render_args(&c, None).unwrap(), ["--mode", "fast"]);
     }
 
     #[test]
@@ -587,7 +624,38 @@ mod tests {
             Err(Error::InvalidPath(_))
         ));
         apply_values(&mut c, &[pv("input", json!("/a/b.fq"))]).unwrap();
-        assert_eq!(&render_args(&c).unwrap()[2..], ["--input", "a/b.fq"]);
+        assert_eq!(&render_args(&c, None).unwrap()[2..], ["--input", "a/b.fq"]);
+    }
+
+    /// Values below the reference prefix become absolute reference paths, other values are
+    /// untouched, `..` still cannot escape, and a missing reference directory is an error.
+    #[test]
+    fn reference_prefix_is_rewritten_at_render() {
+        let mut c = config(Engine::Nextflow);
+        apply_values(
+            &mut c,
+            &[pv(
+                "input",
+                json!(["macworp_global_reference_data/hg38/a.fa", "reads/b.fq"]),
+            )],
+        )
+        .unwrap();
+        let reference = Path::new("/data/reference");
+        assert_eq!(
+            &render_args(&c, Some(reference)).unwrap()[2..],
+            ["--input", "/data/reference/hg38/a.fa,reads/b.fq"]
+        );
+        assert_eq!(
+            render_args(&c, None),
+            Err(Error::ReferenceUnavailable("input".into()))
+        );
+        assert!(matches!(
+            apply_values(
+                &mut c,
+                &[pv("input", json!("macworp_global_reference_data/../../x"))]
+            ),
+            Err(Error::InvalidPath(_))
+        ));
     }
 
     #[test]

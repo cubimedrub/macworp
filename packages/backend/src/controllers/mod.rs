@@ -1,6 +1,7 @@
 mod groups_controller;
 mod login_controller;
 mod projects_controller;
+mod reference_controller;
 mod runs_controller;
 mod shares_controller;
 mod users_controller;
@@ -12,6 +13,7 @@ mod workflow_integrations_controllers;
 pub use groups_controller::GroupsController;
 pub use login_controller::LoginController;
 pub use projects_controller::ProjectsController;
+pub use reference_controller::ReferenceController;
 pub use runs_controller::RunsController;
 pub use shares_controller::SharesController;
 pub use users_controller::UsersController;
@@ -26,3 +28,7 @@ mod authorization_http_tests;
 /// HTTP-level tests of the worker protocol
 #[cfg(all(test, feature = "integration"))]
 mod worker_http_tests;
+
+/// HTTP-level tests of the global reference data
+#[cfg(all(test, feature = "integration"))]
+mod reference_http_tests;

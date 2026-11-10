@@ -11,6 +11,12 @@ pub trait IsRouter: Routable {
     fn workflow_integration_new_route() -> NavigationTarget<Self>;
     fn workflow_integration_index_route() -> NavigationTarget<Self>;
     fn workflow_integration_route(id: i64) -> NavigationTarget<Self>;
+    /// The global reference data page
+    fn reference_route() -> NavigationTarget<Self>;
+    /// Page with the application settings, `None` where there are none (only the desktop app has)
+    fn settings_route() -> Option<NavigationTarget<Self>> {
+        None
+    }
     /// List of the user's groups
     fn group_index_route() -> NavigationTarget<Self>;
     /// Page to create a group

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use macworp_backend::models::{ProjectTable, Run, RunError, RunLogTable, RunTable};
+use macworp_backend::reference_directory::ReferenceDirectory;
 use macworp_core::entities::{FailureReason, LogStream, RunStatus};
 use macworp_worker::{
     container_runtime::BoxFuture,
@@ -16,6 +17,8 @@ pub struct DbJobSource {
     db: DatabaseConnection,
     /// Log bytes stored per run, `0` = unlimited
     max_log_bytes: u64,
+    /// Location of the global reference data
+    reference_directory: ReferenceDirectory,
 }
 
 fn source_error(error: impl std::fmt::Display) -> SourceError {
@@ -23,8 +26,23 @@ fn source_error(error: impl std::fmt::Display) -> SourceError {
 }
 
 impl DbJobSource {
-    pub fn new(db: DatabaseConnection, max_log_bytes: u64) -> Self {
-        Self { db, max_log_bytes }
+    /// Source claiming runs from `db`.
+    ///
+    /// # Arguments
+    /// * `db` - Backend database
+    /// * `max_log_bytes` - Log size limit per run
+    /// * `reference_directory` - Where the global reference data currently lives, read at every
+    ///   claim so a change in the settings applies to the next run
+    pub fn new(
+        db: DatabaseConnection,
+        max_log_bytes: u64,
+        reference_directory: ReferenceDirectory,
+    ) -> Self {
+        Self {
+            db,
+            max_log_bytes,
+            reference_directory,
+        }
     }
 
     /// Directory of the project a run belongs to, `None` if the project is gone or has no path
@@ -70,6 +88,7 @@ impl JobSource for DbJobSource {
                         return Ok(Some(Job {
                             run_id: run.id,
                             project_dir,
+                            reference_dir: std::path::absolute(self.reference_directory.get()).ok(),
                             configuration: run.configuration,
                             progress: None,
                         }));
@@ -212,7 +231,11 @@ mod tests {
     #[tokio::test]
     async fn claim_log_finish_roundtrip() {
         let (db, user, project, dir) = setup().await;
-        let source = DbJobSource::new(db.clone(), 0);
+        let source = DbJobSource::new(
+            db.clone(),
+            0,
+            ReferenceDirectory::new(PathBuf::from("reference")),
+        );
         assert!(source.claim().await.unwrap().is_none());
 
         let id = queue(&db, user, project).await;
@@ -253,7 +276,11 @@ mod tests {
         let bad = queue(&db, user, orphan_project.id).await;
         let good = queue(&db, user, project).await;
 
-        let source = DbJobSource::new(db.clone(), 0);
+        let source = DbJobSource::new(
+            db.clone(),
+            0,
+            ReferenceDirectory::new(PathBuf::from("reference")),
+        );
         let job = source.claim().await.unwrap().unwrap();
         assert_eq!(job.run_id, good);
         let bad = RunTable::find_by_id(bad).one(&db).await.unwrap().unwrap();
@@ -267,7 +294,11 @@ mod tests {
         let id = queue(&db, user, project).await;
         let run = RunTable::find_by_id(id).one(&db).await.unwrap().unwrap();
         run.request_cancel(&db).await.unwrap();
-        let source = DbJobSource::new(db.clone(), 0);
+        let source = DbJobSource::new(
+            db.clone(),
+            0,
+            ReferenceDirectory::new(PathBuf::from("reference")),
+        );
         source.finish(id, Outcome::Succeeded).await.unwrap();
         let run = RunTable::find_by_id(id).one(&db).await.unwrap().unwrap();
         assert_eq!(run.status, RunStatus::Cancelled);
@@ -306,7 +337,11 @@ mod tests {
         let (db, user, project, _dir) = setup().await;
         let id = queue(&db, user, project).await;
         let worker = Worker::new(
-            Arc::new(DbJobSource::new(db.clone(), 0)),
+            Arc::new(DbJobSource::new(
+                db.clone(),
+                0,
+                ReferenceDirectory::new(PathBuf::from("reference")),
+            )),
             vec![Arc::new(EchoExecutor) as Arc<dyn Executor>],
             WorkerOptions {
                 idle_interval: Duration::from_millis(20),

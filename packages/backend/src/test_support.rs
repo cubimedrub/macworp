@@ -5,8 +5,8 @@ use http::{Method, Request, StatusCode, header};
 use macworp_core::{
     entities::Role,
     routing::{
-        GroupsRouting, IsRouting, LoginRouting, ProjectsRouting, RunsRouting, SharesRouting,
-        UsersRouting, UtilitiesRouting, WorkerRouting, WorkflowIntegrationsRouting,
+        GroupsRouting, IsRouting, LoginRouting, ProjectsRouting, ReferenceRouting, RunsRouting,
+        SharesRouting, UsersRouting, UtilitiesRouting, WorkerRouting, WorkflowIntegrationsRouting,
     },
     workflow_configuration::WorkflowConfiguration,
 };
@@ -56,6 +56,10 @@ impl TestApp {
         *configuration.database_url_mut() =
             format!("sqlite://{}/test.db?mode=rwc", directory.path().display());
         let state = State::new_for_integration(configuration).await.unwrap();
+        state
+            .reference_directory()
+            .set(directory.path().join("reference"));
+        std::fs::create_dir_all(directory.path().join("reference")).unwrap();
         Migrator::up(state.db(), None).await.unwrap();
         let state = Arc::new(state);
 
@@ -75,6 +79,10 @@ impl TestApp {
             .nest(
                 ProjectsRouting::controller_path(),
                 ProjectsController::<LocalFilesystem>::routes(state.clone()),
+            )
+            .nest(
+                ReferenceRouting::controller_path(),
+                ReferenceController::<LocalFilesystem>::routes(state.clone()),
             )
             .nest(
                 WorkflowIntegrationsRouting::controller_path(),

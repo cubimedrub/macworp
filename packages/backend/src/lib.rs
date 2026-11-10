@@ -12,6 +12,8 @@ pub mod error;
 pub mod filesystems;
 /// Models abstracting the database access
 pub mod models;
+/// Shared location of the global reference data
+pub mod reference_directory;
 /// State of the backend, e.g. connection pool
 mod state;
 /// Fixtures for the HTTP-level tests
@@ -30,8 +32,8 @@ use axum::{Extension, Router};
 #[cfg(feature = "standalone")]
 use http::Method;
 use macworp_core::routing::{
-    GroupsRouting, IsRouting, LoginRouting, ProjectsRouting, RunsRouting, SharesRouting,
-    UsersRouting, UtilitiesRouting, WorkerRouting, WorkflowIntegrationsRouting,
+    GroupsRouting, IsRouting, LoginRouting, ProjectsRouting, ReferenceRouting, RunsRouting,
+    SharesRouting, UsersRouting, UtilitiesRouting, WorkerRouting, WorkflowIntegrationsRouting,
 };
 use tokio::net::TcpListener;
 #[cfg(feature = "standalone")]
@@ -137,6 +139,8 @@ where
         state: State,
         cors: Option<CorsLayer>,
     ) -> Result<(), Error> {
+        std::fs::create_dir_all(state.reference_directory().get())
+            .map_err(Error::ReferenceDirectory)?;
         let state = Arc::new(state);
 
         let router = Router::new()
@@ -155,6 +159,10 @@ where
             .nest(
                 ProjectsRouting::controller_path(),
                 ProjectsController::<F>::routes(state.clone()),
+            )
+            .nest(
+                ReferenceRouting::controller_path(),
+                ReferenceController::<F>::routes(state.clone()),
             )
             .nest(
                 WorkflowIntegrationsRouting::controller_path(),
@@ -226,18 +234,23 @@ impl Backend<LocalFilesystem> {
     /// * `tcp_listener` - The TCP listener to accept incoming connections on
     /// * `shutdown_signal` - A signal to gracefully shutdown the backend
     /// * `config` - The backend configuration to use
+    /// * `desktop_user_name` - Name of the single desktop user
+    /// * `reference_directory` - Location of the global reference data, shared with the desktop settings
     pub async fn start(
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
         config: Configuration,
         desktop_user_name: String,
+        reference_directory: crate::reference_directory::ReferenceDirectory,
     ) -> Result<(), Error> {
         use macworp_database_migration::{Migrator, MigratorTrait};
 
         use crate::models::{ActiveUser, User, UserTable};
 
         config.validate()?;
-        let state = State::new_for_integration(config).await?;
+        let state = State::new_for_integration(config)
+            .await?
+            .with_reference_directory(reference_directory);
 
         Migrator::up(state.db(), None)
             .await

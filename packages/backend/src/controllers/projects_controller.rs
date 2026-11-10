@@ -11,6 +11,7 @@ use http::{HeaderMap, StatusCode};
 use macworp_core::{
     entities::Role,
     http::headers::ContentRangeHeaderValue,
+    paths::{REFERENCE_PREFIX, strip_reference_prefix},
     requests::{NewProjectRequest, ProjectCreateFolderRequest, ProjectPathDeletionRequest},
     responses::ProjectResponse,
     routing::ProjectsRouting,
@@ -22,7 +23,7 @@ use thiserror::Error;
 use crate::{
     authentication::middleware::{ListScope, RequireUser},
     authorization::{Authorized, Editor, Owner, Principal, Resource, Viewer},
-    filesystems::is_filesystem::IsFilesystem,
+    filesystems::{is_filesystem::IsFilesystem, project_content::ProjectContent},
     models::{ActiveProject, Project, ProjectTable, User},
     state::State as AppState,
 };
@@ -41,13 +42,19 @@ pub enum Error {
     MissingContentRangeHeader,
     #[error("Invalid Content-Range header: {0}")]
     InvalidContentRangeHeader(macworp_core::http::headers::Error),
+    /// The path starts with the name of the virtual reference data folder, 400
+    #[error("`{}` is reserved for the global reference data", REFERENCE_PREFIX)]
+    ReservedPath,
 }
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
-        tracing::error!("{self}");
+        if !matches!(self, Error::ReservedPath) {
+            tracing::error!("{self}");
+        }
         match self {
             Error::Authentication(e) => e.into_response(),
+            Error::ReservedPath => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
             Error::Filesystem(crate::filesystems::errors::Error::SymlinkNotAllowed(_)) => {
                 (StatusCode::FORBIDDEN, "Symlinks are not allowed").into_response()
             }
@@ -123,6 +130,7 @@ where
                     current: PathBuf::new(),
                     files: Vec::new(),
                     directories: Vec::new(),
+                    read_only: false,
                     local_path: None,
                     my_role: None,
                 })
@@ -179,6 +187,7 @@ where
             current: PathBuf::new(),
             files: Vec::new(),
             directories: Vec::new(),
+            read_only: false,
             local_path: None,
             my_role: Some(Role::Owner),
         }))
@@ -193,8 +202,28 @@ where
         }: Authorized<Project, Viewer>,
         Query(query_params): Query<ProjectQueryParams>,
     ) -> Result<Json<ProjectResponse>, Error> {
-        let content = F::content(state.as_ref(), &project, query_params.subpath)
-            .map_err(Error::Filesystem)?;
+        let (content, read_only) = match strip_reference_prefix(&query_params.subpath) {
+            // The virtual reference folder shows the instance-wide reference data
+            Some(rest) => {
+                let base = state.reference_directory().get();
+                let requested = F::join_paths(&base, &rest).map_err(Error::Filesystem)?;
+                let mut content =
+                    ProjectContent::try_from((&base, &requested)).map_err(Error::Filesystem)?;
+                content.current = std::path::Path::new(REFERENCE_PREFIX).join(content.current);
+                (content, true)
+            }
+            None => {
+                let mut content = F::content(state.as_ref(), &project, query_params.subpath)
+                    .map_err(Error::Filesystem)?;
+                if content.current.as_os_str().is_empty() {
+                    // A project folder of that name is hidden: the name belongs to the reference data
+                    content.directories.retain(|name| name != REFERENCE_PREFIX);
+                    content.directories.push(REFERENCE_PREFIX.to_string());
+                    content.directories.sort();
+                }
+                (content, false)
+            }
+        };
         let local_path = F::local_path(state.as_ref(), &project);
 
         Ok(Json(ProjectResponse {
@@ -213,6 +242,7 @@ where
             current: content.current,
             files: content.files,
             directories: content.directories,
+            read_only,
             local_path,
             my_role: Some(role),
         }))
@@ -263,6 +293,7 @@ where
         let content_range = ContentRangeHeaderValue::try_from(content_header_value)
             .map_err(Error::InvalidContentRangeHeader)?;
 
+        Self::ensure_not_reserved(&params.file_path)?;
         F::stream_to_file(
             state.as_ref(),
             &project,
@@ -280,6 +311,7 @@ where
         Authorized { model: project, .. }: Authorized<Project, Editor>,
         Json(payload): Json<ProjectCreateFolderRequest>,
     ) -> Result<StatusCode, Error> {
+        Self::ensure_not_reserved(&payload.folder_path)?;
         F::create_folder(state.as_ref(), &project, payload.folder_path)
             .await
             .map_err(Error::Filesystem)?;
@@ -287,11 +319,24 @@ where
         Ok(StatusCode::OK)
     }
 
+    /// Rejects paths below the virtual reference folder: it is not part of the project, and a
+    /// real project folder of that name would be hidden by it.
+    ///
+    /// # Arguments
+    /// * `path` - Path relative to the project, from the request
+    fn ensure_not_reserved(path: &std::path::Path) -> Result<(), Error> {
+        if strip_reference_prefix(path).is_some() {
+            return Err(Error::ReservedPath);
+        }
+        Ok(())
+    }
+
     pub async fn delete_path(
         State(state): State<Arc<AppState>>,
         Authorized { model: project, .. }: Authorized<Project, Editor>,
         Json(payload): Json<ProjectPathDeletionRequest>,
     ) -> Result<StatusCode, Error> {
+        Self::ensure_not_reserved(&payload.path)?;
         F::delete_path(state.as_ref(), &project, payload.path)
             .await
             .map_err(Error::Filesystem)?;

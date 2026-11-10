@@ -20,6 +20,8 @@ use crate::{
 pub struct LocalFilesystem;
 
 impl IsFilesystem for LocalFilesystem {
+    const REFERENCE_WRITABLE: bool = false;
+
     fn content(
         state: &State,
         project: &Project,
@@ -43,6 +45,10 @@ impl IsFilesystem for LocalFilesystem {
 
     fn local_path(state: &State, project: &Project) -> Option<PathBuf> {
         Self::project_path(state, project).ok()
+    }
+
+    fn local_reference_path(directory: &std::path::Path) -> Option<PathBuf> {
+        Some(directory.to_path_buf())
     }
 
     async fn create_project_directory(state: &State, project: &Project) -> Result<PathBuf, Error> {

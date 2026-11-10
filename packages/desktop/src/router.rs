@@ -2,12 +2,18 @@ use dioxus::prelude::*;
 
 use macworp_ui_core::{
     layouts::{one_pane::OnePane, two_pane::TwoPane},
-    pages::{error::Error, groups::*, projects::*, users::*, workflow_integrations::*},
+    pages::{
+        error::Error, groups::*, projects::*, reference::ReferenceEdit, users::*,
+        workflow_integrations::*,
+    },
     router::IsRouter,
 };
 
 use crate::{
-    pages::projects::{edit::FileImmutableProjectEdit, ProjectNew},
+    pages::{
+        projects::{edit::FileImmutableProjectEdit, ProjectNew},
+        settings::SettingsPage,
+    },
     storage::Storage,
 };
 
@@ -26,6 +32,12 @@ pub enum Router {
         ProjectNew,
         #[route("/projects/:id", ProjectEdit<FileImmutableProjectEdit>)]
         ProjectEdit{ id: i64 },
+
+        #[route("/settings", SettingsPage)]
+        SettingsPage,
+
+        #[route("/reference", ReferenceEdit<FileImmutableProjectEdit>)]
+        ReferenceEdit,
 
         #[route("/workflow-integrations", WorkflowIntegrationIndex<Storage, Router>)]
         WorkflowIntegrationIndex,
@@ -62,6 +74,14 @@ impl IsRouter for Router {
 
     fn project_route(id: i64) -> NavigationTarget<Self> {
         NavigationTarget::Internal(Router::ProjectEdit { id })
+    }
+
+    fn settings_route() -> Option<NavigationTarget<Self>> {
+        Some(NavigationTarget::Internal(Router::SettingsPage))
+    }
+
+    fn reference_route() -> NavigationTarget<Self> {
+        NavigationTarget::Internal(Router::ReferenceEdit)
     }
 
     fn login_route(_message: Option<String>) -> NavigationTarget<Self> {

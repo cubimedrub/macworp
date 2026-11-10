@@ -244,6 +244,7 @@ impl JobSource for HttpJobSource {
                     Ok(Some(Job {
                         run_id: claimed.run_id,
                         project_dir: claimed.project_dir,
+                        reference_dir: claimed.reference_dir,
                         configuration: claimed.configuration,
                         progress: None,
                     }))
@@ -391,6 +392,7 @@ mod tests {
             Json(WorkerClaimResponse {
                 run_id: 7,
                 project_dir: "/data/p".into(),
+                reference_dir: None,
                 configuration: WorkflowConfiguration::default(),
                 token: "tok".into(),
                 lease_seconds: 60,

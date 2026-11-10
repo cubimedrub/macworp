@@ -354,6 +354,9 @@ impl TestApp {
         let base_url = format!("http://{}", listener.local_addr().unwrap());
         *backend_config.port_mut() = listener.local_addr().unwrap().port();
         let (shutdown, shutdown_receiver) = tokio::sync::oneshot::channel::<()>();
+        let reference_directory = root.join("reference");
+        std::fs::create_dir_all(&reference_directory).unwrap();
+        let reference_directory_for_backend = reference_directory.clone();
         let backend = tokio::spawn(async move {
             Backend::<LocalFilesystem>::start(
                 listener,
@@ -362,6 +365,9 @@ impl TestApp {
                 }),
                 backend_config,
                 USER_NAME.to_string(),
+                macworp_backend::reference_directory::ReferenceDirectory::new(
+                    reference_directory_for_backend,
+                ),
             )
             .await
         });
@@ -381,9 +387,14 @@ impl TestApp {
             .local_login(USER_NAME.into(), password.into())
             .await
             .unwrap();
-        let (stop, worker) = crate::start_worker(&database_url, max_log_bytes, runtime)
-            .await
-            .unwrap();
+        let (stop, worker) = crate::start_worker(
+            &database_url,
+            max_log_bytes,
+            runtime,
+            macworp_backend::reference_directory::ReferenceDirectory::new(reference_directory),
+        )
+        .await
+        .unwrap();
         Self {
             client,
             jwt,

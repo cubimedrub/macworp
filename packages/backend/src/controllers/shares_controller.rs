@@ -18,7 +18,7 @@ use thiserror::Error;
 use crate::{
     authentication::middleware::RequireUser,
     authorization::{Owner, Principal, Resource, RoleDb, ShareError, authorize},
-    models::{Group, GroupTable, Project, User, UserTable, WorkflowIntegration},
+    models::{Group, GroupTable, Project, ReferenceData, User, UserTable, WorkflowIntegration},
     state::State as AppState,
 };
 
@@ -64,6 +64,8 @@ enum Kind {
     Project,
     /// `workflows`
     Workflow,
+    /// `reference`, the global reference data (id of the singleton)
+    Reference,
 }
 
 impl Kind {
@@ -72,12 +74,14 @@ impl Kind {
         match segment {
             "projects" => Ok(Self::Project),
             "workflows" => Ok(Self::Workflow),
+            "reference" => Ok(Self::Reference),
             _ => Err(Error::UnknownKind),
         }
     }
 }
 
-/// Endpoints to list, grant and revoke the shares of projects and workflows
+/// Endpoints to list, grant and revoke the shares of projects, workflows and the reference data.
+/// Nobody owns the reference data, so only instance admins pass the Owner check there.
 pub struct SharesController;
 
 impl SharesController {
@@ -171,6 +175,7 @@ impl SharesController {
         let shares = match Kind::parse(&kind)? {
             Kind::Project => Self::list_of::<Project>(&state, user, id).await?,
             Kind::Workflow => Self::list_of::<WorkflowIntegration>(&state, user, id).await?,
+            Kind::Reference => Self::list_of::<ReferenceData>(&state, user, id).await?,
         };
         Ok(Json(shares))
     }
@@ -194,6 +199,10 @@ impl SharesController {
                     payload.role,
                 )
                 .await?
+            }
+            Kind::Reference => {
+                Self::grant_on::<ReferenceData>(&state, user, id, payload.principal, payload.role)
+                    .await?
             }
         }
         Ok(StatusCode::OK)
@@ -241,6 +250,14 @@ impl SharesController {
                 authorize::<WorkflowIntegration, Owner>(&state, user, id).await?;
                 let transaction = state.db().begin().await?;
                 WorkflowIntegration::shares(&transaction, id)
+                    .revoke(principal)
+                    .await?;
+                transaction.commit().await?;
+            }
+            Kind::Reference => {
+                authorize::<ReferenceData, Owner>(&state, user, id).await?;
+                let transaction = state.db().begin().await?;
+                ReferenceData::shares(&transaction, id)
                     .revoke(principal)
                     .await?;
                 transaction.commit().await?;

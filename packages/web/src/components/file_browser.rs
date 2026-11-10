@@ -59,8 +59,13 @@ impl IsFileBrowser for FileBrowser {
             let config = config.read().clone();
             let id = props.project.read().id;
 
-            Client::new(config.base_url().to_string(), config.timeout())
-                .projects()
+            let client = Client::new(config.base_url().to_string(), config.timeout());
+            let files = if props.reference {
+                client.reference_files()
+            } else {
+                client.projects()
+            };
+            files
                 .create_folder(&jwt, id, folder_path)
                 .await
                 .map_err(Error::Request)?;
@@ -125,8 +130,13 @@ impl IsFileBrowser for FileBrowser {
 
             let config = config.read().clone();
 
-            Client::new(config.base_url().to_string(), config.timeout())
-                .projects()
+            let client = Client::new(config.base_url().to_string(), config.timeout());
+            let files = if props.reference {
+                client.reference_files()
+            } else {
+                client.projects()
+            };
+            files
                 .delete_path(&jwt, project_id, path)
                 .await
                 .map_err(Error::Request)?;

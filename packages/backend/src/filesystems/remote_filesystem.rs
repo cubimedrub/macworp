@@ -1,20 +1,12 @@
-use std::{
-    io::SeekFrom,
-    path::{Path, PathBuf},
-    pin::pin,
-};
+use std::path::PathBuf;
 
 use axum::{BoxError, body::Bytes};
-use futures_util::{Stream, TryStreamExt};
+use futures_util::Stream;
 use macworp_core::{http::headers::ContentRangeHeaderValue, responses::StorageProbe};
-use tokio::{
-    fs::{OpenOptions, metadata},
-    io::{AsyncSeekExt, BufWriter},
-};
-use tokio_util::io::StreamReader;
 
 use crate::{
     filesystems::{
+        directory_files::DirectoryFiles,
         errors::{Error, RemoteFilesystemError},
         is_filesystem::IsFilesystem,
         project_content::ProjectContent,
@@ -26,34 +18,11 @@ use crate::{
 /// Name of the marker file in the projects directory, see [`IsFilesystem::storage_probe`]
 pub const STORAGE_MARKER_FILE: &str = ".macworp-storage-id";
 
-const PARTIAL_UPLOAD_EXTENSION: &str = "macworp_partial_upload";
-
 pub struct RemoteFilesystem;
 
-impl RemoteFilesystem {
-    /// Creates an empty file to file to reserve storage space to make sure the incomming content
-    /// can be stored.
-    ///
-    /// # Arguments
-    /// * `target_path` - The path where the file should be created.
-    /// * `size` - The size of the file to be created in bytes.
-    ///
-    async fn reserve_file(target_path: &Path, size: u64) -> Result<(), Error> {
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(target_path)
-            .await?;
-
-        file.set_len(size)
-            .await
-            .map_err(RemoteFilesystemError::ReserveFile)?; // 50 MiB
-        Ok(())
-    }
-}
-
 impl IsFilesystem for RemoteFilesystem {
+    const REFERENCE_WRITABLE: bool = true;
+
     fn content(
         state: &State,
         project: &Project,
@@ -121,92 +90,7 @@ impl IsFilesystem for RemoteFilesystem {
         E: Into<BoxError>,
     {
         let project_path = Self::project_path(state, project)?;
-
-        let target_path = Self::join_paths(&project_path, &file_path)?;
-        let partial_upload_path = Self::join_paths(
-            &project_path,
-            &file_path.with_extension(PARTIAL_UPLOAD_EXTENSION),
-        )?;
-
-        tokio::fs::create_dir_all(target_path.parent().ok_or_else(|| {
-            Error::RemoteFilesystem(RemoteFilesystemError::NoParentPath(target_path.clone()))
-        })?)
-        .await
-        .map_err(|err| {
-            Error::RemoteFilesystem(RemoteFilesystemError::CreateProjectSubDirectory(err))
-        })?;
-
-        if target_path.is_dir() || partial_upload_path.is_dir() {
-            return Err(Error::RemoteFilesystem(
-                RemoteFilesystemError::TargetPathIsDirectory(target_path),
-            ));
-        }
-
-        if !partial_upload_path.is_file() {
-            Self::reserve_file(
-                &partial_upload_path,
-                content_range.size().ok_or(Error::RemoteFilesystem(
-                    RemoteFilesystemError::MissingFileSize,
-                ))?,
-            )
-            .await?;
-        } else {
-            // Get the file size of the existing file
-            let target_size = metadata(&partial_upload_path)
-                .await
-                .map_err(|err| {
-                    Error::RemoteFilesystem(RemoteFilesystemError::GetFileMetadataFailed(err))
-                })?
-                .len();
-
-            // If it is not equal, call reserve_file to resize accordingly
-            if target_size
-                != content_range.size().ok_or(Error::RemoteFilesystem(
-                    RemoteFilesystemError::MissingFileSize,
-                ))?
-            {
-                Self::reserve_file(
-                    &partial_upload_path,
-                    content_range.size().ok_or(Error::RemoteFilesystem(
-                        RemoteFilesystemError::MissingFileSize,
-                    ))?,
-                )
-                .await?;
-            }
-        }
-
-        async {
-            // Convert the stream into an `AsyncRead`.
-            let body_with_io_error = stream.map_err(std::io::Error::other);
-            let mut body_reader = pin!(StreamReader::new(body_with_io_error));
-
-            // Create the file. `File` implements `AsyncWrite`.
-            let mut file = OpenOptions::new()
-                .write(true)
-                .open(&partial_upload_path)
-                .await?;
-            let mut writer = BufWriter::new(&mut file);
-            writer
-                .seek(SeekFrom::Start(content_range.range().0))
-                .await?;
-
-            // Copy the body into the file.
-            tokio::io::copy(&mut body_reader, &mut writer).await?;
-
-            Ok::<_, std::io::Error>(())
-        }
-        .await
-        .map_err(|err| Error::RemoteFilesystem(RemoteFilesystemError::StreamToFile(err)))?;
-
-        if content_range.range().1 + 1 == content_range.size().unwrap() {
-            tokio::fs::rename(&partial_upload_path, &target_path)
-                .await
-                .map_err(|err| {
-                    Error::RemoteFilesystem(RemoteFilesystemError::FinalizeUploadFailed(err))
-                })?;
-        }
-
-        Ok(())
+        DirectoryFiles::stream_to_file(&project_path, file_path, content_range, stream).await
     }
 
     async fn create_folder(
@@ -214,37 +98,11 @@ impl IsFilesystem for RemoteFilesystem {
         project: &Project,
         folder_path: PathBuf,
     ) -> Result<(), Error> {
-        let new_folder_path = Self::join_paths(&Self::project_path(state, project)?, &folder_path)?;
-
-        if new_folder_path.is_file() {
-            return Err(Error::RemoteFilesystem(
-                RemoteFilesystemError::TargetPathIsFile(new_folder_path),
-            ));
-        }
-
-        tokio::fs::create_dir_all(&new_folder_path)
-            .await
-            .map_err(|err| {
-                Error::RemoteFilesystem(RemoteFilesystemError::CreateProjectSubDirectory(err))
-            })
+        DirectoryFiles::create_folder(&Self::project_path(state, project)?, folder_path).await
     }
 
     async fn delete_path(state: &State, project: &Project, path: PathBuf) -> Result<(), Error> {
-        let target_path = Self::join_paths(&Self::project_path(state, project)?, &path)?;
-
-        if target_path.is_file() {
-            tokio::fs::remove_file(target_path).await.map_err(|err| {
-                Error::RemoteFilesystem(RemoteFilesystemError::DeleteFileFailed(err))
-            })
-        } else if target_path.is_dir() {
-            tokio::fs::remove_dir_all(target_path).await.map_err(|err| {
-                Error::RemoteFilesystem(RemoteFilesystemError::DeleteDirectoryFailed(err))
-            })
-        } else {
-            Err(Error::RemoteFilesystem(
-                RemoteFilesystemError::PathDoesNotExist(path),
-            ))
-        }
+        DirectoryFiles::delete_path(&Self::project_path(state, project)?, path).await
     }
 }
 

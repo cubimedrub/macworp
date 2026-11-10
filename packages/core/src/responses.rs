@@ -40,6 +40,10 @@ pub struct ProjectResponse {
     pub current: PathBuf,
     pub files: Vec<String>,
     pub directories: Vec<String>,
+    /// The listed folder is read-only for everybody (the virtual global reference data folder),
+    /// whatever `my_role` says
+    #[serde(default)]
+    pub read_only: bool,
     /// Project directory on the user's machine, only set when the backend runs locally (desktop)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_path: Option<PathBuf>,
@@ -233,6 +237,10 @@ pub struct WorkerClaimResponse {
     pub run_id: i64,
     /// Project directory, valid on the worker too (shared filesystem)
     pub project_dir: PathBuf,
+    /// Global reference data directory, valid on the worker too (shared filesystem); `None` for
+    /// an older backend
+    #[serde(default)]
+    pub reference_dir: Option<PathBuf>,
     /// Workflow configuration snapshot with the parameter values applied
     pub configuration: WorkflowConfiguration,
     /// Per-run token for all further calls, sent as `Authorization: Run <token>`

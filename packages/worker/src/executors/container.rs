@@ -28,14 +28,18 @@ impl ContainerExecutor {
     /// The `<runtime> run ...` command for the job, see [`containerized_spec`].
     pub fn launch_spec(&self, job: &Job) -> Result<LaunchSpec, ExecutorError> {
         match job.configuration.source() {
-            Source::Image(image) => Ok(containerized_spec(
-                &self.runtime_binary,
-                image.image(),
-                job,
-                &[],
-                &[],
-                render_args(&job.configuration)?,
-            )),
+            Source::Image(image) => {
+                let read_only: Vec<&std::path::Path> =
+                    job.reference_dir.as_deref().into_iter().collect();
+                Ok(containerized_spec(
+                    &self.runtime_binary,
+                    image.image(),
+                    job,
+                    &read_only,
+                    &[],
+                    render_args(&job.configuration, job.reference_dir.as_deref())?,
+                ))
+            }
             other => Err(ExecutorError::UnsupportedSource(format!("{other:?}"))),
         }
     }
@@ -79,6 +83,7 @@ mod tests {
         Job {
             run_id: 5,
             project_dir: "/data/p1".into(),
+            reference_dir: None,
             configuration,
             progress: None,
         }

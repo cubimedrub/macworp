@@ -2,20 +2,27 @@ use sea_orm::{Database, DatabaseConnection};
 
 use macworp_core::workflow_configuration::engine::Engine;
 
-use crate::{configuration::Configuration, error::Error, worker_registry::WorkerRegistry};
+use crate::{
+    configuration::Configuration, error::Error, reference_directory::ReferenceDirectory,
+    worker_registry::WorkerRegistry,
+};
 
 pub struct State {
     config: Configuration,
     db: DatabaseConnection,
     workers: WorkerRegistry,
+    reference_directory: ReferenceDirectory,
 }
 
 impl State {
     async fn new(config: Configuration, db: DatabaseConnection) -> Result<Self, Error> {
+        let reference_directory =
+            ReferenceDirectory::below(std::path::Path::new(config.projects_path()));
         Ok(Self {
             config,
             db,
             workers: WorkerRegistry::default(),
+            reference_directory,
         })
     }
 
@@ -25,6 +32,21 @@ impl State {
 
     pub fn db(&self) -> &DatabaseConnection {
         &self.db
+    }
+
+    /// Location of the global reference data, shared with the embedding application
+    pub fn reference_directory(&self) -> &ReferenceDirectory {
+        &self.reference_directory
+    }
+
+    /// Replaces the reference directory handle by one the embedding application keeps, so it
+    /// can move the reference data while the backend runs.
+    ///
+    /// # Arguments
+    /// * `reference_directory` - The handle to use from now on
+    pub fn with_reference_directory(mut self, reference_directory: ReferenceDirectory) -> Self {
+        self.reference_directory = reference_directory;
+        self
     }
 
     /// Workers that announced themselves

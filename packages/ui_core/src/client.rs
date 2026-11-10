@@ -97,6 +97,11 @@ impl Client {
         ProjectsClient::new(self)
     }
 
+    /// File access to the global reference data, see [`ProjectsClient::for_reference`]
+    pub fn reference_files<'a>(&'a self) -> ProjectsClient<'a> {
+        ProjectsClient::for_reference(self)
+    }
+
     pub fn workflow_integrations<'a>(&'a self) -> WorkflowIntegrationClient<'a> {
         WorkflowIntegrationClient::new(self)
     }
@@ -470,6 +475,9 @@ impl<'a> LoginClient<'a> {
 ///
 pub struct ProjectsClient<'a> {
     base_client: &'a Client,
+    /// Controller path the file routes (`edit`, `upload-file`, `create-folder`, `delete-path`)
+    /// live under: projects, or the global reference data which has the same file routes
+    controller_path: &'static str,
 }
 
 impl<'a> ProjectsClient<'a> {
@@ -478,7 +486,22 @@ impl<'a> ProjectsClient<'a> {
     /// # Arguments
     /// * `base_client` - Base client
     pub fn new(base_client: &'a Client) -> Self {
-        Self { base_client }
+        Self {
+            base_client,
+            controller_path: ProjectsRouting::controller_path(),
+        }
+    }
+
+    /// Client whose file methods (`project`, `upload_file`, `create_folder`, `delete_path`) work on
+    /// the global reference data. Its `id` argument is [`ReferenceRouting::SINGLETON_ID`].
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn for_reference(base_client: &'a Client) -> Self {
+        Self {
+            base_client,
+            controller_path: ReferenceRouting::controller_path(),
+        }
     }
 
     /// Lists projects. `all` asks for every project instead of the visible ones, administrators only.
@@ -586,7 +609,7 @@ impl<'a> ProjectsClient<'a> {
         let url = format!(
             "{}{}{}",
             self.base_client.base_url(),
-            ProjectsRouting::controller_path(),
+            self.controller_path,
             ProjectsRouting::EDIT_PATH.replace("{id}", &id.to_string())
         );
 
@@ -684,7 +707,7 @@ impl<'a> ProjectsClient<'a> {
         let url = format!(
             "{}{}{}",
             self.base_client.base_url(),
-            ProjectsRouting::controller_path(),
+            self.controller_path,
             ProjectsRouting::UPLOAD_FILE_PATH.replace("{id}", &id.to_string())
         );
 
@@ -709,7 +732,7 @@ impl<'a> ProjectsClient<'a> {
         let url = format!(
             "{}{}{}",
             self.base_client.base_url(),
-            ProjectsRouting::controller_path(),
+            self.controller_path,
             ProjectsRouting::CREATE_FOLDER_PATH.replace("{id}", &id.to_string())
         );
 
@@ -759,7 +782,7 @@ impl<'a> ProjectsClient<'a> {
         let url = format!(
             "{}{}{}",
             self.base_client.base_url(),
-            ProjectsRouting::controller_path(),
+            self.controller_path,
             ProjectsRouting::DELETE_PATH_PATH.replace("{id}", &id.to_string())
         );
 
@@ -1370,6 +1393,8 @@ pub enum ShareKind {
     Project,
     /// A workflow integration
     Workflow,
+    /// The global reference data (id 1), only instance admins manage its shares
+    Reference,
 }
 
 impl ShareKind {
@@ -1378,6 +1403,7 @@ impl ShareKind {
         match self {
             Self::Project => "projects",
             Self::Workflow => "workflows",
+            Self::Reference => "reference",
         }
     }
 
@@ -1385,7 +1411,7 @@ impl ShareKind {
     pub fn max_public_role(self) -> Role {
         match self {
             Self::Project => Role::Owner,
-            Self::Workflow => Role::Viewer,
+            Self::Workflow | Self::Reference => Role::Viewer,
         }
     }
 }

@@ -10,6 +10,8 @@ pub enum Error {
     Database(String, sea_orm::DbErr),
     #[error("Unable to start backend: {0}")]
     BackendStart(std::io::Error),
+    #[error("Unable to create the reference data directory: {0}")]
+    ReferenceDirectory(std::io::Error),
     #[error("Invalid configuration: {0}")]
     Configuration(&'static str),
     #[error("Error during authentication: {0}")]

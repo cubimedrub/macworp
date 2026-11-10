@@ -9,12 +9,18 @@ use crate::storage::IsStorage;
 #[derive(Clone, PartialEq, Props)]
 pub struct CreateFolderProps {
     pub project: Signal<ProjectResponse>,
+    /// The folder belongs to the global reference data, not to a project
+    #[props(default)]
+    pub reference: bool,
     pub reload_content_callback: Callback<(), ()>,
 }
 
 #[derive(Clone, PartialEq, Props)]
 pub struct DeletePathProps {
     pub project: Signal<ProjectResponse>,
+    /// The path belongs to the global reference data, not to a project
+    #[props(default)]
+    pub reference: bool,
     pub path: PathBuf,
     pub reload_content_callback: Callback<(), ()>,
 }
@@ -35,6 +41,9 @@ pub trait IsFileBrowser {
 #[derive(Clone, PartialEq, Props)]
 pub struct FileBrowserProps {
     pub project: Signal<ProjectResponse>,
+    /// The listing is the global reference data, not a project
+    #[props(default)]
+    pub reference: bool,
     /// Callback to call once moved into a folder, which should trigger a content reload
     pub move_into_folder_callback: Callback<PathBuf, ()>,
     /// Callback for reloding file contente, once a folder was created
@@ -59,16 +68,19 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
     };
 
     // Viewers may only browse: creating and deleting need at least the editor role
-    let can_edit = props
-        .project
-        .read()
-        .my_role
-        .is_some_and(|role| role >= Role::Editor);
+    // The virtual reference folder inside a project is read-only for everybody
+    let can_edit = !props.project.read().read_only
+        && props
+            .project
+            .read()
+            .my_role
+            .is_some_and(|role| role >= Role::Editor);
 
     rsx! {
         if can_edit {
             F::CreateFolder{
                 project: props.project,
+                reference: props.reference,
                 reload_content_callback: props.reload_content_callback,
             }
         }
@@ -98,6 +110,7 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
                     if can_edit {
                         F::PathDelete {
                             project: props.project,
+                            reference: props.reference,
                             path: props.project.read().current.join(&folder),
                             reload_content_callback: props.reload_content_callback,
                         }
@@ -118,6 +131,7 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
                     if can_edit {
                         F::PathDelete {
                             project: props.project,
+                            reference: props.reference,
                             path: props.project.read().current.join(file),
                             reload_content_callback: props.reload_content_callback,
                         }

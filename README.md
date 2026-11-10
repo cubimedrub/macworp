@@ -56,6 +56,16 @@ Roles on a **project** or **workflow** (each includes the rights of the roles to
 - A resource the user cannot see behaves as if it does not exist (404); one they can see but lack the role for is refused (403).
 - Granting a role to a group is only possible for groups the granting user owns or belongs to.
 
+**Global reference data** (genomes, indices, annotation) is one instance-wide folder every project can use. It has no owner and cannot be deleted:
+
+| Action | Any logged-in user | Editor | Admin |
+| --- | :---: | :---: | :---: |
+| Browse and read the files (also as the `macworp_global_reference_data` folder in every project's file browser and the file picker of `Path` parameters) | yes | yes | yes |
+| Upload files, create folders, delete files and folders (web; on the desktop use the file manager) | | yes | yes |
+| Make users or groups Editor (admins only; Owner cannot be granted, the public read access cannot be removed) | | | yes |
+
+Workflows get the folder mounted read-only at its own path; a `Path` value under `macworp_global_reference_data/` is rewritten to that absolute path when the run starts, so projects cannot use that name for their own top-level folder. On the desktop the user picks the folder in **Settings** (default: `global_reference_data` in the application data directory); on a server it is `global_reference_data` below the projects directory.
+
 Other actions:
 
 | Action | Any logged-in user | Group member | Group owner | Admin |

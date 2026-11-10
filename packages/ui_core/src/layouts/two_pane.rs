@@ -226,11 +226,35 @@ pub fn TwoPane<R: IsRouter, S: IsStorage + 'static>() -> Element {
                         class: "nav-item",
                         Link {
                             class: "nav-link",
+                            to: R::reference_route(),
+                            i {
+                                class: "fa-solid fa-dna me-3"
+                            }
+                            "Reference data"
+                        }
+                    }
+                    li {
+                        class: "nav-item",
+                        Link {
+                            class: "nav-link",
                             to: R::workflow_integration_index_route(),
                             i {
                                 class: "fa-solid fa-diagram-project me-3"
                             }
                             "Workflow integration"
+                        }
+                    }
+                    if let Some(settings_route) = R::settings_route() {
+                        li {
+                            class: "nav-item",
+                            Link {
+                                class: "nav-link",
+                                to: settings_route,
+                                i {
+                                    class: "fa-solid fa-gear me-3"
+                                }
+                                "Settings"
+                            }
                         }
                     }
                     if sharing_enabled {

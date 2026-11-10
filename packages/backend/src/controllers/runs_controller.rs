@@ -261,7 +261,7 @@ impl RunsController {
         let mut configuration = workflow.configuration.clone();
         apply_values(&mut configuration, &payload.parameters)?;
         // Fail now instead of in the worker
-        render_args(&configuration)?;
+        render_args(&configuration, Some(&state.reference_directory().get()))?;
 
         let parameters: serde_json::Map<String, serde_json::Value> = payload
             .parameters

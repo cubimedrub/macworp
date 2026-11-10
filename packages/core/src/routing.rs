@@ -72,6 +72,27 @@ impl IsRouting for ProjectsRouting {
     const CONTROLLER_PATH: &str = "/projects";
 }
 
+/// Routes of the global reference data, a project-like singleton. The `{id}` segment is
+/// [`ReferenceRouting::SINGLETON_ID`]; it exists so the routes fit the shared authorization
+/// extractor.
+pub struct ReferenceRouting;
+impl ReferenceRouting {
+    /// Id of the only reference data row
+    pub const SINGLETON_ID: i64 = 1;
+    /// GET: files and folders below the query parameter `subpath`
+    pub const EDIT_PATH: &str = "/edit/{id}";
+    /// POST (Editor): upload a chunk of a file
+    pub const UPLOAD_FILE_PATH: &str = "/upload-file/{id}";
+    /// POST (Editor): create a folder
+    pub const CREATE_FOLDER_PATH: &str = "/create-folder/{id}";
+    /// POST (Editor): delete a file or folder
+    pub const DELETE_PATH_PATH: &str = "/delete-path/{id}";
+}
+
+impl IsRouting for ReferenceRouting {
+    const CONTROLLER_PATH: &str = "/reference";
+}
+
 pub struct WorkflowIntegrationsRouting;
 impl WorkflowIntegrationsRouting {
     pub const INDEX_PATH: &str = "/index";

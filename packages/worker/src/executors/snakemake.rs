@@ -46,7 +46,8 @@ impl SnakemakeExecutor {
     pub fn launch_spec(&self, job: &Job) -> Result<LaunchSpec, ExecutorError> {
         let config = &job.configuration;
 
-        let mut read_only = Vec::new();
+        let mut read_only: Vec<&std::path::Path> = Vec::new();
+        read_only.extend(job.reference_dir.as_deref());
         let mut command: Vec<String> = vec![
             "snakemake".into(),
             "--directory".into(),
@@ -84,7 +85,7 @@ impl SnakemakeExecutor {
                 format!("project_id={}", job.run_id),
             ]);
         }
-        command.extend(render_args(config)?);
+        command.extend(render_args(config, job.reference_dir.as_deref())?);
 
         Ok(containerized_spec(
             &self.runtime_binary,
@@ -138,6 +139,7 @@ mod tests {
         Job {
             run_id: 3,
             project_dir: "/data/p1".into(),
+            reference_dir: None,
             configuration,
             progress: None,
         }

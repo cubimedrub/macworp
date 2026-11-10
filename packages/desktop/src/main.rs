@@ -13,6 +13,7 @@ mod file;
 mod pages;
 mod router;
 mod runtime_status;
+mod settings;
 mod storage;
 
 use std::{env, sync::Arc, time::Duration};
@@ -165,6 +166,8 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         Err(err) => return Err(Error::AppDirectoryCreation(err)),
     }
 
+    let settings = settings::Settings::load(app_data_directory)?;
+
     // Secrets live in memory only: the backend re-syncs the desktop user's password on
     // every start and the login token is never persisted, so nothing needs to survive a restart.
     for legacy_file in ["pwd", "jwt_secret"] {
@@ -216,7 +219,8 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         backend_shutdown_signal_receiver.await.ok();
     };
 
-    let backend = tokio::spawn(async {
+    let reference_directory = settings.reference_directory();
+    let backend = tokio::spawn(async move {
         match macworp_backend::Backend::<
             macworp_backend::filesystems::local_filesystem::LocalFilesystem,
         >::start(
@@ -224,6 +228,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
             Box::pin(backend_shutdown_signal),
             backend_config,
             DESKTOP_USER_NAME.to_string(),
+            reference_directory,
         )
         .await
         {
@@ -255,7 +260,15 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
 
     // Backend ran the migrations, the embedded worker can use the same database now
     let worker = match container_runtime {
-        Some(runtime) => Some(start_worker(&database_url, max_log_bytes, runtime).await?),
+        Some(runtime) => Some(
+            start_worker(
+                &database_url,
+                max_log_bytes,
+                runtime,
+                settings.reference_directory(),
+            )
+            .await?,
+        ),
         None => None,
     };
 
@@ -273,6 +286,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         .with_context(config)
         .with_context(storage)
         .with_context(runtime_status)
+        .with_context(settings)
         .launch(App);
 
     if let Some((stop, handle)) = worker {
@@ -298,6 +312,7 @@ async fn start_worker(
     database_url: &str,
     max_log_bytes: u64,
     runtime: Arc<dyn ContainerRuntime>,
+    reference_directory: macworp_backend::reference_directory::ReferenceDirectory,
 ) -> Result<(watch::Sender<bool>, tokio::task::JoinHandle<()>), Error> {
     let db = sea_orm::Database::connect(database_url)
         .await
@@ -310,7 +325,7 @@ async fn start_worker(
 
     let executors = standard_executors(&runtime).await;
     let mut worker = Worker::new(
-        Arc::new(DbJobSource::new(db, max_log_bytes)),
+        Arc::new(DbJobSource::new(db, max_log_bytes, reference_directory)),
         executors,
         WorkerOptions::default(),
     );

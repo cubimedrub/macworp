@@ -452,6 +452,7 @@ mod tests {
         Job {
             run_id: 1,
             project_dir: "/p".into(),
+            reference_dir: None,
             configuration,
             progress: None,
         }

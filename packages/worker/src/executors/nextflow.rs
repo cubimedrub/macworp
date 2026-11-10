@@ -40,7 +40,8 @@ impl NextflowExecutor {
     pub fn launch_spec(&self, job: &Job) -> Result<LaunchSpec, ExecutorError> {
         let config = &job.configuration;
 
-        let mut read_only = Vec::new();
+        let mut read_only: Vec<&std::path::Path> = Vec::new();
+        read_only.extend(job.reference_dir.as_deref());
         let mut command: Vec<String> = vec!["nextflow".into(), "run".into()];
         match config.source() {
             Source::Local(local) => {
@@ -72,7 +73,7 @@ impl NextflowExecutor {
                 format!("{}/nextflow", progress.base_url),
             ]);
         }
-        command.extend(render_args(config)?);
+        command.extend(render_args(config, job.reference_dir.as_deref())?);
 
         Ok(containerized_spec(
             &self.runtime_binary,
@@ -124,6 +125,7 @@ mod tests {
         Job {
             run_id: 7,
             project_dir: "/data/p1".into(),
+            reference_dir: None,
             configuration,
             progress: None,
         }
@@ -158,6 +160,18 @@ mod tests {
             args[weblog + 1],
             "http://host.docker.internal:4000/tok/nextflow"
         );
+    }
+
+    /// The reference directory is mounted read-only at its own path, nothing is mounted without it.
+    #[test]
+    fn reference_directory_is_mounted_read_only() {
+        let source = Source::Local(LocalSource::new("/w".into(), "main.nf".into()));
+        let mut with_reference = job(source.clone());
+        with_reference.reference_dir = Some("/data/reference".into());
+        let args = executor().launch_spec(&with_reference).unwrap().args;
+        assert!(args.contains(&"/data/reference:/data/reference:ro".to_string()));
+        let args = executor().launch_spec(&job(source)).unwrap().args;
+        assert!(!args.iter().any(|a| a.contains("reference")));
     }
 
     #[test]

@@ -24,6 +24,8 @@ pub enum Error {
     WorkerDatabase(sea_orm::DbErr),
     #[error("Stopping worker went wrong, {0}")]
     WorkerStopping(tokio::task::JoinError),
+    #[error("Settings: {0}")]
+    Settings(#[from] crate::settings::Error),
     #[error(transparent)]
     Storage(#[from] crate::storage::Error),
 }

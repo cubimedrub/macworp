@@ -271,7 +271,11 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                 match T::drop_handler(event, current_path).await {
                     Ok(uploadable_files) => {
                         upload_queue.write().extend(uploadable_files);
-                        upload_task.restart();
+                        // A running task drains the queue itself, restarting it would cancel
+                        // the upload in progress.
+                        if upload_task.finished() {
+                            upload_task.restart();
+                        }
                     },
                     Err(err) => tracing::error!("File drop handler error: {err:?}")
                 }

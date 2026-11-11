@@ -34,6 +34,19 @@ pub fn generate_secret() -> String {
         .collect()
 }
 
+/// Name of the repository cache folder below the projects directory.
+pub const DEFAULT_CACHE_DIRECTORY_NAME: &str = "workflow_cache";
+
+/// Default of `branch_cache_seconds`: one hour.
+fn default_branch_cache_seconds() -> u64 {
+    3600
+}
+
+/// Default of `checkout_max_age_days`.
+fn default_checkout_max_age_days() -> u64 {
+    30
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Configuration {
     interface: String,
@@ -44,6 +57,17 @@ pub struct Configuration {
     login_validity: Option<u32>,
     /// Project path used on standalone
     projects_path: String,
+    /// Directory of the global repository cache (mirrors and checkouts of remote workflows).
+    /// Workers must read it at the same absolute path. Defaults to
+    /// `<projects_path>/workflow_cache`, see [`Self::cache_path`].
+    #[serde(default)]
+    cache_path: Option<String>,
+    /// Seconds a fetched branch of a cached repository is trusted before it is fetched again.
+    #[serde(default = "default_branch_cache_seconds")]
+    branch_cache_seconds: u64,
+    /// Days after which an unused checkout of the repository cache is deleted, `0` keeps all.
+    #[serde(default = "default_checkout_max_age_days")]
+    checkout_max_age_days: u64,
     /// Worker credentials
     worker: WorkerCredentials,
     /// Login providers
@@ -179,6 +203,31 @@ impl Configuration {
         &mut self.projects_path
     }
 
+    /// Directory of the global repository cache: `cache_path` if set, else
+    /// `<projects_path>/workflow_cache`.
+    pub fn cache_path(&self) -> std::path::PathBuf {
+        match &self.cache_path {
+            Some(path) => std::path::PathBuf::from(path),
+            None => std::path::Path::new(&self.projects_path).join(DEFAULT_CACHE_DIRECTORY_NAME),
+        }
+    }
+
+    /// Mutable access to [`Self::cache_path`], e.g. for the desktop app.
+    pub fn cache_path_mut(&mut self) -> &mut Option<String> {
+        &mut self.cache_path
+    }
+
+    /// Seconds a fetched branch of a cached repository is trusted.
+    pub fn branch_cache_seconds(&self) -> u64 {
+        self.branch_cache_seconds
+    }
+
+    /// Age after which unused cache checkouts are deleted, `None` when disabled.
+    pub fn checkout_max_age(&self) -> Option<std::time::Duration> {
+        (self.checkout_max_age_days > 0)
+            .then(|| std::time::Duration::from_secs(self.checkout_max_age_days * 86_400))
+    }
+
     pub fn worker(&self) -> &WorkerCredentials {
         &self.worker
     }
@@ -287,6 +336,9 @@ impl Default for Configuration {
             secret: generate_secret(),
             login_validity: None,
             projects_path: "dev_projects".to_string(),
+            cache_path: None,
+            branch_cache_seconds: default_branch_cache_seconds(),
+            checkout_max_age_days: default_checkout_max_age_days(),
             worker: WorkerCredentials::default(),
             login_providers: vec![LoginProvider::Local(LocalLoginProvider::default())],
             cors_allowed_origins: Vec::new(),

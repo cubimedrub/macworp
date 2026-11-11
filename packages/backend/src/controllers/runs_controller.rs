@@ -60,6 +60,12 @@ pub enum Error {
     /// The container runtime of this instance cannot run the workflow's engine, 409
     #[error("Workflow engine {0} is not available with the detected container runtime")]
     EngineUnavailable(macworp_core::workflow_configuration::engine::Engine),
+    /// The remote workflow source is invalid, or cannot be fetched and is not cached, 400/502
+    #[error("Workflow source unavailable: {0}")]
+    Source(#[from] crate::repository_cache::Error),
+    /// The cache task panicked or was cancelled, 500
+    #[error("Source resolution failed")]
+    SourceTask,
     /// The project's run limit is reached and no run can be evicted, 409
     #[error("Run limit of {0} reached, all runs are locked or still active")]
     RunLimitReached(u64),
@@ -107,7 +113,13 @@ impl IntoResponse for Error {
             Error::RunLimitReached(_) | Error::AlreadyFinished | Error::EngineUnavailable(_) => {
                 (StatusCode::CONFLICT, self.to_string()).into_response()
             }
-            Error::Database(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            Error::Source(crate::repository_cache::Error::Fetch { .. }) => {
+                (StatusCode::BAD_GATEWAY, self.to_string()).into_response()
+            }
+            Error::Source(_) => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
+            Error::SourceTask | Error::Database(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
         }
     }
 }
@@ -260,6 +272,20 @@ impl RunsController {
         // Only dynamic parameter values come from the client, everything else from the stored workflow
         let mut configuration = workflow.configuration.clone();
         apply_values(&mut configuration, &payload.parameters)?;
+        // Remote sources are pinned to the commit they resolve to now: later fetches or moved
+        // tags cannot change this run, and the engine reads the checkout without network.
+        let cache = state.repository_cache();
+        let (configuration, resolved) = tokio::task::spawn_blocking(move || {
+            let mut configuration = configuration;
+            cache
+                .localize(&mut configuration)
+                .map(|resolved| (configuration, resolved))
+        })
+        .await
+        .map_err(|_| Error::SourceTask)??;
+        if let Some(resolved) = resolved {
+            tracing::info!(sha = %resolved.sha, "pinned remote workflow source");
+        }
         // Fail now instead of in the worker
         render_args(&configuration, Some(&state.reference_directory().get()))?;
 

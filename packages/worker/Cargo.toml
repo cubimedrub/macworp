@@ -14,7 +14,6 @@ path = "src/main.rs"
 [dependencies]
 axum = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
-git2 = { workspace = true }
 macworp_core = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }

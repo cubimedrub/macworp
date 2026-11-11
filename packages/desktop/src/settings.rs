@@ -1,6 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
+use macworp_backend::configuration::DEFAULT_CACHE_DIRECTORY_NAME;
 use macworp_backend::reference_directory::{ReferenceDirectory, DEFAULT_DIRECTORY_NAME};
+use macworp_backend::repository_cache::RepositoryCache;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -31,65 +35,117 @@ struct Stored {
     /// Folder with the global reference data, `None` = the default below the app data directory
     #[serde(default)]
     global_reference_path: Option<PathBuf>,
+    /// Folder of the workflow repository cache, `None` = the default below the app data directory
+    #[serde(default)]
+    workflow_cache_path: Option<PathBuf>,
 }
 
-/// The desktop settings: where the global reference data lives. Cloning shares the same backend
-/// handle, so a change applies to the running backend and worker without restart (runs already
-/// started keep their mount).
+/// The folders the user can move in the settings page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Folder {
+    /// Global reference data shared by all projects
+    Reference,
+    /// Cache of fetched remote workflow repositories
+    WorkflowCache,
+}
+
+/// The desktop settings: where the global reference data and the workflow cache live. Cloning
+/// shares the same backend handles, so a change applies to the running backend and worker
+/// without restart (runs already started keep their mount).
 #[derive(Debug, Clone)]
 pub struct Settings {
-    /// Directory holding the settings file; the default reference folder is below it
+    /// Directory holding the settings file; the default folders are below it
     directory: PathBuf,
     /// Handle shared with the backend and the embedded worker
     reference_directory: ReferenceDirectory,
+    /// Cache shared with the backend
+    repository_cache: Arc<RepositoryCache>,
+    /// The explicit choices as saved, so changing one folder keeps the other
+    stored: Arc<Mutex<Stored>>,
 }
 
 impl Settings {
-    /// Loads the settings and creates the reference folder.
+    /// Loads the settings and creates both folders.
     ///
     /// # Arguments
     /// * `directory` - The app data directory
-    pub fn load(directory: &Path) -> Result<Self, Error> {
+    /// * `branch_cache_seconds` - Branch trust time of the repository cache
+    pub fn load(directory: &Path, branch_cache_seconds: u64) -> Result<Self, Error> {
         let stored = Self::read(directory)?;
         let settings = Self {
             directory: directory.to_path_buf(),
             reference_directory: ReferenceDirectory::new(
                 stored
                     .global_reference_path
-                    .unwrap_or_else(|| Self::default_reference_path(directory)),
+                    .clone()
+                    .unwrap_or_else(|| Self::default_path(directory, Folder::Reference)),
             ),
+            repository_cache: Arc::new(RepositoryCache::new(
+                stored
+                    .workflow_cache_path
+                    .clone()
+                    .unwrap_or_else(|| Self::default_path(directory, Folder::WorkflowCache)),
+                Duration::from_secs(branch_cache_seconds),
+            )),
+            stored: Arc::new(Mutex::new(stored)),
         };
-        std::fs::create_dir_all(settings.reference_directory.get())?;
+        std::fs::create_dir_all(settings.path(Folder::Reference))?;
+        std::fs::create_dir_all(settings.path(Folder::WorkflowCache))?;
         Ok(settings)
     }
 
-    /// The handle for the backend and worker.
+    /// The reference data handle for the backend and worker.
     pub fn reference_directory(&self) -> ReferenceDirectory {
         self.reference_directory.clone()
+    }
+
+    /// The repository cache for the backend.
+    pub fn repository_cache(&self) -> Arc<RepositoryCache> {
+        self.repository_cache.clone()
     }
 
     /// Folder used while the user chose none.
     ///
     /// # Arguments
     /// * `directory` - The app data directory
-    pub fn default_reference_path(directory: &Path) -> PathBuf {
-        directory.join(DEFAULT_DIRECTORY_NAME)
+    /// * `folder` - Which folder
+    pub fn default_path(directory: &Path, folder: Folder) -> PathBuf {
+        directory.join(match folder {
+            Folder::Reference => DEFAULT_DIRECTORY_NAME,
+            Folder::WorkflowCache => DEFAULT_CACHE_DIRECTORY_NAME,
+        })
+    }
+
+    /// The folder currently in use.
+    ///
+    /// # Arguments
+    /// * `folder` - Which folder
+    pub fn path(&self, folder: Folder) -> PathBuf {
+        match folder {
+            Folder::Reference => self.reference_directory.get(),
+            Folder::WorkflowCache => self.repository_cache.root(),
+        }
     }
 
     /// Whether the folder in use is the default one.
-    pub fn is_default(&self) -> bool {
-        self.reference_directory.get() == Self::default_reference_path(&self.directory)
-    }
-
-    /// Switches to `path` (`None` = default): validates it, creates it if missing, saves the
-    /// choice and applies it to the running backend. Nothing is moved from the old folder.
     ///
     /// # Arguments
+    /// * `folder` - Which folder
+    pub fn is_default(&self, folder: Folder) -> bool {
+        self.path(folder) == Self::default_path(&self.directory, folder)
+    }
+
+    /// Switches `folder` to `path` (`None` = default): validates it, creates it if missing,
+    /// saves the choice and applies it to the running backend. Nothing is moved from the old
+    /// folder.
+    ///
+    /// # Arguments
+    /// * `folder` - Which folder
     /// * `path` - The new folder or `None` for the default
-    pub fn set_reference_path(&self, path: Option<PathBuf>) -> Result<(), Error> {
+    pub fn set_path(&self, folder: Folder, path: Option<PathBuf>) -> Result<(), Error> {
         let target = path
             .clone()
-            .unwrap_or_else(|| Self::default_reference_path(&self.directory));
+            .unwrap_or_else(|| Self::default_path(&self.directory, folder));
         match std::fs::symlink_metadata(&target) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 return Err(Error::Symlink(target));
@@ -101,14 +157,21 @@ impl Settings {
             }
             Err(error) => return Err(error.into()),
         }
-        let stored = Stored {
-            global_reference_path: path,
-        };
+        let mut stored = self.stored.lock().unwrap_or_else(|e| e.into_inner());
+        let mut updated = stored.clone();
+        match folder {
+            Folder::Reference => updated.global_reference_path = path,
+            Folder::WorkflowCache => updated.workflow_cache_path = path,
+        }
         std::fs::write(
             self.directory.join(FILE_NAME),
-            serde_json::to_vec_pretty(&stored)?,
+            serde_json::to_vec_pretty(&updated)?,
         )?;
-        self.reference_directory.set(target);
+        *stored = updated;
+        match folder {
+            Folder::Reference => self.reference_directory.set(target),
+            Folder::WorkflowCache => self.repository_cache.set_root(target),
+        }
         Ok(())
     }
 
@@ -129,38 +192,51 @@ impl Settings {
 mod tests {
     use super::*;
 
-    /// Default folder is created, a choice is persisted and applied live, reset returns to the
-    /// default, invalid targets are refused and leave the setting alone.
+    /// Default folders are created, a choice is persisted and applied live, reset returns to the
+    /// default, invalid targets are refused and leave the setting alone, and the two folders
+    /// are saved independently.
     #[test]
     fn choice_is_persisted_and_applied() {
         let directory = tempfile::tempdir().unwrap();
-        let settings = Settings::load(directory.path()).unwrap();
-        assert!(settings.is_default());
-        assert!(settings.reference_directory().get().is_dir());
+        let settings = Settings::load(directory.path(), 3600).unwrap();
+        for folder in [Folder::Reference, Folder::WorkflowCache] {
+            assert!(settings.is_default(folder));
+            assert!(settings.path(folder).is_dir());
+        }
 
         let chosen = directory.path().join("elsewhere");
         let handle = settings.reference_directory();
-        settings.set_reference_path(Some(chosen.clone())).unwrap();
+        settings
+            .set_path(Folder::Reference, Some(chosen.clone()))
+            .unwrap();
         assert_eq!(handle.get(), chosen);
         assert!(chosen.is_dir());
-        assert_eq!(
-            Settings::load(directory.path())
-                .unwrap()
-                .reference_directory()
-                .get(),
-            chosen
-        );
+        assert!(settings.is_default(Folder::WorkflowCache));
+
+        let cache = directory.path().join("cache");
+        let cache_handle = settings.repository_cache();
+        settings
+            .set_path(Folder::WorkflowCache, Some(cache.clone()))
+            .unwrap();
+        assert_eq!(cache_handle.root(), cache);
+
+        // Both choices survive a restart, changing one did not drop the other.
+        let reloaded = Settings::load(directory.path(), 3600).unwrap();
+        assert_eq!(reloaded.path(Folder::Reference), chosen);
+        assert_eq!(reloaded.path(Folder::WorkflowCache), cache);
 
         let file = directory.path().join("file");
         std::fs::write(&file, "x").unwrap();
         assert!(matches!(
-            settings.set_reference_path(Some(file)),
+            settings.set_path(Folder::WorkflowCache, Some(file)),
             Err(Error::NotADirectory(_))
         ));
-        assert_eq!(handle.get(), chosen);
+        assert_eq!(cache_handle.root(), cache);
 
-        settings.set_reference_path(None).unwrap();
-        assert!(settings.is_default());
-        assert!(Settings::load(directory.path()).unwrap().is_default());
+        settings.set_path(Folder::Reference, None).unwrap();
+        settings.set_path(Folder::WorkflowCache, None).unwrap();
+        let reloaded = Settings::load(directory.path(), 3600).unwrap();
+        assert!(reloaded.is_default(Folder::Reference));
+        assert!(reloaded.is_default(Folder::WorkflowCache));
     }
 }

@@ -68,6 +68,25 @@ enum UserSubCommand {
     },
 }
 
+/// Repository cache commands
+#[derive(Debug, Subcommand)]
+enum CacheSubCommand {
+    /// Lists the cached checkouts
+    List {
+        /// Configuration path
+        config: Option<PathBuf>,
+    },
+    /// Deletes checkouts unused for `checkout_max_age_days` (or `--days`) that no queued or
+    /// running run uses
+    Prune {
+        /// Override the configured age in days, `0` removes every unused checkout
+        #[arg(short, long)]
+        days: Option<u64>,
+        /// Configuration path
+        config: Option<PathBuf>,
+    },
+}
+
 #[derive(Debug, Subcommand)]
 enum SubCommand {
     /// Prints a new config
@@ -87,6 +106,11 @@ enum SubCommand {
     Serve {
         /// Configuration path
         config: Option<PathBuf>,
+    },
+    /// Inspect or clean the repository cache of remote workflows
+    Cache {
+        #[command(subcommand)]
+        subcommand: CacheSubCommand,
     },
     /// Manage users
     User {
@@ -176,6 +200,44 @@ async fn main() -> Result<(), StandaloneError> {
                 .await
                 .map_err(StandaloneError::Backend)?;
         }
+        SubCommand::Cache { subcommand } => match subcommand {
+            CacheSubCommand::List { config } => {
+                let config = read_configuration(config)?;
+                let cache = macworp_backend::repository_cache::RepositoryCache::new(
+                    config.cache_path(),
+                    std::time::Duration::ZERO,
+                );
+                for checkout in cache.checkouts()? {
+                    let age = std::time::SystemTime::now()
+                        .duration_since(checkout.last_used)
+                        .unwrap_or_default();
+                    println!(
+                        "{}  unused for {} days  {}",
+                        checkout.sha,
+                        age.as_secs() / 86_400,
+                        checkout.path.display()
+                    );
+                }
+            }
+            CacheSubCommand::Prune { days, config } => {
+                let config = read_configuration(config)?;
+                let cache = macworp_backend::repository_cache::RepositoryCache::new(
+                    config.cache_path(),
+                    std::time::Duration::ZERO,
+                );
+                let db = Database::connect(config.database_url())
+                    .await
+                    .map_err(StandaloneError::DatabaseConnection)?;
+                let max_age = days
+                    .map(|d| std::time::Duration::from_secs(d * 86_400))
+                    .or(config.checkout_max_age())
+                    .unwrap_or(std::time::Duration::MAX);
+                let in_use =
+                    macworp_backend::models::RunTable::active_source_locations(&db).await?;
+                let removed = cache.prune(max_age, &in_use)?;
+                println!("Removed {} checkouts", removed.len());
+            }
+        },
         SubCommand::User { subcommand } => match subcommand {
             UserSubCommand::Create {
                 config,
@@ -275,6 +337,22 @@ fn read_password(password_file: Option<&Path>) -> Result<String, StandaloneError
         return Err(StandaloneError::PasswordEmpty);
     }
     Ok(password)
+}
+
+/// Reads the configuration file.
+///
+/// # Arguments
+/// * `config` - Path to the configuration, required
+fn read_configuration(config: Option<PathBuf>) -> Result<Configuration, StandaloneError> {
+    match config {
+        Some(config_path) => {
+            let config_raw = std::fs::read_to_string(config_path)
+                .map_err(StandaloneError::ConfigurationReadError)?;
+            toml::from_str::<Configuration>(&config_raw)
+                .map_err(StandaloneError::ConfigurationParseError)
+        }
+        None => Err(StandaloneError::ConfigurationMissing),
+    }
 }
 
 /// Connects to the database named in the configuration file and sets the administrator flag of `username`.

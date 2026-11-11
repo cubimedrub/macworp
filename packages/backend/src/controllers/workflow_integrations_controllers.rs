@@ -33,6 +33,12 @@ pub enum Error {
     Share(#[from] crate::authorization::ShareError),
     #[error("{0}")]
     Authentication(#[from] crate::authentication::error::Error),
+    /// The remote source is invalid or unreachable and not cached
+    #[error("{0}")]
+    Source(#[from] crate::repository_cache::Error),
+    /// The blocking cache task failed
+    #[error("Reading the workflow schemas failed")]
+    SourceTask,
 }
 
 impl IntoResponse for Error {
@@ -41,7 +47,13 @@ impl IntoResponse for Error {
             return e.into_response();
         }
         tracing::error!("{self}");
-        StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        match self {
+            Error::Source(crate::repository_cache::Error::Fetch { .. }) => {
+                (StatusCode::BAD_GATEWAY, self.to_string()).into_response()
+            }
+            Error::Source(_) => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
+            _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
     }
 }
 
@@ -55,6 +67,10 @@ impl WorkflowIntegrationsController {
             .route(WorkflowIntegrationsRouting::EDIT_PATH, get(Self::edit))
             .route(WorkflowIntegrationsRouting::DELETE_PATH, post(Self::delete))
             .route(WorkflowIntegrationsRouting::UPDATE_PATH, post(Self::update))
+            .route(
+                WorkflowIntegrationsRouting::SCHEMAS_PATH,
+                get(Self::schemas),
+            )
             .with_state(state)
     }
 
@@ -147,6 +163,32 @@ impl WorkflowIntegrationsController {
         response.ownerless = ownerless;
         response.my_role = Some(role);
 
+        Ok(Json(response))
+    }
+
+    /// Schemas shipped with the workflow (Viewer). A remote source is fetched into the
+    /// repository cache first (no network if already cached).
+    async fn schemas(
+        State(state): State<Arc<AppState>>,
+        Authorized {
+            model: workflow_integration,
+            ..
+        }: Authorized<WorkflowIntegration, Viewer>,
+    ) -> Result<Json<macworp_core::responses::WorkflowSchemasResponse>, Error> {
+        use macworp_core::workflow_configuration::source::Source;
+        let cache = state.repository_cache();
+        let mut configuration = workflow_integration.configuration.clone();
+        let response = tokio::task::spawn_blocking(move || {
+            let resolved = cache.localize(&mut configuration)?;
+            let Source::Local(local) = configuration.source() else {
+                return Ok(Default::default());
+            };
+            let mut schemas = crate::repository_cache::RepositoryCache::schemas(local.location());
+            schemas.commit = resolved.map(|r| r.sha);
+            Ok::<_, crate::repository_cache::Error>(schemas)
+        })
+        .await
+        .map_err(|_| Error::SourceTask)??;
         Ok(Json(response))
     }
 

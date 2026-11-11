@@ -612,6 +612,27 @@ impl Entity {
             .ok_or(Error::NotFound)
     }
 
+    /// Local source locations of queued and running runs. The repository cache must not delete
+    /// these checkouts.
+    ///
+    /// # Arguments
+    /// * `db` - Database connection or transaction
+    pub async fn active_source_locations<C: ConnectionTrait>(
+        db: &C,
+    ) -> Result<std::collections::HashSet<std::path::PathBuf>, Error> {
+        use macworp_core::workflow_configuration::source::Source;
+        Ok(Entity::find()
+            .filter(Column::Status.is_in([RunStatus::Queued, RunStatus::Running]))
+            .all(db)
+            .await?
+            .into_iter()
+            .filter_map(|run| match run.configuration.source() {
+                Source::Local(local) => Some(local.location().clone()),
+                _ => None,
+            })
+            .collect())
+    }
+
     /// Fails runs still marked `Running`, for use at start when no worker can be executing them
     /// (embedded desktop worker crashed or was killed). Returns the number of runs changed.
     pub async fn fail_orphaned_running<C: ConnectionTrait>(db: &C) -> Result<u64, Error> {

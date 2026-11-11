@@ -166,7 +166,10 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         Err(err) => return Err(Error::AppDirectoryCreation(err)),
     }
 
-    let settings = settings::Settings::load(app_data_directory)?;
+    let settings = settings::Settings::load(
+        app_data_directory,
+        macworp_backend::configuration::Configuration::default().branch_cache_seconds(),
+    )?;
 
     // Secrets live in memory only: the backend re-syncs the desktop user's password on
     // every start and the login token is never persisted, so nothing needs to survive a restart.
@@ -220,6 +223,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     };
 
     let reference_directory = settings.reference_directory();
+    let repository_cache = settings.repository_cache();
     let backend = tokio::spawn(async move {
         match macworp_backend::Backend::<
             macworp_backend::filesystems::local_filesystem::LocalFilesystem,
@@ -229,6 +233,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
             backend_config,
             DESKTOP_USER_NAME.to_string(),
             reference_directory,
+            repository_cache,
         )
         .await
         {

@@ -79,6 +79,30 @@ impl Display for LoginProviderResponse {
     }
 }
 
+/// A schema file shipped with a workflow, returned as text (YAML is not parsed server side).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SchemaFile {
+    /// Path inside the workflow repository
+    pub path: String,
+    /// File content
+    pub content: String,
+}
+
+/// Schemas found in a workflow's repository, used to generate and validate input forms.
+/// Everything is optional: workflows are not required to ship schemas.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowSchemasResponse {
+    /// Commit the schemas were read from, `None` for local sources
+    pub commit: Option<String>,
+    /// Parsed `nextflow_schema.json` (parameters)
+    pub nextflow_schema: Option<serde_json::Value>,
+    /// Parsed sample sheet schema, found through `properties.input.schema` of the Nextflow
+    /// schema, else `assets/schema_input.json`
+    pub input_schema: Option<serde_json::Value>,
+    /// Snakemake schemas (`*.schema.yaml` in `workflow/schemas` and `config`)
+    pub snakemake_schemas: Vec<SchemaFile>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkflowIntegrationResponse {
     pub id: i64,

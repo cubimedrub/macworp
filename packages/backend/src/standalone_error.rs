@@ -21,5 +21,9 @@ pub enum Error {
     #[error("{0}")]
     User(#[from] crate::models::user::Error),
     #[error("{0}")]
+    Run(#[from] crate::models::RunError),
+    #[error("{0}")]
+    RepositoryCache(#[from] crate::repository_cache::Error),
+    #[error("{0}")]
     Backend(#[from] crate::error::Error),
 }

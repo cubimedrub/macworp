@@ -14,6 +14,8 @@ pub mod filesystems;
 pub mod models;
 /// Shared location of the global reference data
 pub mod reference_directory;
+/// Global cache of remote workflow repositories (bare mirrors + per-commit checkouts)
+pub mod repository_cache;
 /// State of the backend, e.g. connection pool
 mod state;
 /// Fixtures for the HTTP-level tests
@@ -102,8 +104,18 @@ where
             u64::from(state.config().worker_lease_seconds() / 3).max(1),
         );
         let max_attempts = i32::try_from(state.config().worker_max_attempts()).unwrap_or(i32::MAX);
+        let prune_period = std::time::Duration::from_secs(3600);
+        let mut last_prune = std::time::Instant::now();
         loop {
             tokio::time::sleep(period).await;
+            if last_prune.elapsed() >= prune_period {
+                last_prune = std::time::Instant::now();
+                match state.prune_repository_cache().await {
+                    Ok(0) => {}
+                    Ok(removed) => tracing::info!("Removed {removed} unused cached checkouts"),
+                    Err(error) => tracing::error!("{error}"),
+                }
+            }
             match models::RunTable::requeue_expired(state.db(), max_attempts).await {
                 Ok(result) if result != models::RequeuedRuns::default() => {
                     tracing::warn!("Worker leases expired: {result:?}");
@@ -236,12 +248,14 @@ impl Backend<LocalFilesystem> {
     /// * `config` - The backend configuration to use
     /// * `desktop_user_name` - Name of the single desktop user
     /// * `reference_directory` - Location of the global reference data, shared with the desktop settings
+    /// * `repository_cache` - Repository cache, shared with the desktop settings
     pub async fn start(
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
         config: Configuration,
         desktop_user_name: String,
         reference_directory: crate::reference_directory::ReferenceDirectory,
+        repository_cache: Arc<crate::repository_cache::RepositoryCache>,
     ) -> Result<(), Error> {
         use macworp_database_migration::{Migrator, MigratorTrait};
 
@@ -250,7 +264,8 @@ impl Backend<LocalFilesystem> {
         config.validate()?;
         let state = State::new_for_integration(config)
             .await?
-            .with_reference_directory(reference_directory);
+            .with_reference_directory(reference_directory)
+            .with_repository_cache(repository_cache);
 
         Migrator::up(state.db(), None)
             .await

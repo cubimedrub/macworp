@@ -100,6 +100,9 @@ impl WorkflowIntegrationsRouting {
     pub const EDIT_PATH: &str = "/edit/{id}";
     pub const DELETE_PATH: &str = "/delete/{id}";
     pub const UPDATE_PATH: &str = "/update/{id}";
+    /// GET: schemas (`WorkflowSchemasResponse`) of the workflow, read from the cached checkout of
+    /// a remote source or the local source; may fetch the repository
+    pub const SCHEMAS_PATH: &str = "/schemas/{id}";
 }
 
 impl IsRouting for WorkflowIntegrationsRouting {

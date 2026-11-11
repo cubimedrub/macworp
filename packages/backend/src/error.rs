@@ -12,6 +12,9 @@ pub enum Error {
     BackendStart(std::io::Error),
     #[error("Unable to create the reference data directory: {0}")]
     ReferenceDirectory(std::io::Error),
+    /// Pruning the repository cache failed
+    #[error("Unable to prune the repository cache: {0}")]
+    CachePrune(String),
     #[error("Invalid configuration: {0}")]
     Configuration(&'static str),
     #[error("Error during authentication: {0}")]

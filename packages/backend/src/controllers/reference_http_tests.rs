@@ -165,7 +165,10 @@ async fn project_browser_shows_the_reference_folder() {
     let (status, body) = app
         .get(
             &alice,
-            &format!("/projects/edit/{}?subpath=macworp_global_reference_data", project.id),
+            &format!(
+                "/projects/edit/{}?subpath=macworp_global_reference_data",
+                project.id
+            ),
         )
         .await;
     assert_eq!(status, StatusCode::OK);

@@ -22,6 +22,7 @@ jsonwebtoken = { workspace = true, features = ["rust_crypto"] }
 macworp_core = { workspace = true, features = ["database"] }
 macworp_database_migration = { workspace = true }
 password-auth = { workspace = true }
+git2 = { workspace = true, features = ["https", "vendored-libgit2", "vendored-openssl"] }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 rpassword = { workspace = true, optional = true }

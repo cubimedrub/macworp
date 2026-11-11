@@ -357,6 +357,7 @@ impl TestApp {
         let reference_directory = root.join("reference");
         std::fs::create_dir_all(&reference_directory).unwrap();
         let reference_directory_for_backend = reference_directory.clone();
+        let cache_directory = root.join("workflow_cache");
         let backend = tokio::spawn(async move {
             Backend::<LocalFilesystem>::start(
                 listener,
@@ -368,6 +369,10 @@ impl TestApp {
                 macworp_backend::reference_directory::ReferenceDirectory::new(
                     reference_directory_for_backend,
                 ),
+                std::sync::Arc::new(macworp_backend::repository_cache::RepositoryCache::new(
+                    cache_directory,
+                    Duration::from_secs(3600),
+                )),
             )
             .await
         });

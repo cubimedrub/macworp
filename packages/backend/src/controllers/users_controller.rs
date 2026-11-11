@@ -95,8 +95,15 @@ impl UsersController {
             .with_state(state)
     }
 
-    async fn current_user(RequireUser(user): RequireUser) -> Result<Json<UserResponse>, Error> {
-        Ok(Json(Self::response(user)))
+    /// The logged in user, including what the server's policy lets them do.
+    async fn current_user(
+        State(state): State<Arc<AppState>>,
+        RequireUser(user): RequireUser,
+    ) -> Result<Json<UserResponse>, Error> {
+        let can_create_local_workflows = state.may_create_local_workflows(&user);
+        let mut response = Self::response(user);
+        response.can_create_local_workflows = Some(can_create_local_workflows);
+        Ok(Json(response))
     }
 
     /// The API representation of a user, without the password hash.
@@ -109,6 +116,7 @@ impl UsersController {
             email: user.email,
             is_admin: user.is_admin,
             disabled: user.disabled,
+            can_create_local_workflows: None,
         }
     }
 

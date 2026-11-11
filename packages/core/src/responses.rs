@@ -24,6 +24,10 @@ pub struct UserResponse {
     /// Whether the account is blocked from logging in
     #[serde(default)]
     pub disabled: bool,
+    /// Whether the user may create local workflows on this server (`permit_local_workflows`).
+    /// Only set when the user asks about themselves (`GET /user/current`), `None` otherwise.
+    #[serde(default)]
+    pub can_create_local_workflows: Option<bool>,
 }
 
 /// Response of login

@@ -193,6 +193,8 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     let max_log_bytes =
         macworp_backend::configuration::Configuration::default().max_log_bytes_per_run();
     let mut backend_config = macworp_backend::configuration::Configuration::default();
+    // Single local user: workflows may live in any folder, picked in the native dialog
+    *backend_config.allow_local_paths_mut() = true;
     *backend_config.database_url_mut() = database_url.clone();
     *backend_config.secret_mut() = jwt_secret;
     *backend_config.fixed_unavailable_engines_mut() = Some(unavailable_engines);
@@ -292,6 +294,18 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         .with_context(storage)
         .with_context(runtime_status)
         .with_context(settings)
+        .with_context(macworp_ui_core::local_workflow::LocalFolderPicker::new(
+            |start| {
+                Box::pin(async move {
+                    rfd::AsyncFileDialog::new()
+                        .set_title("Folder containing the workflow")
+                        .set_directory(start)
+                        .pick_folder()
+                        .await
+                        .map(|folder| folder.path().to_path_buf())
+                })
+            },
+        ))
         .launch(App);
 
     if let Some((stop, handle)) = worker {

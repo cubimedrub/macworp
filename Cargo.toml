@@ -19,7 +19,7 @@ dioxus = { version = "0.7.9" }
 directories = "6.0.0"
 futures = "0.3.32"
 futures-util = "0.3.32"
-git2 = "0.20.3"
+git2 = { version = "0.20.3", default-features = false }
 gloo-timers = { version = "0.3" }
 http = { version = "1.4.0" }
 jsonwebtoken = { version = "10.3.0" }
@@ -51,6 +51,7 @@ tracing = { version = "0.1.37" }
 tracing-subscriber = { version = "0.3.2" }
 urlencoding = { version = "2.1.2" }
 uuid = { version = "1" }
+zip = { version = "9.5.1", default-features = false }
 wasm-bindgen-futures = "0.4.64"
 web-sys = { version = "0.3.91" }
 

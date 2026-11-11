@@ -32,3 +32,7 @@ mod worker_http_tests;
 /// HTTP-level tests of the global reference data
 #[cfg(all(test, feature = "integration"))]
 mod reference_http_tests;
+
+/// HTTP-level tests of local workflow uploads
+#[cfg(all(test, feature = "integration"))]
+mod workflow_upload_http_tests;

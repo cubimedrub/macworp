@@ -34,12 +34,58 @@ pub fn generate_secret() -> String {
         .collect()
 }
 
+/// Who may create local workflows (a workflow with a local source: uploaded files on a server,
+/// a folder on the desktop). Existing ones keep working whatever is set.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalWorkflowPolicy {
+    /// Nobody: workflows must use a remote, nf-core or image source.
+    No,
+    /// Only administrators.
+    AdminOnly,
+    /// Every user who can create workflows.
+    #[default]
+    All,
+}
+
+impl LocalWorkflowPolicy {
+    /// Whether a user may create local workflows.
+    ///
+    /// # Arguments
+    /// * `is_admin` - Whether the user is an administrator
+    pub fn permits(self, is_admin: bool) -> bool {
+        match self {
+            Self::No => false,
+            Self::AdminOnly => is_admin,
+            Self::All => true,
+        }
+    }
+}
+
 /// Name of the repository cache folder below the projects directory.
 pub const DEFAULT_CACHE_DIRECTORY_NAME: &str = "workflow_cache";
 
 /// Default of `branch_cache_seconds`: one hour.
 fn default_branch_cache_seconds() -> u64 {
     3600
+}
+
+/// Folder below the projects directory holding uploaded local workflows.
+pub const LOCAL_WORKFLOWS_DIRECTORY_NAME: &str = "local";
+
+/// Default of `max_workflow_upload_bytes`: 256 MiB.
+fn default_max_workflow_upload_bytes() -> u64 {
+    256 * 1024 * 1024
+}
+
+/// Default of `max_workflow_extracted_bytes`: 1 GiB.
+fn default_max_workflow_extracted_bytes() -> u64 {
+    1024 * 1024 * 1024
+}
+
+/// Default of `max_workflow_files`.
+fn default_max_workflow_files() -> usize {
+    20_000
 }
 
 /// Default of `checkout_max_age_days`.
@@ -68,6 +114,24 @@ pub struct Configuration {
     /// Days after which an unused checkout of the repository cache is deleted, `0` keeps all.
     #[serde(default = "default_checkout_max_age_days")]
     checkout_max_age_days: u64,
+    /// Who may create local workflows: `no`, `admin-only` or `all` (default).
+    #[serde(default)]
+    permit_local_workflows: LocalWorkflowPolicy,
+    /// Whether a local workflow may point at any directory of the machine. Off for servers:
+    /// local workflows are then uploaded as zip archives and live below
+    /// `<projects_path>/local/<workflow id>`. The desktop app turns it on (single local user
+    /// picking a folder).
+    #[serde(default)]
+    allow_local_paths: bool,
+    /// Largest accepted workflow archive upload in bytes.
+    #[serde(default = "default_max_workflow_upload_bytes")]
+    max_workflow_upload_bytes: u64,
+    /// Most bytes a workflow archive may extract to.
+    #[serde(default = "default_max_workflow_extracted_bytes")]
+    max_workflow_extracted_bytes: u64,
+    /// Most files a workflow archive may contain.
+    #[serde(default = "default_max_workflow_files")]
+    max_workflow_files: usize,
     /// Worker credentials
     worker: WorkerCredentials,
     /// Login providers
@@ -228,6 +292,51 @@ impl Configuration {
             .then(|| std::time::Duration::from_secs(self.checkout_max_age_days * 86_400))
     }
 
+    /// Who may create local workflows.
+    pub fn permit_local_workflows(&self) -> LocalWorkflowPolicy {
+        self.permit_local_workflows
+    }
+
+    /// Mutable access to [`Self::permit_local_workflows`].
+    pub fn permit_local_workflows_mut(&mut self) -> &mut LocalWorkflowPolicy {
+        &mut self.permit_local_workflows
+    }
+
+    /// Whether local workflows may point at arbitrary directories.
+    pub fn allow_local_paths(&self) -> bool {
+        self.allow_local_paths
+    }
+
+    /// Mutable access to [`Self::allow_local_paths`], for the desktop app.
+    pub fn allow_local_paths_mut(&mut self) -> &mut bool {
+        &mut self.allow_local_paths
+    }
+
+    /// Largest accepted workflow archive upload in bytes.
+    pub fn max_workflow_upload_bytes(&self) -> u64 {
+        self.max_workflow_upload_bytes
+    }
+
+    /// Limits applied when extracting an uploaded workflow archive.
+    pub fn workflow_upload_limits(&self) -> crate::workflow_upload::Limits {
+        crate::workflow_upload::Limits {
+            max_files: self.max_workflow_files,
+            max_extracted_bytes: self.max_workflow_extracted_bytes,
+        }
+    }
+
+    /// Directory of an uploaded local workflow: `<projects_path>/local/<id>`, made absolute
+    /// (engines mount it, which needs an absolute path even if `projects_path` is relative).
+    ///
+    /// # Arguments
+    /// * `workflow_integration_id` - Id of the workflow
+    pub fn local_workflow_directory(&self, workflow_integration_id: i64) -> std::path::PathBuf {
+        let directory = std::path::Path::new(&self.projects_path)
+            .join(LOCAL_WORKFLOWS_DIRECTORY_NAME)
+            .join(workflow_integration_id.to_string());
+        std::path::absolute(&directory).unwrap_or(directory)
+    }
+
     pub fn worker(&self) -> &WorkerCredentials {
         &self.worker
     }
@@ -339,6 +448,11 @@ impl Default for Configuration {
             cache_path: None,
             branch_cache_seconds: default_branch_cache_seconds(),
             checkout_max_age_days: default_checkout_max_age_days(),
+            permit_local_workflows: LocalWorkflowPolicy::default(),
+            allow_local_paths: false,
+            max_workflow_upload_bytes: default_max_workflow_upload_bytes(),
+            max_workflow_extracted_bytes: default_max_workflow_extracted_bytes(),
+            max_workflow_files: default_max_workflow_files(),
             worker: WorkerCredentials::default(),
             login_providers: vec![LoginProvider::Local(LocalLoginProvider::default())],
             cors_allowed_origins: Vec::new(),
@@ -436,6 +550,37 @@ impl Hash for LoginProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The upload directory is absolute even with the relative default `projects_path`, so
+    /// engines can mount it.
+    #[test]
+    fn local_workflow_directory_is_absolute() {
+        let config = Configuration::default();
+        let directory = config.local_workflow_directory(3);
+        assert!(directory.is_absolute());
+        assert!(directory.ends_with("dev_projects/local/3"));
+    }
+
+    /// The policy names parse from the config file and decide as documented.
+    #[test]
+    fn local_workflow_policy() {
+        for (name, policy) in [
+            ("no", LocalWorkflowPolicy::No),
+            ("admin-only", LocalWorkflowPolicy::AdminOnly),
+            ("all", LocalWorkflowPolicy::All),
+        ] {
+            let parsed: LocalWorkflowPolicy = serde_json::from_str(&format!("\"{name}\"")).unwrap();
+            assert_eq!(parsed, policy);
+        }
+        assert!(!LocalWorkflowPolicy::No.permits(true));
+        assert!(!LocalWorkflowPolicy::AdminOnly.permits(false));
+        assert!(LocalWorkflowPolicy::AdminOnly.permits(true));
+        assert!(LocalWorkflowPolicy::All.permits(false));
+        assert_eq!(
+            Configuration::default().permit_local_workflows(),
+            LocalWorkflowPolicy::All
+        );
+    }
 
     #[test]
     fn validate_rejects_invalid_cors_origin() {

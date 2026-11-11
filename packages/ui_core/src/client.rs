@@ -1074,6 +1074,46 @@ impl<'a> WorkflowIntegrationClient<'a> {
             .map_err(Error::Request)
     }
 
+    /// Replaces the files of a local workflow by a zip archive. The workflow must be saved with a
+    /// local source first. Returns the updated workflow.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - Id of the workflow
+    /// * `archive` - Content of the zip file
+    /// * `script` - Main script inside the archive, the stored one is kept if `None`
+    pub async fn upload(
+        &self,
+        jwt: &str,
+        id: i64,
+        archive: Vec<u8>,
+        script: Option<&str>,
+    ) -> Result<WorkflowIntegrationResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::UPLOAD_PATH.replace("{id}", &id.to_string())
+        );
+        let mut request = reqwest::Client::new()
+            .post(&url)
+            .header(http::header::CONTENT_TYPE, "application/zip")
+            .body(archive);
+        if let Some(script) = script {
+            request = request.query(&[("script", script)]);
+        }
+        // Archives are large, allow much more time than for a normal call
+        let request = request.timeout(std::time::Duration::from_secs(
+            self.base_client.timeout().max(900),
+        ));
+        self.base_client
+            .send_authenticated(request, jwt, "upload workflow")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
     pub async fn delete(&self, jwt: &str, id: i64) -> Result<bool, Error> {
         let url = format!(
             "{}{}{}",

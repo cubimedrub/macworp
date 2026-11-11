@@ -22,6 +22,8 @@ mod state;
 #[cfg(all(test, feature = "integration"))]
 mod test_support;
 mod worker_registry;
+/// Installing uploaded workflow archives as local workflows
+pub mod workflow_upload;
 
 #[cfg(feature = "standalone")]
 /// Errors which my occure during standalone operations

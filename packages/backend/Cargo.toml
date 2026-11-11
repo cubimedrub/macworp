@@ -39,6 +39,8 @@ tower-http = { workspace = true, features = ["cors"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 urlencoding = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+zip = { workspace = true, features = ["deflate"] }
 
 
 [dev-dependencies]

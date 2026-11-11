@@ -89,6 +89,40 @@ impl State {
         Ok(removed.len())
     }
 
+    /// Whether the policy `permit_local_workflows` lets `user` create local workflows. The desktop app
+    /// (`allow_local_paths`, one local user) always may.
+    ///
+    /// # Arguments
+    /// * `user` - The acting user
+    pub fn may_create_local_workflows(&self, user: &crate::models::User) -> bool {
+        self.config.allow_local_paths()
+            || self.config.permit_local_workflows().permits(user.is_admin)
+    }
+
+    /// On servers (no `allow_local_paths`) a local workflow always lives in
+    /// `<projects_path>/local/<id>`: replaces the location of a local source by it and keeps the
+    /// script. Idempotent; other sources are untouched. Call wherever a stored configuration is
+    /// saved, run or read, so a client can never point a workflow at another directory.
+    ///
+    /// # Arguments
+    /// * `workflow_integration_id` - Id of the workflow the configuration belongs to
+    /// * `configuration` - Configuration to adjust in place
+    pub fn confine_local_source(
+        &self,
+        workflow_integration_id: i64,
+        configuration: &mut macworp_core::workflow_configuration::WorkflowConfiguration,
+    ) {
+        use macworp_core::workflow_configuration::source::Source;
+        if self.config.allow_local_paths() {
+            return;
+        }
+        if let Source::Local(local) = configuration.source_mut() {
+            *local.location_mut() = self
+                .config
+                .local_workflow_directory(workflow_integration_id);
+        }
+    }
+
     /// Workers that announced themselves
     pub fn workers(&self) -> &WorkerRegistry {
         &self.workers

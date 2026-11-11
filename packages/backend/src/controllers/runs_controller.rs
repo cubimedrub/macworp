@@ -66,6 +66,9 @@ pub enum Error {
     /// The cache task panicked or was cancelled, 500
     #[error("Source resolution failed")]
     SourceTask,
+    /// A local workflow has no uploaded files (or not its main script) yet, 409
+    #[error("The workflow has no uploaded files, upload them first")]
+    WorkflowNotUploaded,
     /// The project's run limit is reached and no run can be evicted, 409
     #[error("Run limit of {0} reached, all runs are locked or still active")]
     RunLimitReached(u64),
@@ -110,7 +113,10 @@ impl IntoResponse for Error {
             Error::InvalidParameters(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string()).into_response()
             }
-            Error::RunLimitReached(_) | Error::AlreadyFinished | Error::EngineUnavailable(_) => {
+            Error::RunLimitReached(_)
+            | Error::WorkflowNotUploaded
+            | Error::AlreadyFinished
+            | Error::EngineUnavailable(_) => {
                 (StatusCode::CONFLICT, self.to_string()).into_response()
             }
             Error::Source(crate::repository_cache::Error::Fetch { .. }) => {
@@ -271,6 +277,7 @@ impl RunsController {
 
         // Only dynamic parameter values come from the client, everything else from the stored workflow
         let mut configuration = workflow.configuration.clone();
+        state.confine_local_source(workflow.id, &mut configuration);
         apply_values(&mut configuration, &payload.parameters)?;
         // Remote sources are pinned to the commit they resolve to now: later fetches or moved
         // tags cannot change this run, and the engine reads the checkout without network.
@@ -283,6 +290,13 @@ impl RunsController {
         })
         .await
         .map_err(|_| Error::SourceTask)??;
+        if let macworp_core::workflow_configuration::source::Source::Local(local) =
+            configuration.source()
+            && !state.config().allow_local_paths()
+            && !local.location().join(local.script()).is_file()
+        {
+            return Err(Error::WorkflowNotUploaded);
+        }
         if let Some(resolved) = resolved {
             tracing::info!(sha = %resolved.sha, "pinned remote workflow source");
         }

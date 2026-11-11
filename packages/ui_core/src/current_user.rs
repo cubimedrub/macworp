@@ -22,6 +22,14 @@ impl CurrentUser {
         self.0.read().clone().flatten()
     }
 
+    /// Whether the server lets the user create local workflows. Assumed true while the user is
+    /// unknown (the backend enforces the policy anyway).
+    pub fn can_create_local_workflows(&self) -> bool {
+        self.user()
+            .and_then(|user| user.can_create_local_workflows)
+            .unwrap_or(true)
+    }
+
     /// Whether the user is known and administers the instance
     pub fn is_admin(&self) -> bool {
         self.user().is_some_and(|user| user.is_admin)

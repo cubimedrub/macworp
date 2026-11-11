@@ -20,6 +20,8 @@ use crate::{
         ConfirmationDialog, OwnerlessBadge, Spinner,
     },
     configuration::Configuration,
+    current_user::CurrentUser,
+    local_workflow::LocalFolderPicker,
     router::IsRouter,
     runtime_status::engine_hint,
     sharing::SharingEnabled,
@@ -199,6 +201,12 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
     let mut is_share_dialog_open = use_signal(|| false);
     let sharing = SharingEnabled::from_context().is_enabled();
     let last_workflow_source = use_signal(|| None::<Source>);
+    let folder_picker = LocalFolderPicker::from_context();
+    // Servers can restrict who creates local workflows; existing local ones stay editable
+    let may_create_local =
+        CurrentUser::from_context().is_none_or(|user| user.can_create_local_workflows());
+    // Zip archive chosen in the file input, waiting to be uploaded
+    let mut pending_archive = use_signal(|| None::<Vec<u8>>);
 
     let workflow_integration_res: Resource<
         Result<Signal<DisassambledWorkflowIntegration>, Error<S>>,
@@ -280,6 +288,57 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
         workflow_integration_signal.write().inner = updated;
 
         Ok::<_, Error<S>>(())
+    });
+
+    // Saves the workflow (so the stored source is local), then uploads the chosen archive and
+    // takes over the source the server set
+    let mut upload_action = use_action(move || async move {
+        let jwt = storage
+            .read()
+            .jwt()
+            .map_err(Error::Storage)?
+            .ok_or(Error::NotLoggedIn)?;
+        let config = config.read().clone();
+        let Some(archive) = pending_archive.write().take() else {
+            return Ok::<_, Error<S>>(());
+        };
+        let mut workflow_integration_signal = match &*workflow_integration_res.read() {
+            Some(Ok(signal)) => *signal,
+            _ => return Ok(()),
+        };
+        let (name, description, configuration, script) = {
+            let current = workflow_integration_signal.read();
+            let inner = current.inner();
+            let script = match inner.configuration().source() {
+                Source::Local(local) => Some(local.script().display().to_string()),
+                _ => None,
+            };
+            (
+                inner.name.clone(),
+                inner.description.clone(),
+                inner.configuration().clone(),
+                script,
+            )
+        };
+        let client = Client::new(config.base_url().to_string(), config.timeout());
+        client
+            .workflow_integrations()
+            .update_workflow_integration(&jwt, props.id, name, description, configuration)
+            .await
+            .map_err(Error::SaveWorkflowIntegration)?;
+        let updated = client
+            .workflow_integrations()
+            .upload(&jwt, props.id, archive, script.as_deref())
+            .await
+            .map_err(Error::Upload)?;
+        // Only the source changed: keep edits of parameters that are not saved yet
+        let source = updated.configuration().source().clone();
+        *workflow_integration_signal
+            .write()
+            .inner_mut()
+            .configuration_mut()
+            .source_mut() = source;
+        Ok(())
     });
 
     rsx! {
@@ -429,7 +488,11 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                 let configuration = &mut workflow_integration.inner_mut().configuration;
                                 // Sources are engine specific: fall back to the engine's first source if the current one is unsupported
                                 if !configuration.source().is_supported_by(&engine) {
-                                    if let Some(source) = engine.supported_sources().into_iter().next() {
+                                    let first_allowed = engine
+                                        .supported_sources()
+                                        .into_iter()
+                                        .find(|source| may_create_local || !source.is_local());
+                                    if let Some(source) = first_allowed {
                                         *configuration.source_mut() = source;
                                     }
                                 }
@@ -477,10 +540,24 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         aria_label: "Workflow source",
                         onchange: move |event| on_workflow_source_change(workflow_integration, last_workflow_source, event),
                         for source in workflow_integration.read().inner().configuration.engine().supported_sources() {
-                            option {
-                                selected: source.is_same_variant(workflow_integration.read().inner().configuration.source()),
-                                value: "{source}",
-                                "{source}"
+                            {
+                                // Not offered where the server's policy forbids it, unless the workflow already is local
+                                let forbidden = source.is_local()
+                                    && !may_create_local
+                                    && !workflow_integration.read().inner().configuration.source().is_local();
+                                rsx! {
+                                    option {
+                                        selected: source.is_same_variant(workflow_integration.read().inner().configuration.source()),
+                                        value: "{source}",
+                                        disabled: forbidden,
+                                        title: if forbidden { "Creating local workflows is not allowed for you on this server" } else { "" },
+                                        if forbidden {
+                                            "{source} - not allowed by administrator"
+                                        } else {
+                                            "{source}"
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -488,22 +565,78 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
 
                 match workflow_integration.read().inner().configuration().source() {
                     Source::Local(source) => rsx! {
-                        div {
-                            class: "input-group mb-3",
-                            span {
-                                class: "input-group-text",
-                                id: "workflow-integration-configuration-source-local-location",
-                                "Location"
+                        if let Some(picker) = folder_picker.clone() {
+                            div {
+                                class: "input-group mb-3",
+                                span {
+                                    class: "input-group-text",
+                                    id: "workflow-integration-configuration-source-local-location",
+                                    "Location"
+                                }
+                                input {
+                                    type: "text",
+                                    class: "form-control",
+                                    readonly: true,
+                                    placeholder: "No folder chosen",
+                                    aria_label: "Folder containing the workflow",
+                                    aria_describedby: "workflow-integration-configuration-source-local-location",
+                                    value: "{source.location().display()}",
+                                }
+                                button {
+                                    class: "btn btn-outline-primary",
+                                    r#type: "button",
+                                    onclick: move |_| {
+                                        let picker = picker.clone();
+                                        spawn(async move {
+                                            let start = match workflow_integration.read().inner().configuration().source() {
+                                                Source::Local(source) => source.location().clone(),
+                                                _ => PathBuf::new(),
+                                            };
+                                            if let Some(folder) = picker.pick(start).await {
+                                                if let Source::Local(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
+                                                    *source.location_mut() = folder;
+                                                }
+                                            }
+                                        });
+                                    },
+                                    i { class: "fa-solid fa-folder-open me-1" }
+                                    "Choose folder…"
+                                }
                             }
-                            input {
-                                type: "text",
-                                class: "form-control",
-                                placeholder: "Location folder containing the workflow",
-                                aria_label: "Location folder containing the workflow",
-                                aria_describedby: "workflow-integration-configuration-source-local-location",
-                                value: "{source.location().display()}",
-                                oninput: move |event| if let Source::Local(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
-                                    *source.location_mut() = PathBuf::from(event.value());
+                        } else {
+                            div {
+                                class: "mb-3",
+                                label {
+                                    class: "form-label",
+                                    r#for: "workflow-integration-upload",
+                                    "Workflow files"
+                                }
+                                if !may_create_local {
+                                    div { class: "form-text", "Uploading workflow files is not allowed for you on this server." }
+                                } else {
+                                input {
+                                    id: "workflow-integration-upload",
+                                    type: "file",
+                                    class: "form-control",
+                                    accept: ".zip,application/zip",
+                                    onchange: move |event| async move {
+                                        if let Some(file) = event.files().into_iter().next() {
+                                            if let Ok(bytes) = file.read_bytes().await {
+                                                pending_archive.set(Some(bytes.to_vec()));
+                                                upload_action.call();
+                                            }
+                                        }
+                                    },
+                                }
+                                }
+                                div {
+                                    class: "form-text",
+                                    "Upload the workflow as a zip archive. The workflow is saved first, the files are stored on the server and replace the previous upload. A single top-level folder in the archive is removed."
+                                }
+                                if let Some(Err(error)) = upload_action.value().map(|r| r.map(|_| ())) {
+                                    div { class: "alert alert-danger mt-2", role: "alert", "{error}" }
+                                } else if upload_action.value().is_some() {
+                                    div { class: "text-success mt-2", "Uploaded." }
                                 }
                             }
                         },

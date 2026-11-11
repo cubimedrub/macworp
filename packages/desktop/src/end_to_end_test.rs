@@ -344,6 +344,7 @@ impl TestApp {
         let database_url = format!("sqlite://{}", root.join("db.sqlite").display());
         let mut backend_config = macworp_backend::configuration::Configuration::default();
         let max_log_bytes = backend_config.max_log_bytes_per_run();
+        *backend_config.allow_local_paths_mut() = true;
         *backend_config.database_url_mut() = database_url.clone();
         *backend_config.secret_mut() = macworp_backend::configuration::generate_secret();
         *backend_config.fixed_unavailable_engines_mut() = Some(unavailable_engines);

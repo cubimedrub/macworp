@@ -47,6 +47,14 @@ pub struct TestApp {
 impl TestApp {
     /// Creates the database, runs the migrations and builds the router.
     pub async fn new() -> Self {
+        Self::new_with(|_| {}).await
+    }
+
+    /// Like [`Self::new`], but lets `adjust` change the configuration first.
+    ///
+    /// # Arguments
+    /// * `adjust` - Called with the default test configuration before the backend state is built
+    pub async fn new_with(adjust: impl FnOnce(&mut Configuration)) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut configuration = Configuration::default();
         *configuration.worker_mut() = crate::configuration::WorkerCredentials::new(
@@ -55,6 +63,9 @@ impl TestApp {
         );
         *configuration.database_url_mut() =
             format!("sqlite://{}/test.db?mode=rwc", directory.path().display());
+        *configuration.projects_path_mut() =
+            directory.path().join("projects").display().to_string();
+        adjust(&mut configuration);
         let state = State::new_for_integration(configuration).await.unwrap();
         state
             .reference_directory()
@@ -273,6 +284,39 @@ impl TestApp {
         }
         .unwrap();
 
+        let response = self.router.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    /// Sends a request with a raw (binary) body as `user` and returns the status and JSON body.
+    ///
+    /// # Arguments
+    /// * `user` - Authenticated user
+    /// * `method` - HTTP method
+    /// * `uri` - Request path with query
+    /// * `body` - Raw request body
+    pub async fn send_bytes(
+        &self,
+        user: &User,
+        method: Method,
+        uri: &str,
+        body: Vec<u8>,
+    ) -> (StatusCode, Value) {
+        let token = JsonWebToken::encode(user.id, user.token_version, self.state.config()).unwrap();
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::AUTHORIZATION, format!("JWT {token}"))
+            .header(header::CONTENT_TYPE, "application/zip")
+            .body(Body::from(body))
+            .unwrap();
         let response = self.router.clone().oneshot(request).await.unwrap();
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)

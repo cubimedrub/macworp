@@ -847,6 +847,37 @@ mod tests {
         waiter.join().unwrap();
     }
 
+    /// Fetches the public nf-core/demo pipeline over real https (libgit2 with its TLS stack,
+    /// no local remote). Needs network access, so it only runs on request:
+    /// `cargo test -p macworp_backend real_https -- --ignored`.
+    #[test]
+    #[ignore = "needs network access to github.com"]
+    fn real_https_fetch_of_nf_core_demo() {
+        let temporary = tempfile::tempdir().unwrap();
+        let cache = WorkflowRepositoryCache::new(temporary.path(), Duration::from_secs(3600));
+        let id = RepositoryId::nf_core("demo").unwrap();
+        assert_eq!(id.url(), "https://github.com/nf-core/demo");
+
+        // Default branch: fetched from GitHub and checked out
+        let resolved = cache.resolve(&id, None).unwrap();
+        assert_eq!(resolved.sha.len(), 40);
+        assert!(resolved.directory.join("main.nf").is_file());
+        let schemas = WorkflowRepositoryCache::schemas(&resolved.directory);
+        assert!(schemas.nextflow_schema.is_some(), "nextflow_schema.json");
+        assert!(schemas.input_schema.is_some(), "assets/schema_input.json");
+
+        // The commit is now in the mirror: resolving it needs no network and reuses the checkout
+        let again = cache.resolve(&id, Some(&resolved.sha)).unwrap();
+        assert_eq!(again, resolved);
+        assert_eq!(cache.checkouts().unwrap().len(), 1);
+
+        // A reference that does not exist on the remote is reported as such
+        assert!(matches!(
+            cache.resolve(&id, Some("no-such-ref-macworp")),
+            Err(Error::ReferenceNotFound(_))
+        ));
+    }
+
     /// Only plain https URLs are accepted; other schemes, credentials, ports and odd segments are not.
     #[test]
     fn url_parsing_accepts_https_and_rejects_the_rest() {

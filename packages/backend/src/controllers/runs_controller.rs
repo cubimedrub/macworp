@@ -282,11 +282,11 @@ impl RunsController {
         // Remote sources are pinned to the commit they resolve to now: later fetches or moved
         // tags cannot change this run, and the engine reads the checkout without network.
         let cache = state.workflow_repository_cache();
-        let (configuration, resolved) = tokio::task::spawn_blocking(move || {
+        let (configuration, provenance) = tokio::task::spawn_blocking(move || {
             let mut configuration = configuration;
             cache
                 .localize(&mut configuration)
-                .map(|resolved| (configuration, resolved))
+                .map(|provenance| (configuration, provenance))
         })
         .await
         .map_err(|_| Error::SourceTask)??;
@@ -302,8 +302,8 @@ impl RunsController {
             // it against its own mount of the storage.
             *local.location_mut() = state.config().relative_to_storage(&location);
         }
-        if let Some(resolved) = resolved {
-            tracing::info!(sha = %resolved.sha, "pinned remote workflow source");
+        if let Some(provenance) = &provenance {
+            tracing::info!(sha = %provenance.commit, "pinned remote workflow source");
         }
         // Fail now instead of in the worker
         render_args(&configuration, Some(&state.reference_directory().get()))?;
@@ -327,6 +327,7 @@ impl RunsController {
                         workflow_id: Set(Some(workflow.id)),
                         started_by: Set(Some(user_id)),
                         configuration: Set(configuration),
+                        provenance: Set(provenance),
                         parameters: Set(serde_json::Value::Object(parameters)),
                         comment: Set(comment),
                         status: Set(RunStatus::Queued),

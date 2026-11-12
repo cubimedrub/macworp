@@ -242,14 +242,14 @@ impl WorkflowIntegrationsController {
         state.confine_local_source(workflow_integration.id, &mut configuration);
         let storage = state.config().storage_directory();
         let response = tokio::task::spawn_blocking(move || {
-            let resolved = cache.localize(&mut configuration)?;
+            let provenance = cache.localize(&mut configuration)?;
             let Source::Local(local) = configuration.source() else {
                 return Ok(Default::default());
             };
             let directory = macworp_core::paths::resolve_in_storage(&storage, local.location());
             let mut schemas =
                 crate::workflow_repository_cache::WorkflowRepositoryCache::schemas(&directory);
-            schemas.commit = resolved.map(|r| r.sha);
+            schemas.commit = provenance.map(|p| p.commit);
             Ok::<_, crate::workflow_repository_cache::Error>(schemas)
         })
         .await

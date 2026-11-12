@@ -1,5 +1,5 @@
 use macworp_core::{
-    entities::{FailureReason, RunStatus},
+    entities::{FailureReason, RunProvenance, RunStatus},
     responses::RunResponse,
     workflow_configuration::{WorkflowConfiguration, engine::Engine},
 };
@@ -44,6 +44,9 @@ pub struct Model {
     /// Machine-readable cause of a failed run, `None` for every other status
     #[sea_orm(nullable)]
     pub failure_reason: Option<FailureReason>,
+    /// Repository and commit of a remote or nf-core workflow, `None` for local workflows
+    #[sea_orm(nullable)]
+    pub provenance: Option<RunProvenance>,
     /// Tasks the engine announced so far, grows during the run
     pub tasks_total: i32,
     /// Tasks the engine finished
@@ -160,6 +163,7 @@ impl Model {
             exit_code: self.exit_code,
             error: self.error,
             failure_reason: self.failure_reason,
+            provenance: self.provenance,
             tasks_total: self.tasks_total,
             tasks_done: self.tasks_done,
             progress_message: self.progress_message,

@@ -234,6 +234,14 @@ fn stream_class(stream: &LogStream) -> &'static str {
     }
 }
 
+/// First characters of a commit hash, as git shows it
+///
+/// # Arguments
+/// * `commit` - Full commit hash
+fn short_commit(commit: &str) -> &str {
+    commit.get(..7).unwrap_or(commit)
+}
+
 /// Progress bar, latest detail and output of one run
 fn run_details(run: &RunResponse, chunks: &[RunLogChunk], hidden_chunks: usize) -> Element {
     let view = progress_view(run);
@@ -256,6 +264,20 @@ fn run_details(run: &RunResponse, chunks: &[RunLogChunk], hidden_chunks: usize) 
             }
             if let Some(error) = run.error.as_ref() {
                 div { class: "alert alert-danger mt-2 mb-0", role: "alert", "{error}" }
+            }
+            if let Some(provenance) = run.provenance.as_ref() {
+                small { class: "text-muted d-block mt-2",
+                    "Workflow "
+                    code { "{provenance.url}" }
+                    if let Some(requested_ref) = provenance.requested_ref.as_ref() {
+                        " at "
+                        code { "{requested_ref}" }
+                    }
+                    " (commit "
+                    code { title: "{provenance.commit}", "{short_commit(&provenance.commit)}" }
+                    "), script "
+                    code { "{provenance.script.display()}" }
+                }
             }
             // column-reverse keeps the view at the end while output grows
             div {

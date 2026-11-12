@@ -109,6 +109,7 @@ mod tests {
             exit_code: None,
             error: None,
             failure_reason: None,
+            provenance: None,
             tasks_total: total,
             tasks_done: done,
             progress_message: None,

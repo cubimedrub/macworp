@@ -7,6 +7,7 @@ mod m20261021_090000_create_runs;
 mod m20261027_090000_create_groups_shares;
 mod m20261105_090000_worker_leases;
 mod m20261110_090000_create_reference_data;
+mod m20261112_090000_run_provenance;
 
 pub struct Migrator;
 
@@ -21,6 +22,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261027_090000_create_groups_shares::Migration),
             Box::new(m20261105_090000_worker_leases::Migration),
             Box::new(m20261110_090000_create_reference_data::Migration),
+            Box::new(m20261112_090000_run_provenance::Migration),
         ]
     }
 }

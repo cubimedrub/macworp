@@ -313,6 +313,7 @@ async fn run_snapshot_keeps_the_relative_location() {
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{run}");
+    assert!(run["provenance"].is_null());
     let stored = crate::models::RunTable::find_by_id(run["id"].as_i64().unwrap())
         .one(app.state.db())
         .await

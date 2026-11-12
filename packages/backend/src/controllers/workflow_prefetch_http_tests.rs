@@ -241,3 +241,58 @@ async fn refresh_updates_each_repository_once() {
         .collect();
     assert!(shas.contains(&second.to_string()), "{shas:?}");
 }
+
+/// A run of a remote workflow stores where it came from (url, requested reference, commit,
+/// script) although its snapshot points at the checkout; runs of local workflows have none.
+#[tokio::test]
+async fn run_of_a_remote_workflow_keeps_its_provenance() {
+    let app = TestApp::new_with(|c| *c.fixed_unavailable_engines_mut() = Some(Vec::new())).await;
+    let temporary = tempfile::tempdir().unwrap();
+    let remote = local_remote(&app, temporary.path());
+    let first = commit(&remote, "1", None);
+    let alice = app.user("alice").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let project = app.project_in_storage(&alice, "p").await;
+    let mut configuration = WorkflowConfiguration::default();
+    *configuration.source_mut() = Source::Remote(RemoteSource::new(
+        REMOTE_URL.into(),
+        Some(first.to_string()),
+        None,
+    ));
+    let (status, _) = app
+        .send(
+            Some(&alice),
+            Method::POST,
+            &format!("/workflow-integrations/update/{}", workflow.id),
+            Some(update_body(&configuration)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, run) = app
+        .post(
+            &alice,
+            &format!("/runs/start/{}", project.id),
+            Some(json!({"workflow_id": workflow.id, "comment": "", "parameters": []})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{run}");
+    let expected = json!({
+        "url": REMOTE_URL,
+        "requested_ref": first.to_string(),
+        "commit": first.to_string(),
+        "script": "main.nf",
+    });
+    assert_eq!(run["provenance"], expected);
+    let stored = crate::models::RunTable::find_by_id(run["id"].as_i64().unwrap())
+        .one(app.state.db())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(stored.provenance).unwrap(),
+        expected,
+        "stored row"
+    );
+    assert!(matches!(stored.configuration.source(), Source::Local(_)));
+}

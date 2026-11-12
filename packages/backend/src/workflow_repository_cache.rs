@@ -17,6 +17,7 @@ use std::time::{Duration, SystemTime};
 
 use git2::build::CheckoutBuilder;
 use git2::{FetchOptions, Oid, Repository};
+use macworp_core::entities::RunProvenance;
 use macworp_core::paths::{is_confined, sanitize_relative};
 use macworp_core::responses::{SchemaFile, WorkflowSchemasResponse};
 use macworp_core::workflow_configuration::{
@@ -285,20 +286,25 @@ impl WorkflowRepositoryCache {
 
     /// Replaces a remote or nf-core source of `configuration` by a local source pointing at the
     /// immutable checkout of the resolved commit, so engines run from the cache without network.
-    /// Other sources are left alone. Returns what was resolved, `None` if nothing was.
+    /// Other sources are left alone. Returns where the workflow came from (url, requested
+    /// reference, commit, script) because the snapshot no longer holds it, `None` if nothing
+    /// was resolved.
     ///
     /// # Arguments
     /// * `configuration` - Workflow configuration snapshot of a run, modified in place
     pub fn localize(
         &self,
         configuration: &mut WorkflowConfiguration,
-    ) -> Result<Option<Resolved>, Error> {
-        let Some((resolved, script)) = self.fetch_source(configuration, self.branch_ttl)? else {
+    ) -> Result<Option<RunProvenance>, Error> {
+        let Some((resolved, provenance)) = self.fetch_source(configuration, self.branch_ttl)?
+        else {
             return Ok(None);
         };
-        *configuration.source_mut() =
-            Source::Local(LocalSource::new(resolved.directory.clone(), script));
-        Ok(Some(resolved))
+        *configuration.source_mut() = Source::Local(LocalSource::new(
+            resolved.directory,
+            provenance.script.clone(),
+        ));
+        Ok(Some(provenance))
     }
 
     /// Fetches the remote or nf-core source of `configuration` into the cache without changing
@@ -334,7 +340,8 @@ impl WorkflowRepositoryCache {
     }
 
     /// Resolves the remote or nf-core source of `configuration` to a checkout and returns it
-    /// with the validated main script (relative to the checkout). `None` for other sources.
+    /// with its provenance, whose script is validated (relative to the checkout). `None` for
+    /// other sources.
     ///
     /// # Arguments
     /// * `configuration` - Workflow configuration, not modified
@@ -343,7 +350,7 @@ impl WorkflowRepositoryCache {
         &self,
         configuration: &WorkflowConfiguration,
         branch_ttl: Duration,
-    ) -> Result<Option<(Resolved, PathBuf)>, Error> {
+    ) -> Result<Option<(Resolved, RunProvenance)>, Error> {
         let default_script = match configuration.engine() {
             Engine::Snakemake => "Snakefile",
             _ => "main.nf",
@@ -370,7 +377,13 @@ impl WorkflowRepositoryCache {
         if !resolved.directory.join(&script).is_file() {
             return Err(Error::InvalidPath(script.display().to_string()));
         }
-        Ok(Some((resolved, script)))
+        let provenance = RunProvenance {
+            url: id.url(),
+            requested_ref: reference,
+            commit: resolved.sha.clone(),
+            script,
+        };
+        Ok(Some((resolved, provenance)))
     }
 
     /// All checkouts with the time they were last handed out.
@@ -902,11 +915,14 @@ mod tests {
             Some("v1".into()),
             None,
         ));
-        let resolved = f.cache.localize(&mut configuration).unwrap().unwrap();
-        assert_eq!(resolved.sha, c.to_string());
+        let provenance = f.cache.localize(&mut configuration).unwrap().unwrap();
+        assert_eq!(provenance.commit, c.to_string());
+        assert_eq!(provenance.url, "https://local/o/r");
+        assert_eq!(provenance.requested_ref.as_deref(), Some("v1"));
+        assert_eq!(provenance.script, Path::new("main.nf"));
         match configuration.source() {
             Source::Local(local) => {
-                assert_eq!(local.location(), &resolved.directory);
+                assert!(local.location().ends_with(&provenance.commit));
                 assert_eq!(local.script(), Path::new("main.nf"));
             }
             other => panic!("not localized: {other:?}"),

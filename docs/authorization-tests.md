@@ -68,6 +68,8 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | Workflow list scoped the same way | `http::workflow_list_is_scoped` | |
 | Project endpoints: edit = Viewer, create-folder / delete-path = Editor, delete = Owner (also removes shares) | `http::project_endpoints_need_their_role` | owner/admin/editor/viewer/outsider: 200 / 403 / 404 as per role; `my_role` set on single endpoint |
 | Workflow endpoints: view = Viewer, update = Editor, delete = Owner (also removes shares) | `http::workflow_endpoints_need_their_role` | same matrix |
+| Workflow schemas endpoint = Viewer (owner and shared viewer read, outsider 404, anonymous 400/401); content per source | `workflow_schemas_http_tests::remote_workflow_returns_its_schemas`, `local_workflow_returns_the_newest_upload`, `sources_without_schemas_and_unreachable_remotes` | HTTP | Nextflow/sample sheet/Snakemake schemas, commit for remote, newest upload for local, empty for others, 502 for an unreachable uncached repository |
+| Workflow upload = Editor, prefetch state = Editor (a Viewer gets 403, an outsider 404) | `workflow_upload_http_tests::upload_installs_the_workflow`, `workflow_prefetch_http_tests::saving_a_remote_workflow_prefetches_without_blocking` | HTTP | |
 | Run read endpoints (`index`, `get`, `logs`) = project Viewer; `cancel` = project Editor | `http::run_endpoints_need_their_role` | outsider 404, viewer cancel 403 |
 | Workflow names of runs the caller cannot see are blanked | `http::run_endpoints_need_their_role` | empty `workflow_name` for the viewer |
 | Run start: no project access 404, project Viewer 403, project Editor + invisible workflow 404, both roles pass | `http::run_start_needs_both_roles` | authorization passes (request may fail later) |

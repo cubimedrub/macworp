@@ -19,7 +19,7 @@ use macworp_core::{
     responses::{
         EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse, PrefetchResponse,
         ProjectResponse, RunLogsResponse, RunResponse, ShareResponse, UserResponse,
-        UserSummaryResponse, WorkflowIntegrationResponse,
+        UserSummaryResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse,
     },
     routing::*,
     workflow_configuration::WorkflowConfiguration,
@@ -1097,6 +1097,33 @@ impl<'a> WorkflowIntegrationClient<'a> {
             .await?;
         response
             .json::<PrefetchResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Schemas shipped with a workflow (Nextflow parameter schema, sample sheet schema, Snakemake
+    /// schemas), read from the repository cache or the uploaded files. Empty if there are none.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - Id of the workflow
+    pub async fn schemas(&self, jwt: &str, id: i64) -> Result<WorkflowSchemasResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::SCHEMAS_PATH.replace("{id}", &id.to_string())
+        );
+        let response = self
+            .base_client
+            .send_authenticated(
+                reqwest::Client::new().get(&url),
+                jwt,
+                "fetch workflow schemas",
+            )
+            .await?;
+        response
+            .json::<WorkflowSchemasResponse>()
             .await
             .map_err(Error::Request)
     }

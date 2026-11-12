@@ -26,7 +26,7 @@ impl State {
     async fn new(config: Configuration, db: DatabaseConnection) -> Result<Self, Error> {
         let reference_directory = ReferenceDirectory::below(&config.storage_directory());
         let workflow_repository_cache = Arc::new(WorkflowRepositoryCache::new(
-            config.cache_path(),
+            config.cache_directory(),
             std::time::Duration::from_secs(config.branch_cache_seconds()),
         ));
         Ok(Self {

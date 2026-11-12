@@ -216,7 +216,7 @@ async fn main() -> Result<(), StandaloneError> {
                 let config = read_configuration(config)?;
                 let cache =
                     macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
-                        config.cache_path(),
+                        config.cache_directory(),
                         std::time::Duration::ZERO,
                     );
                 for checkout in cache.checkouts()? {
@@ -240,7 +240,7 @@ async fn main() -> Result<(), StandaloneError> {
                 // Zero TTL: an explicit fetch always refreshes branches
                 let cache =
                     macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
-                        config.cache_path(),
+                        config.cache_directory(),
                         std::time::Duration::ZERO,
                     );
                 let id = macworp_backend::workflow_repository_cache::RepositoryId::parse(&url)?;
@@ -253,7 +253,7 @@ async fn main() -> Result<(), StandaloneError> {
                 let config = read_configuration(config)?;
                 let cache =
                     macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
-                        config.cache_path(),
+                        config.cache_directory(),
                         std::time::Duration::ZERO,
                     );
                 let db = Database::connect(config.database_url())

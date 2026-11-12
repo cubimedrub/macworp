@@ -114,11 +114,6 @@ pub struct Configuration {
     /// `workflows/local/<id>` (uploaded local workflows). Workers mount it wherever they like (`--storage-path`) and resolve the
     /// paths they are given relative to it.
     storage_path: String,
-    /// Directory of the global repository cache (mirrors and checkouts of remote workflows).
-    /// Defaults to `<storage_path>/workflows/remote_cache`, see [`Self::cache_path`]. Outside the
-    /// storage root workers must have it at the same absolute path.
-    #[serde(default)]
-    cache_path: Option<String>,
     /// Seconds a fetched branch of a cached repository is trusted before it is fetched again.
     #[serde(default = "default_branch_cache_seconds")]
     branch_cache_seconds: u64,
@@ -297,16 +292,13 @@ impl Configuration {
         self.storage_directory().join(PROJECTS_DIRECTORY_NAME)
     }
 
-    /// Directory of the global repository cache: `cache_path` if set, else
-    /// `<storage>/workflows/remote_cache`.
-    pub fn cache_path(&self) -> std::path::PathBuf {
-        match &self.cache_path {
-            Some(path) => std::path::PathBuf::from(path),
-            None => self
-                .storage_directory()
-                .join(WORKFLOWS_DIRECTORY_NAME)
-                .join(REMOTE_CACHE_DIRECTORY_NAME),
-        }
+    /// Directory of the global repository cache (mirrors and checkouts of remote workflows):
+    /// `<storage>/workflows/remote_cache`, absolute. Always below the storage root, so the
+    /// storage check of the workers covers it.
+    pub fn cache_directory(&self) -> std::path::PathBuf {
+        self.storage_directory()
+            .join(WORKFLOWS_DIRECTORY_NAME)
+            .join(REMOTE_CACHE_DIRECTORY_NAME)
     }
 
     /// Makes a path under the storage root relative to it (workers resolve it against their own
@@ -325,11 +317,6 @@ impl Configuration {
     /// * `path` - Relative to the storage root, or absolute
     pub fn resolve_storage_path(&self, path: &std::path::Path) -> std::path::PathBuf {
         macworp_core::paths::resolve_in_storage(&self.storage_directory(), path)
-    }
-
-    /// Mutable access to [`Self::cache_path`], e.g. for the desktop app.
-    pub fn cache_path_mut(&mut self) -> &mut Option<String> {
-        &mut self.cache_path
     }
 
     /// Seconds a fetched branch of a cached repository is trusted.
@@ -518,7 +505,6 @@ impl Default for Configuration {
             secret: generate_secret(),
             login_validity: None,
             storage_path: "dev_storage".to_string(),
-            cache_path: None,
             branch_cache_seconds: default_branch_cache_seconds(),
             branch_refresh_seconds: 0,
             checkout_max_age_days: default_checkout_max_age_days(),
@@ -633,7 +619,7 @@ mod tests {
         for directory in [
             config.storage_directory(),
             config.projects_directory(),
-            config.cache_path(),
+            config.cache_directory(),
             config.local_workflow_directory(3),
         ] {
             assert!(directory.is_absolute(), "{directory:?}");
@@ -645,7 +631,7 @@ mod tests {
         );
         assert!(
             config
-                .cache_path()
+                .cache_directory()
                 .ends_with("dev_storage/workflows/remote_cache")
         );
         assert!(

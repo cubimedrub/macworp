@@ -278,6 +278,8 @@ impl RunsController {
         // Only dynamic parameter values come from the client, everything else from the stored workflow
         let mut configuration = workflow.configuration.clone();
         state.confine_local_source(workflow.id, &mut configuration);
+        // Uploaded files are pinned like remote checkouts: later uploads do not change this run
+        state.pin_local_source(&mut configuration);
         apply_values(&mut configuration, &payload.parameters)?;
         // Remote sources are pinned to the commit they resolve to now: later fetches or moved
         // tags cannot change this run, and the engine reads the checkout without network.

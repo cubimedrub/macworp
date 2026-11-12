@@ -2,8 +2,11 @@
 //!
 //! Users upload local workflows as a zip file. The archive is untrusted: entries are extracted
 //! into a staging directory with path, symlink, file count and size checks, and the result
-//! replaces the workflow's directory (`<storage_path>/workflows/local/<workflow_integration_id>`) by
-//! renames, so a failed upload leaves the previous version untouched.
+//! becomes a new immutable version of the workflow:
+//! `<storage_path>/workflows/local/<workflow_integration_id>/<version>/`, where the version is a
+//! time-ordered UUID. A run is pinned to the newest version at its start, so later uploads never
+//! change files a queued or running run uses; a failed upload leaves the previous version
+//! untouched. Versions that are neither the newest nor used by an active run are deleted.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -63,13 +66,13 @@ pub struct Installed {
 pub struct WorkflowUpload;
 
 impl WorkflowUpload {
-    /// Extracts `archive` and replaces `target` by the result. A single top-level folder that
+    /// Extracts `archive` into the new version directory `target`. A single top-level folder that
     /// holds everything (as made by "compress folder") is stripped; `__MACOSX` metadata is
     /// skipped. Blocking, call from `spawn_blocking`.
     ///
     /// # Arguments
     /// * `archive` - The uploaded zip file
-    /// * `target` - Workflow directory to create or replace
+    /// * `target` - Version directory to create, from [`Self::new_version_directory`]
     /// * `script` - Main script that must exist in the result (relative to the workflow)
     /// * `limits` - File count and size limits
     pub fn install(
@@ -78,11 +81,10 @@ impl WorkflowUpload {
         script: &Path,
         limits: &Limits,
     ) -> Result<Installed, Error> {
-        let parent = target.parent().expect("workflow directory has a parent");
+        let parent = target.parent().expect("version directory has a parent");
         fs::create_dir_all(parent)?;
-        let name = target.file_name().unwrap().to_string_lossy().into_owned();
         let unique = uuid::Uuid::now_v7();
-        let staging = parent.join(format!(".{name}.new-{unique}"));
+        let staging = parent.join(format!(".new-{unique}"));
 
         let extracted = Self::extract(archive, &staging, script, limits).and_then(|installed| {
             if staging.join(script).is_file() {
@@ -98,23 +100,107 @@ impl WorkflowUpload {
                 return Err(error);
             }
         };
-
-        let old = parent.join(format!(".{name}.old-{unique}"));
-        let had_previous = target.exists();
-        if had_previous {
-            fs::rename(target, &old)?;
-        }
         if let Err(error) = fs::rename(&staging, target) {
-            if had_previous {
-                let _ = fs::rename(&old, target);
-            }
             let _ = fs::remove_dir_all(&staging);
             return Err(error.into());
         }
-        if had_previous {
-            let _ = fs::remove_dir_all(&old);
-        }
         Ok(installed)
+    }
+
+    /// Path of a new version below `workflow_directory`; the name is a time-ordered UUID, so the
+    /// newest version sorts last.
+    ///
+    /// # Arguments
+    /// * `workflow_directory` - Directory of the workflow, `<storage>/workflows/local/<id>`
+    pub fn new_version_directory(workflow_directory: &Path) -> PathBuf {
+        workflow_directory.join(uuid::Uuid::now_v7().to_string())
+    }
+
+    /// Whether `name` is the name of a version directory (a UUID).
+    ///
+    /// # Arguments
+    /// * `name` - File name inside a workflow directory
+    fn is_version_name(name: &str) -> bool {
+        name.len() == 36 && uuid::Uuid::parse_str(name).is_ok()
+    }
+
+    /// Version directories of a workflow, oldest first. Empty if the directory does not exist.
+    ///
+    /// # Arguments
+    /// * `workflow_directory` - Directory of the workflow
+    pub fn versions(workflow_directory: &Path) -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(workflow_directory) else {
+            return Vec::new();
+        };
+        let mut versions: Vec<PathBuf> = entries
+            .flatten()
+            .filter(|entry| {
+                entry.path().is_dir() && Self::is_version_name(&entry.file_name().to_string_lossy())
+            })
+            .map(|entry| entry.path())
+            .collect();
+        versions.sort();
+        versions
+    }
+
+    /// The newest version of a workflow, `None` if nothing was uploaded (in the older layout
+    /// without versions the files lie directly in the workflow directory).
+    ///
+    /// # Arguments
+    /// * `workflow_directory` - Directory of the workflow
+    pub fn current_version(workflow_directory: &Path) -> Option<PathBuf> {
+        Self::versions(workflow_directory).pop()
+    }
+
+    /// Deletes the versions of a workflow that are not the newest and not in `in_use`. Returns
+    /// how many were removed.
+    ///
+    /// # Arguments
+    /// * `workflow_directory` - Directory of the workflow
+    /// * `in_use` - Version directories of queued or running runs, never removed
+    pub fn prune(workflow_directory: &Path, in_use: &std::collections::HashSet<PathBuf>) -> usize {
+        let mut versions = Self::versions(workflow_directory);
+        versions.pop();
+        Self::remove_all(&versions, in_use)
+    }
+
+    /// Deletes the files of a workflow that no longer exists, except versions in `in_use`; the
+    /// directory goes away with its last version. Returns how many versions were removed.
+    ///
+    /// # Arguments
+    /// * `workflow_directory` - Directory of the workflow
+    /// * `in_use` - Directories of queued or running runs, never removed. A run of the older
+    ///   layout points at `workflow_directory` itself, which keeps all of it.
+    pub fn remove(workflow_directory: &Path, in_use: &std::collections::HashSet<PathBuf>) -> usize {
+        if in_use.iter().any(|used| used == workflow_directory) {
+            return 0;
+        }
+        let removed = Self::remove_all(&Self::versions(workflow_directory), in_use);
+        if !in_use
+            .iter()
+            .any(|used| used.starts_with(workflow_directory))
+        {
+            let _ = fs::remove_dir_all(workflow_directory);
+        }
+        removed
+    }
+
+    /// Deletes `versions` unless in use; failures are logged and skipped.
+    ///
+    /// # Arguments
+    /// * `versions` - Version directories to delete
+    /// * `in_use` - Directories that are kept
+    fn remove_all(versions: &[PathBuf], in_use: &std::collections::HashSet<PathBuf>) -> usize {
+        let mut removed = 0;
+        for version in versions.iter().filter(|version| !in_use.contains(*version)) {
+            match fs::remove_dir_all(version) {
+                Ok(()) => removed += 1,
+                Err(error) => {
+                    tracing::warn!(%error, directory = %version.display(), "could not remove workflow version")
+                }
+            }
+        }
+        removed
     }
 
     /// Extracts into the new directory `staging`.
@@ -309,10 +395,9 @@ mod tests {
         }
     }
 
-    /// A single wrapper folder is stripped, `__MACOSX` is dropped, and re-uploading replaces
-    /// the previous content completely.
+    /// A single wrapper folder is stripped and `__MACOSX` is dropped.
     #[test]
-    fn wrapper_is_stripped_and_replaced() {
+    fn wrapper_is_stripped() {
         let directory = tempfile::tempdir().unwrap();
         let archive = directory.path().join("a.zip");
         make_zip(
@@ -324,22 +409,63 @@ mod tests {
                 ("__MACOSX/hello/._main.nf", "junk"),
             ],
         );
-        let target = directory.path().join("local/7");
+        let target = WorkflowUpload::new_version_directory(&directory.path().join("local/7"));
         WorkflowUpload::install(&archive, &target, Path::new("main.nf"), &LIMITS).unwrap();
         assert_eq!(fs::read_to_string(target.join("main.nf")).unwrap(), "v1");
+        assert!(target.join("old.txt").is_file());
         assert!(!target.join("__MACOSX").exists());
-
-        make_zip(&archive, &[("main.nf", "v2")]);
-        WorkflowUpload::install(&archive, &target, Path::new("main.nf"), &LIMITS).unwrap();
-        assert_eq!(fs::read_to_string(target.join("main.nf")).unwrap(), "v2");
-        assert!(!target.join("old.txt").exists());
         // No staging leftovers next to it.
-        let leftovers: Vec<_> = fs::read_dir(target.parent().unwrap())
-            .unwrap()
-            .flatten()
-            .map(|e| e.file_name())
-            .collect();
-        assert_eq!(leftovers.len(), 1);
+        assert_eq!(fs::read_dir(target.parent().unwrap()).unwrap().count(), 1);
+    }
+
+    /// Each upload is a new version, the newest is current, and pruning removes the older ones
+    /// except those in use; removing a workflow keeps only what is in use.
+    #[test]
+    fn versions_are_pinned_and_pruned() {
+        use std::collections::HashSet;
+        let directory = tempfile::tempdir().unwrap();
+        let archive = directory.path().join("a.zip");
+        let workflow = directory.path().join("local/7");
+        assert_eq!(WorkflowUpload::current_version(&workflow), None);
+        let mut versions = Vec::new();
+        for content in ["1", "2", "3"] {
+            make_zip(&archive, &[("main.nf", content)]);
+            let target = WorkflowUpload::new_version_directory(&workflow);
+            WorkflowUpload::install(&archive, &target, Path::new("main.nf"), &LIMITS).unwrap();
+            versions.push(target);
+        }
+        // A stray file or folder is no version
+        fs::write(workflow.join("note.txt"), "x").unwrap();
+        fs::create_dir(workflow.join("not-a-version")).unwrap();
+        assert_eq!(WorkflowUpload::versions(&workflow), versions);
+        assert_eq!(
+            WorkflowUpload::current_version(&workflow).as_ref(),
+            versions.last()
+        );
+
+        let in_use = HashSet::from([versions[0].clone()]);
+        assert_eq!(WorkflowUpload::prune(&workflow, &in_use), 1);
+        assert!(versions[0].is_dir() && !versions[1].exists() && versions[2].is_dir());
+        assert_eq!(WorkflowUpload::prune(&workflow, &in_use), 0);
+
+        assert_eq!(WorkflowUpload::remove(&workflow, &in_use), 1);
+        assert!(versions[0].is_dir() && !versions[2].exists());
+        assert_eq!(WorkflowUpload::remove(&workflow, &HashSet::new()), 1);
+        assert!(!workflow.exists());
+    }
+
+    /// A run of the older layout points at the workflow directory itself: nothing is removed.
+    #[test]
+    fn remove_keeps_a_directory_used_directly() {
+        let directory = tempfile::tempdir().unwrap();
+        let workflow = directory.path().join("local/7");
+        fs::create_dir_all(&workflow).unwrap();
+        fs::write(workflow.join("main.nf"), "x").unwrap();
+        let in_use = std::collections::HashSet::from([workflow.clone()]);
+        assert_eq!(WorkflowUpload::remove(&workflow, &in_use), 0);
+        assert!(workflow.join("main.nf").is_file());
+        WorkflowUpload::remove(&workflow, &Default::default());
+        assert!(!workflow.exists());
     }
 
     /// Bad archives are rejected and leave the previous version alone.

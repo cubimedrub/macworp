@@ -178,6 +178,76 @@ impl State {
         Ok(removed.len())
     }
 
+    /// Deletes the old versions of uploaded local workflows: of each existing workflow all but the
+    /// newest, of deleted workflows all, always keeping versions that queued or running runs use.
+    /// Returns how many versions were removed.
+    pub async fn prune_local_workflow_versions(&self) -> Result<usize, Error> {
+        let ids: std::collections::HashSet<i64> = crate::models::WorkflowIntegrationTable::find()
+            .all(&self.db)
+            .await
+            .map_err(|e| Error::WorkflowVersionPrune(e.to_string()))?
+            .into_iter()
+            .map(|workflow| workflow.id)
+            .collect();
+        let in_use = crate::models::RunTable::active_source_locations(
+            &self.db,
+            &self.config.storage_directory(),
+        )
+        .await
+        .map_err(|e| Error::WorkflowVersionPrune(e.to_string()))?;
+        let root = self.config.local_workflows_directory();
+        tokio::task::spawn_blocking(move || {
+            let Ok(entries) = std::fs::read_dir(&root) else {
+                return 0;
+            };
+            let mut removed = 0;
+            for entry in entries.flatten() {
+                let Ok(id) = entry.file_name().to_string_lossy().parse::<i64>() else {
+                    continue;
+                };
+                removed += if ids.contains(&id) {
+                    crate::workflow_upload::WorkflowUpload::prune(&entry.path(), &in_use)
+                } else {
+                    crate::workflow_upload::WorkflowUpload::remove(&entry.path(), &in_use)
+                };
+            }
+            removed
+        })
+        .await
+        .map_err(|e| Error::WorkflowVersionPrune(e.to_string()))
+    }
+
+    /// Like [`Self::prune_local_workflow_versions`] for one workflow, used right after an upload
+    /// (`exists`) or the deletion of the workflow (`!exists`).
+    ///
+    /// # Arguments
+    /// * `workflow_integration_id` - Id of the workflow
+    /// * `exists` - `true` keeps the newest version, `false` removes everything not in use
+    pub async fn prune_local_workflow(
+        &self,
+        workflow_integration_id: i64,
+        exists: bool,
+    ) -> Result<usize, Error> {
+        let in_use = crate::models::RunTable::active_source_locations(
+            &self.db,
+            &self.config.storage_directory(),
+        )
+        .await
+        .map_err(|e| Error::WorkflowVersionPrune(e.to_string()))?;
+        let directory = self
+            .config
+            .local_workflow_directory(workflow_integration_id);
+        tokio::task::spawn_blocking(move || {
+            if exists {
+                crate::workflow_upload::WorkflowUpload::prune(&directory, &in_use)
+            } else {
+                crate::workflow_upload::WorkflowUpload::remove(&directory, &in_use)
+            }
+        })
+        .await
+        .map_err(|e| Error::WorkflowVersionPrune(e.to_string()))
+    }
+
     /// Updates the cached repositories of all workflows with a remote or nf-core source from
     /// their remotes (branches and the default branch; tags and commits need nothing), so a
     /// user's run or schema request finds the newest commit already checked out. Each repository
@@ -249,6 +319,32 @@ impl State {
         }
         if let Source::Local(local) = configuration.source_mut() {
             *local.location_mut() = self.config.local_workflow_location(workflow_integration_id);
+        }
+    }
+
+    /// Pins an uploaded local workflow to its newest version: points a local source of
+    /// `configuration` (already confined) at `workflows/local/<id>/<version>`, so a run keeps the
+    /// files it started with however often the workflow is uploaded again. Without an uploaded
+    /// version (or with `allow_local_paths`) nothing changes. Call for runs and schemas, never for
+    /// the configuration that is saved.
+    ///
+    /// # Arguments
+    /// * `configuration` - Configuration to adjust in place
+    pub fn pin_local_source(
+        &self,
+        configuration: &mut macworp_core::workflow_configuration::WorkflowConfiguration,
+    ) {
+        use macworp_core::workflow_configuration::source::Source;
+        if self.config.allow_local_paths() {
+            return;
+        }
+        if let Source::Local(local) = configuration.source_mut() {
+            let directory = self.config.resolve_storage_path(local.location());
+            if let Some(version) =
+                crate::workflow_upload::WorkflowUpload::current_version(&directory)
+            {
+                *local.location_mut() = self.config.relative_to_storage(&version);
+            }
         }
     }
 

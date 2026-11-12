@@ -6,6 +6,7 @@ use macworp_core::workflow_configuration::{
     WorkflowConfiguration,
     source::{RemoteSource, Source},
 };
+use sea_orm::EntityTrait;
 use serde_json::{Value, json};
 
 use crate::test_support::TestApp;

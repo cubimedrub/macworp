@@ -9,10 +9,15 @@
 //!
 //! All git access goes through `git2` (libgit2 is compiled into the binary), no `git` executable
 //! is needed. Operations are blocking: call them from `spawn_blocking`.
+//!
+//! Fetching, checking out and pruning hold an exclusive lock on `.macworp-cache.lock` in the cache
+//! root, so several processes (server, `workflow-cache` command, a second backend on the same
+//! storage) can share one cache directory. Advisory file locks need a filesystem that supports
+//! them; untested on network filesystems.
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
 
 use git2::build::CheckoutBuilder;
@@ -33,6 +38,8 @@ pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 const FETCHED_MARKER: &str = "macworp-fetched";
 /// Name of the file in a checkout whose mtime records the last use (for GC).
 const USED_MARKER: &str = ".macworp-last-used";
+/// Lock file in the cache root, kept between runs and never deleted.
+const LOCK_FILE: &str = ".macworp-cache.lock";
 
 /// Errors of the repository cache.
 #[derive(Debug, thiserror::Error)]
@@ -149,13 +156,22 @@ pub struct CachedCheckout {
     pub last_used: SystemTime,
 }
 
+/// Exclusive right to change the cache, released on drop (file lock first, then the mutex).
+#[derive(Debug)]
+struct CacheGuard<'a> {
+    /// Dropped first: closing the file releases the file lock.
+    _file: fs::File,
+    _mutex: MutexGuard<'a, ()>,
+}
+
 /// Global repository cache, see the module documentation.
 #[derive(Debug)]
 pub struct WorkflowRepositoryCache {
     /// Current cache directory, replaceable at runtime (desktop settings).
     root: std::sync::RwLock<PathBuf>,
     branch_ttl: Duration,
-    /// Serialises fetch and checkout; coarse on purpose (single backend instance).
+    /// Serialises fetch and checkout between the threads of this process, see [`Self::lock_cache`]
+    /// for other processes.
     lock: Mutex<()>,
 }
 
@@ -196,6 +212,29 @@ impl WorkflowRepositoryCache {
     /// * `root` - Configured cache directory, possibly relative
     fn absolute(root: PathBuf) -> PathBuf {
         std::path::absolute(&root).unwrap_or(root)
+    }
+
+    /// Waits until no thread or process changes the cache, then holds that right until the guard
+    /// drops. Takes the in-process mutex, then an exclusive lock on the lock file in the cache
+    /// root (created with the root if missing). The operating system releases the file lock when
+    /// the process dies, so a crash never leaves the cache locked.
+    ///
+    /// # Errors
+    /// The cache root or lock file cannot be created, or locking fails.
+    fn lock_cache(&self) -> Result<CacheGuard<'_>, Error> {
+        let mutex = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let root = self.root();
+        fs::create_dir_all(&root)?;
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(root.join(LOCK_FILE))?;
+        file.lock()?;
+        Ok(CacheGuard {
+            _file: file,
+            _mutex: mutex,
+        })
     }
 
     fn mirror_directory(&self, id: &RepositoryId) -> PathBuf {
@@ -243,7 +282,7 @@ impl WorkflowRepositoryCache {
                 return Err(Error::InvalidReference(reference.to_string()));
             }
         }
-        let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = self.lock_cache()?;
         let mirror = Mirror::open_or_init(self.mirror_directory(id))?;
 
         let fresh = match reference.and_then(|r| mirror.lookup(r)) {
@@ -440,7 +479,7 @@ impl WorkflowRepositoryCache {
         max_age: Duration,
         in_use: &std::collections::HashSet<PathBuf>,
     ) -> Result<Vec<CachedCheckout>, Error> {
-        let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = self.lock_cache()?;
         let mut removed = Vec::new();
         for checkout in self.checkouts()? {
             let age = SystemTime::now()
@@ -779,6 +818,33 @@ mod tests {
                 .unwrap();
             self.cache.resolve(&id, reference)
         }
+    }
+
+    /// A second cache handle on the same directory (another process has its own mutex) waits
+    /// for the file lock held by the first, and goes on once it is released. The lock file is
+    /// created in the root and not taken for a checkout.
+    #[test]
+    fn file_lock_excludes_other_handles_on_the_same_directory() {
+        use std::sync::mpsc;
+        let f = Fixture::new();
+        commit(&f.remote, "main.nf", "1", None);
+        let other = WorkflowRepositoryCache::new(f.cache.root(), Duration::from_secs(3600));
+
+        let guard = f.cache.lock_cache().unwrap();
+        assert!(f.cache.root().join(LOCK_FILE).is_file());
+        assert!(f.cache.checkouts().unwrap().is_empty());
+        let (sender, receiver) = mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            let result = other.prune(Duration::from_secs(0), &Default::default());
+            sender.send(result.is_ok()).unwrap();
+        });
+        assert!(
+            receiver.recv_timeout(Duration::from_millis(300)).is_err(),
+            "prune must wait for the file lock"
+        );
+        drop(guard);
+        assert!(receiver.recv_timeout(Duration::from_secs(10)).unwrap());
+        waiter.join().unwrap();
     }
 
     /// Only plain https URLs are accepted; other schemes, credentials, ports and odd segments are not.

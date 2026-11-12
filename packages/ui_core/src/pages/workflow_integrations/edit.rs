@@ -695,6 +695,10 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                     "Choose folder…"
                                 }
                             }
+                            div {
+                                class: "form-text mb-3",
+                                "The files are read from this folder when a run starts and are not copied. Changing them while a run is queued or running can affect that run."
+                            }
                         } else {
                             div {
                                 class: "mb-3",
@@ -723,12 +727,16 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                 }
                                 div {
                                     class: "form-text",
-                                    "Upload the workflow as a zip archive. The workflow is saved first, the files are stored on the server and replace the previous upload. A single top-level folder in the archive is removed."
+                                    "Upload the workflow as a zip archive. The workflow is saved first and the files are stored on the server. A single top-level folder in the archive is removed."
+                                }
+                                div {
+                                    class: "form-text",
+                                    "Every upload is a new version that replaces the previous one for runs started afterwards. A run keeps the version it was started with, so uploading while runs are queued or running does not change them. Old versions are deleted once no run uses them."
                                 }
                                 if let Some(Err(error)) = upload_action.value().map(|r| r.map(|_| ())) {
                                     div { class: "alert alert-danger mt-2", role: "alert", "{error}" }
                                 } else if upload_action.value().is_some() {
-                                    div { class: "text-success mt-2", "Uploaded." }
+                                    div { class: "alert alert-success mt-2", role: "alert", "Uploaded." }
                                 }
                             }
                         },

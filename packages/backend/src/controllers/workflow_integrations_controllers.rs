@@ -240,6 +240,7 @@ impl WorkflowIntegrationsController {
         let cache = state.workflow_repository_cache();
         let mut configuration = workflow_integration.configuration.clone();
         state.confine_local_source(workflow_integration.id, &mut configuration);
+        state.pin_local_source(&mut configuration);
         let storage = state.config().storage_directory();
         let response = tokio::task::spawn_blocking(move || {
             let provenance = cache.localize(&mut configuration)?;
@@ -271,8 +272,9 @@ impl WorkflowIntegrationsController {
 
     /// Replaces the files of a local workflow by an uploaded zip archive (Editor). The body is
     /// streamed to a temporary file (at most `max_workflow_upload_bytes`), extracted with path,
-    /// symlink, size and file count checks and swapped in below
-    /// `<storage_path>/workflows/local/<id>`; a rejected archive leaves the previous version in place.
+    /// symlink, size and file count checks and installed as a new version below
+    /// `<storage_path>/workflows/local/<id>`; runs started before keep the version they use, a
+    /// rejected archive leaves the previous version in place.
     async fn upload(
         State(state): State<Arc<AppState>>,
         Authorized {
@@ -296,7 +298,9 @@ impl WorkflowIntegrationsController {
         let Source::Local(local) = configuration.source_mut() else {
             return Err(Error::NotLocalSource);
         };
-        let target = state.config().resolve_storage_path(local.location());
+        let workflow_directory = state.config().resolve_storage_path(local.location());
+        let target =
+            crate::workflow_upload::WorkflowUpload::new_version_directory(&workflow_directory);
         if let Some(script) = query.script {
             *local.script_mut() = macworp_core::paths::sanitize_relative(&script);
         }
@@ -304,9 +308,8 @@ impl WorkflowIntegrationsController {
 
         // Stream to a temporary file next to the target (same filesystem, cleaned up below).
         let limit = state.config().max_workflow_upload_bytes();
-        let parent = target.parent().expect("workflow directory has a parent");
-        tokio::fs::create_dir_all(parent).await?;
-        let archive = parent.join(format!(".upload-{}.zip", uuid::Uuid::now_v7()));
+        tokio::fs::create_dir_all(&workflow_directory).await?;
+        let archive = workflow_directory.join(format!(".upload-{}.zip", uuid::Uuid::now_v7()));
         let received = Self::receive(request, &archive, limit).await;
         let installed = match received {
             Ok(()) => {
@@ -328,6 +331,13 @@ impl WorkflowIntegrationsController {
         };
         let _ = tokio::fs::remove_file(&archive).await;
         let installed = installed?;
+        // Older versions go unless a queued or running run uses them
+        if let Err(error) = state
+            .prune_local_workflow(workflow_integration.id, true)
+            .await
+        {
+            tracing::warn!(%error, "could not remove old workflow versions");
+        }
         tracing::info!(
             files = installed.files,
             bytes = installed.bytes,
@@ -385,11 +395,9 @@ impl WorkflowIntegrationsController {
         workflow_integration.delete(&txn).await?;
         txn.commit().await?;
         state.forget_prefetch(id);
-        let directory = state.config().local_workflow_directory(id);
-        if let Err(error) = tokio::fs::remove_dir_all(&directory).await
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            tracing::warn!(%error, directory = %directory.display(), "could not remove uploaded workflow");
+        // Files of queued or running runs stay until those finish, the periodic cleanup removes them then
+        if let Err(error) = state.prune_local_workflow(id, false).await {
+            tracing::warn!(%error, "could not remove uploaded workflow");
         }
 
         Ok(http::StatusCode::OK)

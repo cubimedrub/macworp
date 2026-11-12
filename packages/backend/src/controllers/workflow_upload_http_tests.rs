@@ -25,6 +25,15 @@ fn zip_of(files: &[(&str, &str)]) -> Vec<u8> {
     writer.finish().unwrap().into_inner()
 }
 
+/// The newest uploaded version of a workflow.
+///
+/// # Arguments
+/// * `workflow_directory` - `<storage>/workflows/local/<id>`
+fn current_version(workflow_directory: &std::path::Path) -> std::path::PathBuf {
+    crate::workflow_upload::WorkflowUpload::current_version(workflow_directory)
+        .expect("a version was uploaded")
+}
+
 /// Update body for a workflow with the given configuration.
 ///
 /// # Arguments
@@ -63,7 +72,8 @@ async fn upload_installs_the_workflow() {
 
     let (status, body) = app.send_bytes(&alice, Method::POST, &uri, archive).await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let directory = app.state.config().local_workflow_directory(workflow.id);
+    let workflow_directory = app.state.config().local_workflow_directory(workflow.id);
+    let directory = current_version(&workflow_directory);
     assert_eq!(
         std::fs::read_to_string(directory.join("main.nf")).unwrap(),
         "v1"
@@ -78,11 +88,15 @@ async fn upload_installs_the_workflow() {
     let archive = zip_of(&[("main.nf", "v2")]);
     let (status, _) = app.send_bytes(&alice, Method::POST, &uri, archive).await;
     assert_eq!(status, StatusCode::OK);
+    // The new files are a new version, the old one is removed because no run uses it
+    let newest = current_version(&workflow_directory);
+    assert_ne!(newest, directory);
     assert_eq!(
-        std::fs::read_to_string(directory.join("main.nf")).unwrap(),
+        std::fs::read_to_string(newest.join("main.nf")).unwrap(),
         "v2"
     );
-    assert!(!directory.join("bin").exists());
+    assert!(!newest.join("bin").exists());
+    assert!(!directory.exists());
 }
 
 /// Bad uploads are 400 and keep the old files; a script missing from the archive is rejected
@@ -93,7 +107,7 @@ async fn upload_validates_the_archive() {
     let alice = app.user("alice").await;
     let workflow = app.workflow(&alice, "w").await;
     let uri = format!("/workflow-integrations/upload/{}", workflow.id);
-    let directory = app.state.config().local_workflow_directory(workflow.id);
+    let workflow_directory = app.state.config().local_workflow_directory(workflow.id);
 
     let good = zip_of(&[("main.nf", "good")]);
     let (status, _) = app.send_bytes(&alice, Method::POST, &uri, good).await;
@@ -108,7 +122,7 @@ async fn upload_validates_the_archive() {
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
     assert_eq!(
-        std::fs::read_to_string(directory.join("main.nf")).unwrap(),
+        std::fs::read_to_string(current_version(&workflow_directory).join("main.nf")).unwrap(),
         "good"
     );
 
@@ -319,11 +333,80 @@ async fn run_snapshot_keeps_the_relative_location() {
         .await
         .unwrap()
         .unwrap();
+    // Pinned to the uploaded version, relative to the storage root
+    let version = current_version(&app.state.config().local_workflow_directory(workflow.id));
     match stored.configuration.source() {
         Source::Local(local) => assert_eq!(
             local.location(),
-            &std::path::PathBuf::from(format!("workflows/local/{}", workflow.id))
+            &std::path::PathBuf::from(format!(
+                "workflows/local/{}/{}",
+                workflow.id,
+                version.file_name().unwrap().to_string_lossy()
+            ))
         ),
         other => panic!("unexpected source {other:?}"),
     }
+}
+
+/// Uploading again or deleting the workflow does not change the files of a queued run: the run
+/// keeps the version it started with until it has finished, then the periodic cleanup removes it.
+#[tokio::test]
+async fn runs_keep_their_uploaded_version() {
+    let app = TestApp::new_with(|c| *c.fixed_unavailable_engines_mut() = Some(Vec::new())).await;
+    let alice = app.user("alice").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let project = app.project_in_storage(&alice, "p").await;
+    let upload = format!("/workflow-integrations/upload/{}", workflow.id);
+    let workflow_directory = app.state.config().local_workflow_directory(workflow.id);
+    let (status, _) = app
+        .send_bytes(&alice, Method::POST, &upload, zip_of(&[("main.nf", "v1")]))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let first = current_version(&workflow_directory);
+
+    let (status, run) = app
+        .post(
+            &alice,
+            &format!("/runs/start/{}", project.id),
+            Some(json!({"workflow_id": workflow.id, "comment": "", "parameters": []})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{run}");
+
+    let (status, _) = app
+        .send_bytes(&alice, Method::POST, &upload, zip_of(&[("main.nf", "v2")]))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let second = current_version(&workflow_directory);
+    assert_ne!(first, second);
+    assert_eq!(
+        std::fs::read_to_string(first.join("main.nf")).unwrap(),
+        "v1"
+    );
+    assert_eq!(
+        std::fs::read_to_string(second.join("main.nf")).unwrap(),
+        "v2"
+    );
+
+    // Deleting the workflow keeps what the queued run uses and nothing else
+    let (status, _) = app
+        .post(
+            &alice,
+            &format!("/workflow-integrations/delete/{}", workflow.id),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(first.join("main.nf").is_file());
+    assert!(!second.exists());
+
+    // Once the run is over the periodic cleanup removes the rest
+    let stored = crate::models::RunTable::find_by_id(run["id"].as_i64().unwrap())
+        .one(app.state.db())
+        .await
+        .unwrap()
+        .unwrap();
+    stored.request_cancel(app.state.db()).await.unwrap();
+    assert_eq!(app.state.prune_local_workflow_versions().await.unwrap(), 1);
+    assert!(!workflow_directory.exists());
 }

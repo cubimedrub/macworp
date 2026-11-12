@@ -382,14 +382,20 @@ impl Configuration {
         }
     }
 
-    /// Directory of an uploaded local workflow: `<storage>/workflows/local/<id>`, absolute.
+    /// Directory holding the uploaded local workflows: `<storage>/workflows/local`, absolute.
+    pub fn local_workflows_directory(&self) -> std::path::PathBuf {
+        self.storage_directory()
+            .join(WORKFLOWS_DIRECTORY_NAME)
+            .join(LOCAL_WORKFLOWS_DIRECTORY_NAME)
+    }
+
+    /// Directory of an uploaded local workflow: `<storage>/workflows/local/<id>`, absolute. It
+    /// holds one subdirectory per uploaded version, see [`crate::workflow_upload`].
     ///
     /// # Arguments
     /// * `workflow_integration_id` - Id of the workflow
     pub fn local_workflow_directory(&self, workflow_integration_id: i64) -> std::path::PathBuf {
-        self.storage_directory()
-            .join(WORKFLOWS_DIRECTORY_NAME)
-            .join(LOCAL_WORKFLOWS_DIRECTORY_NAME)
+        self.local_workflows_directory()
             .join(workflow_integration_id.to_string())
     }
 

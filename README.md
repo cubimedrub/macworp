@@ -136,11 +136,18 @@ Comming soon
 Workflows with a remote source (Git URL or nf-core pipeline) are downloaded by the backend into a cache and run from there, so engines need no network access and a run always uses the commit that was resolved when it was started. This matters on networks with limited access to repository hosts, so the cache can be filled ahead of time:
 
 * **Saving a workflow** with a remote source starts a download in the background. The editor shows its progress and a warning if the host cannot be reached; the workflow is saved either way.
-* **From the command line** an operator with access can fill or refresh the cache: `macworp_backend workflow-cache fetch https://github.com/owner/repo [tag|branch|commit] [-c config]`. The cache directory (`cache_path`, default `<storage_path>/workflow_cache`) consists of plain directories and can be copied to a host without access. `workflow-cache list` shows the cached checkouts, `workflow-cache prune` removes unused old ones.
+* **From the command line** an operator with access can fill or refresh the cache: `macworp_backend workflow-cache fetch https://github.com/owner/repo [tag|branch|commit] [-c config]`. The cache directory (`cache_path`, default `<storage_path>/workflow_cache`) consists of plain directories and can be copied to a host without access. `workflow-cache list` shows the cached checkouts, `workflow-cache prune` removes unused old ones. The commands are safe to run while the backend is up: all writers lock `.macworp-cache.lock` in the cache directory.
 * **Branches** are fetched again after `branch_cache_seconds` (default 3600) when needed. Set `branch_refresh_seconds` (default `0`, off) to let the backend update all workflows that follow a branch (or the default branch) in the background every N seconds. Tags and commit hashes are never refreshed.
 * Checkouts unused for `checkout_max_age_days` (default 30, `0` keeps all) are deleted; checkouts of queued or running runs are kept.
 
-Only plain `https://host/owner/repo` URLs are accepted. Private repositories are not supported yet.
+Only plain `https://host/owner/repo` URLs are accepted. Private repositories are not supported (no credentials are stored); upload non-public workflows as local workflows instead.
+
+## Local workflows
+Workflows with a local source are uploaded as a zip archive in the workflow editor (a single top-level folder is removed). Every upload is a new immutable version below `<storage_path>/workflows/local/<workflow id>/`:
+
+* A run uses the newest version at the moment it starts and keeps it until it has finished, so uploading again while runs are queued or running does not change them. Only runs started afterwards use the new files.
+* Versions that are neither the newest nor used by a queued or running run are deleted after an upload, when the workflow is deleted and by an hourly cleanup.
+* The desktop app reads the files from a folder you choose instead and does not copy them: changing that folder affects runs that are queued or running.
 
 ## Contribution
 If you want to contribute to MAcWorP please check our [contribution document](CONTRIBUTING.md) first.

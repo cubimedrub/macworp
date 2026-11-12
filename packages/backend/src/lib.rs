@@ -108,6 +108,7 @@ where
         let max_attempts = i32::try_from(state.config().worker_max_attempts()).unwrap_or(i32::MAX);
         let prune_period = std::time::Duration::from_secs(3600);
         let mut last_prune = std::time::Instant::now();
+        let mut last_version_prune = std::time::Instant::now();
         let mut last_refresh = std::time::Instant::now();
         loop {
             tokio::time::sleep(period).await;
@@ -116,6 +117,16 @@ where
                 match state.prune_workflow_repository_cache().await {
                     Ok(0) => {}
                     Ok(removed) => tracing::info!("Removed {removed} unused cached checkouts"),
+                    Err(error) => tracing::error!("{error}"),
+                }
+            }
+            if last_version_prune.elapsed() >= prune_period {
+                last_version_prune = std::time::Instant::now();
+                match state.prune_local_workflow_versions().await {
+                    Ok(0) => {}
+                    Ok(removed) => {
+                        tracing::info!("Removed {removed} unused uploaded workflow versions");
+                    }
                     Err(error) => tracing::error!("{error}"),
                 }
             }

@@ -122,6 +122,11 @@ pub struct Configuration {
     /// Seconds a fetched branch of a cached repository is trusted before it is fetched again.
     #[serde(default = "default_branch_cache_seconds")]
     branch_cache_seconds: u64,
+    /// Seconds between two background updates of the cached repositories of workflows that
+    /// follow a branch (or the default branch), so users' runs find the newest commit cached.
+    /// `0` (default) disables the refresh; tags and commits are never refreshed.
+    #[serde(default)]
+    branch_refresh_seconds: u64,
     /// Days after which an unused checkout of the repository cache is deleted, `0` keeps all.
     #[serde(default = "default_checkout_max_age_days")]
     checkout_max_age_days: u64,
@@ -332,6 +337,12 @@ impl Configuration {
         self.branch_cache_seconds
     }
 
+    /// Interval of the background refresh of branch-based workflows, `None` when disabled.
+    pub fn branch_refresh_interval(&self) -> Option<std::time::Duration> {
+        (self.branch_refresh_seconds > 0)
+            .then(|| std::time::Duration::from_secs(self.branch_refresh_seconds))
+    }
+
     /// Age after which unused cache checkouts are deleted, `None` when disabled.
     pub fn checkout_max_age(&self) -> Option<std::time::Duration> {
         (self.checkout_max_age_days > 0)
@@ -503,6 +514,7 @@ impl Default for Configuration {
             storage_path: "dev_storage".to_string(),
             cache_path: None,
             branch_cache_seconds: default_branch_cache_seconds(),
+            branch_refresh_seconds: 0,
             checkout_max_age_days: default_checkout_max_age_days(),
             permit_local_workflows: LocalWorkflowPolicy::default(),
             allow_local_paths: false,

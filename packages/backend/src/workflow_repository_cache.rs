@@ -218,6 +218,22 @@ impl WorkflowRepositoryCache {
     /// * `id` - Repository, from [`RepositoryId::parse`] or [`RepositoryId::nf_core`]
     /// * `reference` - Tag, branch or commit hash; `None` means the remote's default branch
     pub fn resolve(&self, id: &RepositoryId, reference: Option<&str>) -> Result<Resolved, Error> {
+        self.resolve_within(id, reference, self.branch_ttl)
+    }
+
+    /// Like [`Self::resolve`], but a branch is trusted for `branch_ttl` instead of the
+    /// configured time; `Duration::ZERO` always fetches branches.
+    ///
+    /// # Arguments
+    /// * `id` - Repository
+    /// * `reference` - Tag, branch or commit hash; `None` means the remote's default branch
+    /// * `branch_ttl` - How long a fetched branch is trusted
+    fn resolve_within(
+        &self,
+        id: &RepositoryId,
+        reference: Option<&str>,
+        branch_ttl: Duration,
+    ) -> Result<Resolved, Error> {
         if let Some(reference) = reference {
             let bad = reference.is_empty()
                 || reference.starts_with('-')
@@ -231,7 +247,7 @@ impl WorkflowRepositoryCache {
 
         let fresh = match reference.and_then(|r| mirror.lookup(r)) {
             Some(Cached::Immutable(_)) => true,
-            Some(Cached::Branch(_)) => mirror.fetched_within(self.branch_ttl),
+            Some(Cached::Branch(_)) => mirror.fetched_within(branch_ttl),
             None => false,
         };
         let mut fetch_error = None;
@@ -277,7 +293,7 @@ impl WorkflowRepositoryCache {
         &self,
         configuration: &mut WorkflowConfiguration,
     ) -> Result<Option<Resolved>, Error> {
-        let Some((resolved, script)) = self.fetch_source(configuration)? else {
+        let Some((resolved, script)) = self.fetch_source(configuration, self.branch_ttl)? else {
             return Ok(None);
         };
         *configuration.source_mut() =
@@ -297,7 +313,23 @@ impl WorkflowRepositoryCache {
         configuration: &WorkflowConfiguration,
     ) -> Result<Option<Resolved>, Error> {
         Ok(self
-            .fetch_source(configuration)?
+            .fetch_source(configuration, self.branch_ttl)?
+            .map(|(resolved, _)| resolved))
+    }
+
+    /// Brings the cache up to date with the remote for the source of `configuration`: branches
+    /// (and the default branch) are fetched regardless of the TTL, so a user's run finds the
+    /// newest commit already checked out. Tags and commit hashes need no network. Used by the
+    /// background refresh. Returns what was resolved, `None` for sources that are not remote.
+    ///
+    /// # Arguments
+    /// * `configuration` - Workflow configuration as saved, not modified
+    pub fn refresh(
+        &self,
+        configuration: &WorkflowConfiguration,
+    ) -> Result<Option<Resolved>, Error> {
+        Ok(self
+            .fetch_source(configuration, Duration::ZERO)?
             .map(|(resolved, _)| resolved))
     }
 
@@ -306,9 +338,11 @@ impl WorkflowRepositoryCache {
     ///
     /// # Arguments
     /// * `configuration` - Workflow configuration, not modified
+    /// * `branch_ttl` - How long a fetched branch is trusted
     fn fetch_source(
         &self,
         configuration: &WorkflowConfiguration,
+        branch_ttl: Duration,
     ) -> Result<Option<(Resolved, PathBuf)>, Error> {
         let default_script = match configuration.engine() {
             Engine::Snakemake => "Snakefile",
@@ -332,7 +366,7 @@ impl WorkflowRepositoryCache {
             return Err(Error::InvalidPath(script.display().to_string()));
         }
         let script = sanitize_relative(&script);
-        let resolved = self.resolve(&id, reference.as_deref())?;
+        let resolved = self.resolve_within(&id, reference.as_deref(), branch_ttl)?;
         if !resolved.directory.join(&script).is_file() {
             return Err(Error::InvalidPath(script.display().to_string()));
         }
@@ -935,6 +969,43 @@ mod tests {
         assert!(
             f.cache
                 .prefetch(&WorkflowConfiguration::default())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    /// `refresh` fetches a branch although it is younger than the TTL, `prefetch` does not.
+    #[test]
+    fn refresh_ignores_the_branch_ttl() {
+        use macworp_core::workflow_configuration::source::RemoteSource;
+        let f = Fixture::new();
+        let first = commit(&f.remote, "main.nf", "1", None);
+        f.resolve(None).unwrap(); // prepares the mirror to fetch from the local remote
+        let branch = f.remote.head().unwrap().shorthand().unwrap().to_string();
+        let mut configuration = WorkflowConfiguration::default();
+        *configuration.source_mut() = Source::Remote(RemoteSource::new(
+            "https://local/o/r".into(),
+            Some(branch),
+            None,
+        ));
+        assert_eq!(
+            f.cache.prefetch(&configuration).unwrap().unwrap().sha,
+            first.to_string()
+        );
+
+        let second = commit(&f.remote, "main.nf", "2", Some(first));
+        // Within the TTL the cached branch is trusted ...
+        assert_eq!(
+            f.cache.prefetch(&configuration).unwrap().unwrap().sha,
+            first.to_string()
+        );
+        // ... a refresh looks at the remote and checks out the new commit.
+        let refreshed = f.cache.refresh(&configuration).unwrap().unwrap();
+        assert_eq!(refreshed.sha, second.to_string());
+        assert!(refreshed.directory.join("main.nf").is_file());
+        assert!(
+            f.cache
+                .refresh(&WorkflowConfiguration::default())
                 .unwrap()
                 .is_none()
         );

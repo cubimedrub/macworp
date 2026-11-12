@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use sea_orm::{Database, DatabaseConnection};
+use sea_orm::{Database, DatabaseConnection, EntityTrait};
 
 use macworp_core::responses::PrefetchResponse;
 use macworp_core::workflow_configuration::{WorkflowConfiguration, engine::Engine};
@@ -165,6 +165,48 @@ impl State {
             .map_err(|e| Error::CachePrune(e.to_string()))?
             .map_err(|e| Error::CachePrune(e.to_string()))?;
         Ok(removed.len())
+    }
+
+    /// Updates the cached repositories of all workflows with a remote or nf-core source from
+    /// their remotes (branches and the default branch; tags and commits need nothing), so a
+    /// user's run or schema request finds the newest commit already checked out. Each repository
+    /// and reference is fetched once however many workflows use it, one after the other; a
+    /// failing repository is logged and skipped. Returns how many were fetched successfully.
+    pub async fn refresh_workflow_repositories(&self) -> Result<usize, Error> {
+        use macworp_core::workflow_configuration::source::Source;
+        let workflows = crate::models::WorkflowIntegrationTable::find()
+            .all(&self.db)
+            .await
+            .map_err(|e| Error::CacheRefresh(e.to_string()))?;
+        let mut seen = std::collections::HashSet::new();
+        let mut configurations = Vec::new();
+        for workflow in workflows {
+            let key = match workflow.configuration.source() {
+                Source::Remote(remote) => (remote.url().to_string(), remote.version().cloned()),
+                Source::NfCore(nf_core) => {
+                    (nf_core.pipeline().to_string(), nf_core.version().cloned())
+                }
+                _ => continue,
+            };
+            if seen.insert(key) {
+                configurations.push(workflow.configuration);
+            }
+        }
+        let cache = self.workflow_repository_cache();
+        tokio::task::spawn_blocking(move || {
+            let mut refreshed = 0;
+            for configuration in configurations {
+                match cache.refresh(&configuration) {
+                    Ok(_) => refreshed += 1,
+                    Err(error) => {
+                        tracing::warn!(%error, "refreshing a workflow repository failed");
+                    }
+                }
+            }
+            refreshed
+        })
+        .await
+        .map_err(|e| Error::CacheRefresh(e.to_string()))
     }
 
     /// Whether the policy `permit_local_workflows` lets `user` create local workflows. The desktop app

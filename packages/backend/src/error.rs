@@ -15,6 +15,9 @@ pub enum Error {
     /// Pruning the repository cache failed
     #[error("Unable to prune the repository cache: {0}")]
     CachePrune(String),
+    /// Refreshing the repository cache failed
+    #[error("Unable to refresh the repository cache: {0}")]
+    CacheRefresh(String),
     #[error("Invalid configuration: {0}")]
     Configuration(&'static str),
     #[error("Error during authentication: {0}")]

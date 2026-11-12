@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use macworp_backend::configuration::DEFAULT_CACHE_DIRECTORY_NAME;
+use macworp_backend::configuration::{REMOTE_CACHE_DIRECTORY_NAME, WORKFLOWS_DIRECTORY_NAME};
 use macworp_backend::reference_directory::{ReferenceDirectory, DEFAULT_DIRECTORY_NAME};
 use macworp_backend::repository_cache::RepositoryCache;
 use serde::{Deserialize, Serialize};
@@ -110,10 +110,12 @@ impl Settings {
     /// * `directory` - The app data directory
     /// * `folder` - Which folder
     pub fn default_path(directory: &Path, folder: Folder) -> PathBuf {
-        directory.join(match folder {
-            Folder::Reference => DEFAULT_DIRECTORY_NAME,
-            Folder::WorkflowCache => DEFAULT_CACHE_DIRECTORY_NAME,
-        })
+        match folder {
+            Folder::Reference => directory.join(DEFAULT_DIRECTORY_NAME),
+            Folder::WorkflowCache => directory
+                .join(WORKFLOWS_DIRECTORY_NAME)
+                .join(REMOTE_CACHE_DIRECTORY_NAME),
+        }
     }
 
     /// The folder currently in use.

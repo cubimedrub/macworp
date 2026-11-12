@@ -49,8 +49,7 @@ impl FileMutableProjectEdit {
             .any(|value| value.as_string().is_some_and(|value| value == "Files"));
         let items = data_transfer.items();
         has_files_type
-            || (0..items.length())
-                .any(|i| items.get(i).is_some_and(|item| item.kind() == "file"))
+            || (0..items.length()).any(|i| items.get(i).is_some_and(|item| item.kind() == "file"))
     }
 
     /// Read one batch of entries from a directory reader. Browsers return a directory in batches
@@ -64,20 +63,18 @@ impl FileMutableProjectEdit {
         reader: &web_sys::FileSystemDirectoryReader,
         path: &str,
     ) -> Result<Vec<web_sys::FileSystemEntry>, Error> {
-        let (result_sender, result_receiver) =
-            oneshot::channel::<Vec<web_sys::FileSystemEntry>>();
+        let (result_sender, result_receiver) = oneshot::channel::<Vec<web_sys::FileSystemEntry>>();
         let result_sender = Rc::new(RefCell::new(Some(result_sender)));
 
-        let reader_callback = Closure::wrap(Box::new(
-            move |entries: Vec<web_sys::FileSystemEntry>| {
+        let reader_callback =
+            Closure::wrap(Box::new(move |entries: Vec<web_sys::FileSystemEntry>| {
                 if let Some(result_sender) = result_sender.borrow_mut().take() {
                     // ignore send errors (receiver dropped)
                     let _ = result_sender.send(entries);
                 }
                 Undefined::default()
-            },
-        )
-            as Box<dyn FnMut(Vec<web_sys::FileSystemEntry>) -> Undefined>);
+            })
+                as Box<dyn FnMut(Vec<web_sys::FileSystemEntry>) -> Undefined>);
         reader
             .read_entries_with_callback(reader_callback.as_ref().unchecked_ref())
             .map_err(|_| Error::ReadDirecoryEntries(path.to_string()))?;
@@ -251,9 +248,8 @@ impl IsProjectEdit for FileMutableProjectEdit {
     async fn dragover_handler(event: Event<DragData>) -> Result<(), Self::Error> {
         // `files()` is empty while dragging in Chromium and Safari, only the items (kind) are
         // readable, so check those.
-        let drag_event: web_sys::DragEvent = event
-            .try_as_web_event()
-            .ok_or(Error::WebEventConversion)?;
+        let drag_event: web_sys::DragEvent =
+            event.try_as_web_event().ok_or(Error::WebEventConversion)?;
         let has_file = drag_event
             .data_transfer()
             .is_some_and(|data_transfer| Self::carries_files(&data_transfer));

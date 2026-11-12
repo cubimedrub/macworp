@@ -255,7 +255,7 @@ impl WorkflowIntegrationsController {
     /// Replaces the files of a local workflow by an uploaded zip archive (Editor). The body is
     /// streamed to a temporary file (at most `max_workflow_upload_bytes`), extracted with path,
     /// symlink, size and file count checks and swapped in below
-    /// `<storage_path>/local/<id>`; a rejected archive leaves the previous version in place.
+    /// `<storage_path>/workflows/local/<id>`; a rejected archive leaves the previous version in place.
     async fn upload(
         State(state): State<Arc<AppState>>,
         Authorized {

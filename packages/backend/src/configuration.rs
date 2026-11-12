@@ -62,8 +62,12 @@ impl LocalWorkflowPolicy {
     }
 }
 
-/// Name of the repository cache folder below the storage root.
-pub const DEFAULT_CACHE_DIRECTORY_NAME: &str = "workflow_cache";
+/// Folder below the storage root holding all workflows: `local/<id>` (uploaded) and
+/// `remote_cache/{mirrors,checkouts}` (repositories).
+pub const WORKFLOWS_DIRECTORY_NAME: &str = "workflows";
+
+/// Name of the repository cache folder below [`WORKFLOWS_DIRECTORY_NAME`].
+pub const REMOTE_CACHE_DIRECTORY_NAME: &str = "remote_cache";
 
 /// Default of `branch_cache_seconds`: one hour.
 fn default_branch_cache_seconds() -> u64 {
@@ -73,7 +77,7 @@ fn default_branch_cache_seconds() -> u64 {
 /// Folder below the storage root holding the project directories.
 pub const PROJECTS_DIRECTORY_NAME: &str = "projects";
 
-/// Folder below the storage root holding uploaded local workflows.
+/// Folder below [`WORKFLOWS_DIRECTORY_NAME`] holding uploaded local workflows.
 pub const LOCAL_WORKFLOWS_DIRECTORY_NAME: &str = "local";
 
 /// Default of `max_workflow_upload_bytes`: 256 MiB.
@@ -106,12 +110,12 @@ pub struct Configuration {
     login_validity: Option<u32>,
     /// Storage root on standalone, shared (e.g. over NFS) between the backend and the workers.
     /// Everything the backend keeps on disk lives below it: `projects/<id>` (project data),
-    /// `workflow_cache` (repository cache), `global_reference_data` and `local/<id>` (uploaded
-    /// local workflows). Workers mount it wherever they like (`--storage-path`) and resolve the
+    /// `workflows/remote_cache` (repository cache), `global_reference_data` and
+    /// `workflows/local/<id>` (uploaded local workflows). Workers mount it wherever they like (`--storage-path`) and resolve the
     /// paths they are given relative to it.
     storage_path: String,
     /// Directory of the global repository cache (mirrors and checkouts of remote workflows).
-    /// Defaults to `<storage_path>/workflow_cache`, see [`Self::cache_path`]. Outside the
+    /// Defaults to `<storage_path>/workflows/remote_cache`, see [`Self::cache_path`]. Outside the
     /// storage root workers must have it at the same absolute path.
     #[serde(default)]
     cache_path: Option<String>,
@@ -126,7 +130,7 @@ pub struct Configuration {
     permit_local_workflows: LocalWorkflowPolicy,
     /// Whether a local workflow may point at any directory of the machine. Off for servers:
     /// local workflows are then uploaded as zip archives and live below
-    /// `<storage_path>/local/<workflow id>`. The desktop app turns it on (single local user
+    /// `<storage_path>/workflows/local/<workflow id>`. The desktop app turns it on (single local user
     /// picking a folder).
     #[serde(default)]
     allow_local_paths: bool,
@@ -289,11 +293,14 @@ impl Configuration {
     }
 
     /// Directory of the global repository cache: `cache_path` if set, else
-    /// `<storage>/workflow_cache`.
+    /// `<storage>/workflows/remote_cache`.
     pub fn cache_path(&self) -> std::path::PathBuf {
         match &self.cache_path {
             Some(path) => std::path::PathBuf::from(path),
-            None => self.storage_directory().join(DEFAULT_CACHE_DIRECTORY_NAME),
+            None => self
+                .storage_directory()
+                .join(WORKFLOWS_DIRECTORY_NAME)
+                .join(REMOTE_CACHE_DIRECTORY_NAME),
         }
     }
 
@@ -364,23 +371,25 @@ impl Configuration {
         }
     }
 
-    /// Directory of an uploaded local workflow: `<storage>/local/<id>`, absolute.
+    /// Directory of an uploaded local workflow: `<storage>/workflows/local/<id>`, absolute.
     ///
     /// # Arguments
     /// * `workflow_integration_id` - Id of the workflow
     pub fn local_workflow_directory(&self, workflow_integration_id: i64) -> std::path::PathBuf {
         self.storage_directory()
+            .join(WORKFLOWS_DIRECTORY_NAME)
             .join(LOCAL_WORKFLOWS_DIRECTORY_NAME)
             .join(workflow_integration_id.to_string())
     }
 
     /// Where an uploaded local workflow is stored in a run snapshot or workflow configuration:
-    /// relative to the storage root (`local/<id>`), so every worker finds it on its own mount.
+    /// relative to the storage root (`workflows/local/<id>`), so every worker finds it on its own mount.
     ///
     /// # Arguments
     /// * `workflow_integration_id` - Id of the workflow
     pub fn local_workflow_location(&self, workflow_integration_id: i64) -> std::path::PathBuf {
-        std::path::PathBuf::from(LOCAL_WORKFLOWS_DIRECTORY_NAME)
+        std::path::PathBuf::from(WORKFLOWS_DIRECTORY_NAME)
+            .join(LOCAL_WORKFLOWS_DIRECTORY_NAME)
             .join(workflow_integration_id.to_string())
     }
 
@@ -616,15 +625,19 @@ mod tests {
                 .projects_directory()
                 .ends_with("dev_storage/projects")
         );
-        assert!(config.cache_path().ends_with("dev_storage/workflow_cache"));
+        assert!(
+            config
+                .cache_path()
+                .ends_with("dev_storage/workflows/remote_cache")
+        );
         assert!(
             config
                 .local_workflow_directory(3)
-                .ends_with("dev_storage/local/3")
+                .ends_with("dev_storage/workflows/local/3")
         );
         assert_eq!(
             config.local_workflow_location(3),
-            std::path::PathBuf::from("local/3")
+            std::path::PathBuf::from("workflows/local/3")
         );
         let project = config.projects_directory().join("7");
         assert_eq!(

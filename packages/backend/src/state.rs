@@ -102,8 +102,8 @@ impl State {
     }
 
     /// On servers (no `allow_local_paths`) a local workflow always lives in
-    /// `<storage>/local/<id>`: replaces the location of a local source by the relative
-    /// `local/<id>` (resolved against each machine's storage mount) and keeps the script. Idempotent; other sources are untouched. Call wherever a stored configuration is
+    /// `<storage>/workflows/local/<id>`: replaces the location of a local source by the relative
+    /// `workflows/local/<id>` (resolved against each machine's storage mount) and keeps the script. Idempotent; other sources are untouched. Call wherever a stored configuration is
     /// saved, run or read, so a client can never point a workflow at another directory.
     ///
     /// # Arguments

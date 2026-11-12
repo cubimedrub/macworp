@@ -949,7 +949,7 @@ mod tests {
         assert!(resolved.directory.join("main.nf").is_file());
     }
 
-    /// A cache root given as a relative path (the default `dev_projects/workflow_cache`) works.
+    /// A cache root given as a relative path (the default `dev_projects/workflows/remote_cache`) works.
     #[test]
     fn relative_cache_root_works() {
         let f = Fixture::new();

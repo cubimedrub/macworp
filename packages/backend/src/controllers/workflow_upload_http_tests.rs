@@ -33,7 +33,7 @@ fn update_body(configuration: &WorkflowConfiguration) -> Value {
     json!({"name": "w", "description": "", "configuration": configuration})
 }
 
-/// An editor uploads a zip: files land in `<storage_path>/local/<id>`, the stored source
+/// An editor uploads a zip: files land in `<storage_path>/workflows/local/<id>`, the stored source
 /// points there, viewers and outsiders cannot upload, and re-uploading replaces the files.
 #[tokio::test]
 async fn upload_installs_the_workflow() {
@@ -72,7 +72,7 @@ async fn upload_installs_the_workflow() {
     assert_eq!(
         body["configuration"]["source"]["Local"]["location"],
         // Relative to the storage root, workers resolve it against their own mount
-        format!("local/{}", workflow.id)
+        format!("workflows/local/{}", workflow.id)
     );
 
     let archive = zip_of(&[("main.nf", "v2")]);
@@ -169,7 +169,7 @@ async fn local_location_is_confined_on_servers() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body["configuration"]["source"]["Local"]["location"],
-        format!("local/{}", workflow.id)
+        format!("workflows/local/{}", workflow.id)
     );
 
     let (status, _) = app
@@ -321,7 +321,7 @@ async fn run_snapshot_keeps_the_relative_location() {
     match stored.configuration.source() {
         Source::Local(local) => assert_eq!(
             local.location(),
-            &std::path::PathBuf::from(format!("local/{}", workflow.id))
+            &std::path::PathBuf::from(format!("workflows/local/{}", workflow.id))
         ),
         other => panic!("unexpected source {other:?}"),
     }

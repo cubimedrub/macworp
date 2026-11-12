@@ -358,7 +358,7 @@ impl TestApp {
         let reference_directory = root.join("reference");
         std::fs::create_dir_all(&reference_directory).unwrap();
         let reference_directory_for_backend = reference_directory.clone();
-        let cache_directory = root.join("workflow_cache");
+        let cache_directory = root.join("workflows").join("remote_cache");
         let backend = tokio::spawn(async move {
             Backend::<LocalFilesystem>::start(
                 listener,

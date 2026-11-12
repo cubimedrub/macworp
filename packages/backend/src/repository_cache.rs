@@ -277,6 +277,37 @@ impl RepositoryCache {
         &self,
         configuration: &mut WorkflowConfiguration,
     ) -> Result<Option<Resolved>, Error> {
+        let Some((resolved, script)) = self.fetch_source(configuration)? else {
+            return Ok(None);
+        };
+        *configuration.source_mut() =
+            Source::Local(LocalSource::new(resolved.directory.clone(), script));
+        Ok(Some(resolved))
+    }
+
+    /// Fetches the remote or nf-core source of `configuration` into the cache without changing
+    /// the configuration, so the first run (and the schema endpoint) need no network. Validates
+    /// URL, reference and that the main script exists in the checkout. Returns what was
+    /// resolved, `None` for sources that are not remote.
+    ///
+    /// # Arguments
+    /// * `configuration` - Workflow configuration as saved by the editor
+    pub fn prefetch(
+        &self,
+        configuration: &WorkflowConfiguration,
+    ) -> Result<Option<Resolved>, Error> {
+        Ok(self.fetch_source(configuration)?.map(|(resolved, _)| resolved))
+    }
+
+    /// Resolves the remote or nf-core source of `configuration` to a checkout and returns it
+    /// with the validated main script (relative to the checkout). `None` for other sources.
+    ///
+    /// # Arguments
+    /// * `configuration` - Workflow configuration, not modified
+    fn fetch_source(
+        &self,
+        configuration: &WorkflowConfiguration,
+    ) -> Result<Option<(Resolved, PathBuf)>, Error> {
         let default_script = match configuration.engine() {
             Engine::Snakemake => "Snakefile",
             _ => "main.nf",
@@ -303,9 +334,7 @@ impl RepositoryCache {
         if !resolved.directory.join(&script).is_file() {
             return Err(Error::InvalidPath(script.display().to_string()));
         }
-        *configuration.source_mut() =
-            Source::Local(LocalSource::new(resolved.directory.clone(), script));
-        Ok(Some(resolved))
+        Ok(Some((resolved, script)))
     }
 
     /// All checkouts with the time they were last handed out.
@@ -850,6 +879,56 @@ mod tests {
             ));
             assert!(f.cache.localize(&mut configuration).is_err(), "{script}");
         }
+    }
+
+    /// `prefetch` fills the cache for a tag that is not cached yet without touching the
+    /// configuration, serves it offline afterwards, and reports bad references and scripts.
+    #[test]
+    fn prefetch_warms_the_cache_and_validates() {
+        use macworp_core::workflow_configuration::source::RemoteSource;
+        let f = Fixture::new();
+        let first = commit(&f.remote, "main.nf", "1", None);
+        f.resolve(None).unwrap(); // prepares the mirror to fetch from the local remote
+        let second = commit(&f.remote, "main.nf", "2", Some(first));
+        f.remote
+            .tag_lightweight("v2", &f.remote.find_object(second, None).unwrap(), false)
+            .unwrap();
+
+        let remote = |reference: &str, script: Option<&str>| {
+            let mut configuration = WorkflowConfiguration::default();
+            *configuration.source_mut() = Source::Remote(RemoteSource::new(
+                "https://local/o/r".into(),
+                Some(reference.into()),
+                script.map(Into::into),
+            ));
+            configuration
+        };
+
+        let configuration = remote("v2", None);
+        let resolved = f.cache.prefetch(&configuration).unwrap().unwrap();
+        assert_eq!(resolved.sha, second.to_string());
+        assert!(resolved.directory.join("main.nf").is_file());
+        assert!(matches!(configuration.source(), Source::Remote(_)));
+
+        // Served from the cache once the remote is gone.
+        fs::remove_dir_all(f.remote.workdir().unwrap()).unwrap();
+        assert_eq!(f.cache.prefetch(&configuration).unwrap().unwrap(), resolved);
+
+        assert!(matches!(
+            f.cache.prefetch(&remote("v2", Some("missing.nf"))),
+            Err(Error::InvalidPath(_))
+        ));
+        assert!(matches!(
+            f.cache.prefetch(&remote("nope", None)),
+            Err(Error::Fetch { .. } | Error::ReferenceNotFound(_))
+        ));
+        // Not remote: nothing to do.
+        assert!(
+            f.cache
+                .prefetch(&WorkflowConfiguration::default())
+                .unwrap()
+                .is_none()
+        );
     }
 
     /// `prune` removes old unused checkouts and keeps young ones and those in use.

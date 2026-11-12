@@ -76,6 +76,17 @@ enum CacheSubCommand {
         /// Configuration path
         config: Option<PathBuf>,
     },
+    /// Downloads a repository (or refreshes it) into the cache, so runs and schema requests need
+    /// no network afterwards. The cache directory can be copied to a host without access.
+    Fetch {
+        /// Plain `https://host/owner/repo` URL
+        url: String,
+        /// Tag, branch or commit hash; the default branch if omitted
+        reference: Option<String>,
+        /// Configuration path
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+    },
     /// Deletes checkouts unused for `checkout_max_age_days` (or `--days`) that no queued or
     /// running run uses
     Prune {
@@ -108,7 +119,7 @@ enum SubCommand {
         config: Option<PathBuf>,
     },
     /// Inspect or clean the repository cache of remote workflows
-    Cache {
+    WorkflowCache {
         #[command(subcommand)]
         subcommand: CacheSubCommand,
     },
@@ -200,7 +211,7 @@ async fn main() -> Result<(), StandaloneError> {
                 .await
                 .map_err(StandaloneError::Backend)?;
         }
-        SubCommand::Cache { subcommand } => match subcommand {
+        SubCommand::WorkflowCache { subcommand } => match subcommand {
             CacheSubCommand::List { config } => {
                 let config = read_configuration(config)?;
                 let cache = macworp_backend::repository_cache::RepositoryCache::new(
@@ -218,6 +229,23 @@ async fn main() -> Result<(), StandaloneError> {
                         checkout.path.display()
                     );
                 }
+            }
+            CacheSubCommand::Fetch {
+                url,
+                reference,
+                config,
+            } => {
+                let config = read_configuration(config)?;
+                // Zero TTL: an explicit fetch always refreshes branches
+                let cache = macworp_backend::repository_cache::RepositoryCache::new(
+                    config.cache_path(),
+                    std::time::Duration::ZERO,
+                );
+                let id = macworp_backend::repository_cache::RepositoryId::parse(&url)?;
+                let resolved =
+                    tokio::task::spawn_blocking(move || cache.resolve(&id, reference.as_deref()))
+                        .await??;
+                println!("{}  {}", resolved.sha, resolved.directory.display());
             }
             CacheSubCommand::Prune { days, config } => {
                 let config = read_configuration(config)?;

@@ -24,6 +24,9 @@ pub enum Error {
     Run(#[from] crate::models::RunError),
     #[error("{0}")]
     RepositoryCache(#[from] crate::repository_cache::Error),
+    /// A blocking task (cache fetch) panicked or was cancelled
+    #[error("{0}")]
+    Task(#[from] tokio::task::JoinError),
     #[error("{0}")]
     Backend(#[from] crate::error::Error),
 }

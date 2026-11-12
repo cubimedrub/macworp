@@ -26,6 +26,8 @@ mod session;
 pub mod sharing;
 /// Trait defining how to store data, e.g. login etc.
 pub mod storage;
+/// Sleep helper for polling loops
+mod timer;
 
 /// The common favicon
 pub const FAVICON: Asset = asset!("/assets/favicon.ico");

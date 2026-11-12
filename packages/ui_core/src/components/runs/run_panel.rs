@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use crate::timer::sleep;
+
 use dioxus::prelude::*;
 use macworp_core::{
     entities::{LogStream, RunStatus},
@@ -25,14 +27,6 @@ enum Error<S: IsStorage> {
     Storage(S::Error),
     #[error("{0}")]
     Client(crate::client::Error),
-}
-
-/// Sleeps without blocking, in the browser and on desktop
-async fn sleep(duration: Duration) {
-    #[cfg(target_arch = "wasm32")]
-    gloo_timers::future::sleep(duration).await;
-    #[cfg(not(target_arch = "wasm32"))]
-    tokio::time::sleep(duration).await;
 }
 
 #[derive(Clone, PartialEq, Props)]

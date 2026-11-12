@@ -107,6 +107,10 @@ impl WorkflowIntegrationsController {
                 WorkflowIntegrationsRouting::SCHEMAS_PATH,
                 get(Self::schemas),
             )
+            .route(
+                WorkflowIntegrationsRouting::PREFETCH_PATH,
+                get(Self::prefetch),
+            )
             .route(WorkflowIntegrationsRouting::UPLOAD_PATH, post(Self::upload))
             .with_state(state)
     }
@@ -251,6 +255,18 @@ impl WorkflowIntegrationsController {
         .await
         .map_err(|_| Error::SourceTask)??;
         Ok(Json(response))
+    }
+
+    /// State of the background download of the workflow's remote repository (Editor), started
+    /// by `update`.
+    async fn prefetch(
+        State(state): State<Arc<AppState>>,
+        Authorized {
+            model: workflow_integration,
+            ..
+        }: Authorized<WorkflowIntegration, Editor>,
+    ) -> Json<macworp_core::responses::PrefetchResponse> {
+        Json(state.prefetch_status(workflow_integration.id))
     }
 
     /// Replaces the files of a local workflow by an uploaded zip archive (Editor). The body is
@@ -406,6 +422,7 @@ impl WorkflowIntegrationsController {
         active.configuration = Set(configuration);
 
         let updated: WorkflowIntegration = active.update(state.db()).await?;
+        state.prefetch_workflow(updated.id, updated.configuration.clone());
 
         let owner_username = User::usernames(state.db(), updated.owner_id)
             .await?

@@ -103,6 +103,9 @@ impl WorkflowIntegrationsRouting {
     /// GET: schemas (`WorkflowSchemasResponse`) of the workflow, read from the cached checkout of
     /// a remote source or the local source; may fetch the repository
     pub const SCHEMAS_PATH: &str = "/schemas/{id}";
+    /// GET (Editor): state of the background download of the workflow's remote repository
+    /// (`PrefetchResponse`), started by `UPDATE_PATH`
+    pub const PREFETCH_PATH: &str = "/prefetch/{id}";
     /// POST: replace the files of a local workflow by the zip archive in the request body (query
     /// parameter `script` optionally sets the main script); returns the updated workflow
     pub const UPLOAD_PATH: &str = "/upload/{id}";

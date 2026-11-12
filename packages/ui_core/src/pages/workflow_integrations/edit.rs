@@ -1,9 +1,9 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, str::FromStr, time::Duration};
 
 use dioxus::prelude::*;
 use macworp_core::{
     entities::Role,
-    responses::WorkflowIntegrationResponse,
+    responses::{PrefetchResponse, WorkflowIntegrationResponse},
     workflow_configuration::{
         engine::{Engine, EngineParameter},
         parameters::Parameter,
@@ -26,6 +26,7 @@ use crate::{
     runtime_status::engine_hint,
     sharing::SharingEnabled,
     storage::IsStorage,
+    timer::sleep,
 };
 
 #[derive(Debug, Error)]
@@ -191,6 +192,20 @@ pub struct EditProps {
     pub id: i64,
 }
 
+/// Pause between two checks of the repository download state
+const PREFETCH_POLL: Duration = Duration::from_secs(1);
+
+/// Checks after which the UI stops following a download (a fetch that long is reported as it is)
+const PREFETCH_POLLS: u32 = 300;
+
+/// First characters of a commit hash, for display.
+///
+/// # Arguments
+/// * `commit` - Full commit hash
+fn short_commit(commit: &str) -> &str {
+    commit.get(..8).unwrap_or(commit)
+}
+
 #[component]
 pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> Element {
     let storage = use_context::<Signal<S>>();
@@ -207,6 +222,54 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
         CurrentUser::from_context().is_none_or(|user| user.can_create_local_workflows());
     // Zip archive chosen in the file input, waiting to be uploaded
     let mut pending_archive = use_signal(|| None::<Vec<u8>>);
+
+    // Background download of a remote repository, started by the server when the workflow is
+    // saved; shown below the save button
+    let mut prefetch = use_signal(|| PrefetchResponse::Idle);
+    // Identifies the newest polling loop, older ones stop when it changes
+    let mut prefetch_generation = use_signal(|| 0u32);
+    // Follows the download started by a save of a workflow with the given source until it ends.
+    // Only remote and nf-core sources are downloaded, for others the state is reset.
+    let mut watch_prefetch = move |source: Source| {
+        if !(source.is_remote() || source.is_nf_core()) {
+            prefetch_generation += 1;
+            prefetch.set(PrefetchResponse::Idle);
+            return;
+        }
+        prefetch_generation += 1;
+        let generation = *prefetch_generation.peek();
+        prefetch.set(PrefetchResponse::Fetching);
+        spawn(async move {
+            for _ in 0..PREFETCH_POLLS {
+                if *prefetch_generation.peek() != generation {
+                    return;
+                }
+                let Some(jwt) = storage.read().jwt().ok().flatten() else {
+                    return;
+                };
+                let config = config.read().clone();
+                let state = Client::new(config.base_url().to_string(), config.timeout())
+                    .workflow_integrations()
+                    .prefetch(&jwt, props.id)
+                    .await;
+                if *prefetch_generation.peek() != generation {
+                    return;
+                }
+                match state {
+                    Ok(PrefetchResponse::Fetching) => {}
+                    Ok(state) => {
+                        prefetch.set(state);
+                        return;
+                    }
+                    Err(_) => {
+                        prefetch.set(PrefetchResponse::Idle);
+                        return;
+                    }
+                }
+                sleep(PREFETCH_POLL).await;
+            }
+        });
+    };
 
     let workflow_integration_res: Resource<
         Result<Signal<DisassambledWorkflowIntegration>, Error<S>>,
@@ -285,7 +348,9 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
             .await
             .map_err(Error::SaveWorkflowIntegration)?;
 
+        let source = updated.configuration().source().clone();
         workflow_integration_signal.write().inner = updated;
+        watch_prefetch(source);
 
         Ok::<_, Error<S>>(())
     });
@@ -337,7 +402,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
             .write()
             .inner_mut()
             .configuration_mut()
-            .source_mut() = source;
+            .source_mut() = source.clone();
+        watch_prefetch(source);
         Ok(())
     });
 
@@ -429,6 +495,32 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                             "Failed to save workflow integration: {err}" }
                     },
                     _ => rsx! {}
+                }
+                match &*prefetch.read() {
+                    PrefetchResponse::Idle => rsx! {},
+                    PrefetchResponse::Fetching => rsx! {
+                        div {
+                            class: "alert alert-info",
+                            role: "status",
+                            i { class: "fa-solid fa-spinner fa-spin me-2" }
+                            "Downloading the workflow repository into the cache..."
+                        }
+                    },
+                    PrefetchResponse::Done { commit } => rsx! {
+                        div {
+                            class: "alert alert-success",
+                            role: "status",
+                            "Workflow repository is cached (commit {short_commit(commit)})."
+                        }
+                    },
+                    PrefetchResponse::Failed { message } => rsx! {
+                        div {
+                            class: "alert alert-warning",
+                            role: "alert",
+                            "Saved, but the workflow repository could not be downloaded: {message}. \
+                             Runs need access to the host until it is cached."
+                        }
+                    },
                 }
                 div {
                     class: "input-group mb-3",

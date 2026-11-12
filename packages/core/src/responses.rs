@@ -107,6 +107,28 @@ pub struct WorkflowSchemasResponse {
     pub snakemake_schemas: Vec<SchemaFile>,
 }
 
+/// State of the background download of a workflow's remote repository into the cache, started
+/// when the workflow is saved.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum PrefetchResponse {
+    /// No download was started since the backend started (local source, or not saved yet)
+    #[default]
+    Idle,
+    /// The repository is being downloaded
+    Fetching,
+    /// The repository is cached
+    Done {
+        /// Commit the configured reference resolved to
+        commit: String,
+    },
+    /// The download or validation failed; the workflow is saved anyway
+    Failed {
+        /// Why it failed, e.g. host unreachable or unknown reference
+        message: String,
+    },
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WorkflowIntegrationResponse {
     pub id: i64,

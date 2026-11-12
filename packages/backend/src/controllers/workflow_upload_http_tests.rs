@@ -326,3 +326,67 @@ async fn run_snapshot_keeps_the_relative_location() {
         other => panic!("unexpected source {other:?}"),
     }
 }
+
+/// Saving a workflow with an unreachable remote source succeeds at once; the failed download is
+/// reported by the prefetch endpoint, which only editors may read. Switching to a non-remote
+/// source clears the state again.
+#[tokio::test]
+async fn saving_a_remote_workflow_prefetches_without_blocking() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let viewer = app.user("viewer").await;
+    let workflow = app.workflow(&alice, "w").await;
+    app.share::<crate::models::WorkflowIntegration>(
+        workflow.id,
+        crate::authorization::Principal::User(viewer.id),
+        macworp_core::entities::Role::Viewer,
+    )
+    .await;
+    let prefetch = format!("/workflow-integrations/prefetch/{}", workflow.id);
+    let update = format!("/workflow-integrations/update/{}", workflow.id);
+
+    let (status, body) = app.send(Some(&alice), Method::GET, &prefetch, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["state"], "idle");
+    let (status, _) = app.send(Some(&viewer), Method::GET, &prefetch, None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let mut configuration = WorkflowConfiguration::default();
+    *configuration.source_mut() = Source::Remote(RemoteSource::new(
+        "https://prefetch.invalid/o/r".into(),
+        Some("v1".into()),
+        None,
+    ));
+    let (status, _) = app
+        .send(
+            Some(&alice),
+            Method::POST,
+            &update,
+            Some(update_body(&configuration)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let mut state = Value::Null;
+    for _ in 0..100 {
+        let (_, body) = app.send(Some(&alice), Method::GET, &prefetch, None).await;
+        state = body["state"].clone();
+        if state != "fetching" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(state, "failed");
+
+    let (status, _) = app
+        .send(
+            Some(&alice),
+            Method::POST,
+            &update,
+            Some(update_body(&WorkflowConfiguration::default())),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, body) = app.send(Some(&alice), Method::GET, &prefetch, None).await;
+    assert_eq!(body["state"], "idle");
+}

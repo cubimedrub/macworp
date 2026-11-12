@@ -17,9 +17,9 @@ use macworp_core::{
         UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
     },
     responses::{
-        EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse, ProjectResponse,
-        RunLogsResponse, RunResponse, ShareResponse, UserResponse, UserSummaryResponse,
-        WorkflowIntegrationResponse,
+        EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse, PrefetchResponse,
+        ProjectResponse, RunLogsResponse, RunResponse, ShareResponse, UserResponse,
+        UserSummaryResponse, WorkflowIntegrationResponse,
     },
     routing::*,
     workflow_configuration::WorkflowConfiguration,
@@ -1070,6 +1070,33 @@ impl<'a> WorkflowIntegrationClient<'a> {
 
         response
             .json::<WorkflowIntegrationResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// State of the background download of a workflow's remote repository, started when the
+    /// workflow is saved.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - Id of the workflow
+    pub async fn prefetch(&self, jwt: &str, id: i64) -> Result<PrefetchResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::PREFETCH_PATH.replace("{id}", &id.to_string())
+        );
+        let response = self
+            .base_client
+            .send_authenticated(
+                reqwest::Client::new().get(&url),
+                jwt,
+                "fetch repository download state",
+            )
+            .await?;
+        response
+            .json::<PrefetchResponse>()
             .await
             .map_err(Error::Request)
     }

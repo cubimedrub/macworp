@@ -1,8 +1,10 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use sea_orm::{Database, DatabaseConnection};
 
-use macworp_core::workflow_configuration::engine::Engine;
+use macworp_core::responses::PrefetchResponse;
+use macworp_core::workflow_configuration::{WorkflowConfiguration, engine::Engine};
 
 use crate::{
     configuration::Configuration, error::Error, reference_directory::ReferenceDirectory,
@@ -15,6 +17,9 @@ pub struct State {
     workers: WorkerRegistry,
     reference_directory: ReferenceDirectory,
     workflow_repository_cache: Arc<WorkflowRepositoryCache>,
+    /// Latest background download per workflow, with a sequence number so a slow older
+    /// download cannot overwrite the result of a newer one
+    prefetches: Mutex<HashMap<i64, (u64, PrefetchResponse)>>,
 }
 
 impl State {
@@ -30,6 +35,7 @@ impl State {
             workers: WorkerRegistry::default(),
             reference_directory,
             workflow_repository_cache,
+            prefetches: Mutex::default(),
         })
     }
 
@@ -49,6 +55,73 @@ impl State {
     /// Cache of remote workflow repositories.
     pub fn workflow_repository_cache(&self) -> Arc<WorkflowRepositoryCache> {
         self.workflow_repository_cache.clone()
+    }
+
+    /// Starts downloading the remote repository of a saved workflow into the cache in the
+    /// background, so errors show in the editor and the first run needs no network. Returns
+    /// immediately; failures (unreachable host, unknown reference) are only recorded, never
+    /// block saving. Does nothing for sources that are not remote.
+    ///
+    /// # Arguments
+    /// * `workflow_id` - The saved workflow
+    /// * `configuration` - Its configuration as saved
+    pub fn prefetch_workflow(
+        self: &Arc<Self>,
+        workflow_id: i64,
+        configuration: WorkflowConfiguration,
+    ) {
+        if !configuration.source().is_remote() && !configuration.source().is_nf_core() {
+            self.prefetches
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&workflow_id);
+            return;
+        }
+        let sequence = {
+            let mut prefetches = self.prefetches.lock().unwrap_or_else(|e| e.into_inner());
+            let sequence = prefetches.get(&workflow_id).map_or(1, |(n, _)| n + 1);
+            prefetches.insert(workflow_id, (sequence, PrefetchResponse::Fetching));
+            sequence
+        };
+        let state = self.clone();
+        let cache = self.workflow_repository_cache();
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || cache.prefetch(&configuration)).await;
+            let outcome = match result {
+                Ok(Ok(Some(resolved))) => PrefetchResponse::Done {
+                    commit: resolved.sha,
+                },
+                Ok(Ok(None)) => PrefetchResponse::Idle,
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, workflow_id, "prefetching the workflow repository failed");
+                    PrefetchResponse::Failed {
+                        message: error.to_string(),
+                    }
+                }
+                Err(error) => PrefetchResponse::Failed {
+                    message: error.to_string(),
+                },
+            };
+            let mut prefetches = state.prefetches.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(entry) = prefetches.get_mut(&workflow_id)
+                && entry.0 == sequence
+            {
+                entry.1 = outcome;
+            }
+        });
+    }
+
+    /// Current state of the background download of a workflow's repository.
+    ///
+    /// # Arguments
+    /// * `workflow_id` - The workflow
+    pub fn prefetch_status(&self, workflow_id: i64) -> PrefetchResponse {
+        self.prefetches
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&workflow_id)
+            .map(|(_, status)| status.clone())
+            .unwrap_or_default()
     }
 
     /// Replaces the repository cache by one the embedding application keeps, so it can move

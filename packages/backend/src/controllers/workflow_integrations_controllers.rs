@@ -384,6 +384,7 @@ impl WorkflowIntegrationsController {
         let id = workflow_integration.id;
         workflow_integration.delete(&txn).await?;
         txn.commit().await?;
+        state.forget_prefetch(id);
         let directory = state.config().local_workflow_directory(id);
         if let Err(error) = tokio::fs::remove_dir_all(&directory).await
             && error.kind() != std::io::ErrorKind::NotFound

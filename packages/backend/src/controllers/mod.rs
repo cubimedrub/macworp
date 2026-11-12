@@ -36,3 +36,7 @@ mod reference_http_tests;
 /// HTTP-level tests of local workflow uploads
 #[cfg(all(test, feature = "integration"))]
 mod workflow_upload_http_tests;
+
+/// HTTP-level tests of the background download of remote workflow repositories
+#[cfg(all(test, feature = "integration"))]
+mod workflow_prefetch_http_tests;

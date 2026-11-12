@@ -111,6 +111,17 @@ impl State {
         });
     }
 
+    /// Forgets the background download state of a deleted workflow.
+    ///
+    /// # Arguments
+    /// * `workflow_id` - The deleted workflow
+    pub fn forget_prefetch(&self, workflow_id: i64) {
+        self.prefetches
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&workflow_id);
+    }
+
     /// Current state of the background download of a workflow's repository.
     ///
     /// # Arguments

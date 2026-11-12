@@ -23,6 +23,27 @@ pub struct Job {
     pub progress: Option<ProgressEndpoint>,
 }
 
+impl Job {
+    /// Resolves the paths of a job claimed from a backend against this machine's storage mount:
+    /// the project directory, the reference directory and a relative location of a local
+    /// source are relative to the storage root, absolute paths stay.
+    ///
+    /// # Arguments
+    /// * `storage` - Where this machine has the shared storage mounted, absolute
+    pub fn resolve_storage(&mut self, storage: &std::path::Path) {
+        use macworp_core::{paths::resolve_in_storage, workflow_configuration::source::Source};
+        self.project_dir = resolve_in_storage(storage, &self.project_dir);
+        self.reference_dir = self
+            .reference_dir
+            .take()
+            .map(|path| resolve_in_storage(storage, &path));
+        if let Source::Local(local) = self.configuration.source_mut() {
+            let resolved = resolve_in_storage(storage, local.location());
+            *local.location_mut() = resolved;
+        }
+    }
+}
+
 /// One line of engine output or a MAcWorP message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogLine {

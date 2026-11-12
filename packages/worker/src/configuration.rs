@@ -39,6 +39,11 @@ pub struct RemoteWorkerConfiguration {
     /// Name of this worker process in the backend, defaults to `$HOSTNAME` or `worker`
     #[arg(long, env = "MACWORP_WORKER_NAME")]
     pub name: Option<String>,
+    /// Where this machine has the backend's storage mounted (e.g. an NFS share). Paths the
+    /// backend sends are relative to the storage root and resolved against this directory, so
+    /// it may differ from the mount point on the backend and on other workers.
+    #[arg(long, env = "MACWORP_STORAGE_PATH")]
+    pub storage_path: Option<std::path::PathBuf>,
     /// Runs this worker executes at the same time
     #[arg(long, env = "MACWORP_WORKER_CAPACITY", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..))]
     pub capacity: u16,
@@ -50,6 +55,16 @@ impl RemoteWorkerConfiguration {
         self.backend_url
             .as_deref()
             .ok_or_else(|| "--backend-url (MACWORP_BACKEND_URL) is required".to_string())
+    }
+
+    /// The storage mount as an absolute path, required to run a remote worker (engines mount
+    /// paths below it, which must be absolute).
+    pub fn storage_path(&self) -> Result<std::path::PathBuf, String> {
+        let path = self.storage_path.clone().ok_or_else(|| {
+            "--storage-path (MACWORP_STORAGE_PATH) is required: where the backend's storage is mounted on this machine".to_string()
+        })?;
+        std::path::absolute(&path)
+            .map_err(|e| format!("Invalid storage path {}: {e}", path.display()))
     }
 
     /// The password from `--password` or the password file; the file's trailing line break is

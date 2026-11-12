@@ -469,3 +469,32 @@ async fn claim_skips_runs_of_other_engines() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["run_id"], run.id);
 }
+
+/// Paths below the storage root reach the worker relative to it, so a worker that mounts the
+/// storage elsewhere resolves them itself; paths outside the storage stay absolute.
+#[tokio::test]
+async fn claim_sends_storage_relative_paths() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let inside = app.project_in_storage(&alice, "inside").await;
+    let outside = app.project(&alice, "outside").await;
+    let storage = app.state.config().storage_directory();
+    app.state
+        .reference_directory()
+        .set(storage.join("global_reference_data"));
+    app.run(&outside, &workflow).await;
+    app.run(&inside, &workflow).await;
+
+    let (status, first) = claim(&app).await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert!(
+        std::path::Path::new(first["project_dir"].as_str().unwrap()).is_absolute(),
+        "outside the storage: absolute"
+    );
+    assert_eq!(first["reference_dir"], "global_reference_data");
+
+    let (status, second) = claim(&app).await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    assert_eq!(second["project_dir"], "projects/inside");
+}

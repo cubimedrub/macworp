@@ -63,8 +63,7 @@ impl TestApp {
         );
         *configuration.database_url_mut() =
             format!("sqlite://{}/test.db?mode=rwc", directory.path().display());
-        *configuration.projects_path_mut() =
-            directory.path().join("projects").display().to_string();
+        *configuration.storage_path_mut() = directory.path().join("projects").display().to_string();
         adjust(&mut configuration);
         let state = State::new_for_integration(configuration).await.unwrap();
         state
@@ -149,6 +148,31 @@ impl TestApp {
     /// Inserts a project whose directory exists below the temp dir, with `owner` as Owner.
     pub async fn project(&self, owner: &User, name: &str) -> Project {
         let path = self.directory.path().join(format!("project-{name}"));
+        std::fs::create_dir_all(&path).unwrap();
+        let project = ActiveProject {
+            owner_id: Set(Some(owner.id)),
+            name: Set(name.into()),
+            path: Set(Some(path.display().to_string())),
+            ..Default::default()
+        }
+        .insert(self.state.db())
+        .await
+        .unwrap();
+        Project::shares(self.state.db(), project.id)
+            .grant(Principal::User(owner.id), Role::Owner)
+            .await
+            .unwrap();
+        project
+    }
+
+    /// Inserts a project whose directory lies below the storage root (`<storage>/projects/<name>`),
+    /// like projects of a standalone server, with `owner` as Owner.
+    ///
+    /// # Arguments
+    /// * `owner` - Creator and Owner
+    /// * `name` - Project name, also its directory name
+    pub async fn project_in_storage(&self, owner: &User, name: &str) -> Project {
+        let path = self.state.config().projects_directory().join(name);
         std::fs::create_dir_all(&path).unwrap();
         let project = ActiveProject {
             owner_id: Set(Some(owner.id)),

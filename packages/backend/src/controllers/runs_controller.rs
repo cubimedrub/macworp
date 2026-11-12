@@ -290,12 +290,17 @@ impl RunsController {
         })
         .await
         .map_err(|_| Error::SourceTask)??;
+        let mut configuration = configuration;
         if let macworp_core::workflow_configuration::source::Source::Local(local) =
-            configuration.source()
-            && !state.config().allow_local_paths()
-            && !local.location().join(local.script()).is_file()
+            configuration.source_mut()
         {
-            return Err(Error::WorkflowNotUploaded);
+            let location = state.config().resolve_storage_path(local.location());
+            if !state.config().allow_local_paths() && !location.join(local.script()).is_file() {
+                return Err(Error::WorkflowNotUploaded);
+            }
+            // Below the storage root the snapshot keeps a relative path, each worker resolves
+            // it against its own mount of the storage.
+            *local.location_mut() = state.config().relative_to_storage(&location);
         }
         if let Some(resolved) = resolved {
             tracing::info!(sha = %resolved.sha, "pinned remote workflow source");

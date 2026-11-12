@@ -19,8 +19,7 @@ pub struct State {
 
 impl State {
     async fn new(config: Configuration, db: DatabaseConnection) -> Result<Self, Error> {
-        let reference_directory =
-            ReferenceDirectory::below(std::path::Path::new(config.projects_path()));
+        let reference_directory = ReferenceDirectory::below(&config.storage_directory());
         let repository_cache = Arc::new(RepositoryCache::new(
             config.cache_path(),
             std::time::Duration::from_secs(config.branch_cache_seconds()),
@@ -78,9 +77,12 @@ impl State {
         let Some(max_age) = self.config.checkout_max_age() else {
             return Ok(0);
         };
-        let in_use = crate::models::RunTable::active_source_locations(&self.db)
-            .await
-            .map_err(|e| Error::CachePrune(e.to_string()))?;
+        let in_use = crate::models::RunTable::active_source_locations(
+            &self.db,
+            &self.config.storage_directory(),
+        )
+        .await
+        .map_err(|e| Error::CachePrune(e.to_string()))?;
         let cache = self.repository_cache();
         let removed = tokio::task::spawn_blocking(move || cache.prune(max_age, &in_use))
             .await
@@ -100,8 +102,8 @@ impl State {
     }
 
     /// On servers (no `allow_local_paths`) a local workflow always lives in
-    /// `<projects_path>/local/<id>`: replaces the location of a local source by it and keeps the
-    /// script. Idempotent; other sources are untouched. Call wherever a stored configuration is
+    /// `<storage>/local/<id>`: replaces the location of a local source by the relative
+    /// `local/<id>` (resolved against each machine's storage mount) and keeps the script. Idempotent; other sources are untouched. Call wherever a stored configuration is
     /// saved, run or read, so a client can never point a workflow at another directory.
     ///
     /// # Arguments
@@ -117,9 +119,7 @@ impl State {
             return;
         }
         if let Source::Local(local) = configuration.source_mut() {
-            *local.location_mut() = self
-                .config
-                .local_workflow_directory(workflow_integration_id);
+            *local.location_mut() = self.config.local_workflow_location(workflow_integration_id);
         }
     }
 

@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    path::{Path, PathBuf},
     sync::{
         Mutex,
         atomic::{AtomicBool, Ordering},
@@ -47,7 +48,10 @@ pub struct HttpJobSource {
     worker_name: String,
     /// Engines this worker can run, sent with every claim so only matching runs are leased
     engines: Vec<Engine>,
-    /// The project storage matches the backend's (see [`HttpJobSource::announce`]); while it
+    /// Where this machine has the backend's storage mounted; paths in claims and the storage
+    /// marker are relative to it
+    storage_path: PathBuf,
+    /// The storage matches the backend's (see [`HttpJobSource::announce`]); while it
     /// does not, nothing is claimed and no engine is announced
     storage_ok: AtomicBool,
     /// Tokens of the runs claimed through this source
@@ -59,12 +63,14 @@ impl HttpJobSource {
     ///
     /// # Arguments
     /// * `base_url` - backend root, e.g. `https://macworp.example.org`
+    /// * `storage_path` - absolute mount point of the shared storage on this machine
     /// * `username` - worker credential
     /// * `password` - worker credential
     /// * `worker_name` - name identifying this worker process in leases
     /// * `engines` - engines this worker can run; the backend leases it only runs of these
     pub fn new(
         base_url: &str,
+        storage_path: PathBuf,
         username: String,
         password: String,
         worker_name: String,
@@ -77,6 +83,7 @@ impl HttpJobSource {
         Ok(Self {
             client,
             base_url: base_url.trim_end_matches('/').to_string(),
+            storage_path,
             username,
             password,
             worker_name,
@@ -180,34 +187,36 @@ impl HttpJobSource {
             .await
             .map_err(|e| Error(format!("Invalid announce response: {e}")))?;
         let problem = match &announced.storage {
-            Some(probe) => Self::check_storage(probe).await.err(),
+            Some(probe) => Self::check_storage(&self.storage_path, probe).await.err(),
             None => None,
         };
         let ok = problem.is_none();
         if self.storage_ok.swap(ok, Ordering::Relaxed) != ok {
             match &problem {
                 Some(problem) => tracing::error!("{problem}; not taking runs until it is fixed"),
-                None => tracing::info!("Shared project storage is visible again"),
+                None => tracing::info!("Shared storage is visible again"),
             }
         }
         Ok(announced.ttl_seconds)
     }
 
-    /// Whether this machine sees the backend's project storage: the marker file exists at the
-    /// same path with the same content. The error says what is wrong.
+    /// Whether this machine sees the backend's storage: the marker file exists in the local
+    /// mount with the same content. The error says what is wrong.
     ///
     /// # Arguments
-    /// * `probe` - marker file as named by the backend
-    async fn check_storage(probe: &StorageProbe) -> Result<(), String> {
-        match tokio::fs::read_to_string(&probe.path).await {
+    /// * `storage` - Mount point of the storage on this machine
+    /// * `probe` - marker file as named by the backend, relative to the storage root
+    async fn check_storage(storage: &Path, probe: &StorageProbe) -> Result<(), String> {
+        let path = macworp_core::paths::resolve_in_storage(storage, &probe.path);
+        match tokio::fs::read_to_string(&path).await {
             Ok(content) if content.trim() == probe.content => Ok(()),
             Ok(_) => Err(format!(
-                "Shared storage marker {} has a different content than on the backend: the worker sees another filesystem",
-                probe.path.display()
+                "Storage marker {} has a different content than on the backend: the worker sees another filesystem",
+                path.display()
             )),
             Err(e) => Err(format!(
-                "Shared storage marker {} is not readable ({e}): mount the backend's projects directory at the same path",
-                probe.path.display()
+                "Storage marker {} is not readable ({e}): mount the backend's storage at --storage-path",
+                path.display()
             )),
         }
     }
@@ -241,13 +250,15 @@ impl JobSource for HttpJobSource {
                         .lock()
                         .expect("token map poisoned")
                         .insert(claimed.run_id, claimed.token);
-                    Ok(Some(Job {
+                    let mut job = Job {
                         run_id: claimed.run_id,
                         project_dir: claimed.project_dir,
                         reference_dir: claimed.reference_dir,
                         configuration: claimed.configuration,
                         progress: None,
-                    }))
+                    };
+                    job.resolve_storage(&self.storage_path);
+                    Ok(Some(job))
                 }
                 status => Err(Error(format!("Claim rejected by the backend: {status}"))),
             }
@@ -362,7 +373,13 @@ mod tests {
         http::{HeaderMap, StatusCode, header::AUTHORIZATION},
         routing::post,
     };
-    use macworp_core::{requests::WorkerOutcome, workflow_configuration::WorkflowConfiguration};
+    use macworp_core::{
+        requests::WorkerOutcome,
+        workflow_configuration::{
+            WorkflowConfiguration,
+            source::{LocalSource, Source},
+        },
+    };
 
     use super::*;
 
@@ -389,11 +406,15 @@ mod tests {
         async fn claim(State(seen): State<Seen>, headers: HeaderMap) -> axum::response::Response {
             use axum::response::IntoResponse;
             record(&seen, "claim", &headers).await;
+            // Paths below the backend's storage root come relative
+            let mut configuration = WorkflowConfiguration::default();
+            *configuration.source_mut() =
+                Source::Local(LocalSource::new("local/9".into(), "main.nf".into()));
             Json(WorkerClaimResponse {
                 run_id: 7,
-                project_dir: "/data/p".into(),
-                reference_dir: None,
-                configuration: WorkflowConfiguration::default(),
+                project_dir: "projects/p".into(),
+                reference_dir: Some("global_reference_data".into()),
+                configuration,
                 token: "tok".into(),
                 lease_seconds: 60,
             })
@@ -439,8 +460,10 @@ mod tests {
     #[tokio::test]
     async fn claim_uses_basic_then_run_token() {
         let (url, seen) = backend().await;
+        // This machine mounts the storage somewhere else than the backend does
         let source = HttpJobSource::new(
             &format!("{url}/"),
+            "/mnt/worker".into(),
             "w".into(),
             "pw".into(),
             "n".into(),
@@ -449,7 +472,17 @@ mod tests {
         .unwrap();
         let job = source.claim().await.unwrap().unwrap();
         assert_eq!(job.run_id, 7);
-        assert_eq!(job.project_dir, std::path::PathBuf::from("/data/p"));
+        assert_eq!(job.project_dir, PathBuf::from("/mnt/worker/projects/p"));
+        assert_eq!(
+            job.reference_dir,
+            Some(PathBuf::from("/mnt/worker/global_reference_data"))
+        );
+        match job.configuration.source() {
+            Source::Local(local) => {
+                assert_eq!(local.location(), &PathBuf::from("/mnt/worker/local/9"))
+            }
+            other => panic!("unexpected source {other:?}"),
+        }
         assert!(!source.cancel_requested(7).await.unwrap());
         source.finish(7, Outcome::Succeeded).await.unwrap();
         assert!(source.cancel_requested(7).await.is_err());
@@ -468,6 +501,7 @@ mod tests {
         let (url, _) = backend().await;
         let source = HttpJobSource::new(
             &url,
+            "/mnt/worker".into(),
             "w".into(),
             "pw".into(),
             "n".into(),
@@ -509,6 +543,7 @@ mod tests {
 
         let source = HttpJobSource::new(
             &url,
+            "/mnt/worker".into(),
             "w".into(),
             "pw".into(),
             "n".into(),
@@ -529,7 +564,10 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let marker = directory.path().join(".macworp-storage-id");
         let announced: Announced = Arc::default();
-        let state = (announced.clone(), marker.clone());
+        let state = (
+            announced.clone(),
+            std::path::PathBuf::from(".macworp-storage-id"),
+        );
         async fn announce(
             State((announced, marker)): State<(Announced, std::path::PathBuf)>,
             Json(request): Json<WorkerAnnounceRequest>,
@@ -553,8 +591,11 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        // The backend names the marker relative to its storage root, the worker looks for it in
+        // its own mount
         let source = HttpJobSource::new(
             &url,
+            directory.path().to_path_buf(),
             "w".into(),
             "pw".into(),
             "n".into(),

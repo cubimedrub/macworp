@@ -135,7 +135,9 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
             {
                 Some(project) => F::project_path(&state, &project)
                     .ok()
-                    .and_then(|path| std::path::absolute(path).ok()),
+                    .and_then(|path| std::path::absolute(path).ok())
+                    // Below the storage root the worker gets a path relative to it
+                    .map(|path| state.config().relative_to_storage(&path)),
                 None => None,
             };
             let Some(project_dir) = project_dir else {
@@ -154,7 +156,9 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
             return Ok(Json(WorkerClaimResponse {
                 run_id: run.id,
                 project_dir,
-                reference_dir: std::path::absolute(state.reference_directory().get()).ok(),
+                reference_dir: std::path::absolute(state.reference_directory().get())
+                    .ok()
+                    .map(|path| state.config().relative_to_storage(&path)),
                 configuration: run.configuration,
                 token,
                 lease_seconds: lease_seconds as u32,

@@ -263,13 +263,16 @@ pub struct ShareResponse {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorkerClaimResponse {
     pub run_id: i64,
-    /// Project directory, valid on the worker too (shared filesystem)
+    /// Project directory: relative to the storage root, which the worker resolves against its
+    /// own mount of the shared storage; absolute if it lies outside the storage (then it must
+    /// be valid on the worker too)
     pub project_dir: PathBuf,
-    /// Global reference data directory, valid on the worker too (shared filesystem); `None` for
-    /// an older backend
+    /// Global reference data directory, relative to the storage root like `project_dir`;
+    /// `None` for an older backend
     #[serde(default)]
     pub reference_dir: Option<PathBuf>,
-    /// Workflow configuration snapshot with the parameter values applied
+    /// Workflow configuration snapshot with the parameter values applied. A relative location of
+    /// a local source is relative to the storage root as well.
     pub configuration: WorkflowConfiguration,
     /// Per-run token for all further calls, sent as `Authorization: Run <token>`
     pub token: String,
@@ -289,17 +292,19 @@ pub struct WorkerHeartbeatResponse {
 pub struct WorkerAnnounceResponse {
     /// Seconds the announcement stays valid, the worker should announce again well within it
     pub ttl_seconds: u32,
-    /// File the worker must be able to read to prove it shares the backend's project storage,
+    /// File the worker must be able to read to prove it shares the backend's storage,
     /// `None` if the backend has no shared storage requirement (desktop)
     #[serde(default)]
     pub storage: Option<StorageProbe>,
 }
 
-/// A marker file on the shared project storage. The backend keeps it with a random content; a
-/// worker that reads the same content at the same path sees the same filesystem.
+/// A marker file in the shared storage root. The backend keeps it with a random content; a
+/// worker that reads the same content at the same place in its own mount sees the same
+/// filesystem.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorageProbe {
-    /// Absolute path of the marker file, valid on the backend and on every worker
+    /// Path of the marker file relative to the storage root (an absolute path from an older
+    /// backend is used as it is)
     pub path: PathBuf,
     /// Content the file must have
     pub content: String,

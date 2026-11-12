@@ -93,6 +93,7 @@ async fn run_remote(
     let source = Arc::new(
         HttpJobSource::new(
             remote.backend_url()?,
+            remote.storage_path()?,
             remote.username.clone(),
             remote.resolve_password()?,
             remote.worker_name(),

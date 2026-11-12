@@ -5,6 +5,7 @@ use macworp_core::workflow_configuration::{
     WorkflowConfiguration,
     source::{RemoteSource, Source},
 };
+use sea_orm::EntityTrait;
 use serde_json::{Value, json};
 
 use crate::test_support::TestApp;
@@ -32,7 +33,7 @@ fn update_body(configuration: &WorkflowConfiguration) -> Value {
     json!({"name": "w", "description": "", "configuration": configuration})
 }
 
-/// An editor uploads a zip: files land in `<projects_path>/local/<id>`, the stored source
+/// An editor uploads a zip: files land in `<storage_path>/local/<id>`, the stored source
 /// points there, viewers and outsiders cannot upload, and re-uploading replaces the files.
 #[tokio::test]
 async fn upload_installs_the_workflow() {
@@ -70,7 +71,8 @@ async fn upload_installs_the_workflow() {
     assert!(directory.join("bin/tool.sh").is_file());
     assert_eq!(
         body["configuration"]["source"]["Local"]["location"],
-        directory.display().to_string()
+        // Relative to the storage root, workers resolve it against their own mount
+        format!("local/{}", workflow.id)
     );
 
     let archive = zip_of(&[("main.nf", "v2")]);
@@ -167,11 +169,7 @@ async fn local_location_is_confined_on_servers() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body["configuration"]["source"]["Local"]["location"],
-        app.state
-            .config()
-            .local_workflow_directory(workflow.id)
-            .display()
-            .to_string()
+        format!("local/{}", workflow.id)
     );
 
     let (status, _) = app
@@ -286,5 +284,45 @@ async fn policy_controls_who_creates_local_workflows() {
             };
             assert_eq!(status, expected, "upload {policy:?} {who}");
         }
+    }
+}
+
+/// A run of an uploaded workflow keeps the storage-relative location in its snapshot and hands
+/// it to the worker that way.
+#[tokio::test]
+async fn run_snapshot_keeps_the_relative_location() {
+    let app = TestApp::new_with(|c| *c.fixed_unavailable_engines_mut() = Some(Vec::new())).await;
+    let alice = app.user("alice").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let project = app.project_in_storage(&alice, "p").await;
+    let (status, _) = app
+        .send_bytes(
+            &alice,
+            Method::POST,
+            &format!("/workflow-integrations/upload/{}", workflow.id),
+            zip_of(&[("main.nf", "x")]),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, run) = app
+        .post(
+            &alice,
+            &format!("/runs/start/{}", project.id),
+            Some(json!({"workflow_id": workflow.id, "comment": "", "parameters": []})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{run}");
+    let stored = crate::models::RunTable::find_by_id(run["id"].as_i64().unwrap())
+        .one(app.state.db())
+        .await
+        .unwrap()
+        .unwrap();
+    match stored.configuration.source() {
+        Source::Local(local) => assert_eq!(
+            local.location(),
+            &std::path::PathBuf::from(format!("local/{}", workflow.id))
+        ),
+        other => panic!("unexpected source {other:?}"),
     }
 }

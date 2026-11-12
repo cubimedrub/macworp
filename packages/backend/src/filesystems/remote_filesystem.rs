@@ -15,7 +15,7 @@ use crate::{
     state::State,
 };
 
-/// Name of the marker file in the projects directory, see [`IsFilesystem::storage_probe`]
+/// Name of the marker file in the storage root, see [`IsFilesystem::storage_probe`]
 pub const STORAGE_MARKER_FILE: &str = ".macworp-storage-id";
 
 pub struct RemoteFilesystem;
@@ -28,8 +28,7 @@ impl IsFilesystem for RemoteFilesystem {
         project: &Project,
         subpath: PathBuf,
     ) -> Result<ProjectContent, Error> {
-        let project_path =
-            PathBuf::from(state.config().projects_path()).join(project.id.to_string());
+        let project_path = Self::project_path(state, project)?;
 
         let requested_path = Self::join_paths(&project_path, &subpath)?;
 
@@ -37,22 +36,29 @@ impl IsFilesystem for RemoteFilesystem {
     }
 
     fn project_path(state: &State, project: &Project) -> Result<PathBuf, Error> {
-        Ok(PathBuf::from(state.config().projects_path()).join(project.id.to_string()))
+        Ok(state
+            .config()
+            .projects_directory()
+            .join(project.id.to_string()))
     }
 
     async fn storage_probe(state: &State) -> Result<Option<StorageProbe>, Error> {
-        let projects_path = std::path::absolute(state.config().projects_path())?;
-        let path = projects_path.join(STORAGE_MARKER_FILE);
+        let storage = state.config().storage_directory();
+        let path = storage.join(STORAGE_MARKER_FILE);
         let content = match tokio::fs::read_to_string(&path).await {
             Ok(content) if !content.trim().is_empty() => content.trim().to_string(),
             _ => {
-                tokio::fs::create_dir_all(&projects_path).await?;
+                tokio::fs::create_dir_all(&storage).await?;
                 let content = crate::configuration::generate_secret();
                 tokio::fs::write(&path, &content).await?;
                 content
             }
         };
-        Ok(Some(StorageProbe { path, content }))
+        // Relative to the storage root: every worker resolves it against its own mount
+        Ok(Some(StorageProbe {
+            path: PathBuf::from(STORAGE_MARKER_FILE),
+            content,
+        }))
     }
 
     async fn create_project_directory(state: &State, project: &Project) -> Result<PathBuf, Error> {
@@ -116,8 +122,7 @@ mod tests {
     async fn storage_probe_is_created_once_and_stable() {
         let directory = tempfile::tempdir().unwrap();
         let mut configuration = Configuration::default();
-        *configuration.projects_path_mut() =
-            directory.path().join("projects").display().to_string();
+        *configuration.storage_path_mut() = directory.path().join("storage").display().to_string();
         *configuration.database_url_mut() =
             format!("sqlite://{}/t.db?mode=rwc", directory.path().display());
         let state = State::new_for_integration(configuration).await.unwrap();
@@ -126,10 +131,11 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert!(first.path.is_absolute());
-        assert!(first.path.ends_with(STORAGE_MARKER_FILE));
+        // Relative to the storage root, the file itself lies in it
+        assert_eq!(first.path, PathBuf::from(STORAGE_MARKER_FILE));
+        let marker = state.config().storage_directory().join(&first.path);
         assert!(!first.content.is_empty());
-        assert_eq!(std::fs::read_to_string(&first.path).unwrap(), first.content);
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), first.content);
         let second = RemoteFilesystem::storage_probe(&state)
             .await
             .unwrap()
@@ -137,7 +143,7 @@ mod tests {
         assert_eq!(first, second);
 
         // A damaged (empty) marker is replaced
-        std::fs::write(&first.path, "").unwrap();
+        std::fs::write(&marker, "").unwrap();
         let third = RemoteFilesystem::storage_probe(&state)
             .await
             .unwrap()

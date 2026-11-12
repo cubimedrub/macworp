@@ -7,7 +7,7 @@ if [ ! -f dev/config.toml ]; then
   cargo run -q -p macworp_backend -- config \
     | sed -e 's/^port = .*/port = 3001/' \
           -e 's/^cors_allowed_origins = .*/cors_allowed_origins = ["*"]/' \
-          -e 's#^projects_path = .*#projects_path = "dev_projects"#' \
+          -e 's#^storage_path = .*#storage_path = "dev_storage"#' \
     > dev/config.toml
   echo "wrote dev/config.toml"
 fi

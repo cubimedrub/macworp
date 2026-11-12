@@ -34,6 +34,34 @@ pub fn strip_reference_prefix(path: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// Resolves a path stored or sent relative to the storage root against the machine's own mount
+/// of that storage. Absolute paths are returned as they are (they live outside the storage and
+/// must be valid on the machine). The relative part is sanitised, so it cannot leave `storage`.
+///
+/// # Arguments
+/// * `storage` - Where this machine has the shared storage mounted
+/// * `path` - Path relative to the storage root, or absolute
+pub fn resolve_in_storage(storage: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        storage.join(sanitize_relative(path))
+    }
+}
+
+/// The inverse of [`resolve_in_storage`]: `path` relative to `storage` if it lies below it,
+/// otherwise unchanged. Used before a path leaves the backend, so machines with the storage
+/// mounted elsewhere can resolve it.
+///
+/// # Arguments
+/// * `storage` - The backend's absolute storage root
+/// * `path` - Absolute path, possibly below the storage root
+pub fn relative_to_storage(storage: &Path, path: &Path) -> PathBuf {
+    path.strip_prefix(storage)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|_| path.to_path_buf())
+}
+
 /// Whether `path` is free of components that could point out of the project: `..` and
 /// drive prefixes. A leading `/` is tolerated, [`sanitize_relative`] strips it.
 pub fn is_confined(path: &Path) -> bool {
@@ -88,5 +116,33 @@ mod tests {
         assert!(is_confined(Path::new("./a")));
         assert!(!is_confined(Path::new("../a")));
         assert!(!is_confined(Path::new("a/../../b")));
+    }
+
+    /// Relative paths are resolved below the storage (and cannot leave it), absolute ones are
+    /// kept; `relative_to_storage` strips the root and leaves outside paths alone.
+    #[test]
+    fn storage_paths_round_trip() {
+        let storage = Path::new("/mnt/storage");
+        assert_eq!(
+            resolve_in_storage(storage, Path::new("projects/3")),
+            PathBuf::from("/mnt/storage/projects/3")
+        );
+        assert_eq!(
+            resolve_in_storage(storage, Path::new("../etc/passwd")),
+            PathBuf::from("/mnt/storage/etc/passwd")
+        );
+        assert_eq!(
+            resolve_in_storage(storage, Path::new("/data/elsewhere")),
+            PathBuf::from("/data/elsewhere")
+        );
+        let backend = Path::new("/srv/macworp");
+        assert_eq!(
+            relative_to_storage(backend, Path::new("/srv/macworp/local/3")),
+            PathBuf::from("local/3")
+        );
+        assert_eq!(
+            relative_to_storage(backend, Path::new("/data/elsewhere")),
+            PathBuf::from("/data/elsewhere")
+        );
     }
 }

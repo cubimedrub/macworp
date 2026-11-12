@@ -10,7 +10,7 @@ if (-not (Test-Path $config)) {
     $lines = $lines `
         -replace '^port = .*', 'port = 3001' `
         -replace '^cors_allowed_origins = .*', 'cors_allowed_origins = ["*"]' `
-        -replace '^projects_path = .*', 'projects_path = "dev_projects"'
+        -replace '^storage_path = .*', 'storage_path = "dev_storage"'
     # UTF-8 without BOM and LF endings; Windows PowerShell 5.1 `>` would write UTF-16.
     [System.IO.File]::WriteAllText(
         (Join-Path (Get-Location) $config),
@@ -28,7 +28,7 @@ if (-not (Test-Path $workerPassword)) {
 Next: start the four Procfile processes (`ultraman start`, or one terminal each on Windows):
   docker compose up db
   cargo run -p macworp_backend -- db-migrate dev/config.toml; cargo run -p macworp_backend -- serve dev/config.toml
-  cargo run -p macworp_worker -- -vv --backend-url http://127.0.0.1:3001 --password-file dev/worker.password --name dev-worker run
+  cargo run -p macworp_worker -- -vv --backend-url http://127.0.0.1:3001 --storage-path dev_storage --password-file dev/worker.password --name dev-worker run
   cd packages/web; $env:MACWORP_BASE_URL = 'http://127.0.0.1:3001'; dx serve --web --port 5001
 Then create users (prompts for a password), e.g. in another terminal:
   cargo run -p macworp_backend -- user create alice Alice A alice@example.org

@@ -236,12 +236,14 @@ impl WorkflowIntegrationsController {
         let cache = state.repository_cache();
         let mut configuration = workflow_integration.configuration.clone();
         state.confine_local_source(workflow_integration.id, &mut configuration);
+        let storage = state.config().storage_directory();
         let response = tokio::task::spawn_blocking(move || {
             let resolved = cache.localize(&mut configuration)?;
             let Source::Local(local) = configuration.source() else {
                 return Ok(Default::default());
             };
-            let mut schemas = crate::repository_cache::RepositoryCache::schemas(local.location());
+            let directory = macworp_core::paths::resolve_in_storage(&storage, local.location());
+            let mut schemas = crate::repository_cache::RepositoryCache::schemas(&directory);
             schemas.commit = resolved.map(|r| r.sha);
             Ok::<_, crate::repository_cache::Error>(schemas)
         })
@@ -253,7 +255,7 @@ impl WorkflowIntegrationsController {
     /// Replaces the files of a local workflow by an uploaded zip archive (Editor). The body is
     /// streamed to a temporary file (at most `max_workflow_upload_bytes`), extracted with path,
     /// symlink, size and file count checks and swapped in below
-    /// `<projects_path>/local/<id>`; a rejected archive leaves the previous version in place.
+    /// `<storage_path>/local/<id>`; a rejected archive leaves the previous version in place.
     async fn upload(
         State(state): State<Arc<AppState>>,
         Authorized {
@@ -277,7 +279,7 @@ impl WorkflowIntegrationsController {
         let Source::Local(local) = configuration.source_mut() else {
             return Err(Error::NotLocalSource);
         };
-        let target = local.location().clone();
+        let target = state.config().resolve_storage_path(local.location());
         if let Some(script) = query.script {
             *local.script_mut() = macworp_core::paths::sanitize_relative(&script);
         }

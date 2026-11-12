@@ -617,8 +617,10 @@ impl Entity {
     ///
     /// # Arguments
     /// * `db` - Database connection or transaction
+    /// * `storage` - Absolute storage root, relative locations in snapshots are resolved to it
     pub async fn active_source_locations<C: ConnectionTrait>(
         db: &C,
+        storage: &std::path::Path,
     ) -> Result<std::collections::HashSet<std::path::PathBuf>, Error> {
         use macworp_core::workflow_configuration::source::Source;
         Ok(Entity::find()
@@ -627,7 +629,10 @@ impl Entity {
             .await?
             .into_iter()
             .filter_map(|run| match run.configuration.source() {
-                Source::Local(local) => Some(local.location().clone()),
+                Source::Local(local) => Some(macworp_core::paths::resolve_in_storage(
+                    storage,
+                    local.location(),
+                )),
                 _ => None,
             })
             .collect())

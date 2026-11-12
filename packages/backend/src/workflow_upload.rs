@@ -2,7 +2,7 @@
 //!
 //! Users upload local workflows as a zip file. The archive is untrusted: entries are extracted
 //! into a staging directory with path, symlink, file count and size checks, and the result
-//! replaces the workflow's directory (`<projects_path>/local/<workflow_integration_id>`) by
+//! replaces the workflow's directory (`<storage_path>/local/<workflow_integration_id>`) by
 //! renames, so a failed upload leaves the previous version untouched.
 
 use std::fs;

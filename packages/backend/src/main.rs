@@ -232,8 +232,11 @@ async fn main() -> Result<(), StandaloneError> {
                     .map(|d| std::time::Duration::from_secs(d * 86_400))
                     .or(config.checkout_max_age())
                     .unwrap_or(std::time::Duration::MAX);
-                let in_use =
-                    macworp_backend::models::RunTable::active_source_locations(&db).await?;
+                let in_use = macworp_backend::models::RunTable::active_source_locations(
+                    &db,
+                    &config.storage_directory(),
+                )
+                .await?;
                 let removed = cache.prune(max_age, &in_use)?;
                 println!("Removed {} checkouts", removed.len());
             }

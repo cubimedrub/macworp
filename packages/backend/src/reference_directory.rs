@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-/// Name of the folder holding the global reference data below the projects directory.
+/// Name of the folder holding the global reference data below the storage root.
 pub const DEFAULT_DIRECTORY_NAME: &str = "global_reference_data";
 
 /// Shared, changeable location of the global reference data on disk.
@@ -28,12 +28,12 @@ impl ReferenceDirectory {
         }
     }
 
-    /// Default location below the projects directory: `<projects_path>/global_reference_data`.
+    /// Default location below the storage root: `<storage>/global_reference_data`.
     ///
     /// # Arguments
-    /// * `projects_path` - The configured projects directory
-    pub fn below(projects_path: &Path) -> Self {
-        Self::new(projects_path.join(DEFAULT_DIRECTORY_NAME))
+    /// * `storage` - The storage root
+    pub fn below(storage: &Path) -> Self {
+        Self::new(storage.join(DEFAULT_DIRECTORY_NAME))
     }
 
     /// The current location.

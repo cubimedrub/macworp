@@ -189,7 +189,7 @@ cargo run -p macworp_backend -- db-migrate dev/config.toml && cargo run -p macwo
 
 ```
 # terminal 3
-cargo run -p macworp_worker -- -vv --backend-url http://127.0.0.1:3001 --password-file dev/worker.password --name dev-worker run
+cargo run -p macworp_worker -- -vv --backend-url http://127.0.0.1:3001 --storage-path dev_storage --password-file dev/worker.password --name dev-worker run
 ```
 
 ```

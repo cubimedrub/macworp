@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use macworp_backend::configuration::{REMOTE_CACHE_DIRECTORY_NAME, WORKFLOWS_DIRECTORY_NAME};
 use macworp_backend::reference_directory::{ReferenceDirectory, DEFAULT_DIRECTORY_NAME};
-use macworp_backend::repository_cache::RepositoryCache;
+use macworp_backend::workflow_repository_cache::WorkflowRepositoryCache;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -59,7 +59,7 @@ pub struct Settings {
     /// Handle shared with the backend and the embedded worker
     reference_directory: ReferenceDirectory,
     /// Cache shared with the backend
-    repository_cache: Arc<RepositoryCache>,
+    workflow_repository_cache: Arc<WorkflowRepositoryCache>,
     /// The explicit choices as saved, so changing one folder keeps the other
     stored: Arc<Mutex<Stored>>,
 }
@@ -80,7 +80,7 @@ impl Settings {
                     .clone()
                     .unwrap_or_else(|| Self::default_path(directory, Folder::Reference)),
             ),
-            repository_cache: Arc::new(RepositoryCache::new(
+            workflow_repository_cache: Arc::new(WorkflowRepositoryCache::new(
                 stored
                     .workflow_cache_path
                     .clone()
@@ -100,8 +100,8 @@ impl Settings {
     }
 
     /// The repository cache for the backend.
-    pub fn repository_cache(&self) -> Arc<RepositoryCache> {
-        self.repository_cache.clone()
+    pub fn workflow_repository_cache(&self) -> Arc<WorkflowRepositoryCache> {
+        self.workflow_repository_cache.clone()
     }
 
     /// Folder used while the user chose none.
@@ -125,7 +125,7 @@ impl Settings {
     pub fn path(&self, folder: Folder) -> PathBuf {
         match folder {
             Folder::Reference => self.reference_directory.get(),
-            Folder::WorkflowCache => self.repository_cache.root(),
+            Folder::WorkflowCache => self.workflow_repository_cache.root(),
         }
     }
 
@@ -172,7 +172,7 @@ impl Settings {
         *stored = updated;
         match folder {
             Folder::Reference => self.reference_directory.set(target),
-            Folder::WorkflowCache => self.repository_cache.set_root(target),
+            Folder::WorkflowCache => self.workflow_repository_cache.set_root(target),
         }
         Ok(())
     }
@@ -216,7 +216,7 @@ mod tests {
         assert!(settings.is_default(Folder::WorkflowCache));
 
         let cache = directory.path().join("cache");
-        let cache_handle = settings.repository_cache();
+        let cache_handle = settings.workflow_repository_cache();
         settings
             .set_path(Folder::WorkflowCache, Some(cache.clone()))
             .unwrap();

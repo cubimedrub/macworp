@@ -62,7 +62,7 @@ pub enum Error {
     EngineUnavailable(macworp_core::workflow_configuration::engine::Engine),
     /// The remote workflow source is invalid, or cannot be fetched and is not cached, 400/502
     #[error("Workflow source unavailable: {0}")]
-    Source(#[from] crate::repository_cache::Error),
+    Source(#[from] crate::workflow_repository_cache::Error),
     /// The cache task panicked or was cancelled, 500
     #[error("Source resolution failed")]
     SourceTask,
@@ -119,7 +119,7 @@ impl IntoResponse for Error {
             | Error::EngineUnavailable(_) => {
                 (StatusCode::CONFLICT, self.to_string()).into_response()
             }
-            Error::Source(crate::repository_cache::Error::Fetch { .. }) => {
+            Error::Source(crate::workflow_repository_cache::Error::Fetch { .. }) => {
                 (StatusCode::BAD_GATEWAY, self.to_string()).into_response()
             }
             Error::Source(_) => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
@@ -281,7 +281,7 @@ impl RunsController {
         apply_values(&mut configuration, &payload.parameters)?;
         // Remote sources are pinned to the commit they resolve to now: later fetches or moved
         // tags cannot change this run, and the engine reads the checkout without network.
-        let cache = state.repository_cache();
+        let cache = state.workflow_repository_cache();
         let (configuration, resolved) = tokio::task::spawn_blocking(move || {
             let mut configuration = configuration;
             cache

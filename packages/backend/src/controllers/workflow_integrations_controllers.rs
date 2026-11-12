@@ -38,7 +38,7 @@ pub enum Error {
     Authentication(#[from] crate::authentication::error::Error),
     /// The remote source is invalid or unreachable and not cached
     #[error("{0}")]
-    Source(#[from] crate::repository_cache::Error),
+    Source(#[from] crate::workflow_repository_cache::Error),
     /// The uploaded archive was rejected (unsafe, too big, not a zip), 400
     #[error("{0}")]
     Archive(crate::workflow_upload::Error),
@@ -77,7 +77,7 @@ impl IntoResponse for Error {
                 (StatusCode::FORBIDDEN, self.to_string()).into_response()
             }
             Error::NotLocalSource => (StatusCode::CONFLICT, self.to_string()).into_response(),
-            Error::Source(crate::repository_cache::Error::Fetch { .. }) => {
+            Error::Source(crate::workflow_repository_cache::Error::Fetch { .. }) => {
                 (StatusCode::BAD_GATEWAY, self.to_string()).into_response()
             }
             Error::Source(_) => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
@@ -233,7 +233,7 @@ impl WorkflowIntegrationsController {
         }: Authorized<WorkflowIntegration, Viewer>,
     ) -> Result<Json<macworp_core::responses::WorkflowSchemasResponse>, Error> {
         use macworp_core::workflow_configuration::source::Source;
-        let cache = state.repository_cache();
+        let cache = state.workflow_repository_cache();
         let mut configuration = workflow_integration.configuration.clone();
         state.confine_local_source(workflow_integration.id, &mut configuration);
         let storage = state.config().storage_directory();
@@ -243,9 +243,10 @@ impl WorkflowIntegrationsController {
                 return Ok(Default::default());
             };
             let directory = macworp_core::paths::resolve_in_storage(&storage, local.location());
-            let mut schemas = crate::repository_cache::RepositoryCache::schemas(&directory);
+            let mut schemas =
+                crate::workflow_repository_cache::WorkflowRepositoryCache::schemas(&directory);
             schemas.commit = resolved.map(|r| r.sha);
-            Ok::<_, crate::repository_cache::Error>(schemas)
+            Ok::<_, crate::workflow_repository_cache::Error>(schemas)
         })
         .await
         .map_err(|_| Error::SourceTask)??;

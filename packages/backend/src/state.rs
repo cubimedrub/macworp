@@ -6,7 +6,7 @@ use macworp_core::workflow_configuration::engine::Engine;
 
 use crate::{
     configuration::Configuration, error::Error, reference_directory::ReferenceDirectory,
-    repository_cache::RepositoryCache, worker_registry::WorkerRegistry,
+    worker_registry::WorkerRegistry, workflow_repository_cache::WorkflowRepositoryCache,
 };
 
 pub struct State {
@@ -14,13 +14,13 @@ pub struct State {
     db: DatabaseConnection,
     workers: WorkerRegistry,
     reference_directory: ReferenceDirectory,
-    repository_cache: Arc<RepositoryCache>,
+    workflow_repository_cache: Arc<WorkflowRepositoryCache>,
 }
 
 impl State {
     async fn new(config: Configuration, db: DatabaseConnection) -> Result<Self, Error> {
         let reference_directory = ReferenceDirectory::below(&config.storage_directory());
-        let repository_cache = Arc::new(RepositoryCache::new(
+        let workflow_repository_cache = Arc::new(WorkflowRepositoryCache::new(
             config.cache_path(),
             std::time::Duration::from_secs(config.branch_cache_seconds()),
         ));
@@ -29,7 +29,7 @@ impl State {
             db,
             workers: WorkerRegistry::default(),
             reference_directory,
-            repository_cache,
+            workflow_repository_cache,
         })
     }
 
@@ -47,17 +47,20 @@ impl State {
     }
 
     /// Cache of remote workflow repositories.
-    pub fn repository_cache(&self) -> Arc<RepositoryCache> {
-        self.repository_cache.clone()
+    pub fn workflow_repository_cache(&self) -> Arc<WorkflowRepositoryCache> {
+        self.workflow_repository_cache.clone()
     }
 
     /// Replaces the repository cache by one the embedding application keeps, so it can move
     /// the cache while the backend runs.
     ///
     /// # Arguments
-    /// * `repository_cache` - The handle to use from now on
-    pub fn with_repository_cache(mut self, repository_cache: Arc<RepositoryCache>) -> Self {
-        self.repository_cache = repository_cache;
+    /// * `workflow_repository_cache` - The handle to use from now on
+    pub fn with_workflow_repository_cache(
+        mut self,
+        workflow_repository_cache: Arc<WorkflowRepositoryCache>,
+    ) -> Self {
+        self.workflow_repository_cache = workflow_repository_cache;
         self
     }
 
@@ -73,7 +76,7 @@ impl State {
 
     /// Deletes cached checkouts unused for `checkout_max_age_days` that no queued or running
     /// run points to. Returns how many were removed; 0 when pruning is disabled.
-    pub async fn prune_repository_cache(&self) -> Result<usize, Error> {
+    pub async fn prune_workflow_repository_cache(&self) -> Result<usize, Error> {
         let Some(max_age) = self.config.checkout_max_age() else {
             return Ok(0);
         };
@@ -83,7 +86,7 @@ impl State {
         )
         .await
         .map_err(|e| Error::CachePrune(e.to_string()))?;
-        let cache = self.repository_cache();
+        let cache = self.workflow_repository_cache();
         let removed = tokio::task::spawn_blocking(move || cache.prune(max_age, &in_use))
             .await
             .map_err(|e| Error::CachePrune(e.to_string()))?

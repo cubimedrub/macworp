@@ -23,7 +23,7 @@ pub enum Error {
     #[error("{0}")]
     Run(#[from] crate::models::RunError),
     #[error("{0}")]
-    RepositoryCache(#[from] crate::repository_cache::Error),
+    WorkflowRepositoryCache(#[from] crate::workflow_repository_cache::Error),
     /// A blocking task (cache fetch) panicked or was cancelled
     #[error("{0}")]
     Task(#[from] tokio::task::JoinError),

@@ -225,7 +225,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     };
 
     let reference_directory = settings.reference_directory();
-    let repository_cache = settings.repository_cache();
+    let workflow_repository_cache = settings.workflow_repository_cache();
     let backend = tokio::spawn(async move {
         match macworp_backend::Backend::<
             macworp_backend::filesystems::local_filesystem::LocalFilesystem,
@@ -235,7 +235,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
             backend_config,
             DESKTOP_USER_NAME.to_string(),
             reference_directory,
-            repository_cache,
+            workflow_repository_cache,
         )
         .await
         {

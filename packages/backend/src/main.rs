@@ -214,10 +214,11 @@ async fn main() -> Result<(), StandaloneError> {
         SubCommand::WorkflowCache { subcommand } => match subcommand {
             CacheSubCommand::List { config } => {
                 let config = read_configuration(config)?;
-                let cache = macworp_backend::repository_cache::RepositoryCache::new(
-                    config.cache_path(),
-                    std::time::Duration::ZERO,
-                );
+                let cache =
+                    macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
+                        config.cache_path(),
+                        std::time::Duration::ZERO,
+                    );
                 for checkout in cache.checkouts()? {
                     let age = std::time::SystemTime::now()
                         .duration_since(checkout.last_used)
@@ -237,11 +238,12 @@ async fn main() -> Result<(), StandaloneError> {
             } => {
                 let config = read_configuration(config)?;
                 // Zero TTL: an explicit fetch always refreshes branches
-                let cache = macworp_backend::repository_cache::RepositoryCache::new(
-                    config.cache_path(),
-                    std::time::Duration::ZERO,
-                );
-                let id = macworp_backend::repository_cache::RepositoryId::parse(&url)?;
+                let cache =
+                    macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
+                        config.cache_path(),
+                        std::time::Duration::ZERO,
+                    );
+                let id = macworp_backend::workflow_repository_cache::RepositoryId::parse(&url)?;
                 let resolved =
                     tokio::task::spawn_blocking(move || cache.resolve(&id, reference.as_deref()))
                         .await??;
@@ -249,10 +251,11 @@ async fn main() -> Result<(), StandaloneError> {
             }
             CacheSubCommand::Prune { days, config } => {
                 let config = read_configuration(config)?;
-                let cache = macworp_backend::repository_cache::RepositoryCache::new(
-                    config.cache_path(),
-                    std::time::Duration::ZERO,
-                );
+                let cache =
+                    macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
+                        config.cache_path(),
+                        std::time::Duration::ZERO,
+                    );
                 let db = Database::connect(config.database_url())
                     .await
                     .map_err(StandaloneError::DatabaseConnection)?;

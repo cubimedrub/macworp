@@ -25,7 +25,7 @@ use macworp_core::workflow_configuration::{
     source::{LocalSource, Source},
 };
 
-/// Largest file [`RepositoryCache::read_file`] returns.
+/// Largest file [`WorkflowRepositoryCache::read_file`] returns.
 pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Name of the file in a mirror whose mtime records the last successful fetch.
@@ -150,7 +150,7 @@ pub struct CachedCheckout {
 
 /// Global repository cache, see the module documentation.
 #[derive(Debug)]
-pub struct RepositoryCache {
+pub struct WorkflowRepositoryCache {
     /// Current cache directory, replaceable at runtime (desktop settings).
     root: std::sync::RwLock<PathBuf>,
     branch_ttl: Duration,
@@ -158,7 +158,7 @@ pub struct RepositoryCache {
     lock: Mutex<()>,
 }
 
-impl RepositoryCache {
+impl WorkflowRepositoryCache {
     /// Creates the cache handle; directories are created lazily.
     ///
     /// # Arguments
@@ -296,7 +296,9 @@ impl RepositoryCache {
         &self,
         configuration: &WorkflowConfiguration,
     ) -> Result<Option<Resolved>, Error> {
-        Ok(self.fetch_source(configuration)?.map(|(resolved, _)| resolved))
+        Ok(self
+            .fetch_source(configuration)?
+            .map(|(resolved, _)| resolved))
     }
 
     /// Resolves the remote or nf-core source of `configuration` to a checkout and returns it
@@ -681,7 +683,7 @@ mod tests {
         /// The repository the cache fetches from.
         remote: Repository,
         /// Cache under test.
-        cache: RepositoryCache,
+        cache: WorkflowRepositoryCache,
     }
 
     impl Fixture {
@@ -689,8 +691,10 @@ mod tests {
         fn new() -> Self {
             let temporary = tempfile::tempdir().unwrap();
             let remote = Repository::init(temporary.path().join("remote")).unwrap();
-            let cache =
-                RepositoryCache::new(temporary.path().join("cache"), Duration::from_secs(3600));
+            let cache = WorkflowRepositoryCache::new(
+                temporary.path().join("cache"),
+                Duration::from_secs(3600),
+            );
             Self {
                 _temporary: temporary,
                 remote,
@@ -703,7 +707,7 @@ mod tests {
             self.remote.workdir().unwrap().display().to_string()
         }
 
-        /// Like `RepositoryCache::resolve`, but fetching from the local remote via `insteadOf`.
+        /// Like `WorkflowRepositoryCache::resolve`, but fetching from the local remote via `insteadOf`.
         ///
         /// # Arguments
         /// * `reference` - Tag, branch or hash; `None` for the default branch
@@ -760,13 +764,18 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink("/etc/hosts", temporary.path().join("link")).unwrap();
         assert_eq!(
-            RepositoryCache::read_file(temporary.path(), Path::new("a.txt")).unwrap(),
+            WorkflowRepositoryCache::read_file(temporary.path(), Path::new("a.txt")).unwrap(),
             b"hi"
         );
-        assert!(RepositoryCache::read_file(temporary.path(), Path::new("../outside.txt")).is_err());
+        assert!(
+            WorkflowRepositoryCache::read_file(temporary.path(), Path::new("../outside.txt"))
+                .is_err()
+        );
         #[cfg(unix)]
-        assert!(RepositoryCache::read_file(temporary.path(), Path::new("link")).is_err());
-        assert!(RepositoryCache::read_file(temporary.path(), Path::new("missing")).is_err());
+        assert!(WorkflowRepositoryCache::read_file(temporary.path(), Path::new("link")).is_err());
+        assert!(
+            WorkflowRepositoryCache::read_file(temporary.path(), Path::new("missing")).is_err()
+        );
     }
 
     /// Two tags give two checkouts; moving a tag on the remote never changes an existing one.
@@ -980,7 +989,7 @@ mod tests {
         .unwrap();
         fs::write(root.join("workflow/schemas/bad.schema.yaml"), [0xff, 0xfe]).unwrap();
 
-        let found = RepositoryCache::schemas(root);
+        let found = WorkflowRepositoryCache::schemas(root);
         assert!(found.nextflow_schema.is_some());
         assert_eq!(found.input_schema.unwrap()["type"], "array");
         assert_eq!(found.snakemake_schemas.len(), 1);
@@ -997,12 +1006,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            RepositoryCache::schemas(root).input_schema.unwrap()["type"],
+            WorkflowRepositoryCache::schemas(root).input_schema.unwrap()["type"],
             "object"
         );
         let empty = tempfile::tempdir().unwrap();
         assert_eq!(
-            RepositoryCache::schemas(empty.path()),
+            WorkflowRepositoryCache::schemas(empty.path()),
             WorkflowSchemasResponse::default()
         );
     }
@@ -1035,7 +1044,7 @@ mod tests {
         let first = commit(&f.remote, "main.nf", "x", None);
         commit(&f.remote, "test/asset.bin", "bin", Some(first));
         let relative = PathBuf::from(format!("target/relative-cache-test-{}", std::process::id()));
-        let cache = RepositoryCache::new(&relative, Duration::from_secs(3600));
+        let cache = WorkflowRepositoryCache::new(&relative, Duration::from_secs(3600));
         let id = RepositoryId {
             host: "local".into(),
             segments: vec!["o".into(), "r".into()],

@@ -370,10 +370,12 @@ impl TestApp {
                 macworp_backend::reference_directory::ReferenceDirectory::new(
                     reference_directory_for_backend,
                 ),
-                std::sync::Arc::new(macworp_backend::repository_cache::RepositoryCache::new(
-                    cache_directory,
-                    Duration::from_secs(3600),
-                )),
+                std::sync::Arc::new(
+                    macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
+                        cache_directory,
+                        Duration::from_secs(3600),
+                    ),
+                ),
             )
             .await
         });

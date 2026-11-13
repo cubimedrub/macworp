@@ -17,7 +17,6 @@ strum = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 urlencoding = { workspace = true }
-futures = { workspace = true }
 # `format` for timestamps, the features are not unified in the wasm build
 chrono = { workspace = true, features = ["alloc"] }
 

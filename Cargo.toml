@@ -22,6 +22,7 @@ futures-util = "0.3.32"
 git2 = { version = "0.20.3", default-features = false }
 gloo-timers = { version = "0.3" }
 http = { version = "1.4.0" }
+jsonschema = { version = "0.61.2", default-features = false }
 jsonwebtoken = { version = "10.3.0" }
 num-traits = "0.2.15"
 notify = "8"

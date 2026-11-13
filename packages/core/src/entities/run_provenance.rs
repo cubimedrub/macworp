@@ -33,6 +33,9 @@ mod tests {
             script: "main.nf".into(),
         };
         let json = serde_json::to_string(&provenance).unwrap();
-        assert_eq!(serde_json::from_str::<RunProvenance>(&json).unwrap(), provenance);
+        assert_eq!(
+            serde_json::from_str::<RunProvenance>(&json).unwrap(),
+            provenance
+        );
     }
 }

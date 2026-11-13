@@ -110,7 +110,10 @@ impl Path {
     ///
     /// Returns the message of the first rejected pattern, prefixed with its kind.
     pub fn validate_patterns(&self) -> Result<(), String> {
-        for (kind, pattern) in [("file", &self.file_pattern), ("folder", &self.folder_pattern)] {
+        for (kind, pattern) in [
+            ("file", &self.file_pattern),
+            ("folder", &self.folder_pattern),
+        ] {
             if let Some(pattern) = pattern {
                 compile_pattern(pattern).map_err(|e| format!("{kind} pattern: {e}"))?;
             }

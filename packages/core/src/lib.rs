@@ -19,6 +19,8 @@ pub mod requests;
 pub mod responses;
 /// Routing segments of controllers
 pub mod routing;
+/// Sample sheets: model, file formats, columns, pairing
+pub mod sample_sheet;
 /// JSON Schema validation with the nf-schema extensions used by sample sheets
 pub mod schema_validation;
 /// Workflow configuration

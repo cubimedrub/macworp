@@ -176,15 +176,8 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), Error> {
                     format!("{} paths, at most {} allowed", paths.len(), p.limit()),
                 ));
             }
-            if let Some(rejected) = paths
-                .iter()
-                .flatten()
-                .find(|path| !p.accepts_path(path))
-            {
-                return Err(Error::PatternMismatch(
-                    name,
-                    rejected.display().to_string(),
-                ));
+            if let Some(rejected) = paths.iter().flatten().find(|path| !p.accepts_path(path)) {
+                return Err(Error::PatternMismatch(name, rejected.display().to_string()));
             }
             *p.value_mut() = paths;
         }

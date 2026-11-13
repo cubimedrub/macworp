@@ -36,6 +36,7 @@ rfd = "0.18.0"
 rpassword = { version = "7.4.0" }
 serde = { version = "1.0.228" }
 serde_json = { version = "1.0.149" }
+serde_norway = { version = "0.9.42" }
 sha2 = "0.10"
 sea-orm = { version = "2.0.4" }
 sea-orm-migration = { version = "2.0.4" }

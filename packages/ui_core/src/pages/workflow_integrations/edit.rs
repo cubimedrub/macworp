@@ -23,6 +23,7 @@ use crate::{
     configuration::Configuration,
     current_user::CurrentUser,
     local_workflow::LocalFolderPicker,
+    parameter_arrangement::{self, ParameterMove},
     router::IsRouter,
     runtime_status::engine_hint,
     sharing::SharingEnabled,
@@ -52,6 +53,15 @@ pub enum Error<S: IsStorage> {
     Storage(S::Error),
     #[error("Unable to reqd upload queue")]
     PoisenedUploadQueue,
+}
+
+/// Which of the two editable parameter lists of a workflow is meant
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParameterListKind {
+    /// Parameters the user sets when starting the workflow
+    Dynamic,
+    /// Parameters always passed unchanged
+    Fixed,
 }
 
 pub struct DisassambledWorkflowIntegration {
@@ -88,6 +98,73 @@ impl DisassambledWorkflowIntegration {
 
     pub fn fixed_parameters_mut(&mut self) -> &mut Vec<Signal<Parameter>> {
         &mut self.fixed_parameters
+    }
+
+    /// Applies a reorder or a move between the dynamic and the fixed list. Moving a separator moves
+    /// its whole group. A move to the other list is refused if a parameter name is already used
+    /// there.
+    ///
+    /// # Arguments
+    /// * `list` - List the request refers to
+    /// * `request` - What the user asked for
+    pub fn apply_move(
+        &mut self,
+        list: ParameterListKind,
+        request: ParameterMove,
+    ) -> Result<(), String> {
+        fn is_separator(parameter: &Signal<Parameter>) -> bool {
+            matches!(*parameter.read(), Parameter::Group(_))
+        }
+        let (source, target) = match list {
+            ParameterListKind::Dynamic => {
+                (&mut self.dynamic_parameters, &mut self.fixed_parameters)
+            }
+            ParameterListKind::Fixed => (&mut self.fixed_parameters, &mut self.dynamic_parameters),
+        };
+        match request {
+            ParameterMove::Step(index, direction) if index < source.len() => {
+                parameter_arrangement::step(source, index, direction, is_separator);
+            }
+            ParameterMove::Drop {
+                from,
+                target: drop_target,
+            } if from < source.len() && drop_target < source.len() => {
+                let range = parameter_arrangement::moving_range(source, from, is_separator);
+                if !range.contains(&drop_target) {
+                    let destination = parameter_arrangement::drop_destination(
+                        source,
+                        &range,
+                        drop_target,
+                        is_separator,
+                    );
+                    parameter_arrangement::move_range(source, range, destination);
+                }
+            }
+            ParameterMove::ToOtherList(index) if index < source.len() => {
+                let range = parameter_arrangement::moving_range(source, index, is_separator);
+                let moving: Vec<String> = source[range.clone()]
+                    .iter()
+                    .map(|parameter| parameter.read().name().to_string())
+                    .collect();
+                let existing: Vec<String> = target
+                    .iter()
+                    .map(|parameter| parameter.read().name().to_string())
+                    .collect();
+                let clashes = parameter_arrangement::name_clashes(
+                    moving.iter().map(String::as_str),
+                    &existing.iter().map(String::as_str).collect::<Vec<_>>(),
+                );
+                if !clashes.is_empty() {
+                    return Err(format!(
+                        "Cannot move: the other list already has a parameter named {}",
+                        clashes.join(", ")
+                    ));
+                }
+                target.extend(source.drain(range));
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Reassembles the disassembled parameter signals back into the inner
@@ -231,6 +308,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
     // Background download of a remote repository, started by the server when the workflow is
     // saved; shown below the save button
     let mut prefetch = use_signal(|| PrefetchResponse::Idle);
+    // Why the last reorder/move between parameter lists was refused
+    let mut move_error = use_signal(|| None::<String>);
     // Identifies the newest polling loop, older ones stop when it changes
     let mut prefetch_generation = use_signal(|| 0u32);
     // Follows the download started by a save of a workflow with the given source until it ends.
@@ -989,7 +1068,14 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     }
                 }
 
+                if let Some(message) = move_error.read().as_ref() {
+                    div { class: "alert alert-warning", role: "alert", "{message}" }
+                }
                 ParameterList<DynamicParameter, S> {
+                    on_move: move |request| {
+                        let result = workflow_integration.write().apply_move(ParameterListKind::Dynamic, request);
+                        move_error.set(result.err());
+                    },
                     parameters: workflow_integration.read().dynamic_parameters().to_vec(),
                     on_remove: move |idx| {
                         workflow_integration.write().dynamic_parameters_mut().remove(idx);
@@ -1006,6 +1092,10 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     "These parameters are always passed to the workflow and cannot be changed by the user"
                 }
                 ParameterList<FixedParameter, S> {
+                    on_move: move |request| {
+                        let result = workflow_integration.write().apply_move(ParameterListKind::Fixed, request);
+                        move_error.set(result.err());
+                    },
                     parameters: workflow_integration.read().fixed_parameters().to_vec(),
                     on_remove: move |idx| {
                         workflow_integration.write().fixed_parameters_mut().remove(idx);

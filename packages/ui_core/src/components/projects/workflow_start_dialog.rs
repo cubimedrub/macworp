@@ -21,6 +21,7 @@ use crate::{
     },
     configuration::Configuration,
     pages::workflow_integrations::edit::DisassambledWorkflowIntegration,
+    parameter_arrangement,
     runtime_status::engine_hint,
     storage::IsStorage,
 };
@@ -238,59 +239,73 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                 //     class: "text-muted",
                                 //     "{integration.inner().description()}"
                                 // }
-                                for (parameter_idx, parameter) in integration.dynamic_parameters().iter().enumerate() {
-                                    match &*parameter.read() {
-                                        Parameter::Float(_) => rsx! {
-                                            NumericParameter<DynamicParameter, f64> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Glob(_) => rsx! {
-                                            GlobParameter<DynamicParameter> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Integer(_) => rsx! {
-                                            NumericParameter<DynamicParameter, i64> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Text(_) => rsx! {
-                                            TextParameter<DynamicParameter> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Path(_) => rsx! {
-                                            PathParameter<DynamicParameter, S> {
-                                                parameter: *parameter,
-                                                parameter_idx,
-                                                project_id: props.project_id,
-                                            },
-                                        },
-                                        Parameter::ValueSelect(_) => rsx! {
-                                            ValueSelectParameter<DynamicParameter> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::SampleSheet(_) => rsx! {
-                                            SampleSheetParameter<DynamicParameter> {
-                                                parameter: *parameter,
-                                                parameter_idx
-                                            },
-                                        },
-                                        Parameter::Separator(separator) => rsx! {
-                                            hr {}
-                                            h6 { "{separator.label()}" }
-                                            small {
-                                                class: "form-text text-muted",
-                                                "{separator.desc()}"
+                                for section in parameter_arrangement::sections(integration.dynamic_parameters(), |parameter| matches!(*parameter.read(), Parameter::Group(_))) {
+                                    {
+                                        let header = match &*integration.dynamic_parameters()[section.start].read() {
+                                            Parameter::Group(group) => Some((group.label().to_string(), group.desc().to_string())),
+                                            _ => None,
+                                        };
+                                        let cards_start = if header.is_some() { section.start + 1 } else { section.start };
+                                        let parameters = integration.dynamic_parameters()[cards_start..section.end].to_vec();
+                                        rsx! {
+                                            ParameterGroup {
+                                                key: "{section.start}",
+                                                title: header.as_ref().map(|(title, _)| title.clone()),
+                                                desc: header.map(|(_, desc)| desc).unwrap_or_default(),
+                                                count: parameters.len(),
+                                                for (offset, parameter) in parameters.into_iter().enumerate() {
+                                                    {
+                                                        let parameter_idx = cards_start + offset;
+                                                                            match &*parameter.read() {
+                                                                                Parameter::Float(_) => rsx! {
+                                                                                    NumericParameter<DynamicParameter, f64> {
+                                                                                        parameter: parameter,
+                                                                                        parameter_idx
+                                                                                    },
+                                                                                },
+                                                                                Parameter::Glob(_) => rsx! {
+                                                                                    GlobParameter<DynamicParameter> {
+                                                                                        parameter: parameter,
+                                                                                        parameter_idx
+                                                                                    },
+                                                                                },
+                                                                                Parameter::Integer(_) => rsx! {
+                                                                                    NumericParameter<DynamicParameter, i64> {
+                                                                                        parameter: parameter,
+                                                                                        parameter_idx
+                                                                                    },
+                                                                                },
+                                                                                Parameter::Text(_) => rsx! {
+                                                                                    TextParameter<DynamicParameter> {
+                                                                                        parameter: parameter,
+                                                                                        parameter_idx
+                                                                                    },
+                                                                                },
+                                                                                Parameter::Path(_) => rsx! {
+                                                                                    PathParameter<DynamicParameter, S> {
+                                                                                        parameter: parameter,
+                                                                                        parameter_idx,
+                                                                                        project_id: props.project_id,
+                                                                                    },
+                                                                                },
+                                                                                Parameter::ValueSelect(_) => rsx! {
+                                                                                    ValueSelectParameter<DynamicParameter> {
+                                                                                        parameter: parameter,
+                                                                                        parameter_idx
+                                                                                    },
+                                                                                },
+                                                                                Parameter::SampleSheet(_) => rsx! {
+                                                                                    SampleSheetParameter<DynamicParameter> {
+                                                                                        parameter: parameter,
+                                                                                        parameter_idx
+                                                                                    },
+                                                                                },
+                                                                                Parameter::Group(_) => rsx! {},
+                                                                            }
+                                                    }
+                                                }
                                             }
-                                        },
+                                        }
                                     }
                                 }
                             },
@@ -321,7 +336,7 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                     let values = integration
                                         .dynamic_parameters()
                                         .iter()
-                                        .filter(|parameter| !matches!(&*parameter.read(), Parameter::Separator(_)))
+                                        .filter(|parameter| !matches!(&*parameter.read(), Parameter::Group(_)))
                                         .map(|parameter| {
                                             let parameter = parameter.read();
                                             ParameterValue {
@@ -336,6 +351,53 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                             "Start"
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Props of [`ParameterGroup`]
+#[derive(Clone, PartialEq, Props)]
+struct ParameterGroupProps {
+    /// Title of the group, `None` for the parameters before the first group (shown without frame)
+    title: Option<String>,
+    /// Description shown under the title
+    desc: String,
+    /// Number of parameters inside, shown while collapsed
+    count: usize,
+    /// The parameters of the group
+    children: Element,
+}
+
+/// Frame around the parameters of one group with a collapse toggle; parameters without a group
+/// are shown as they are. Folded parameters keep their values.
+#[component]
+fn ParameterGroup(props: ParameterGroupProps) -> Element {
+    let mut collapsed = use_signal(|| false);
+    let Some(title) = props.title else {
+        return rsx! { {props.children} };
+    };
+    rsx! {
+        div {
+            class: "card border-primary mb-3",
+            div {
+                class: "card-header d-flex align-items-center",
+                role: "button",
+                onclick: move |_| collapsed.toggle(),
+                i { class: if collapsed() { "fas fa-chevron-right me-2" } else { "fas fa-chevron-down me-2" } }
+                strong { class: "me-auto", "{title}" }
+                if collapsed() {
+                    span { class: "badge text-bg-secondary", "{props.count} parameter(s)" }
+                }
+            }
+            if !collapsed() {
+                div {
+                    class: "card-body",
+                    if !props.desc.is_empty() {
+                        small { class: "d-block form-text text-muted mb-2", "{props.desc}" }
+                    }
+                    {props.children}
                 }
             }
         }

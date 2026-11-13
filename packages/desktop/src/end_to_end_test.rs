@@ -116,7 +116,7 @@ fn select(name: &str, is_multiselect: bool, value: &[&str]) -> Value {
 fn parameter_set(prefix: &str, v: &Values) -> Vec<Value> {
     let n = |kind: &str| format!("{prefix}_{kind}");
     vec![
-        json!({"Separator": {"name": "", "label": format!("{prefix} parameters"), "desc": "", "value": null}}),
+        json!({"Group": {"name": "", "label": format!("{prefix} parameters"), "desc": "", "value": null}}),
         text(&n("text"), false, v.text),
         text(&n("multiline"), true, v.multiline),
         json!({"Integer": {"name": n("integer"), "label": "", "desc": "", "value": v.integer, "min": 1, "max": 10}}),

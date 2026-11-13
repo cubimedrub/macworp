@@ -22,7 +22,7 @@ pub enum Error {
     /// The JSON value does not fit the parameter type (parameter name, expected type)
     #[error("Value of parameter `{0}` has the wrong type, expected {1}")]
     TypeMismatch(String, &'static str),
-    /// A value for a parameter that takes none (separator)
+    /// A value for a parameter that takes none (group)
     #[error("Parameter `{0}` takes no value")]
     NoValueAllowed(String),
     /// Path points out of the project directory (`..`) or is empty (parameter name)
@@ -47,7 +47,7 @@ pub enum Error {
 }
 
 /// Names end up in command line flags, so they must not be able to form another flag or contain
-/// separators.
+/// groups.
 fn validate_name(name: &str) -> Result<(), Error> {
     let valid = !name.is_empty()
         && !name.starts_with('-')
@@ -209,7 +209,7 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), Error> {
             }
             *p.value_mut() = values;
         }
-        Parameter::Separator(_) => {
+        Parameter::Group(_) => {
             if !value.is_null() {
                 return Err(Error::NoValueAllowed(name));
             }
@@ -236,7 +236,7 @@ pub fn value_json(parameter: &Parameter) -> Value {
         Parameter::ValueSelect(p) => p.value().map_or(Value::Null, |values| {
             values.iter().map(|v| Value::from(v.as_str())).collect()
         }),
-        Parameter::Separator(_) => Value::Null,
+        Parameter::Group(_) => Value::Null,
     }
 }
 
@@ -260,7 +260,7 @@ pub fn apply_values(
 }
 
 /// Like [`apply_values`] for values that may predate the current definition (e.g. a previous
-/// run): values for unknown names, separators, or of a type or range that no longer fits are
+/// run): values for unknown names, groups, or of a type or range that no longer fits are
 /// skipped instead of failing. Returns the names that were skipped.
 pub fn apply_values_lenient(
     config: &mut WorkflowConfiguration,
@@ -316,7 +316,7 @@ fn value_string(
             }
         },
         Parameter::ValueSelect(p) => p.value().map(|values| values.join(",")),
-        Parameter::Separator(_) => None,
+        Parameter::Group(_) => None,
     })
 }
 
@@ -375,7 +375,7 @@ pub fn render_args(
         .fixed_parameters()
         .iter()
         .chain(config.dynamic_parameters())
-        .filter(|p| !matches!(p, Parameter::Separator(_)));
+        .filter(|p| !matches!(p, Parameter::Group(_)));
     match config.engine() {
         Engine::Nextflow => {
             for p in params {
@@ -412,7 +412,7 @@ fn render_container_args(
         .fixed_parameters()
         .iter()
         .chain(config.dynamic_parameters())
-        .filter(|p| !matches!(p, Parameter::Separator(_)))
+        .filter(|p| !matches!(p, Parameter::Group(_)))
     {
         validate_name(p.name())?;
         if let Some(v) = value_string(p, reference_directory)? {
@@ -431,9 +431,9 @@ mod tests {
     use crate::workflow_configuration::{
         engine::EngineParameter,
         parameters::{
+            group::Group,
             number::Integer,
             path,
-            separator::Separator,
             text::Text,
             value_select::{SelectOption, ValueSelect},
         },
@@ -614,10 +614,10 @@ mod tests {
     }
 
     #[test]
-    fn separator_is_skipped() {
+    fn group_is_skipped() {
         let mut c = config(Engine::Nextflow);
         c.dynamic_parameters_mut()
-            .push(Parameter::Separator(Separator::new("S".into(), "".into())));
+            .push(Parameter::Group(Group::new("S".into(), "".into())));
         assert_eq!(render_args(&c, None).unwrap(), ["--mode", "fast"]);
     }
 

@@ -2,10 +2,10 @@ use serde_json::Value;
 
 use crate::workflow_configuration::parameters::{
     Parameter,
+    group::Group,
     parameter::{IsParameterWithValue, Parameter as GenericParameter},
     path::Path as PathParameter,
     sample_sheet::SampleSheet,
-    separator::Separator,
     text::Text,
     value_select::{SelectOption, ValueSelect},
 };
@@ -16,7 +16,7 @@ const PLATFORM_PARAMETERS: &[&str] = &["outdir"];
 /// Result of [`parameters_from_nextflow_schema`]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Imported {
-    /// Generated parameters in schema order, parameter groups become separators
+    /// Generated parameters in schema order, parameter groups become groups
     pub parameters: Vec<Parameter>,
     /// `(name, reason)` of schema properties that were not imported
     pub skipped: Vec<(String, String)>,
@@ -24,7 +24,7 @@ pub struct Imported {
 
 /// Generates parameters from a parsed `nextflow_schema.json`.
 ///
-/// Groups (`$defs` / `definitions`) become [`Separator`]s followed by their properties. Hidden
+/// Groups (`$defs` / `definitions`) become [`Group`]s followed by their properties. Hidden
 /// properties, platform controlled ones (`outdir`) and shapes that have no matching parameter
 /// type are skipped and reported in [`Imported::skipped`]; they never fail the import.
 /// The sample sheet property (`input` with a `schema` key) becomes a [`SampleSheet`] stub.
@@ -52,12 +52,10 @@ pub fn parameters_from_nextflow_schema(schema: &Value) -> Imported {
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             let before = imported.parameters.len();
-            imported
-                .parameters
-                .push(Parameter::Separator(Separator::new(
-                    title.to_string(),
-                    desc.to_string(),
-                )));
+            imported.parameters.push(Parameter::Group(Group::new(
+                title.to_string(),
+                desc.to_string(),
+            )));
             for (name, property) in properties {
                 import_property(&mut imported, name, property);
             }
@@ -249,19 +247,19 @@ mod tests {
             .unwrap_or_else(|| panic!("`{name}` not imported"))
     }
 
-    /// Groups give separators, groups without visible properties give none.
+    /// Groups give groups, groups without visible properties give none.
     #[test]
-    fn groups_become_separators_and_empty_groups_vanish() {
+    fn groups_are_headed_and_empty_groups_vanish() {
         let imported = parameters_from_nextflow_schema(&schema());
-        let separators: Vec<_> = imported
+        let groups: Vec<_> = imported
             .parameters
             .iter()
             .filter_map(|p| match p {
-                Parameter::Separator(s) => Some(s.label().to_string()),
+                Parameter::Group(s) => Some(s.label().to_string()),
                 _ => None,
             })
             .collect();
-        assert_eq!(separators, ["Input/output options", "Options"]);
+        assert_eq!(groups, ["Input/output options", "Options"]);
     }
 
     /// Each schema type maps to its parameter type, ranges are kept.

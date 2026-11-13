@@ -12,6 +12,8 @@ use crate::workflow_configuration::parameters::parameter::IsParameter;
 
 /// Glob paramter for collecting multiple files
 pub mod glob;
+/// Visual divider without value
+pub mod group;
 /// Float and integer paramter
 pub mod number;
 /// Generic paramerter for simple data
@@ -19,8 +21,6 @@ pub mod parameter;
 pub mod path;
 /// Path of a sample sheet (stub)
 pub mod sample_sheet;
-/// Visual divider without value
-pub mod separator;
 /// Single and multiline text
 pub mod text;
 /// Choice of fixed options
@@ -46,8 +46,10 @@ pub enum Parameter {
     Path(path::Path),
     /// Sample sheet of a pipeline (stub: path as text)
     SampleSheet(sample_sheet::SampleSheet),
-    /// Divider in the start dialog, carries no value
-    Separator(separator::Separator),
+    /// Header of a group: the parameters after it, up to the next group, belong together. Carries
+    /// no value. Older definitions stored it as `Separator`.
+    #[serde(alias = "Separator")]
+    Group(group::Group),
     /// One or several of a fixed set of options
     ValueSelect(value_select::ValueSelect),
 }
@@ -69,7 +71,7 @@ impl Deref for Parameter {
             Parameter::Glob(glob) => glob,
             Parameter::Path(path) => path,
             Parameter::SampleSheet(sheet) => sheet,
-            Parameter::Separator(separator) => separator,
+            Parameter::Group(group) => group,
             Parameter::ValueSelect(select) => select,
         }
     }
@@ -84,7 +86,7 @@ impl DerefMut for Parameter {
             Parameter::Glob(glob) => glob,
             Parameter::Path(path) => path,
             Parameter::SampleSheet(sheet) => sheet,
-            Parameter::Separator(separator) => separator,
+            Parameter::Group(group) => group,
             Parameter::ValueSelect(select) => select,
         }
     }
@@ -99,7 +101,7 @@ impl Display for Parameter {
             Parameter::Glob(_) => "Glob",
             Parameter::Path(_) => "Path",
             Parameter::SampleSheet(_) => "SampleSheet",
-            Parameter::Separator(_) => "Separator",
+            Parameter::Group(_) => "Group",
             Parameter::ValueSelect(_) => "ValueSelect",
         };
 
@@ -120,7 +122,7 @@ impl FromStr for Parameter {
             "samplesheet" | "sample-sheet" => {
                 Ok(Parameter::SampleSheet(sample_sheet::SampleSheet::default()))
             }
-            "separator" => Ok(Parameter::Separator(separator::Separator::default())),
+            "group" => Ok(Parameter::Group(group::Group::default())),
             "valueselect" | "value-select" => {
                 Ok(Parameter::ValueSelect(value_select::ValueSelect::default()))
             }

@@ -16,6 +16,8 @@ pub mod local_workflow;
 pub mod logout;
 /// Pages showing a single task (a resource, resource list, resource edit, ...)
 pub mod pages;
+/// Reordering helpers for workflow parameter lists
+pub mod parameter_arrangement;
 /// Defintion of a router
 pub mod router;
 /// Container runtime status bar (only shown if the platform provides a handle)

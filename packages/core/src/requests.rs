@@ -21,6 +21,16 @@ pub struct NewProjectRequest {
     pub path: PathBuf,
 }
 
+/// Largest text file the text endpoints read or write (10 MiB).
+pub const TEXT_FILE_LIMIT: usize = 10 * 1024 * 1024;
+
+/// Body of `PUT /projects/write-text/{id}`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProjectWriteTextRequest {
+    /// New file content (UTF-8), at most [`TEXT_FILE_LIMIT`] bytes
+    pub content: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectCreateFolderRequest {
     /// Folder path

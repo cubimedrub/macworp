@@ -380,3 +380,10 @@ pub struct NfCoreReleasesResponse {
     /// True if the index could not be refreshed and an older copy is served
     pub stale: bool,
 }
+
+/// Answer of `GET /projects/read-text/{id}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectTextResponse {
+    /// File content (UTF-8)
+    pub content: String,
+}

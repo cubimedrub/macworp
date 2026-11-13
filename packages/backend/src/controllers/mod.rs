@@ -25,6 +25,10 @@ pub use workflow_integrations_controllers::WorkflowIntegrationsController;
 #[cfg(all(test, feature = "integration"))]
 mod authorization_http_tests;
 
+/// HTTP-level tests of the project text file endpoints
+#[cfg(all(test, feature = "integration"))]
+mod project_text_http_tests;
+
 /// HTTP-level tests of the worker protocol
 #[cfg(all(test, feature = "integration"))]
 mod worker_http_tests;

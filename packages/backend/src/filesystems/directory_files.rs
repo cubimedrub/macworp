@@ -177,6 +177,77 @@ impl DirectoryFiles {
         Ok(())
     }
 
+    /// Reads a small UTF-8 text file below `base`.
+    ///
+    /// # Arguments
+    /// * `base` - Directory the path is confined to
+    /// * `path` - File to read, relative to `base`
+    /// * `limit` - Largest accepted size in bytes
+    pub async fn read_text(base: &Path, path: &Path, limit: usize) -> Result<String, Error> {
+        let target_path = Self::join_paths(base, path)?;
+        let size = match tokio::fs::metadata(&target_path).await {
+            Ok(metadata) if metadata.is_file() => metadata.len(),
+            Ok(_) => return Err(Error::FileNotFound(target_path)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(Error::FileNotFound(target_path));
+            }
+            Err(error) => return Err(error.into()),
+        };
+        if size > limit as u64 {
+            return Err(Error::TextFileTooLarge(limit));
+        }
+        let bytes = tokio::fs::read(&target_path).await?;
+        String::from_utf8(bytes).map_err(|_| Error::NotText)
+    }
+
+    /// Writes a small text file below `base`: the content goes to a temporary file next to the
+    /// target that is renamed over it, so readers never see half a file. Missing parent folders
+    /// are created.
+    ///
+    /// # Arguments
+    /// * `base` - Directory the path is confined to
+    /// * `path` - File to write, relative to `base`
+    /// * `content` - New content
+    /// * `limit` - Largest accepted size in bytes
+    pub async fn write_text(
+        base: &Path,
+        path: &Path,
+        content: &str,
+        limit: usize,
+    ) -> Result<(), Error> {
+        if content.len() > limit {
+            return Err(Error::TextFileTooLarge(limit));
+        }
+        let target_path = Self::join_paths(base, path)?;
+        let file_name = target_path
+            .file_name()
+            .ok_or_else(|| RemoteFilesystemError::NoParentPath(target_path.clone()))?
+            .to_string_lossy()
+            .into_owned();
+        let temporary_path = Self::join_paths(
+            base,
+            &path.with_file_name(format!(".{file_name}.{PARTIAL_UPLOAD_EXTENSION}")),
+        )?;
+        if let Some(parent) = target_path.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|error| {
+                Error::RemoteFilesystem(RemoteFilesystemError::CreateProjectSubDirectory(error))
+            })?;
+        }
+        if target_path.is_dir() {
+            return Err(Error::RemoteFilesystem(
+                RemoteFilesystemError::TargetPathIsDirectory(target_path),
+            ));
+        }
+        tokio::fs::write(&temporary_path, content)
+            .await
+            .map_err(|error| Error::RemoteFilesystem(RemoteFilesystemError::StreamToFile(error)))?;
+        tokio::fs::rename(&temporary_path, &target_path)
+            .await
+            .map_err(|error| {
+                Error::RemoteFilesystem(RemoteFilesystemError::FinalizeUploadFailed(error))
+            })
+    }
+
     /// Creates the folder `folder_path` below `base`.
     ///
     /// # Arguments

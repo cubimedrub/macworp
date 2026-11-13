@@ -7,7 +7,7 @@ use crate::workflow_configuration::parameters::parameter::{
 /// Path of a sample sheet (CSV/TSV/YAML/JSON) inside the project.
 ///
 /// STUB: only stores the path as text. The full version adds a table editor generated from the
-/// sample sheet schema (`schema_input.json`), project file picker, R1/R2 pairing helpers,
+/// sample sheet schema (`schema_input.json`), project file picker,
 /// import/export and validation. The schema is not stored here yet.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SampleSheet {

@@ -12,15 +12,15 @@ use macworp_core::{
     requests::{
         GrantShareRequest, GroupMemberRequest, NewGroupRequest, NewProjectRequest, NewUserRequest,
         NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest, PrincipalRequest,
-        ProjectCreateFolderRequest, ProjectPathDeletionRequest, ResetPasswordRequest,
-        RevokeShareRequest, UpdateGroupRequest, UpdateUserRequest,
+        ProjectCreateFolderRequest, ProjectPathDeletionRequest, ProjectWriteTextRequest,
+        ResetPasswordRequest, RevokeShareRequest, UpdateGroupRequest, UpdateUserRequest,
         UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
     },
     responses::{
         EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse,
         NfCorePipelinesResponse, NfCoreReleasesResponse, PrefetchResponse, ProjectResponse,
-        RunLogsResponse, RunResponse, ShareResponse, UserResponse, UserSummaryResponse,
-        WorkflowIntegrationResponse, WorkflowSchemasResponse,
+        ProjectTextResponse, RunLogsResponse, RunResponse, ShareResponse, UserResponse,
+        UserSummaryResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse,
     },
     routing::*,
     workflow_configuration::WorkflowConfiguration,
@@ -815,6 +815,93 @@ impl<'a> ProjectsClient<'a> {
             ));
         }
 
+        Ok(())
+    }
+
+    /// Reads a small text file of a project (sample sheets), at most
+    /// `macworp_core::requests::TEXT_FILE_LIMIT` bytes.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `path` - File to read, relative to the project
+    ///
+    /// Returns `None` when the file does not exist (HTTP 404).
+    pub async fn read_text(
+        &self,
+        jwt: &str,
+        id: i64,
+        path: PathBuf,
+    ) -> Result<Option<String>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::READ_TEXT_PATH.replace("{id}", &id.to_string())
+        );
+        let response = reqwest::Client::new()
+            .get(&url)
+            .query(&[("path", path.to_string_lossy().as_ref())])
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+        if response.status() == http::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(Error::from_status(
+                status,
+                format!("Failed to read file: HTTP {status}, response text: {text}"),
+            ));
+        }
+        Ok(Some(response.json::<ProjectTextResponse>().await?.content))
+    }
+
+    /// Writes a small text file of a project (sample sheets), replacing an existing one.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `path` - File to write, relative to the project
+    /// * `content` - New content
+    pub async fn write_text(
+        &self,
+        jwt: &str,
+        id: i64,
+        path: PathBuf,
+        content: String,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::WRITE_TEXT_PATH.replace("{id}", &id.to_string())
+        );
+        let response = reqwest::Client::new()
+            .put(&url)
+            .query(&[("path", path.to_string_lossy().as_ref())])
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .json(&ProjectWriteTextRequest { content })
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(Error::from_status(
+                status,
+                format!("Failed to write file: HTTP {status}, response text: {text}"),
+            ));
+        }
         Ok(())
     }
 

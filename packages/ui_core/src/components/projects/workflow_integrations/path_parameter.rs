@@ -6,9 +6,11 @@ use macworp_core::workflow_configuration::parameters::{
 };
 
 use crate::{
-    client::Client,
-    components::workflow_integrations::parameter::IsParameter as IsParameterElement,
-    configuration::Configuration, storage::IsStorage,
+    components::{
+        projects::file_picker::ProjectFilePicker,
+        workflow_integrations::parameter::IsParameter as IsParameterElement,
+    },
+    storage::IsStorage,
 };
 
 #[derive(Clone, PartialEq, Props)]
@@ -25,26 +27,7 @@ pub struct PathProps {
 pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
     mut props: PathProps,
 ) -> Element {
-    let storage = use_context::<Signal<S>>();
-    let config = use_context::<Signal<Configuration>>();
-
     let mut is_picking = use_signal(|| false);
-    let mut subpath = use_signal(PathBuf::new);
-
-    let listing = use_resource(move || async move {
-        if !*is_picking.read() {
-            return None;
-        }
-        let jwt = storage.read().jwt().ok().flatten()?;
-        let config = config.read().clone();
-        let subpath = subpath.read().clone();
-        Some(
-            Client::new(config.base_url().to_string(), config.timeout())
-                .projects()
-                .project(&jwt, props.project_id, subpath)
-                .await,
-        )
-    });
 
     let Parameter::Path(path_param) = &*props.parameter.read() else {
         return rsx! {
@@ -62,7 +45,7 @@ pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
     let patterns = path_param.clone();
 
     // Toggles `path` in the selection; with limit 1 a new pick replaces the old one
-    let mut toggle = move |path: PathBuf| {
+    let toggle = move |path: PathBuf| {
         if let Parameter::Path(path_param) = &mut *props.parameter.write() {
             let limit = path_param.limit().get();
             let mut paths = path_param.value().cloned().unwrap_or_default();
@@ -124,84 +107,17 @@ pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
             }
         }
         if *is_picking.read() {
-            match &*listing.read() {
-                Some(Some(Ok(project))) => rsx! {
-                    ul {
-                        class: "list-group mb-3",
-                        li {
-                            class: "list-group-item cursor-pointer",
-                            onclick: {
-                                let parent = project.current.parent().map(PathBuf::from).unwrap_or_default();
-                                let at_top = project.current.as_os_str().is_empty();
-                                move |_| if !at_top { subpath.set(parent.clone()) }
-                            },
-                            "{project.current.display()}/",
-                            i { class: "fas fa-turn-up ms-2" }
-                        }
-                        for folder in project.directories.iter().cloned() {
-                            {
-                                let path = project.current.join(&folder);
-                                let is_selected = selected.contains(&path);
-                                let nav_path = path.clone();
-                                let allowed = patterns.accepts_folder(&path);
-                                rsx! {
-                                    li {
-                                        class: "list-group-item d-flex",
-                                        key: "dir-{folder}",
-                                        if accepts_folders {
-                                            input {
-                                                r#type: "checkbox",
-                                                class: "form-check-input me-2",
-                                                checked: is_selected,
-                                                disabled: !allowed && !is_selected,
-                                                title: if allowed { "" } else { "Does not match the allowed folder pattern" },
-                                                onchange: move |_| toggle(path.clone()),
-                                            }
-                                        }
-                                        span {
-                                            class: "flex-fill cursor-pointer",
-                                            onclick: move |_| subpath.set(nav_path.clone()),
-                                            i { class: "fas fa-folder me-2" }
-                                            "{folder}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        for file in project.files.iter().cloned() {
-                            {
-                                let path = project.current.join(&file);
-                                let is_selected = selected.contains(&path);
-                                let allowed = patterns.accepts_file(&path);
-                                rsx! {
-                                    li {
-                                        class: if allowed { "list-group-item d-flex" } else { "list-group-item d-flex text-muted" },
-                                        key: "file-{file}",
-                                        if accepts_files {
-                                            input {
-                                                r#type: "checkbox",
-                                                class: "form-check-input me-2",
-                                                checked: is_selected,
-                                                disabled: !allowed && !is_selected,
-                                                title: if allowed { "" } else { "Does not match the allowed file pattern" },
-                                                onchange: move |_| toggle(path.clone()),
-                                            }
-                                        }
-                                        span {
-                                            class: "flex-fill",
-                                            i { class: "fas fa-file me-2" }
-                                            "{file}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+            ProjectFilePicker::<S> {
+                project_id: props.project_id,
+                selected: selected.clone(),
+                accepts_files,
+                accepts_folders,
+                file_allowed: {
+                    let patterns = patterns.clone();
+                    Callback::new(move |path: PathBuf| patterns.accepts_file(&path))
                 },
-                Some(Some(Err(err))) => rsx! {
-                    div { class: "alert alert-danger", "Failed to list project files: {err}" }
-                },
-                _ => rsx! { div { class: "text-muted", "Loading..." } },
+                folder_allowed: Callback::new(move |path: PathBuf| patterns.accepts_folder(&path)),
+                on_toggle: toggle,
             }
         }
     }

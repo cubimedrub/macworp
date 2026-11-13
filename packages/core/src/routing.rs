@@ -70,6 +70,10 @@ impl ProjectsRouting {
     pub const UPLOAD_FILE_PATH: &str = "/upload-file/{id}";
     pub const CREATE_FOLDER_PATH: &str = "/create-folder/{id}";
     pub const DELETE_PATH_PATH: &str = "/delete-path/{id}";
+    /// GET (Viewer): content of a small text file, query parameter `path`
+    pub const READ_TEXT_PATH: &str = "/read-text/{id}";
+    /// PUT (Editor): replace or create a small text file, query parameter `path`
+    pub const WRITE_TEXT_PATH: &str = "/write-text/{id}";
 }
 
 impl IsRouting for ProjectsRouting {

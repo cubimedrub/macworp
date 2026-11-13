@@ -523,19 +523,13 @@ async fn path_patterns_are_enforced() {
     configuration
         .dynamic_parameters_mut()
         .push(Parameter::Path(path.clone()));
-    let body = |configuration: &WorkflowConfiguration| {
-        json!({"name": "w", "description": "", "configuration": configuration})
-    };
-    let (status, _) = app
-        .post(&alice, &update, Some(body(&configuration)))
-        .await;
+    let body = |configuration: &WorkflowConfiguration| json!({"name": "w", "description": "", "configuration": configuration});
+    let (status, _) = app.post(&alice, &update, Some(body(&configuration))).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 
     path.set_file_pattern(r".*\.(fastq|fq)(\.gz)?");
     *configuration.dynamic_parameters_mut() = vec![Parameter::Path(path)];
-    let (status, response) = app
-        .post(&alice, &update, Some(body(&configuration)))
-        .await;
+    let (status, response) = app.post(&alice, &update, Some(body(&configuration))).await;
     assert_eq!(status, StatusCode::OK, "{response}");
 
     let start = format!("/runs/start/{}", project.id);

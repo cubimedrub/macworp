@@ -163,7 +163,9 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
             tabindex: "-1",
             style: modal_style,
             div {
-                class: "modal-dialog",
+                class: "modal-dialog modal-dialog-scrollable",
+                // wide enough for sample sheet grids
+                style: "max-width: min(95vw, 1800px);",
                 div {
                     class: "modal-content",
                     div {
@@ -295,9 +297,11 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                                                                     },
                                                                                 },
                                                                                 Parameter::SampleSheet(_) => rsx! {
-                                                                                    SampleSheetParameter<DynamicParameter> {
+                                                                                    SampleSheetParameter<DynamicParameter, S> {
                                                                                         parameter: parameter,
-                                                                                        parameter_idx
+                                                                                        parameter_idx,
+                                                                                        project_id: props.project_id,
+                                                                                        workflow_id: integration.inner().id,
                                                                                     },
                                                                                 },
                                                                                 Parameter::Group(_) => rsx! {},

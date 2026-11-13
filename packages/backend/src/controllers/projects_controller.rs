@@ -4,7 +4,7 @@ use axum::{
     Router,
     extract::{Json, Query, Request, State},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 
 use http::{HeaderMap, StatusCode};
@@ -12,8 +12,11 @@ use macworp_core::{
     entities::Role,
     http::headers::ContentRangeHeaderValue,
     paths::{REFERENCE_PREFIX, strip_reference_prefix},
-    requests::{NewProjectRequest, ProjectCreateFolderRequest, ProjectPathDeletionRequest},
-    responses::ProjectResponse,
+    requests::{
+        NewProjectRequest, ProjectCreateFolderRequest, ProjectPathDeletionRequest,
+        ProjectWriteTextRequest,
+    },
+    responses::{ProjectResponse, ProjectTextResponse},
     routing::ProjectsRouting,
 };
 use sea_orm::{EntityTrait, ModelTrait, QueryFilter, TransactionError, TransactionTrait};
@@ -58,6 +61,15 @@ impl IntoResponse for Error {
             Error::Filesystem(crate::filesystems::errors::Error::SymlinkNotAllowed(_)) => {
                 (StatusCode::FORBIDDEN, "Symlinks are not allowed").into_response()
             }
+            Error::Filesystem(crate::filesystems::errors::Error::FileNotFound(_)) => {
+                StatusCode::NOT_FOUND.into_response()
+            }
+            Error::Filesystem(crate::filesystems::errors::Error::TextFileTooLarge(_)) => {
+                StatusCode::PAYLOAD_TOO_LARGE.into_response()
+            }
+            Error::Filesystem(crate::filesystems::errors::Error::NotText) => {
+                StatusCode::UNPROCESSABLE_ENTITY.into_response()
+            }
             _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
@@ -67,6 +79,13 @@ impl IntoResponse for Error {
 pub struct ProjectQueryParams {
     /// Project ID to fetch
     pub subpath: PathBuf,
+}
+
+/// Query of the text file endpoints.
+#[derive(Deserialize)]
+pub struct ProjectTextQuery {
+    /// File, relative to the project
+    pub path: PathBuf,
 }
 
 #[derive(Deserialize)]
@@ -95,6 +114,8 @@ where
                 post(Self::create_folder),
             )
             .route(ProjectsRouting::DELETE_PATH_PATH, post(Self::delete_path))
+            .route(ProjectsRouting::READ_TEXT_PATH, get(Self::read_text))
+            .route(ProjectsRouting::WRITE_TEXT_PATH, put(Self::write_text))
             .with_state(state)
     }
 
@@ -322,6 +343,30 @@ where
             .await
             .map_err(Error::Filesystem)?;
 
+        Ok(StatusCode::OK)
+    }
+
+    /// Content of a small text file of the project (Viewer). 404 if missing, 413 above
+    /// `TEXT_FILE_LIMIT`, 422 if not UTF-8.
+    pub async fn read_text(
+        State(state): State<Arc<AppState>>,
+        Authorized { model: project, .. }: Authorized<Project, Viewer>,
+        Query(params): Query<ProjectTextQuery>,
+    ) -> Result<Json<ProjectTextResponse>, Error> {
+        Self::ensure_not_reserved(&params.path)?;
+        let content = F::read_text(state.as_ref(), &project, params.path).await?;
+        Ok(Json(ProjectTextResponse { content }))
+    }
+
+    /// Replaces or creates a small text file of the project (Editor), atomically.
+    pub async fn write_text(
+        State(state): State<Arc<AppState>>,
+        Authorized { model: project, .. }: Authorized<Project, Editor>,
+        Query(params): Query<ProjectTextQuery>,
+        Json(payload): Json<ProjectWriteTextRequest>,
+    ) -> Result<StatusCode, Error> {
+        Self::ensure_not_reserved(&params.path)?;
+        F::write_text(state.as_ref(), &project, params.path, payload.content).await?;
         Ok(StatusCode::OK)
     }
 

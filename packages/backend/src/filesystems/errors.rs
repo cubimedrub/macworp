@@ -13,6 +13,18 @@ pub enum Error {
     #[error("Symlinks are not allowed in project paths: {0:?}")]
     SymlinkNotAllowed(PathBuf),
 
+    /// A text file is larger than the limit
+    #[error("File is larger than {0} bytes")]
+    TextFileTooLarge(usize),
+
+    /// A text file is not valid UTF-8
+    #[error("File is not UTF-8 text")]
+    NotText,
+
+    /// The path of a text file read does not exist or is not a file
+    #[error("File does not exist: {0:?}")]
+    FileNotFound(PathBuf),
+
     #[error(transparent)]
     LocalFilesystem(#[from] LocalFilesystemError),
 

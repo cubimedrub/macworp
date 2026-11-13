@@ -67,6 +67,7 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | --- | --- | --- |
 | Project list: own + user/group/public shares only, no private ones of others, owner name shown, no `my_role` in lists | `http::project_list_is_scoped` | |
 | Workflow list scoped the same way | `http::workflow_list_is_scoped` | |
+| Text files: `read-text` = Viewer, `write-text` = Editor, outsider 404; symlinks 403, `..` confined, reference prefix 400, limits 404/413/422 | `project_text_http_tests::{roles_are_enforced, paths_stay_confined, read_and_write_limits, write_then_read_round_trips}` | viewer write 403; outsider 404 |
 | Project endpoints: edit = Viewer, create-folder / delete-path = Editor, delete = Owner (also removes shares) | `http::project_endpoints_need_their_role` | owner/admin/editor/viewer/outsider: 200 / 403 / 404 as per role; `my_role` set on single endpoint |
 | Workflow endpoints: view = Viewer, update = Editor, delete = Owner (also removes shares) | `http::workflow_endpoints_need_their_role` | same matrix |
 | Workflow schemas endpoint = Viewer (owner and shared viewer read, outsider 404, anonymous 400/401); content per source | `workflow_schemas_http_tests::remote_workflow_returns_its_schemas`, `local_workflow_returns_the_newest_upload`, `sources_without_schemas_and_unreachable_remotes` | HTTP | Nextflow/sample sheet/Snakemake schemas, commit for remote, newest upload for local, empty for others, 502 for an unreachable uncached repository |

@@ -123,6 +123,51 @@ pub trait IsFilesystem {
         S: Stream<Item = Result<Bytes, E>> + Send,
         E: Into<BoxError>;
 
+    /// Reads a small UTF-8 text file of the project (sample sheets). Available on every
+    /// filesystem, also the local one.
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    /// * `project` - The project to read from
+    /// * `path` - File to read, relative to the project
+    fn read_text(
+        state: &State,
+        project: &Project,
+        path: PathBuf,
+    ) -> impl Future<Output = Result<String, Error>> + Send {
+        async move {
+            let base = Self::project_path(state, project)?;
+            DirectoryFiles::read_text(&base, &path, macworp_core::requests::TEXT_FILE_LIMIT).await
+        }
+    }
+
+    /// Writes a small UTF-8 text file of the project (sample sheets), replacing it atomically.
+    /// Available on every filesystem: on the desktop it is the only way the app writes into
+    /// the user's own project folder.
+    ///
+    /// # Arguments
+    /// * `state` - The application state, used to access configuration and other resources
+    /// * `project` - The project to write to
+    /// * `path` - File to write, relative to the project
+    /// * `content` - New content
+    fn write_text(
+        state: &State,
+        project: &Project,
+        path: PathBuf,
+        content: String,
+    ) -> impl Future<Output = Result<(), Error>> + Send {
+        async move {
+            let base = Self::project_path(state, project)?;
+            DirectoryFiles::write_text(
+                &base,
+                &path,
+                &content,
+                macworp_core::requests::TEXT_FILE_LIMIT,
+            )
+            .await
+        }
+    }
+
     /// Creates a folder
     ///
     /// # Arguments

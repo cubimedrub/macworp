@@ -4506,6 +4506,7 @@ dependencies = [
  "http",
  "jsonschema",
  "num-traits",
+ "regex",
  "sea-orm",
  "serde",
  "serde_json",

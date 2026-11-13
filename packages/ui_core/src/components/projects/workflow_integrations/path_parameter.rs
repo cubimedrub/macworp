@@ -58,6 +58,8 @@ pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
     let selected: Vec<PathBuf> = path_param.value().cloned().unwrap_or_default();
     let accepts_files = path_param.is_excepting_files();
     let accepts_folders = path_param.is_excepting_folders();
+    // Greys out entries the parameter's patterns exclude (the backend enforces them as well)
+    let patterns = path_param.clone();
 
     // Toggles `path` in the selection; with limit 1 a new pick replaces the old one
     let mut toggle = move |path: PathBuf| {
@@ -141,6 +143,7 @@ pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
                                 let path = project.current.join(&folder);
                                 let is_selected = selected.contains(&path);
                                 let nav_path = path.clone();
+                                let allowed = patterns.accepts_folder(&path);
                                 rsx! {
                                     li {
                                         class: "list-group-item d-flex",
@@ -150,6 +153,8 @@ pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
                                                 r#type: "checkbox",
                                                 class: "form-check-input me-2",
                                                 checked: is_selected,
+                                                disabled: !allowed && !is_selected,
+                                                title: if allowed { "" } else { "Does not match the allowed folder pattern" },
                                                 onchange: move |_| toggle(path.clone()),
                                             }
                                         }
@@ -167,15 +172,18 @@ pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
                             {
                                 let path = project.current.join(&file);
                                 let is_selected = selected.contains(&path);
+                                let allowed = patterns.accepts_file(&path);
                                 rsx! {
                                     li {
-                                        class: "list-group-item d-flex",
+                                        class: if allowed { "list-group-item d-flex" } else { "list-group-item d-flex text-muted" },
                                         key: "file-{file}",
                                         if accepts_files {
                                             input {
                                                 r#type: "checkbox",
                                                 class: "form-check-input me-2",
                                                 checked: is_selected,
+                                                disabled: !allowed && !is_selected,
+                                                title: if allowed { "" } else { "Does not match the allowed file pattern" },
                                                 onchange: move |_| toggle(path.clone()),
                                             }
                                         }

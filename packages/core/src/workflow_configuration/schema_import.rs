@@ -132,8 +132,15 @@ fn import_property(imported: &mut Imported, name: &str, property: &Value) {
                     Parameter::ValueSelect(select)
                 } else if matches!(format, Some("file-path" | "directory-path" | "path")) {
                     let mut path = PathParameter::new(name.to_string(), label, desc);
-                    if format == Some("directory-path") {
-                        *path.is_excepting_files_mut() = true;
+                    // `file-path` selects files, `directory-path` folders, `path` either
+                    *path.is_excepting_files_mut() = format != Some("directory-path");
+                    *path.is_excepting_folders_mut() = format != Some("file-path");
+                    if let Some(pattern) = property.get("pattern").and_then(Value::as_str) {
+                        if format == Some("directory-path") {
+                            path.set_folder_pattern(pattern);
+                        } else {
+                            path.set_file_pattern(pattern);
+                        }
                     }
                     if let Some(default) = default_string {
                         path.value_from_string(default);
@@ -224,7 +231,7 @@ mod tests {
                     "title": "Options",
                     "properties": {
                         "genome": {"type": "string", "enum": ["GRCh37", "GRCh38"], "default": "GRCh38"},
-                        "ref": {"type": "string", "format": "file-path"},
+                        "ref": {"type": "string", "format": "file-path", "pattern": ".*\\.fa"},
                         "dir": {"type": "string", "format": "directory-path", "default": "data"},
                         "pattern": {"type": "string", "format": "file-path-pattern"},
                         "label": {"type": "string", "default": "x"},
@@ -274,7 +281,15 @@ mod tests {
             find(&imported, "genome"),
             Parameter::ValueSelect(_)
         ));
-        assert!(matches!(find(&imported, "ref"), Parameter::Path(_)));
+        let Parameter::Path(reference) = find(&imported, "ref") else {
+            panic!("ref is not a path");
+        };
+        assert_eq!(reference.file_pattern(), Some(r".*\.fa"));
+        assert!(reference.is_excepting_files() && !reference.is_excepting_folders());
+        let Parameter::Path(directory) = find(&imported, "dir") else {
+            panic!("dir is not a path");
+        };
+        assert!(!directory.is_excepting_files() && directory.is_excepting_folders());
         assert!(matches!(find(&imported, "pattern"), Parameter::Glob(_)));
         assert!(matches!(find(&imported, "label"), Parameter::Text(_)));
         assert!(matches!(find(&imported, "threads"), Parameter::Integer(_)));

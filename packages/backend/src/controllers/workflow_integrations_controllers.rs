@@ -54,6 +54,9 @@ pub enum Error {
     /// Receiving or installing the upload failed, 500
     #[error("{0}")]
     UploadIo(#[from] std::io::Error),
+    /// A `Path` parameter has an invalid or oversized file/folder pattern, 400
+    #[error("{0}")]
+    InvalidPattern(String),
     /// The blocking cache task failed
     #[error("Reading the workflow schemas failed")]
     SourceTask,
@@ -77,6 +80,7 @@ impl IntoResponse for Error {
                 (StatusCode::FORBIDDEN, self.to_string()).into_response()
             }
             Error::NotLocalSource => (StatusCode::CONFLICT, self.to_string()).into_response(),
+            Error::InvalidPattern(_) => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
             Error::Source(crate::workflow_repository_cache::Error::Fetch { .. }) => {
                 (StatusCode::BAD_GATEWAY, self.to_string()).into_response()
             }
@@ -414,6 +418,10 @@ impl WorkflowIntegrationsController {
         Json(payload): Json<UpdateWorkflowIntegrationRequest>,
     ) -> Result<Json<WorkflowIntegrationResponse>, Error> {
         use macworp_core::workflow_configuration::source::Source;
+        payload
+            .configuration
+            .validate_path_patterns()
+            .map_err(Error::InvalidPattern)?;
         // Switching a workflow to a local source is creating a local workflow
         let becomes_local = matches!(payload.configuration.source(), Source::Local(_))
             && !matches!(

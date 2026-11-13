@@ -65,6 +65,20 @@ impl WorkflowConfiguration {
     pub fn fixed_parameters_mut(&mut self) -> &mut Vec<parameters::Parameter> {
         &mut self.fixed_parameters
     }
+
+    /// Checks the file/folder patterns of every `Path` parameter (fixed and dynamic).
+    ///
+    /// Returns a message naming the first parameter with a rejected pattern.
+    pub fn validate_path_patterns(&self) -> Result<(), String> {
+        for parameter in self.fixed_parameters.iter().chain(&self.dynamic_parameters) {
+            if let parameters::Parameter::Path(path) = parameter {
+                use parameters::parameter::IsParameter;
+                path.validate_patterns()
+                    .map_err(|e| format!("Parameter `{}`: {e}", path.name()))?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Default for WorkflowConfiguration {

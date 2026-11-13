@@ -90,6 +90,45 @@ pub fn PathParameter<P: IsParameterElement + 'static, S: IsStorage + 'static>(
                 }
             }
             div {
+                class: "input-group mt-2",
+                span { class: "input-group-text", "File pattern" }
+                input {
+                    r#type: "text",
+                    class: "form-control",
+                    placeholder: r"Regular expression for the whole path, e.g. .*\.(fastq|fq)(\.gz)?",
+                    aria_label: "Regular expression selectable files must match",
+                    id: "workflow-integration-configuration-{P::ID_PART}-parameter-{props.parameter_idx}-file-pattern",
+                    value: "{path_param.file_pattern().unwrap_or_default()}",
+                    oninput: move |evt| {
+                        let mut param = props.parameter.write();
+                        if let Parameter::Path(path_param) = &mut *param {
+                            path_param.set_file_pattern(&evt.value());
+                        }
+                    }
+                }
+            }
+            div {
+                class: "input-group mt-2",
+                span { class: "input-group-text", "Folder pattern" }
+                input {
+                    r#type: "text",
+                    class: "form-control",
+                    placeholder: "Regular expression for the whole path, e.g. data/.*",
+                    aria_label: "Regular expression selectable folders must match",
+                    id: "workflow-integration-configuration-{P::ID_PART}-parameter-{props.parameter_idx}-folder-pattern",
+                    value: "{path_param.folder_pattern().unwrap_or_default()}",
+                    oninput: move |evt| {
+                        let mut param = props.parameter.write();
+                        if let Parameter::Path(path_param) = &mut *param {
+                            path_param.set_folder_pattern(&evt.value());
+                        }
+                    }
+                }
+            }
+            if let Err(message) = path_param.validate_patterns() {
+                div { class: "text-danger small mb-2", "{message}" }
+            }
+            div {
                 class: "input-group mb-3",
                 span {
                     class: "input-group-text",

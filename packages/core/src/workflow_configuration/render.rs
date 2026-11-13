@@ -31,6 +31,10 @@ pub enum Error {
     /// Number outside `min`/`max` or more paths than `limit` (parameter name, reason)
     #[error("Value of parameter `{0}` is out of range: {1}")]
     OutOfRange(String, String),
+    /// A path matches neither the file nor the folder pattern of its `Path` parameter (parameter
+    /// name, path)
+    #[error("Path `{1}` in parameter `{0}` does not match the allowed patterns")]
+    PatternMismatch(String, String),
     /// Name is empty, starts with `-` or has characters other than letters, digits, `_`, `.`, `-`
     #[error("Invalid parameter name `{0}`, use letters, digits, `_`, `.` and `-` (not leading)")]
     InvalidName(String),
@@ -170,6 +174,16 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), Error> {
                 return Err(Error::OutOfRange(
                     name,
                     format!("{} paths, at most {} allowed", paths.len(), p.limit()),
+                ));
+            }
+            if let Some(rejected) = paths
+                .iter()
+                .flatten()
+                .find(|path| !p.accepts_path(path))
+            {
+                return Err(Error::PatternMismatch(
+                    name,
+                    rejected.display().to_string(),
                 ));
             }
             *p.value_mut() = paths;
@@ -634,6 +648,30 @@ mod tests {
         ));
         apply_values(&mut c, &[pv("input", json!("/a/b.fq"))]).unwrap();
         assert_eq!(&render_args(&c, None).unwrap()[2..], ["--input", "a/b.fq"]);
+    }
+
+    /// A path not matching the parameter's pattern is rejected; the lenient variant skips it.
+    #[test]
+    fn path_pattern_is_enforced() {
+        let mut c = config(Engine::Nextflow);
+        let Some(Parameter::Path(p)) = c
+            .dynamic_parameters_mut()
+            .iter_mut()
+            .find(|p| p.name() == "input")
+        else {
+            panic!("no input parameter");
+        };
+        *p.is_excepting_files_mut() = true;
+        p.set_file_pattern(r".*\.(fastq|fq)(\.gz)?");
+        apply_values(&mut c, &[pv("input", json!(["a/x.fq.gz", "y.fastq"]))]).unwrap();
+        assert!(matches!(
+            apply_values(&mut c, &[pv("input", json!(["a/x.txt"]))]),
+            Err(Error::PatternMismatch(..))
+        ));
+        assert_eq!(
+            apply_values_lenient(&mut c, &[pv("input", json!(["a/x.txt"]))]),
+            ["input"]
+        );
     }
 
     /// Values below the reference prefix become absolute reference paths, other values are

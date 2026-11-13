@@ -498,3 +498,60 @@ async fn claim_sends_storage_relative_paths() {
     assert_eq!(status, StatusCode::OK, "{second}");
     assert_eq!(second["project_dir"], "projects/inside");
 }
+
+/// A `Path` parameter with a file pattern: saving an invalid pattern is refused with 400, and a
+/// start request whose value does not match the pattern is refused with 400 as well, while a
+/// matching value passes the parameter check.
+#[tokio::test]
+async fn path_patterns_are_enforced() {
+    use macworp_core::workflow_configuration::{
+        WorkflowConfiguration,
+        parameters::{Parameter, path::Path},
+    };
+
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    announce(&app, "w1", json!(["Nextflow"])).await;
+    let update = format!("/workflow-integrations/update/{}", workflow.id);
+
+    let mut path = Path::new("reads".into(), "Reads".into(), String::new());
+    *path.is_excepting_files_mut() = true;
+    path.set_file_pattern("(");
+    let mut configuration = WorkflowConfiguration::default();
+    configuration
+        .dynamic_parameters_mut()
+        .push(Parameter::Path(path.clone()));
+    let body = |configuration: &WorkflowConfiguration| {
+        json!({"name": "w", "description": "", "configuration": configuration})
+    };
+    let (status, _) = app
+        .post(&alice, &update, Some(body(&configuration)))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    path.set_file_pattern(r".*\.(fastq|fq)(\.gz)?");
+    *configuration.dynamic_parameters_mut() = vec![Parameter::Path(path)];
+    let (status, response) = app
+        .post(&alice, &update, Some(body(&configuration)))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+
+    let start = format!("/runs/start/{}", project.id);
+    let start_with = |value: &str| {
+        json!({
+            "workflow_id": workflow.id,
+            "comment": "",
+            "parameters": [{"name": "reads", "value": [value]}],
+        })
+    };
+    let (status, response) = app
+        .post(&alice, &start, Some(start_with("a/reads.txt")))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{response}");
+    let (status, response) = app
+        .post(&alice, &start, Some(start_with("a/reads.fq.gz")))
+        .await;
+    assert_ne!(status, StatusCode::BAD_REQUEST, "{response}");
+}

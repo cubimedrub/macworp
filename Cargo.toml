@@ -28,7 +28,8 @@ num-traits = "0.2.15"
 notify = "8"
 opener = "0.8"
 manganis = { version = "0.7.3" }
-password-auth = { version = "1.0.0" }
+regex = { version = "1", default-features = false, features = ["std", "unicode"] }
+password-auth ={ version = "1.0.0" }
 rand = "0.10.0"
 reqwest = { version = "0.13.2" }
 rfd = "0.18.0"

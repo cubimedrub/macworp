@@ -44,3 +44,7 @@ mod workflow_prefetch_http_tests;
 /// HTTP-level tests of the workflow schemas endpoint
 #[cfg(all(test, feature = "integration"))]
 mod workflow_schemas_http_tests;
+
+/// HTTP-level tests of the nf-core index endpoints
+#[cfg(all(test, feature = "integration"))]
+mod nf_core_http_tests;

@@ -167,15 +167,14 @@ impl RemoteSource {
 impl Default for RemoteSource {
     fn default() -> Self {
         Self {
-            url: "https://github.com/cubimedrub/macworp-genomics-demo-workflow-nextflow.git"
-                .to_string(),
-            version: Some("main".to_string()),
+            url: String::new(),
+            version: None,
             script: Some(PathBuf::from("main.nf")),
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct NfCoreSource {
     /// Name of the nf-core pipeline, e.g. `rnaseq`
     pipeline: String,
@@ -202,15 +201,6 @@ impl NfCoreSource {
 
     pub fn version_mut(&mut self) -> &mut Option<String> {
         &mut self.version
-    }
-}
-
-impl Default for NfCoreSource {
-    fn default() -> Self {
-        Self {
-            pipeline: "demo".to_string(),
-            version: None,
-        }
     }
 }
 

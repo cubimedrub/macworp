@@ -975,42 +975,14 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         }
                     },
                     Source::NfCore(source) => rsx! {
-                        div {
-                            class: "input-group mb-3",
-                            span {
-                                class: "input-group-text",
-                                id: "workflow-integration-configuration-source-nfcore-pipeline",
-                                "Pipeline"
-                            }
-                            input {
-                                type: "text",
-                                class: "form-control",
-                                placeholder: "rnaseq",
-                                aria_label: "nf-core pipeline name",
-                                aria_describedby: "workflow-integration-configuration-source-nfcore-pipeline",
-                                value: "{source.pipeline()}",
-                                oninput: move |event| if let Source::NfCore(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
-                                    *source.pipeline_mut() = event.value();
-                                }
-                            }
-                        },
-                        div {
-                            class: "input-group mb-3",
-                            span {
-                                class: "input-group-text",
-                                id: "workflow-integration-configuration-source-nfcore-version",
-                                "Version"
-                            }
-                            input {
-                                type: "text",
-                                class: "form-control",
-                                placeholder: "3.14.0 (empty = latest)",
-                                aria_label: "nf-core pipeline version",
-                                aria_describedby: "workflow-integration-configuration-source-nfcore-version",
-                                value: "{source.version().map(|version| version.as_str()).unwrap_or_default()}",
-                                oninput: move |event| if let Source::NfCore(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
-                                    *source.version_mut() = if event.value().is_empty() { None } else { Some(event.value()) }
-                                }
+                        NfCoreSourceFields::<S> {
+                            pipeline: source.pipeline().to_string(),
+                            version: source.version().cloned(),
+                            on_pipeline: move |pipeline| if let Source::NfCore(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
+                                *source.pipeline_mut() = pipeline;
+                            },
+                            on_version: move |version| if let Source::NfCore(source) = workflow_integration.write().inner_mut().configuration_mut().source_mut() {
+                                *source.version_mut() = version;
                             }
                         }
                     }

@@ -40,6 +40,7 @@ Test paths below are relative to the `macworp_backend` crate. Short names: `auth
 | `claim` needs the worker credential | `worker_http_tests::claim_requires_worker_credential` | HTTP | user JWT, wrong password, run token 401, no header 400; run stays queued |
 | Run token is scoped to its run; JWT and worker credential rejected on per-run endpoints | `worker_http_tests::run_token_is_scoped_to_its_run` | HTTP | other run's token 401, JWT 401, Basic 401 |
 | Announce needs the worker credential, `/utilities/engines` needs a user | `worker_http_tests::announce_and_engines_authentication` | HTTP | JWT/run token 401 on announce, worker 403 and anonymous rejected on engines |
+| nf-core index endpoints need a user (no header 400, worker 403) | `nf_core_http_tests::endpoints_need_a_user` | HTTP | both `/utilities/nf-core/...` routes |
 | Claim leases only runs of the worker's engines | `worker_http_tests::claim_skips_runs_of_other_engines` | HTTP | other/empty engine list 204, run stays queued, matching engine 200 |
 | Cancel reaches the worker via heartbeat | `worker_http_tests::heartbeat_reports_cancel_request` | HTTP | `cancel_requested: true`, worker can finish `Cancelled` |
 | Stale worker after lease expiry and requeue | `worker_http_tests::requeued_run_rejects_stale_worker`, `models::run::tests::expired_lease_requeues_and_invalidates_token` | HTTP, model | old token 401, new claim gets a new token |

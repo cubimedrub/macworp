@@ -17,9 +17,10 @@ use macworp_core::{
         UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
     },
     responses::{
-        EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse, PrefetchResponse,
-        ProjectResponse, RunLogsResponse, RunResponse, ShareResponse, UserResponse,
-        UserSummaryResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse,
+        EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse,
+        NfCorePipelinesResponse, NfCoreReleasesResponse, PrefetchResponse, ProjectResponse,
+        RunLogsResponse, RunResponse, ShareResponse, UserResponse, UserSummaryResponse,
+        WorkflowIntegrationResponse, WorkflowSchemasResponse,
     },
     routing::*,
     workflow_configuration::WorkflowConfiguration,
@@ -203,6 +204,52 @@ impl<'a> UtilitiesClient<'a> {
         let request = reqwest::Client::new().get(&url);
         self.base_client
             .send_authenticated(request, jwt, "fetch engine availability")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Pipelines of the public nf-core index, as the backend has them cached
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    pub async fn nf_core_pipelines(&self, jwt: &str) -> Result<NfCorePipelinesResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::NF_CORE_PIPELINES_PATH
+        );
+        let request = reqwest::Client::new().get(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "fetch the nf-core pipelines")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Releases of one nf-core pipeline, newest first
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    /// * `pipeline` - Pipeline name, with or without the `nf-core/` prefix
+    pub async fn nf_core_releases(
+        &self,
+        jwt: &str,
+        pipeline: &str,
+    ) -> Result<NfCoreReleasesResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::NF_CORE_RELEASES_PATH
+                .replace("{name}", &urlencoding::encode(pipeline))
+        );
+        let request = reqwest::Client::new().get(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "fetch the nf-core releases")
             .await?
             .json()
             .await

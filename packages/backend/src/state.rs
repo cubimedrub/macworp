@@ -7,8 +7,12 @@ use macworp_core::responses::PrefetchResponse;
 use macworp_core::workflow_configuration::{WorkflowConfiguration, engine::Engine};
 
 use crate::{
-    configuration::Configuration, error::Error, reference_directory::ReferenceDirectory,
-    worker_registry::WorkerRegistry, workflow_repository_cache::WorkflowRepositoryCache,
+    configuration::{Configuration, WORKFLOWS_DIRECTORY_NAME},
+    error::Error,
+    nf_core_index::NfCoreIndex,
+    reference_directory::ReferenceDirectory,
+    worker_registry::WorkerRegistry,
+    workflow_repository_cache::WorkflowRepositoryCache,
 };
 
 pub struct State {
@@ -17,6 +21,7 @@ pub struct State {
     workers: WorkerRegistry,
     reference_directory: ReferenceDirectory,
     workflow_repository_cache: Arc<WorkflowRepositoryCache>,
+    nf_core_index: Arc<NfCoreIndex>,
     /// Latest background download per workflow, with a sequence number so a slow older
     /// download cannot overwrite the result of a newer one
     prefetches: Mutex<HashMap<i64, (u64, PrefetchResponse)>>,
@@ -29,12 +34,18 @@ impl State {
             config.cache_directory(),
             std::time::Duration::from_secs(config.branch_cache_seconds()),
         ));
+        let nf_core_index = Arc::new(NfCoreIndex::new(
+            config.nf_core_index_url().to_string(),
+            std::time::Duration::from_secs(config.nf_core_index_cache_seconds()),
+            config.storage_directory().join(WORKFLOWS_DIRECTORY_NAME),
+        ));
         Ok(Self {
             config,
             db,
             workers: WorkerRegistry::default(),
             reference_directory,
             workflow_repository_cache,
+            nf_core_index,
             prefetches: Mutex::default(),
         })
     }
@@ -55,6 +66,20 @@ impl State {
     /// Cache of remote workflow repositories.
     pub fn workflow_repository_cache(&self) -> Arc<WorkflowRepositoryCache> {
         self.workflow_repository_cache.clone()
+    }
+
+    /// The public nf-core pipeline index.
+    pub fn nf_core_index(&self) -> Arc<NfCoreIndex> {
+        self.nf_core_index.clone()
+    }
+
+    /// Replaces the nf-core index access (tests point it at a local server).
+    ///
+    /// # Arguments
+    /// * `nf_core_index` - The access to use from now on
+    pub fn with_nf_core_index(mut self, nf_core_index: Arc<NfCoreIndex>) -> Self {
+        self.nf_core_index = nf_core_index;
+        self
     }
 
     /// Starts downloading the remote repository of a saved workflow into the cache in the

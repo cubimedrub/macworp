@@ -12,6 +12,10 @@ impl UtilitiesRouting {
     pub const VERSION_PATH: &str = "/version";
     /// GET: engines no worker can run
     pub const ENGINES_PATH: &str = "/engines";
+    /// GET: pipelines of the public nf-core index
+    pub const NF_CORE_PIPELINES_PATH: &str = "/nf-core/pipelines";
+    /// GET: releases of one nf-core pipeline
+    pub const NF_CORE_RELEASES_PATH: &str = "/nf-core/pipelines/{name}/releases";
 }
 
 impl IsRouting for UtilitiesRouting {

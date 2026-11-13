@@ -12,6 +12,8 @@ pub mod error;
 pub mod filesystems;
 /// Models abstracting the database access
 pub mod models;
+/// Cached access to the public nf-core pipeline index
+pub mod nf_core_index;
 /// Shared location of the global reference data
 pub mod reference_directory;
 /// State of the backend, e.g. connection pool

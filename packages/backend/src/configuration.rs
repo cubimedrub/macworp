@@ -74,6 +74,16 @@ fn default_branch_cache_seconds() -> u64 {
     3600
 }
 
+/// Default of `nf_core_index_cache_seconds`: one hour.
+fn default_nf_core_index_cache_seconds() -> u64 {
+    3600
+}
+
+/// Default of `nf_core_index_url`.
+fn default_nf_core_index_url() -> String {
+    crate::nf_core_index::DEFAULT_INDEX_URL.to_string()
+}
+
 /// Folder below the storage root holding the project directories.
 pub const PROJECTS_DIRECTORY_NAME: &str = "projects";
 
@@ -117,6 +127,13 @@ pub struct Configuration {
     /// Seconds a fetched branch of a cached repository is trusted before it is fetched again.
     #[serde(default = "default_branch_cache_seconds")]
     branch_cache_seconds: u64,
+    /// Seconds the list of nf-core pipelines and releases (for the workflow editor) is served
+    /// before it is fetched again. If fetching fails, the last copy is used.
+    #[serde(default = "default_nf_core_index_cache_seconds")]
+    nf_core_index_cache_seconds: u64,
+    /// Address of the nf-core pipeline index, `https://nf-co.re/pipelines.json` by default.
+    #[serde(default = "default_nf_core_index_url")]
+    nf_core_index_url: String,
     /// Seconds between two background updates of the cached repositories of workflows that
     /// follow a branch (or the default branch), so users' runs find the newest commit cached.
     /// `0` (default) disables the refresh; tags and commits are never refreshed.
@@ -324,6 +341,20 @@ impl Configuration {
         self.branch_cache_seconds
     }
 
+    /// Seconds the nf-core pipeline index is served before a refresh.
+    pub fn nf_core_index_cache_seconds(&self) -> u64 {
+        self.nf_core_index_cache_seconds
+    }
+
+    /// Address of the nf-core pipeline index.
+    pub fn nf_core_index_url(&self) -> &str {
+        &self.nf_core_index_url
+    }
+
+    pub fn nf_core_index_url_mut(&mut self) -> &mut String {
+        &mut self.nf_core_index_url
+    }
+
     /// Interval of the background refresh of branch-based workflows, `None` when disabled.
     pub fn branch_refresh_interval(&self) -> Option<std::time::Duration> {
         (self.branch_refresh_seconds > 0)
@@ -506,6 +537,8 @@ impl Default for Configuration {
             login_validity: None,
             storage_path: "dev_storage".to_string(),
             branch_cache_seconds: default_branch_cache_seconds(),
+            nf_core_index_cache_seconds: default_nf_core_index_cache_seconds(),
+            nf_core_index_url: default_nf_core_index_url(),
             branch_refresh_seconds: 0,
             checkout_max_age_days: default_checkout_max_age_days(),
             permit_local_workflows: LocalWorkflowPolicy::default(),

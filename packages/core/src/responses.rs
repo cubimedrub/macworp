@@ -342,3 +342,41 @@ pub struct EnginesResponse {
     /// Workers with a valid announcement
     pub workers_online: usize,
 }
+
+/// A pipeline of the public nf-core index
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NfCorePipeline {
+    /// Short name without the `nf-core/` prefix
+    pub name: String,
+    pub description: String,
+    pub archived: bool,
+}
+
+/// Pipelines of the public nf-core index
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NfCorePipelinesResponse {
+    pub pipelines: Vec<NfCorePipeline>,
+    /// Unix seconds the backend fetched the index
+    pub fetched_at: u64,
+    /// True if the index could not be refreshed and an older copy is served
+    pub stale: bool,
+}
+
+/// A release of an nf-core pipeline
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NfCoreRelease {
+    pub tag: String,
+    pub published_at: String,
+    /// True if the release ships a `nextflow_schema.json`
+    pub has_schema: bool,
+}
+
+/// Releases of one nf-core pipeline, newest first
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NfCoreReleasesResponse {
+    pub releases: Vec<NfCoreRelease>,
+    /// Unix seconds the backend fetched the index
+    pub fetched_at: u64,
+    /// True if the index could not be refreshed and an older copy is served
+    pub stale: bool,
+}

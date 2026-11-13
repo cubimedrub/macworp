@@ -108,6 +108,13 @@ fn set_value(parameter: &mut Parameter, value: &Value) -> Result<(), Error> {
                 _ => return Err(Error::TypeMismatch(name, "string")),
             };
         }
+        Parameter::SampleSheet(p) => {
+            *p.value_mut() = match value {
+                Value::Null => None,
+                Value::String(s) => Some(s.clone()),
+                _ => return Err(Error::TypeMismatch(name, "string")),
+            };
+        }
         Parameter::Glob(p) => {
             *p.value_mut() = match value {
                 Value::Null => None,
@@ -217,6 +224,7 @@ pub fn value_json(parameter: &Parameter) -> Value {
     match parameter {
         Parameter::Text(p) => p.value().map_or(Value::Null, |v| Value::from(v.as_str())),
         Parameter::Glob(p) => p.value().map_or(Value::Null, |v| Value::from(v.as_str())),
+        Parameter::SampleSheet(p) => p.value().map_or(Value::Null, |v| Value::from(v.as_str())),
         Parameter::Integer(p) => p.value().map_or(Value::Null, |v| Value::from(*v)),
         Parameter::Float(p) => p.value().map_or(Value::Null, |v| Value::from(*v)),
         Parameter::Path(p) => p.value().map_or(Value::Null, |paths| {
@@ -285,6 +293,7 @@ fn value_string(
     Ok(match parameter {
         Parameter::Text(p) => p.value().cloned(),
         Parameter::Glob(p) => p.value().cloned(),
+        Parameter::SampleSheet(p) => p.value().cloned(),
         Parameter::Integer(p) => p.value().map(|v| v.to_string()),
         Parameter::Float(p) => p.value().map(|v| v.to_string()),
         Parameter::Path(p) => match p.value() {

@@ -7,6 +7,7 @@ use macworp_core::{
     workflow_configuration::{
         engine::{Engine, EngineParameter},
         parameters::Parameter,
+        schema_import::parameters_from_nextflow_schema,
         source::Source,
     },
 };
@@ -41,6 +42,10 @@ pub enum Error<S: IsStorage> {
     SaveWorkflowIntegration(crate::client::Error),
     #[error("Failed to upload file: {0}")]
     Upload(crate::client::Error),
+    #[error("Failed to read the workflow schemas: {0}")]
+    Schemas(crate::client::Error),
+    #[error("The workflow has no nextflow_schema.json. Save the workflow and wait for the download first")]
+    NoSchema,
     #[error("Not logged in")]
     NotLoggedIn,
     #[error("{0}")]
@@ -309,6 +314,56 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
         navigator.push(R::workflow_integration_index_route());
 
         Ok::<_, Error<S>>(())
+    });
+
+    // Appends the parameters of the stored workflow's `nextflow_schema.json` whose names are not
+    // used yet. Returns the number of added parameters and the skipped `(name, reason)` pairs.
+    let mut import_action = use_action(move || async move {
+        let jwt = storage
+            .read()
+            .jwt()
+            .map_err(Error::Storage)?
+            .ok_or(Error::NotLoggedIn)?;
+
+        let config = config.read().clone();
+
+        let schemas = Client::new(config.base_url().to_string(), config.timeout())
+            .workflow_integrations()
+            .schemas(&jwt, props.id)
+            .await
+            .map_err(Error::Schemas)?;
+
+        let imported = schemas
+            .nextflow_schema
+            .as_ref()
+            .map(parameters_from_nextflow_schema)
+            .ok_or(Error::NoSchema)?;
+
+        let loaded = match &*workflow_integration_res.value().read() {
+            Some(Ok(signal)) => Some(*signal),
+            _ => None,
+        };
+        let Some(mut workflow_integration) = loaded else {
+            return Err(Error::ConfigNotLoaded);
+        };
+        let mut added = 0;
+        for parameter in imported.parameters {
+            let exists = !parameter.name().is_empty()
+                && workflow_integration
+                    .read()
+                    .dynamic_parameters()
+                    .iter()
+                    .any(|existing| existing.read().name() == parameter.name());
+            if !exists {
+                workflow_integration
+                    .write()
+                    .dynamic_parameters_mut()
+                    .push(Signal::new(parameter));
+                added += 1;
+            }
+        }
+
+        Ok::<_, Error<S>>((added, imported.skipped))
     });
 
     let mut save_action = use_action(move || async move {
@@ -887,6 +942,51 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                 }
                 p {
                     "These parameters can be changed by the user when selecting the workflow for execution"
+                }
+
+                if matches!(workflow_integration.read().inner().configuration().engine(), Engine::Nextflow)
+                    && workflow_integration.read().inner().my_role.is_some_and(|role| role >= Role::Editor)
+                {
+                    div {
+                        class: "mb-4",
+                        button {
+                            id: "import-schema-btn",
+                            r#type: "button",
+                            class: "btn btn-sm btn-outline-secondary",
+                            title: "Add the parameters of the saved workflow's nextflow_schema.json",
+                            onclick: move |_| { import_action.call(); },
+                            i { class: "fa-solid fa-file-import me-1" }
+                            "Import from schema"
+                        }
+                        div {
+                            class: "form-text",
+                            "Save the workflow first and wait until the download has finished: the schema is read from the saved workflow. Existing parameters with the same name are kept. Changing the version or branch of the workflow does not update the parameters automatically: they are not merged with a changed schema, so import again and review them."
+                        }
+                        match import_action.value() {
+                            Some(Err(error)) => rsx! {
+                                div { class: "alert alert-danger mt-2", role: "alert", "{error}" }
+                            },
+                            Some(Ok(result)) => {
+                                let (added, skipped) = &*result.read();
+                                rsx! {
+                                    div {
+                                        class: "alert alert-success mt-2",
+                                        role: "alert",
+                                        "Added {added} parameter(s)."
+                                        if !skipped.is_empty() {
+                                            ul {
+                                                class: "mb-0",
+                                                for (name, reason) in skipped.iter() {
+                                                    li { "{name}: {reason}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            None => rsx! {},
+                        }
+                    }
                 }
 
                 ParameterList<DynamicParameter, S> {

@@ -52,6 +52,9 @@ pub fn ParameterList<P: IsParameter + 'static, S: IsStorage + 'static>(
                                 Parameter::ValueSelect(_) => rsx! {
                                     ValueSelectParameter<P> { parameter: *parameter, parameter_idx }
                                 },
+                                Parameter::SampleSheet(_) => rsx! {
+                                    SampleSheetParameter<P> { parameter: *parameter, parameter_idx }
+                                },
                                 Parameter::Separator(_) => rsx! {
                                     SeparatorParameter<P> { parameter: *parameter, parameter_idx }
                                 },

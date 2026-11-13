@@ -6,6 +6,8 @@ pub mod engine;
 pub mod parameters;
 /// Rendering of a configuration into engine command line arguments
 pub mod render;
+/// Generation of parameters from a workflow's `nextflow_schema.json`
+pub mod schema_import;
 /// Source of the workflows, e.g. local folder or remote repository
 pub mod source;
 

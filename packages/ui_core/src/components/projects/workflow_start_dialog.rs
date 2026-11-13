@@ -13,7 +13,8 @@ use crate::{
     client::Client,
     components::{
         projects::workflow_integrations::{
-            GlobParameter, NumericParameter, PathParameter, TextParameter, ValueSelectParameter,
+            GlobParameter, NumericParameter, PathParameter, SampleSheetParameter, TextParameter,
+            ValueSelectParameter,
         },
         workflow_integrations::DynamicParameter,
         Spinner,
@@ -272,6 +273,12 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                         },
                                         Parameter::ValueSelect(_) => rsx! {
                                             ValueSelectParameter<DynamicParameter> {
+                                                parameter: *parameter,
+                                                parameter_idx
+                                            },
+                                        },
+                                        Parameter::SampleSheet(_) => rsx! {
+                                            SampleSheetParameter<DynamicParameter> {
                                                 parameter: *parameter,
                                                 parameter_idx
                                             },

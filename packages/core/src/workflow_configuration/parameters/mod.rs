@@ -17,6 +17,8 @@ pub mod number;
 /// Generic paramerter for simple data
 pub mod parameter;
 pub mod path;
+/// Path of a sample sheet (stub)
+pub mod sample_sheet;
 /// Visual divider without value
 pub mod separator;
 /// Single and multiline text
@@ -42,6 +44,8 @@ pub enum Parameter {
     Glob(glob::Glob),
     /// A path to a file or folder
     Path(path::Path),
+    /// Sample sheet of a pipeline (stub: path as text)
+    SampleSheet(sample_sheet::SampleSheet),
     /// Divider in the start dialog, carries no value
     Separator(separator::Separator),
     /// One or several of a fixed set of options
@@ -64,6 +68,7 @@ impl Deref for Parameter {
             Parameter::Float(float) => float,
             Parameter::Glob(glob) => glob,
             Parameter::Path(path) => path,
+            Parameter::SampleSheet(sheet) => sheet,
             Parameter::Separator(separator) => separator,
             Parameter::ValueSelect(select) => select,
         }
@@ -78,6 +83,7 @@ impl DerefMut for Parameter {
             Parameter::Float(float) => float,
             Parameter::Glob(glob) => glob,
             Parameter::Path(path) => path,
+            Parameter::SampleSheet(sheet) => sheet,
             Parameter::Separator(separator) => separator,
             Parameter::ValueSelect(select) => select,
         }
@@ -92,6 +98,7 @@ impl Display for Parameter {
             Parameter::Float(_) => "Float",
             Parameter::Glob(_) => "Glob",
             Parameter::Path(_) => "Path",
+            Parameter::SampleSheet(_) => "SampleSheet",
             Parameter::Separator(_) => "Separator",
             Parameter::ValueSelect(_) => "ValueSelect",
         };
@@ -110,6 +117,9 @@ impl FromStr for Parameter {
             "float" => Ok(Parameter::Float(number::Float::default())),
             "glob" => Ok(Parameter::Glob(glob::Glob::default())),
             "path" => Ok(Parameter::Path(path::Path::default())),
+            "samplesheet" | "sample-sheet" => {
+                Ok(Parameter::SampleSheet(sample_sheet::SampleSheet::default()))
+            }
             "separator" => Ok(Parameter::Separator(separator::Separator::default())),
             "valueselect" | "value-select" => {
                 Ok(Parameter::ValueSelect(value_select::ValueSelect::default()))

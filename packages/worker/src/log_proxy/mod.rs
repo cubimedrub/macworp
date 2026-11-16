@@ -147,7 +147,18 @@ impl ProgressReceiver {
     }
 
     /// Registers a run. Only engines that report progress get an endpoint, `None` for the others.
-    pub fn register(&self, run_id: i64, engine: &Engine) -> Option<RegisteredRun> {
+    ///
+    /// # Arguments
+    /// * `run_id` - run the progress belongs to
+    /// * `engine` - engine of the run, decides which events are understood
+    /// * `access` - how the run's container reaches this host, the receiver's own access if `None`
+    pub fn register(
+        &self,
+        run_id: i64,
+        engine: &Engine,
+        access: Option<&HostAccess>,
+    ) -> Option<RegisteredRun> {
+        let access = access.unwrap_or(&self.access);
         if !matches!(engine, Engine::Nextflow | Engine::Snakemake) {
             return None;
         }
@@ -167,8 +178,8 @@ impl ProgressReceiver {
         );
         Some(RegisteredRun {
             endpoint: ProgressEndpoint {
-                base_url: format!("http://{}:{}/{token}", self.access.host, self.port),
-                run_args: self.access.run_args.clone(),
+                base_url: format!("http://{}:{}/{token}", access.host, self.port),
+                run_args: access.run_args.clone(),
             },
             updates: Some(updates),
             token,
@@ -259,7 +270,7 @@ mod tests {
     #[tokio::test]
     async fn nextflow_events_become_updates() {
         let receiver = start().await;
-        let mut run = receiver.register(7, &Engine::Nextflow).unwrap();
+        let mut run = receiver.register(7, &Engine::Nextflow, None).unwrap();
         let mut updates = run.take_updates().unwrap();
         let client = reqwest::Client::new();
         let url = format!("{}/nextflow", run.endpoint.base_url);
@@ -278,7 +289,7 @@ mod tests {
     #[tokio::test]
     async fn snakemake_speaks_panoptes() {
         let receiver = start().await;
-        let mut run = receiver.register(7, &Engine::Snakemake).unwrap();
+        let mut run = receiver.register(7, &Engine::Snakemake, None).unwrap();
         let mut updates = run.take_updates().unwrap();
         let client = reqwest::Client::new();
         let base = format!("{}/snakemake", run.endpoint.base_url);
@@ -326,7 +337,7 @@ mod tests {
             404
         );
 
-        let run = receiver.register(1, &Engine::Nextflow).unwrap();
+        let run = receiver.register(1, &Engine::Nextflow, None).unwrap();
         let url = format!("{}/nextflow", run.endpoint.base_url);
         drop(run);
         assert_eq!(
@@ -338,6 +349,6 @@ mod tests {
     #[tokio::test]
     async fn engines_without_progress_get_no_endpoint() {
         let receiver = start().await;
-        assert!(receiver.register(1, &Engine::Container).is_none());
+        assert!(receiver.register(1, &Engine::Container, None).is_none());
     }
 }

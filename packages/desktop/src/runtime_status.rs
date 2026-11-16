@@ -10,13 +10,45 @@ use macworp_worker::container_runtime::{
 #[derive(Clone)]
 pub struct InitialRuntimeStatus(pub RuntimeStatus);
 
+/// Snapshot for the UI. With several usable runtimes the kind lists all of them
+/// (`podman + docker`) and the first one's version is shown; rootless is only reported when
+/// every runtime agrees on it, a single rootful runtime wins.
 pub fn to_status(report: &DoctorReport) -> RuntimeStatus {
-    from_parts(
-        report.info.as_ref(),
+    let infos: Vec<&RuntimeInfo> = report.runtimes.iter().map(|usable| &usable.info).collect();
+    let combined = infos.first().map(|first| RuntimeInfo {
+        kind: first.kind,
+        version: if infos.len() == 1 {
+            first.version.clone()
+        } else {
+            String::new()
+        },
+        rootless: if infos.iter().any(|info| info.rootless == Some(false)) {
+            Some(false)
+        } else if infos.iter().all(|info| info.rootless == Some(true)) {
+            Some(true)
+        } else {
+            None
+        },
+        storage_root: None,
+        socket: None,
+    });
+    let mut status = from_parts(
+        combined.as_ref(),
         &report.checks,
         report.is_ok(),
         report.unavailable_engines(),
-    )
+    );
+    if infos.len() > 1 {
+        status.kind = Some(
+            infos
+                .iter()
+                .map(|info| format!("{} {}", info.kind, info.version))
+                .collect::<Vec<_>>()
+                .join(" + "),
+        );
+        status.version = None;
+    }
+    status
 }
 
 static PREFERENCE: OnceLock<RuntimePreference> = OnceLock::new();

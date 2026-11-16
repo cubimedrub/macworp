@@ -398,7 +398,7 @@ impl TestApp {
         let (stop, worker) = crate::start_worker(
             &database_url,
             max_log_bytes,
-            runtime,
+            vec![runtime],
             macworp_backend::reference_directory::ReferenceDirectory::new(reference_directory),
         )
         .await
@@ -496,12 +496,11 @@ async fn require_runtime(engine: &Engine) -> Option<(Arc<dyn ContainerRuntime>, 
         return None;
     }
     let unavailable_engines = report.unavailable_engines();
-    let runtime = report.into_runtime().unwrap();
-    if !runtime.supports_engine(engine) {
-        eprintln!("SKIPPED, {} cannot run {engine} workflows", runtime.kind());
+    let Some(usable) = report.runtime_for(engine) else {
+        eprintln!("SKIPPED, no usable runtime can run {engine} workflows");
         return None;
-    }
-    Some((runtime, unavailable_engines))
+    };
+    Some((usable.runtime.clone(), unavailable_engines))
 }
 
 async fn image_exists(runtime: &dyn ContainerRuntime, image: &str) -> bool {
@@ -628,11 +627,11 @@ async fn snakemake_is_rejected_when_runtime_cannot_run_it() {
         return;
     }
     let unavailable_engines = report.unavailable_engines();
-    let runtime = report.into_runtime().unwrap();
-    if runtime.supports_engine(&Engine::Snakemake) {
-        eprintln!("SKIPPED, {} can run Snakemake workflows", runtime.kind());
+    if report.runtime_for(&Engine::Snakemake).is_some() {
+        eprintln!("SKIPPED, a usable runtime can run Snakemake workflows");
         return;
     }
+    let runtime = report.into_runtimes().unwrap().remove(0);
 
     let app = TestApp::start(runtime, unavailable_engines).await;
     let configuration: WorkflowConfiguration = serde_json::from_value(json!({

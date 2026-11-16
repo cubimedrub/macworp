@@ -11,7 +11,7 @@ use super::runtime::{
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum RuntimePreference {
-    /// Podman if usable, then Docker, on Windows finally wslc
+    /// Every usable runtime (podman, docker, on Windows wslc); each engine runs on the first one that supports it
     #[default]
     Auto,
     Podman,
@@ -58,37 +58,54 @@ pub struct Check {
 #[error("{0}")]
 pub struct Error(String);
 
-/// Result of probing the host for a usable container runtime.
+/// A container runtime that passed its checks, with what it reported about itself.
+#[derive(Debug, Clone)]
+pub struct UsableRuntime {
+    /// The runtime, ready to start containers
+    pub runtime: Arc<dyn ContainerRuntime>,
+    /// Version, rootless state and socket as the runtime reported them
+    pub info: RuntimeInfo,
+}
+
+/// Result of probing the host for usable container runtimes.
 #[derive(Debug)]
 pub struct DoctorReport {
+    /// Everything the probe found, one line per check
     pub checks: Vec<Check>,
-    pub info: Option<RuntimeInfo>,
-    runtime: Option<Arc<dyn ContainerRuntime>>,
+    /// Usable runtimes in preference order (podman, docker, wslc)
+    pub runtimes: Vec<UsableRuntime>,
 }
 
 impl DoctorReport {
-    /// No failed check and a runtime was found. Warnings do not fail.
+    /// At least one runtime is usable. Warnings do not fail.
     pub fn is_ok(&self) -> bool {
-        self.runtime.is_some() && self.checks.iter().all(|c| c.status != CheckStatus::Fail)
+        !self.runtimes.is_empty()
     }
 
-    /// Engines that cannot run on the selected runtime (all of them if there is none).
+    /// The usable runtime that runs `engine`: the first in preference order that supports it.
+    pub fn runtime_for(&self, engine: &Engine) -> Option<&UsableRuntime> {
+        self.runtimes
+            .iter()
+            .find(|usable| usable.runtime.supports_engine(engine))
+    }
+
+    /// Engines no usable runtime can run (all of them if there is no runtime).
     pub fn unavailable_engines(&self) -> Vec<Engine> {
         Engine::iter()
-            .filter(|engine| {
-                !self
-                    .runtime
-                    .as_ref()
-                    .is_some_and(|runtime| runtime.supports_engine(engine))
-            })
+            .filter(|engine| self.runtime_for(engine).is_none())
             .collect()
     }
 
-    /// The selected runtime, or the report as error.
-    pub fn into_runtime(self) -> Result<Arc<dyn ContainerRuntime>, Error> {
-        match self.runtime {
-            Some(ref runtime) if self.is_ok() => Ok(runtime.clone()),
-            _ => Err(Error(self.to_string())),
+    /// The usable runtimes in preference order, or the report as error if there is none.
+    pub fn into_runtimes(self) -> Result<Vec<Arc<dyn ContainerRuntime>>, Error> {
+        if self.is_ok() {
+            Ok(self
+                .runtimes
+                .into_iter()
+                .map(|usable| usable.runtime)
+                .collect())
+        } else {
+            Err(Error(self.to_string()))
         }
     }
 }
@@ -159,48 +176,94 @@ pub async fn doctor(preference: RuntimePreference) -> DoctorReport {
     doctor_with(preference.candidates()).await
 }
 
-/// Like [`doctor`] with explicit candidates, tried in order. First usable one wins.
+/// Like [`doctor`] with explicit candidates, in order of preference. Every candidate is
+/// probed; all usable ones are kept.
 pub async fn doctor_with(candidates: Vec<Arc<dyn ContainerRuntime>>) -> DoctorReport {
-    let mut unusable = Vec::new();
+    let mut checks = Vec::new();
+    let mut runtimes = Vec::new();
+    // Failed candidates only warn as long as another one works, decided at the end.
+    let mut failed_indices = Vec::new();
 
     for runtime in candidates {
         let kind = runtime.kind();
         match runtime.info().await {
-            Err(error) => unusable.push(Check {
-                name: kind.to_string(),
-                status: CheckStatus::Fail,
-                message: hint(kind, &error),
-            }),
+            Err(error) => {
+                failed_indices.push(checks.len());
+                checks.push(Check {
+                    name: kind.to_string(),
+                    status: CheckStatus::Fail,
+                    message: hint(kind, &error),
+                });
+            }
             Ok(info) => {
-                // Candidates tried before the winner are only a heads-up.
-                let mut checks: Vec<Check> = unusable
-                    .into_iter()
-                    .map(|c| Check {
-                        status: CheckStatus::Warn,
-                        ..c
-                    })
-                    .collect();
-                checks.extend(checks_for(&info));
-                return DoctorReport {
-                    checks,
-                    info: Some(info),
-                    runtime: Some(runtime),
-                };
+                let own = checks_for(&info);
+                if own.iter().any(|check| check.status == CheckStatus::Fail) {
+                    failed_indices.extend(checks.len()..checks.len() + own.len());
+                } else {
+                    runtimes.push(UsableRuntime { runtime, info });
+                }
+                checks.extend(own);
             }
         }
     }
 
-    if unusable.is_empty() {
-        unusable.push(Check {
+    if checks.is_empty() {
+        checks.push(Check {
             name: "runtime".to_string(),
             status: CheckStatus::Fail,
             message: "no container runtime candidate configured".to_string(),
         });
     }
-    DoctorReport {
-        checks: unusable,
-        info: None,
-        runtime: None,
+    if !runtimes.is_empty() {
+        for index in failed_indices {
+            if checks[index].status == CheckStatus::Fail {
+                checks[index].status = CheckStatus::Warn;
+            }
+        }
+    }
+
+    let report = DoctorReport { checks, runtimes };
+    if let Some(check) = report.engines_check() {
+        let mut report = report;
+        report.checks.push(check);
+        return report;
+    }
+    report
+}
+
+impl DoctorReport {
+    /// Warning naming the engines no usable runtime can run, `None` if all can run.
+    fn engines_check(&self) -> Option<Check> {
+        if !self.is_ok() {
+            return None;
+        }
+        let unavailable: Vec<String> = self
+            .unavailable_engines()
+            .iter()
+            .map(|engine| engine.to_string())
+            .collect();
+        if unavailable.is_empty() {
+            return None;
+        }
+        let kinds: Vec<String> = self
+            .runtimes
+            .iter()
+            .map(|usable| usable.info.kind.to_string())
+            .collect();
+        let hint = if kinds.iter().any(|kind| kind == "podman") {
+            "install docker"
+        } else {
+            "install podman or docker"
+        };
+        Some(Check {
+            name: "engines".to_string(),
+            status: CheckStatus::Warn,
+            message: format!(
+                "{} cannot run {} workflows, {hint} for those",
+                kinds.join(" and "),
+                unavailable.join(", ")
+            ),
+        })
     }
 }
 
@@ -254,25 +317,6 @@ fn checks_for(info: &RuntimeInfo) -> Vec<Check> {
             message: format!("{kind} does not report whether it runs rootless"),
         },
     });
-
-    let unsupported: Vec<String> = Engine::iter()
-        .filter(|engine| !kind.supports_engine(engine))
-        .map(|engine| engine.to_string())
-        .collect();
-    if !unsupported.is_empty() {
-        let hint = match kind {
-            RuntimeKind::Podman => "install docker",
-            _ => "install podman or docker",
-        };
-        checks.push(Check {
-            name: "engines".to_string(),
-            status: CheckStatus::Warn,
-            message: format!(
-                "{kind} cannot run {} workflows, {hint} for those",
-                unsupported.join(", ")
-            ),
-        });
-    }
 
     checks
 }
@@ -351,7 +395,7 @@ mod tests {
                 .iter()
                 .all(|c| c.status == CheckStatus::Ok || c.name == "engines")
         );
-        assert!(report.into_runtime().is_ok());
+        assert!(report.into_runtimes().is_ok());
     }
 
     #[tokio::test]
@@ -365,7 +409,7 @@ mod tests {
     async fn old_version_fails() {
         let report = doctor_with(vec![Mock::ok(RuntimeKind::Podman, "3.4.4", true)]).await;
         assert!(!report.is_ok());
-        assert!(report.into_runtime().is_err());
+        assert!(report.into_runtimes().is_err());
     }
 
     #[tokio::test]
@@ -376,8 +420,49 @@ mod tests {
         ])
         .await;
         assert!(report.is_ok());
-        assert_eq!(report.info.as_ref().unwrap().kind, RuntimeKind::Docker);
+        assert_eq!(report.runtimes.len(), 1);
+        assert_eq!(report.runtimes[0].info.kind, RuntimeKind::Docker);
         assert_eq!(report.checks[0].status, CheckStatus::Warn);
+        assert!(report.unavailable_engines().is_empty());
+    }
+
+    #[tokio::test]
+    async fn podman_and_docker_together_run_every_engine() {
+        let report = doctor_with(vec![
+            Mock::ok(RuntimeKind::Podman, "5.2.1", true),
+            Mock::ok(RuntimeKind::Docker, "27.1.1", true),
+        ])
+        .await;
+        assert!(report.is_ok());
+        assert!(report.unavailable_engines().is_empty());
+        assert_eq!(
+            report.runtime_for(&Engine::Nextflow).unwrap().info.kind,
+            RuntimeKind::Podman
+        );
+        assert_eq!(
+            report.runtime_for(&Engine::Snakemake).unwrap().info.kind,
+            RuntimeKind::Docker
+        );
+        assert!(report.checks.iter().all(|c| c.name != "engines"));
+        assert_eq!(report.into_runtimes().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn too_old_candidate_only_warns_next_to_a_working_one() {
+        let report = doctor_with(vec![
+            Mock::ok(RuntimeKind::Podman, "3.4.4", true),
+            Mock::ok(RuntimeKind::Docker, "27.1.1", true),
+        ])
+        .await;
+        assert!(report.is_ok());
+        assert_eq!(report.runtimes.len(), 1);
+        assert!(report.checks.iter().all(|c| c.status != CheckStatus::Fail));
+        assert!(
+            report
+                .checks
+                .iter()
+                .any(|c| c.name == "version" && c.status == CheckStatus::Warn)
+        );
     }
 
     #[tokio::test]
@@ -391,14 +476,12 @@ mod tests {
         let text = report.to_string();
         assert!(text.contains("podman machine start"));
         assert!(text.contains("docker daemon"));
-        assert!(report.into_runtime().is_err());
+        assert!(report.into_runtimes().is_err());
     }
 
     #[cfg(windows)]
     #[tokio::test]
     async fn wslc_only_limits_engines() {
-        use macworp_core::workflow_configuration::engine::Engine;
-
         let report = doctor_with(vec![Mock::ok(RuntimeKind::Wslc, "2.9.4.0", false)]).await;
         // wslc reports no rootless state in reality, the mock only needs a usable runtime
         assert!(report.is_ok());
@@ -416,8 +499,6 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn podman_only_loses_snakemake_and_wslc_loses_to_it() {
-        use macworp_core::workflow_configuration::engine::Engine;
-
         let report = doctor_with(vec![
             Mock::ok(RuntimeKind::Podman, "5.2.1", true),
             Mock::ok(RuntimeKind::Wslc, "2.9.4.0", true),
@@ -428,8 +509,6 @@ mod tests {
 
     #[tokio::test]
     async fn podman_cannot_run_snakemake_docker_can() {
-        use macworp_core::workflow_configuration::engine::Engine;
-
         let podman = doctor_with(vec![Mock::ok(RuntimeKind::Podman, "5.2.1", true)]).await;
         assert_eq!(podman.unavailable_engines(), vec![Engine::Snakemake]);
         assert!(podman.to_string().contains("cannot run Snakemake"));

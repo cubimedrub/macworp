@@ -3,7 +3,7 @@ use thiserror::Error;
 use tokio::sync::{mpsc, watch};
 
 use super::{Job, LogLine, Outcome};
-use crate::container_runtime::BoxFuture;
+use crate::container_runtime::{BoxFuture, RuntimeKind};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -16,6 +16,12 @@ pub enum Error {
 /// Runs jobs of one workflow engine.
 pub trait Executor: Send + Sync {
     fn engine(&self) -> Engine;
+
+    /// The container runtime the executor starts its containers with, `None` if unknown
+    /// (the progress receiver then uses its default host access).
+    fn runtime_kind(&self) -> Option<RuntimeKind> {
+        None
+    }
 
     /// Runs the job to its end. Engine output goes to `logs`; the run is stopped when `cancel`
     /// turns `true`. Failures to even start the engine are reported as `Outcome::Failed`.

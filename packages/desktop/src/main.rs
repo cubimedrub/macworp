@@ -148,7 +148,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
             "No usable container runtime, workflows cannot run:\n{container_runtime_report}"
         );
     }
-    let container_runtime = container_runtime_report.into_runtime().ok();
+    let container_runtimes = container_runtime_report.into_runtimes().ok();
 
     if app_data_directory.is_file() {
         return Err(Error::AppDirectoryCreation(std::io::Error::new(
@@ -266,12 +266,12 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     }
 
     // Backend ran the migrations, the embedded worker can use the same database now
-    let worker = match container_runtime {
-        Some(runtime) => Some(
+    let worker = match container_runtimes {
+        Some(runtimes) => Some(
             start_worker(
                 &database_url,
                 max_log_bytes,
-                runtime,
+                runtimes,
                 settings.reference_directory(),
             )
             .await?,
@@ -330,7 +330,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
 async fn start_worker(
     database_url: &str,
     max_log_bytes: u64,
-    runtime: Arc<dyn ContainerRuntime>,
+    runtimes: Vec<Arc<dyn ContainerRuntime>>,
     reference_directory: macworp_backend::reference_directory::ReferenceDirectory,
 ) -> Result<(watch::Sender<bool>, tokio::task::JoinHandle<()>), Error> {
     let db = sea_orm::Database::connect(database_url)
@@ -342,13 +342,16 @@ async fn start_worker(
         Err(e) => tracing::warn!("Unable to clean up interrupted runs: {e}"),
     }
 
-    let executors = standard_executors(&runtime).await;
+    let executors = standard_executors(&runtimes).await;
     let mut worker = Worker::new(
         Arc::new(DbJobSource::new(db, max_log_bytes, reference_directory)),
         executors,
         WorkerOptions::default(),
     );
-    if let Some(access) = HostAccess::for_runtime(runtime.kind()) {
+    if let Some(access) = runtimes
+        .iter()
+        .find_map(|runtime| HostAccess::for_runtime(runtime.kind()))
+    {
         match ProgressReceiver::start(access).await {
             Ok(receiver) => {
                 tracing::info!(
@@ -365,7 +368,11 @@ async fn start_worker(
 
     let (stop, stopped) = watch::channel(false);
     let handle = tokio::spawn(async move { worker.run_until(stopped).await });
-    tracing::info!("Embedded worker started using {}", runtime.kind());
+    let kinds: Vec<String> = runtimes
+        .iter()
+        .map(|runtime| runtime.kind().to_string())
+        .collect();
+    tracing::info!("Embedded worker started using {}", kinds.join(", "));
     Ok((stop, handle))
 }
 

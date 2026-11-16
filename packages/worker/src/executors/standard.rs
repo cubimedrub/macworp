@@ -1,40 +1,170 @@
 use std::sync::Arc;
 
+use macworp_core::workflow_configuration::engine::Engine;
+use tokio::sync::{mpsc, watch};
+
 use super::{
-    Executor,
+    Executor, Job, LogLine, Outcome,
     container::ContainerExecutor,
     nextflow::{self, NextflowExecutor},
     snakemake::{self, SnakemakeExecutor},
 };
-use crate::container_runtime::ContainerRuntime;
+use crate::container_runtime::{BoxFuture, ContainerRuntime, RuntimeKind};
 
-/// The executors of all engines `runtime` can run, wired to start sibling containers through
-/// the runtime socket when it has one (engines that cannot run on the runtime are left out).
-pub async fn standard_executors(runtime: &Arc<dyn ContainerRuntime>) -> Vec<Arc<dyn Executor>> {
-    let binary = runtime.binary().to_path_buf();
-    let engine_access = match runtime.info().await {
-        Ok(info) => info.engine_access_args().unwrap_or_default(),
-        Err(e) => {
-            tracing::warn!("Unable to query container runtime: {e}");
-            Vec::new()
-        }
-    };
-    if engine_access.is_empty() {
-        tracing::warn!("No runtime socket found, engines cannot start sibling containers");
+/// An executor tagged with the runtime it was built for, so the worker knows how its
+/// containers reach the host.
+struct OnRuntime {
+    /// The wrapped executor
+    inner: Arc<dyn Executor>,
+    /// Runtime `inner` starts its containers with
+    kind: RuntimeKind,
+}
+
+impl Executor for OnRuntime {
+    fn engine(&self) -> Engine {
+        self.inner.engine()
     }
-    let executors: Vec<Arc<dyn Executor>> = vec![
-        Arc::new(
-            NextflowExecutor::new(&binary, nextflow::DEFAULT_IMAGE)
-                .with_engine_access(engine_access.clone()),
-        ),
-        Arc::new(
-            SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE)
-                .with_engine_access(engine_access),
-        ),
-        Arc::new(ContainerExecutor::new(&binary)),
-    ];
+
+    fn runtime_kind(&self) -> Option<RuntimeKind> {
+        Some(self.kind)
+    }
+
+    fn run<'a>(
+        &'a self,
+        job: &'a Job,
+        logs: mpsc::Sender<LogLine>,
+        cancel: watch::Receiver<bool>,
+    ) -> BoxFuture<'a, Outcome> {
+        self.inner.run(job, logs, cancel)
+    }
+}
+
+/// The executors of all engines the `runtimes` can run, in order of preference: each engine
+/// runs on the first runtime that supports it. Engines no runtime supports are left out.
+/// Executors start sibling containers through the socket of their runtime when it has one.
+///
+/// # Arguments
+/// * `runtimes` - usable runtimes, most preferred first
+pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<Arc<dyn Executor>> {
+    let mut executors: Vec<Arc<dyn Executor>> = Vec::new();
+    for engine in [Engine::Nextflow, Engine::Snakemake, Engine::Container] {
+        let Some(runtime) = runtimes
+            .iter()
+            .find(|runtime| runtime.supports_engine(&engine))
+        else {
+            continue;
+        };
+        let binary = runtime.binary().to_path_buf();
+        let engine_access = if engine == Engine::Container {
+            Vec::new()
+        } else {
+            match runtime.info().await {
+                Ok(info) => info.engine_access_args().unwrap_or_default(),
+                Err(e) => {
+                    tracing::warn!("Unable to query container runtime: {e}");
+                    Vec::new()
+                }
+            }
+        };
+        if engine != Engine::Container && engine_access.is_empty() {
+            tracing::warn!(
+                "No {} socket found, {engine} cannot start sibling containers",
+                runtime.kind()
+            );
+        }
+        let inner: Arc<dyn Executor> = match engine {
+            Engine::Nextflow => Arc::new(
+                NextflowExecutor::new(&binary, nextflow::DEFAULT_IMAGE)
+                    .with_engine_access(engine_access),
+            ),
+            Engine::Snakemake => Arc::new(
+                SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE)
+                    .with_engine_access(engine_access),
+            ),
+            _ => Arc::new(ContainerExecutor::new(&binary)),
+        };
+        executors.push(Arc::new(OnRuntime {
+            inner,
+            kind: runtime.kind(),
+        }));
+    }
     executors
-        .into_iter()
-        .filter(|executor| runtime.supports_engine(&executor.engine()))
-        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+    use crate::container_runtime::{RuntimeError, RuntimeInfo};
+
+    /// Runtime stand-in that only knows its kind and binary name.
+    #[derive(Debug)]
+    struct Fake(RuntimeKind);
+
+    impl ContainerRuntime for Fake {
+        fn kind(&self) -> RuntimeKind {
+            self.0
+        }
+        fn binary(&self) -> &Path {
+            Path::new("fake")
+        }
+        fn info(&self) -> BoxFuture<'_, Result<RuntimeInfo, RuntimeError>> {
+            let kind = self.0;
+            Box::pin(async move {
+                Ok(RuntimeInfo {
+                    kind,
+                    version: "1.0".into(),
+                    rootless: Some(true),
+                    storage_root: None,
+                    socket: None,
+                })
+            })
+        }
+    }
+
+    /// Runtime kind per engine of the executors built for `kinds`.
+    async fn assignment(kinds: &[RuntimeKind]) -> Vec<(Engine, Option<RuntimeKind>)> {
+        let runtimes: Vec<Arc<dyn ContainerRuntime>> = kinds
+            .iter()
+            .map(|kind| Arc::new(Fake(*kind)) as Arc<dyn ContainerRuntime>)
+            .collect();
+        standard_executors(&runtimes)
+            .await
+            .iter()
+            .map(|executor| (executor.engine(), executor.runtime_kind()))
+            .collect()
+    }
+
+    /// With podman and docker, Snakemake goes to docker and the rest stays on podman.
+    #[tokio::test]
+    async fn engines_use_the_first_runtime_that_supports_them() {
+        assert_eq!(
+            assignment(&[RuntimeKind::Podman, RuntimeKind::Docker]).await,
+            vec![
+                (Engine::Nextflow, Some(RuntimeKind::Podman)),
+                (Engine::Snakemake, Some(RuntimeKind::Docker)),
+                (Engine::Container, Some(RuntimeKind::Podman)),
+            ]
+        );
+    }
+
+    /// Podman alone has no Snakemake, docker alone runs everything.
+    #[tokio::test]
+    async fn single_runtimes() {
+        let podman = assignment(&[RuntimeKind::Podman]).await;
+        assert_eq!(podman.len(), 2);
+        assert!(
+            podman
+                .iter()
+                .all(|(engine, _)| *engine != Engine::Snakemake)
+        );
+        let docker = assignment(&[RuntimeKind::Docker]).await;
+        assert_eq!(docker.len(), 3);
+        assert!(
+            docker
+                .iter()
+                .all(|(_, kind)| *kind == Some(RuntimeKind::Docker))
+        );
+    }
 }

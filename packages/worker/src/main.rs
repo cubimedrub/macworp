@@ -60,8 +60,8 @@ async fn main() -> std::process::ExitCode {
                 std::process::ExitCode::FAILURE
             }
         }
-        Command::Run => match report.into_runtime() {
-            Ok(runtime) => match run_remote(&cli.remote, runtime).await {
+        Command::Run => match report.into_runtimes() {
+            Ok(runtimes) => match run_remote(&cli.remote, runtimes).await {
                 Ok(()) => std::process::ExitCode::SUCCESS,
                 Err(error) => {
                     eprintln!("{error}");
@@ -77,16 +77,29 @@ async fn main() -> std::process::ExitCode {
 }
 
 /// Runs `capacity` job slots against the backend until Ctrl-C; running jobs finish first.
+///
+/// # Arguments
+/// * `remote` - backend connection and worker settings
+/// * `runtimes` - usable container runtimes, most preferred first; each engine runs on the
+///   first one that supports it
 async fn run_remote(
     remote: &RemoteWorkerConfiguration,
-    runtime: Arc<dyn ContainerRuntime>,
+    runtimes: Vec<Arc<dyn ContainerRuntime>>,
 ) -> Result<(), String> {
-    let runtime_version = runtime.info().await.ok().map(|info| info.version);
-    let executors = standard_executors(&runtime).await;
+    let mut kinds = Vec::new();
+    let mut versions = Vec::new();
+    for runtime in &runtimes {
+        kinds.push(runtime.kind().to_string());
+        if let Ok(info) = runtime.info().await {
+            versions.push(format!("{} {}", info.kind, info.version));
+        }
+    }
+    let runtime_name = kinds.join(", ");
+    let runtime_version = (!versions.is_empty()).then(|| versions.join(", "));
+    let executors = standard_executors(&runtimes).await;
     if executors.is_empty() {
         return Err(format!(
-            "The container runtime {} supports no engine",
-            runtime.kind()
+            "The container runtime(s) {runtime_name} support no engine"
         ));
     }
     let engines: Vec<Engine> = executors.iter().map(|executor| executor.engine()).collect();
@@ -101,7 +114,10 @@ async fn run_remote(
         )
         .map_err(|e| e.to_string())?,
     );
-    let progress = match HostAccess::for_runtime(runtime.kind()) {
+    let progress = match runtimes
+        .iter()
+        .find_map(|runtime| HostAccess::for_runtime(runtime.kind()))
+    {
         Some(access) => match ProgressReceiver::start(access).await {
             Ok(receiver) => Some(Arc::new(receiver)),
             Err(e) => {
@@ -117,7 +133,7 @@ async fn run_remote(
     let (stop, stopped) = watch::channel(false);
     let announcer = tokio::spawn(announce_loop(
         source.clone(),
-        runtime.kind().to_string(),
+        runtime_name.clone(),
         runtime_version,
         engines,
         stopped.clone(),
@@ -135,7 +151,7 @@ async fn run_remote(
         "Worker {} started with {} slot(s) using {}",
         remote.worker_name(),
         remote.capacity,
-        runtime.kind()
+        runtime_name
     );
 
     tokio::signal::ctrl_c()

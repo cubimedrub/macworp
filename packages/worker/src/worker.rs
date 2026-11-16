@@ -12,7 +12,7 @@ use tokio::{
 use crate::{
     executors::{Executor, Job, LogLine, Outcome},
     job_source::{Error as SourceError, JobSource},
-    log_proxy::ProgressReceiver,
+    log_proxy::{HostAccess, ProgressReceiver},
     progress::ProgressUpdate,
 };
 
@@ -140,10 +140,10 @@ impl Worker {
         };
 
         // Registered for the whole run: the token stops working when this is dropped
-        let mut registered = self
-            .progress
-            .as_ref()
-            .and_then(|receiver| receiver.register(job.run_id, &engine));
+        let mut registered = self.progress.as_ref().and_then(|receiver| {
+            let access = executor.runtime_kind().and_then(HostAccess::for_runtime);
+            receiver.register(job.run_id, &engine, access.as_ref())
+        });
         let mut progress_task = None;
         if let Some(registered) = &mut registered {
             job.progress = Some(registered.endpoint.clone());

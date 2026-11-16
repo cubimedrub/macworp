@@ -608,6 +608,8 @@ impl Mirror {
         } else {
             Repository::init_bare(&directory)?
         };
+        // Without this libgit2 rejects paths over MAX_PATH (260) on Windows during checkout.
+        repository.config()?.set_bool("core.longpaths", true)?;
         Ok(Self {
             repository,
             directory,
@@ -705,11 +707,8 @@ impl Mirror {
             .duration_since(SystemTime::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or_default();
-        let temporary = parent.join(format!(
-            ".{}.partial-{}-{nanos}",
-            target.file_name().unwrap().to_string_lossy(),
-            std::process::id()
-        ));
+        // Short name: the full path length matters on Windows.
+        let temporary = parent.join(format!(".p-{}-{nanos:x}", std::process::id()));
         fs::create_dir_all(&temporary)?;
         let tree = self.repository.find_commit(oid)?.tree()?;
         let mut builder = CheckoutBuilder::new();
@@ -1245,5 +1244,26 @@ mod tests {
         let outcome = result.map(|r| fs::read_to_string(r.directory.join("test/asset.bin")));
         let _ = fs::remove_dir_all(&relative);
         assert_eq!(outcome.unwrap().unwrap(), "bin");
+    }
+
+    /// A file nested deeper than Windows' MAX_PATH is checked out, and the mirror enables
+    /// `core.longpaths`.
+    #[test]
+    fn deep_paths_are_checked_out() {
+        let f = Fixture::new();
+        let deep = format!("{}/file.txt", vec!["d".repeat(50); 6].join("/"));
+        commit(&f.remote, &deep, "deep", None);
+        let result = f.resolve(None).unwrap();
+        assert!(result.directory.join(&deep).to_string_lossy().len() > 260);
+        assert_eq!(
+            fs::read_to_string(result.directory.join(&deep)).unwrap(),
+            "deep"
+        );
+        let id = RepositoryId {
+            host: "local".into(),
+            segments: vec!["o".into(), "r".into()],
+        };
+        let mirror = Repository::open_bare(f.cache.mirror_directory(&id)).unwrap();
+        assert!(mirror.config().unwrap().get_bool("core.longpaths").unwrap());
     }
 }

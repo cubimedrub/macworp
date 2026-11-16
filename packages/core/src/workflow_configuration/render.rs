@@ -51,13 +51,14 @@ pub enum Error {
 }
 
 /// Names end up in command line flags, so they must not be able to form another flag or contain
-/// groups.
+/// groups. A backslash is only valid as the escape of `.` or `\` (see [`split_path`]).
 fn validate_name(name: &str) -> Result<(), Error> {
     let valid = !name.is_empty()
         && !name.starts_with('-')
+        && split_path(name).is_some()
         && name
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '\\'));
     if valid {
         Ok(())
     } else {
@@ -327,6 +328,148 @@ fn value_string(
     })
 }
 
+/// Escapes a key for use as one segment of a dotted parameter name: `\` becomes `\\` and `.`
+/// becomes `\.`, so a key that contains a dot is not read as a nested path.
+///
+/// # Arguments
+/// * `key` - A key of the workflow's configuration, as written in its schema
+pub fn escape_path_segment(key: &str) -> String {
+    key.replace('\\', "\\\\").replace('.', "\\.")
+}
+
+/// Splits a dotted parameter name into its unescaped keys: an unescaped `.` separates levels,
+/// `\.` and `\\` stand for a literal dot and backslash. `None` for a dangling or unknown escape
+/// (`a\`, `a\x`) and for an empty key (`a..b`, `.a`, `a.`).
+///
+/// # Arguments
+/// * `name` - The parameter name
+pub fn split_path(name: &str) -> Option<Vec<String>> {
+    let mut keys = vec![String::new()];
+    let mut chars = name.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '.' => keys.push(String::new()),
+            '\\' => match chars.next()? {
+                escaped @ ('.' | '\\') => keys.last_mut()?.push(escaped),
+                _ => return None,
+            },
+            other => keys.last_mut()?.push(other),
+        }
+    }
+    keys.iter().all(|key| !key.is_empty()).then_some(keys)
+}
+
+/// A node of the Snakemake `--config` tree: a value or a nested dictionary.
+#[derive(Debug)]
+enum ConfigNode {
+    /// A value: plain command line text (used at the top level) and its Python literal (used
+    /// inside a dictionary)
+    Leaf { plain: String, literal: String },
+    /// Nested dictionary in insertion order
+    Branch(Vec<(String, ConfigNode)>),
+}
+
+impl ConfigNode {
+    /// The node as a Python literal: a value, or a dictionary `{'key': value, ...}`.
+    fn literal(&self) -> String {
+        match self {
+            Self::Leaf { literal, .. } => literal.clone(),
+            Self::Branch(children) => {
+                let items: Vec<String> = children
+                    .iter()
+                    .map(|(key, node)| format!("{}: {}", python_string(key), node.literal()))
+                    .collect();
+                format!("{{{}}}", items.join(", "))
+            }
+        }
+    }
+}
+
+/// Values of the parameters of a Snakemake workflow as `--config` entries. Names with dots
+/// (`ref.species`) are nested: Snakemake takes a nested value as a Python dictionary
+/// (`--config "ref={'species': 'human'}"`), so every top level name becomes one entry.
+#[derive(Debug, Default)]
+struct ConfigEntries(Vec<(String, ConfigNode)>);
+
+impl ConfigEntries {
+    /// Adds the value of a parameter at the place its dotted name says.
+    ///
+    /// # Arguments
+    /// * `parameter` - The parameter, its name is the path
+    /// * `plain` - Its rendered value, see [`value_string`]
+    ///
+    /// Fails with [`Error::InvalidName`] for a malformed path (empty key, bad escape, see [`split_path`]) or a name that is
+    /// both a value and a dictionary (`a` and `a.b`).
+    fn insert(&mut self, parameter: &Parameter, plain: String) -> Result<(), Error> {
+        let name = parameter.name();
+        let segments = split_path(name).ok_or_else(|| Error::InvalidName(name.to_string()))?;
+        let literal = python_literal(parameter, &plain);
+        let mut level = &mut self.0;
+        for (index, segment) in segments.iter().enumerate() {
+            let last = index + 1 == segments.len();
+            let position = level.iter().position(|(key, _)| key == segment);
+            if last {
+                if position.is_some() {
+                    return Err(Error::InvalidName(name.to_string()));
+                }
+                level.push((segment.clone(), ConfigNode::Leaf { plain, literal }));
+                return Ok(());
+            }
+            let position = position.unwrap_or_else(|| {
+                level.push((segment.clone(), ConfigNode::Branch(Vec::new())));
+                level.len() - 1
+            });
+            match &mut level[position].1 {
+                ConfigNode::Branch(children) => level = children,
+                ConfigNode::Leaf { .. } => return Err(Error::InvalidName(name.to_string())),
+            }
+        }
+        unreachable!("a name has at least one segment")
+    }
+
+    /// The `--config` arguments: `name=value` for top level values, `name={...}` for dictionaries.
+    fn render(&self) -> Vec<String> {
+        self.0
+            .iter()
+            .map(|(key, node)| match node {
+                ConfigNode::Leaf { plain, .. } => format!("{key}={plain}"),
+                branch => format!("{key}={}", branch.literal()),
+            })
+            .collect()
+    }
+}
+
+/// `text` as a single quoted Python string literal.
+fn python_string(text: &str) -> String {
+    let mut literal = String::from("'");
+    for c in text.chars() {
+        match c {
+            '\\' => literal.push_str("\\\\"),
+            '\'' => literal.push_str("\\'"),
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            other => literal.push(other),
+        }
+    }
+    literal.push('\'');
+    literal
+}
+
+/// The rendered value of a parameter as a Python literal for use inside a dictionary: numbers
+/// bare, a true/false choice as `True`/`False`, everything else as a quoted string.
+///
+/// # Arguments
+/// * `parameter` - The parameter, decides how the value is read
+/// * `plain` - Its rendered value, see [`value_string`]
+fn python_literal(parameter: &Parameter, plain: &str) -> String {
+    match parameter {
+        Parameter::Integer(_) | Parameter::Float(_) => plain.to_string(),
+        Parameter::ValueSelect(_) if plain == "true" => "True".to_string(),
+        Parameter::ValueSelect(_) if plain == "false" => "False".to_string(),
+        _ => python_string(plain),
+    }
+}
+
 /// Flag for a Container parameter: single character names are short options (`-v`), longer
 /// ones long options (`--verbose`).
 fn container_flag(name: &str) -> String {
@@ -394,13 +537,14 @@ pub fn render_args(
             }
         }
         _ => {
-            let mut pairs = Vec::new();
+            let mut entries = ConfigEntries::default();
             for p in params {
                 validate_name(p.name())?;
                 if let Some(v) = value_string(p, reference_directory)? {
-                    pairs.push(format!("{}={v}", p.name()));
+                    entries.insert(p, v)?;
                 }
             }
+            let pairs = entries.render();
             if !pairs.is_empty() {
                 args.push("--config".to_string());
                 args.extend(pairs);
@@ -510,6 +654,100 @@ mod tests {
         assert_eq!(
             render_args(&c, None).unwrap(),
             ["--config", "mode=fast", "threads=2", "name=x y"]
+        );
+    }
+
+    /// Dotted names are nested into one Python dictionary per top level name.
+    #[test]
+    fn snakemake_nested_names_render_as_dictionaries() {
+        let mut c = config(Engine::Snakemake);
+        c.fixed_parameters_mut().clear();
+        let mut select = ValueSelect::new("trimming.activate".into(), "".into(), "".into());
+        *select.options_mut() = ["true", "false"]
+            .map(|v| SelectOption {
+                label: v.into(),
+                value: v.into(),
+            })
+            .to_vec();
+        c.dynamic_parameters_mut().extend([
+            Parameter::Text(Text::new("ref.species".into(), "".into(), "".into())),
+            Parameter::Integer(Integer::new("ref.release".into(), "".into(), "".into())),
+            Parameter::ValueSelect(select),
+            Parameter::Text(Text::new("params.star.index".into(), "".into(), "".into())),
+        ]);
+        apply_values(
+            &mut c,
+            &[
+                pv("threads", json!(2)),
+                pv("ref.species", json!("it's")),
+                pv("ref.release", json!(100)),
+                pv("trimming.activate", json!(["false"])),
+                pv("params.star.index", json!("a\\b")),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            render_args(&c, None).unwrap(),
+            [
+                "--config",
+                "threads=2",
+                "ref={'species': 'it\\'s', 'release': 100}",
+                "trimming={'activate': False}",
+                "params={'star': {'index': 'a\\\\b'}}",
+            ]
+        );
+    }
+
+    /// A name that is a value and a dictionary, or has an empty segment, is rejected.
+    #[test]
+    fn snakemake_conflicting_names_are_rejected() {
+        for names in [["a", "a.b"], ["a.b", "a"], ["a..b", "x"], ["a.", "x"]] {
+            let mut c = config(Engine::Snakemake);
+            c.fixed_parameters_mut().clear();
+            c.dynamic_parameters_mut().clear();
+            for name in names {
+                let mut text = Text::new(name.into(), "".into(), "".into());
+                *text.value_mut() = Some("v".into());
+                c.dynamic_parameters_mut().push(Parameter::Text(text));
+            }
+            assert!(
+                matches!(render_args(&c, None), Err(Error::InvalidName(_))),
+                "{names:?}"
+            );
+        }
+    }
+
+    /// Escaped dots and backslashes stay inside one key, unescaped dots separate keys.
+    #[test]
+    fn paths_split_on_unescaped_dots() {
+        assert_eq!(split_path("a.b"), Some(vec!["a".into(), "b".into()]));
+        assert_eq!(split_path(r"a\.b.c"), Some(vec!["a.b".into(), "c".into()]));
+        assert_eq!(split_path(r"a\\.b"), Some(vec![r"a\".into(), "b".into()]));
+        for bad in ["", ".a", "a.", "a..b", r"a\", r"a\x"] {
+            assert_eq!(split_path(bad), None, "{bad:?}");
+        }
+        for key in ["plain", "a.b", r"x\y", r"\.", "..", "a.\\.b"] {
+            assert_eq!(
+                split_path(&escape_path_segment(key)),
+                Some(vec![key.to_string()])
+            );
+        }
+    }
+
+    /// A key with a dot renders as one key of the dictionary, not as a nested one.
+    #[test]
+    fn snakemake_dotted_key_stays_one_key() {
+        let mut c = config(Engine::Snakemake);
+        c.fixed_parameters_mut().clear();
+        c.dynamic_parameters_mut().clear();
+        for name in [r"ref.v1\.2", r"ref.v1\.3"] {
+            let mut text = Text::new(name.into(), "".into(), "".into());
+            *text.value_mut() = Some("x".into());
+            c.dynamic_parameters_mut().push(Parameter::Text(text));
+        }
+        assert_eq!(
+            render_args(&c, None).unwrap(),
+            ["--config", "ref={'v1.2': 'x', 'v1.3': 'x'}"]
         );
     }
 

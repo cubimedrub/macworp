@@ -7,7 +7,9 @@ use macworp_core::{
     workflow_configuration::{
         engine::{Engine, EngineParameter},
         parameters::Parameter,
-        schema_import::parameters_from_nextflow_schema,
+        schema_import::{
+            parameters_from_nextflow_schema, parameters_from_snakemake_schema, Imported,
+        },
         source::Source,
     },
 };
@@ -45,8 +47,8 @@ pub enum Error<S: IsStorage> {
     Upload(crate::client::Error),
     #[error("Failed to read the workflow schemas: {0}")]
     Schemas(crate::client::Error),
-    #[error("The workflow has no nextflow_schema.json. Save the workflow and wait for the download first")]
-    NoSchema,
+    #[error("The workflow has no {0}. Save the workflow and wait for the download first")]
+    NoSchema(&'static str),
     #[error("Not logged in")]
     NotLoggedIn,
     #[error("{0}")]
@@ -412,12 +414,6 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
             .await
             .map_err(Error::Schemas)?;
 
-        let imported = schemas
-            .nextflow_schema
-            .as_ref()
-            .map(parameters_from_nextflow_schema)
-            .ok_or(Error::NoSchema)?;
-
         let loaded = match &*workflow_integration_res.value().read() {
             Some(Ok(signal)) => Some(*signal),
             _ => None,
@@ -425,6 +421,33 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
         let Some(mut workflow_integration) = loaded else {
             return Err(Error::ConfigNotLoaded);
         };
+
+        let engine = workflow_integration
+            .read()
+            .inner()
+            .configuration()
+            .engine()
+            .clone();
+        let imported = match engine {
+            Engine::Nextflow => schemas
+                .nextflow_schema
+                .as_ref()
+                .map(parameters_from_nextflow_schema)
+                .ok_or(Error::NoSchema("nextflow_schema.json"))?,
+            Engine::Snakemake => {
+                if schemas.snakemake_schemas.is_empty() {
+                    return Err(Error::NoSchema("Snakemake schema (*.schema.yaml)"));
+                }
+                // All schema files in path order, the first definition of a name wins
+                let mut merged = Imported::default();
+                for file in &schemas.snakemake_schemas {
+                    merged.merge(parameters_from_snakemake_schema(&file.content), &file.path);
+                }
+                merged
+            }
+            _ => return Err(Error::NoSchema("schema import for this engine")),
+        };
+
         let mut added = 0;
         for parameter in imported.parameters {
             let exists = !parameter.name().is_empty()
@@ -995,7 +1018,24 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     "These parameters can be changed by the user when selecting the workflow for execution"
                 }
 
-                if matches!(workflow_integration.read().inner().configuration().engine(), Engine::Nextflow)
+                if matches!(workflow_integration.read().inner().configuration().engine(), Engine::Snakemake) {
+                    div {
+                        class: "form-text mb-3",
+                        "Snakemake: a parameter name is the path of a key in the workflow configuration. A dot separates levels, so "
+                        code { "ref.species" }
+                        " is passed as "
+                        code { "--config \"ref={{'species': ...}}\"" }
+                        ". Write "
+                        code { "\\." }
+                        " for a dot that is part of a key (e.g. "
+                        code { "ref.v1\\.2" }
+                        ") and "
+                        code { "\\\\" }
+                        " for a backslash. A name must not be both a value and a parent of other names."
+                    }
+                }
+
+                if matches!(workflow_integration.read().inner().configuration().engine(), Engine::Nextflow | Engine::Snakemake)
                     && workflow_integration.read().inner().my_role.is_some_and(|role| role >= Role::Editor)
                 {
                     div {
@@ -1004,7 +1044,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                             id: "import-schema-btn",
                             r#type: "button",
                             class: "btn btn-sm btn-outline-secondary",
-                            title: "Add the parameters of the saved workflow's nextflow_schema.json",
+                            title: "Add the parameters of the saved workflow's schema (nextflow_schema.json or Snakemake *.schema.yaml)",
                             onclick: move |_| { import_action.call(); },
                             i { class: "fa-solid fa-file-import me-1" }
                             "Import from schema"
@@ -1062,6 +1102,23 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                 }
                 p {
                     "These parameters are always passed to the workflow and cannot be changed by the user"
+                }
+
+                if matches!(workflow_integration.read().inner().configuration().engine(), Engine::Snakemake) {
+                    div {
+                        class: "form-text mb-3",
+                        "Snakemake: a parameter name is the path of a key in the workflow configuration. A dot separates levels, so "
+                        code { "ref.species" }
+                        " is passed as "
+                        code { "--config \"ref={{'species': ...}}\"" }
+                        ". Write "
+                        code { "\\." }
+                        " for a dot that is part of a key (e.g. "
+                        code { "ref.v1\\.2" }
+                        ") and "
+                        code { "\\\\" }
+                        " for a backslash. A name must not be both a value and a parent of other names."
+                    }
                 }
                 ParameterList<FixedParameter, S> {
                     on_move: move |request| {

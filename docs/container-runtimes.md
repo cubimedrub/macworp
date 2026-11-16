@@ -61,12 +61,26 @@ Spike 2026-11-16 on macOS (Apple silicon, Docker Desktop 29, Podman 6.1 machine)
 
 Consequences and open points:
 
-- **Docker only.** Podman fails mounting `/proc` even unmasked (rootless, in the machine VM). Not retried on Linux hosts with native rootless podman; verify there before lifting the limit.
-- On **Linux hosts with AppArmor** (Ubuntu 24.04 restricts unprivileged user namespaces) an additional `--security-opt apparmor=unconfined` is probably needed. Not verified, Docker Desktop has no AppArmor. Check in the CI matrix (P7).
+- **Docker: macOS yes, Ubuntu Linux no (as configured).** See "Linux host spike" below. **Podman: Linux yes, macOS machine no.** `RuntimeKind::supports_engine` therefore treats Podman as Snakemake-capable on Linux hosts only (`cfg!(target_os = "linux")`), Docker everywhere. The worker picks the first runtime supporting the engine (podman first), so on a Linux host with both installed Snakemake runs on podman.
 - The rule's image needs `bash` (Snakemake runs shell rules with `bash -c`), `alpine` does not work.
-- A weaker sandbox than other engines (seccomp and `/proc` masking off for the engine container only). Revisit in P6 with `--cap-add` combinations and a custom seccomp profile.
+- A weaker sandbox than other engines (seccomp and `/proc` masking off for the engine container only). Revisit in P6 with a custom seccomp profile (on Podman both `seccomp=unconfined` and `unmask=ALL` were each required, see below).
 - Images from a registry are pulled by Apptainer, not by the runtime: they do not appear in `docker images`, and the P6 image GC does not see them. They are cached under `<project>/.snakemake/singularity`.
 - Apptainer: the GitHub release `.deb` is amd64 only; the image uses `ppa:apptainer/ppa` which also serves arm64 (Apple silicon).
+
+### Linux host spike (2026-11-16)
+
+Ubuntu, kernel `apparmor_restrict_unprivileged_userns=1`, Docker 29.9.3, rootless Podman 5.7.0, Apptainer 1.4.5, same `macworp-snakemake` image. Test: a rule with `container: docker://debian:stable-slim`, run with the executor's arguments.
+
+| Runtime and options | Result |
+| --- | --- |
+| Docker, `seccomp=unconfined` + `systempaths=unconfined`, `--user` | `Failed to set mount propagation: Permission denied` (default `docker-default` AppArmor profile) |
+| the same + `apparmor=unconfined` | `unshare: write failed /proc/self/uid_map: Operation not permitted` (the host restriction hits unconfined processes) |
+| the same + `--cap-add SYS_ADMIN` | no change (the user is not root) |
+| Podman, `seccomp=unconfined` + `unmask=ALL`, root in the user namespace | image pulled, `unsquashfs`: `failed to change uid and gids on .../etc/shadow` |
+| **Podman, `--userns=keep-id --user <uid>:<gid>`, `seccomp=unconfined` + `unmask=ALL`** | **works** (rule output written, owned by the user) |
+| the same without `seccomp=unconfined`, or without `unmask=ALL` | fails |
+
+Docker on such a host needs the AppArmor profile `docker/apparmor-macworp-snakemake` (docker-default plus `userns`, `mount`, `remount`, `pivot_root`; load with `sudo apparmor_parser -r -W docker/apparmor-macworp-snakemake`) or `kernel.apparmor_restrict_unprivileged_userns=0`. The worker applies the profile when `MACWORP_SNAKEMAKE_APPARMOR_PROFILE=macworp-snakemake` is set (Docker only); it cannot detect it, loaded profiles are not readable without root and Docker refuses a container whose profile is not loaded. **E2E (same host, 2026-11-16):** `runs_snakemake_workflow_with_all_parameter_types` passes on rootless Podman, and on Docker with `MACWORP_SNAKEMAKE_APPARMOR_PROFILE=macworp-snakemake` (all four e2e tests pass); without the variable Docker fails with `Failed to set mount propagation`. The Podman Nextflow e2e was skipped (no `macworp-nextflow` image in podman: its build cannot resolve the short name `eclipse-temurin` without a configured registry). Not verified: rootful Podman; other distributions.
 
 ## Snakemake: progress reporting
 

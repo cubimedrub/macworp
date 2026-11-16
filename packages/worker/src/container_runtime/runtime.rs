@@ -40,13 +40,16 @@ impl RuntimeKind {
     /// Whether workflows of `engine` can run on this runtime.
     ///
     /// Nextflow, Snakemake and CWL run inside an engine container that starts sibling
-    /// containers through the runtime socket. Snakemake is Docker-only: its engine container
-    /// needs the Docker socket. `wslc` offers no sibling-container access, so it only runs plain
-    /// `Container` workflows. Revisit the Snakemake limit after the Snakemake spike.
+    /// containers through the runtime socket. Snakemake runs its tool containers with Apptainer
+    /// inside the engine container, which needs user namespaces and `/proc` mounts: verified on
+    /// Docker (macOS) and on rootless Podman on Linux, but Podman on a macOS machine VM fails
+    /// mounting `/proc`, so Podman only counts as Snakemake-capable on Linux hosts (see
+    /// `docs/container-runtimes.md`). `wslc` offers no sibling-container access, so it only runs
+    /// plain `Container` workflows.
     pub fn supports_engine(self, engine: &Engine) -> bool {
         match self {
             Self::Docker => true,
-            Self::Podman => !matches!(engine, Engine::Snakemake),
+            Self::Podman => !matches!(engine, Engine::Snakemake) || cfg!(target_os = "linux"),
             #[cfg(windows)]
             Self::Wslc => matches!(engine, Engine::Container),
         }
@@ -414,13 +417,13 @@ mod tests {
     }
 
     #[test]
-    fn snakemake_runs_on_docker_only() {
+    fn snakemake_runs_on_docker_and_on_podman_for_linux_hosts() {
         use strum::IntoEnumIterator;
         for engine in Engine::iter() {
             assert!(RuntimeKind::Docker.supports_engine(&engine));
             assert_eq!(
                 RuntimeKind::Podman.supports_engine(&engine),
-                engine != Engine::Snakemake
+                engine != Engine::Snakemake || cfg!(target_os = "linux")
             );
         }
     }

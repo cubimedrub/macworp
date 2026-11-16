@@ -77,7 +77,11 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
             Engine::Nextflow => Arc::new(
                 NextflowExecutor::new(&binary, nextflow::image()).with_engine_access(engine_access),
             ),
-            Engine::Snakemake => Arc::new(SnakemakeExecutor::new(&binary, snakemake::image())),
+            Engine::Snakemake => Arc::new(
+                SnakemakeExecutor::new(&binary, snakemake::image())
+                    .with_runtime_kind(runtime.kind())
+                    .with_apparmor_profile(snakemake::apparmor_profile()),
+            ),
             _ => Arc::new(ContainerExecutor::new(&binary)),
         };
         executors.push(Arc::new(OnRuntime {
@@ -133,29 +137,39 @@ mod tests {
             .collect()
     }
 
-    /// With podman and docker, Snakemake goes to docker and the rest stays on podman.
+    /// With podman and docker every engine takes the first runtime supporting it: Snakemake goes
+    /// to docker unless podman supports it too (Linux hosts), the rest stays on podman.
     #[tokio::test]
     async fn engines_use_the_first_runtime_that_supports_them() {
+        let snakemake_runtime = if cfg!(target_os = "linux") {
+            RuntimeKind::Podman
+        } else {
+            RuntimeKind::Docker
+        };
         assert_eq!(
             assignment(&[RuntimeKind::Podman, RuntimeKind::Docker]).await,
             vec![
                 (Engine::Nextflow, Some(RuntimeKind::Podman)),
-                (Engine::Snakemake, Some(RuntimeKind::Docker)),
+                (Engine::Snakemake, Some(snakemake_runtime)),
                 (Engine::Container, Some(RuntimeKind::Podman)),
             ]
         );
     }
 
-    /// Podman alone has no Snakemake, docker alone runs everything.
+    /// Podman alone has no Snakemake except on Linux hosts, docker alone runs everything.
     #[tokio::test]
     async fn single_runtimes() {
         let podman = assignment(&[RuntimeKind::Podman]).await;
-        assert_eq!(podman.len(), 2);
-        assert!(
-            podman
-                .iter()
-                .all(|(engine, _)| *engine != Engine::Snakemake)
-        );
+        if cfg!(target_os = "linux") {
+            assert_eq!(podman.len(), 3);
+        } else {
+            assert_eq!(podman.len(), 2);
+            assert!(
+                podman
+                    .iter()
+                    .all(|(engine, _)| *engine != Engine::Snakemake)
+            );
+        }
         let docker = assignment(&[RuntimeKind::Docker]).await;
         assert_eq!(docker.len(), 3);
         assert!(

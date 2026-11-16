@@ -8,7 +8,7 @@ use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
     run_spec,
 };
-use crate::container_runtime::BoxFuture;
+use crate::container_runtime::{BoxFuture, RuntimeKind};
 
 /// Engine image used unless configured otherwise, see the engine-in-container ADR.
 pub const DEFAULT_IMAGE: &str = "macworp-snakemake:latest";
@@ -26,6 +26,21 @@ pub fn image() -> String {
         .unwrap_or_else(|| DEFAULT_IMAGE.to_string())
 }
 
+/// Environment variable naming an AppArmor profile for the engine container (Docker on Linux),
+/// for example `macworp-snakemake` from `docker/apparmor-macworp-snakemake`. Hosts that restrict
+/// unprivileged user namespaces (Ubuntu 24.04+) need it, see `docs/container-runtimes.md`. Not
+/// detected automatically: the runtime refuses to start a container with a profile that is not
+/// loaded, and loaded profiles are not readable without root.
+pub const APPARMOR_PROFILE_VARIABLE: &str = "MACWORP_SNAKEMAKE_APPARMOR_PROFILE";
+
+/// The AppArmor profile to apply: the value of [`APPARMOR_PROFILE_VARIABLE`] if set and not empty.
+pub fn apparmor_profile() -> Option<String> {
+    std::env::var(APPARMOR_PROFILE_VARIABLE)
+        .ok()
+        .map(|profile| profile.trim().to_string())
+        .filter(|profile| !profile.is_empty())
+}
+
 /// Engine parameters that already say how many cores to use
 const CORE_PARAMETERS: &[&str] = &["cores", "c", "jobs", "j"];
 
@@ -39,14 +54,27 @@ const DEPLOYMENT_PARAMETERS: &[&str] = &[
     "use-envmodules",
 ];
 
-/// `run` options Apptainer needs inside the engine container, see `docs/container-runtimes.md`:
-/// it creates user namespaces and mounts `/proc` in them, which the default seccomp profile and
-/// the masked `/proc` paths of the runtime forbid. No extra capability, no device and no socket.
-const APPTAINER_RUN_ARGS: [&str; 4] = [
+/// `run` options Apptainer needs inside the engine container on Docker, see
+/// `docs/container-runtimes.md`: it creates user namespaces and mounts `/proc` in them, which the
+/// default seccomp profile and the masked `/proc` paths of the runtime forbid. No extra
+/// capability, no device and no socket.
+const DOCKER_APPTAINER_RUN_ARGS: [&str; 4] = [
     "--security-opt",
     "seccomp=unconfined",
     "--security-opt",
     "systempaths=unconfined",
+];
+
+/// The same for rootless Podman: `unmask=ALL` is its spelling of `systempaths=unconfined`, and
+/// `--userns=keep-id` maps the host user to itself. Without it the engine would run as a mapped
+/// subordinate id (or as root in the user namespace, where `unsquashfs` fails changing owners of
+/// the unpacked image), and Apptainer rejects both.
+const PODMAN_APPTAINER_RUN_ARGS: [&str; 5] = [
+    "--userns=keep-id",
+    "--security-opt",
+    "seccomp=unconfined",
+    "--security-opt",
+    "unmask=ALL",
 ];
 
 /// Runs Snakemake inside an engine image through the container runtime.
@@ -54,6 +82,10 @@ const APPTAINER_RUN_ARGS: [&str; 4] = [
 pub struct SnakemakeExecutor {
     runtime_binary: PathBuf,
     image: String,
+    /// The runtime behind `runtime_binary`, decides the `run` options
+    runtime_kind: RuntimeKind,
+    /// AppArmor profile passed to Docker, see [`APPARMOR_PROFILE_VARIABLE`]
+    apparmor_profile: Option<String>,
 }
 
 impl SnakemakeExecutor {
@@ -61,7 +93,28 @@ impl SnakemakeExecutor {
         Self {
             runtime_binary: runtime_binary.into(),
             image: image.into(),
+            runtime_kind: RuntimeKind::Docker,
+            apparmor_profile: None,
         }
+    }
+
+    /// Runs the engine container under an AppArmor profile (Docker only, Podman ignores it).
+    ///
+    /// # Arguments
+    /// * `profile` - name of a loaded profile, `None` keeps the runtime's default
+    pub fn with_apparmor_profile(mut self, profile: Option<String>) -> Self {
+        self.apparmor_profile = profile;
+        self
+    }
+
+    /// Tells the executor which runtime its binary belongs to (default Docker), because the
+    /// options Apptainer needs differ.
+    ///
+    /// # Arguments
+    /// * `kind` - the runtime kind of the binary given to [`Self::new`]
+    pub fn with_runtime_kind(mut self, kind: RuntimeKind) -> Self {
+        self.runtime_kind = kind;
+        self
     }
 
     /// The `<runtime> run ...` command for the job, see [`containerized_spec`].
@@ -182,14 +235,21 @@ impl SnakemakeExecutor {
     }
 
     /// Extra `run` arguments of the engine container: what Apptainer needs
-    /// ([`APPTAINER_RUN_ARGS`]), a writable home for its image cache and, where known, the user
+    /// ([`DOCKER_APPTAINER_RUN_ARGS`] / [`PODMAN_APPTAINER_RUN_ARGS`] by runtime), a writable home
+    /// for its image cache and, where known, the user
     /// that owns the project directory. Apptainer cannot unpack images as root, so the engine
     /// runs as that user, which also keeps the files it writes owned by them.
     ///
     /// # Arguments
     /// * `job` - the job whose project directory decides the user
     fn run_args(&self, job: &Job) -> Vec<String> {
-        let mut args: Vec<String> = APPTAINER_RUN_ARGS.map(String::from).into();
+        let mut args: Vec<String> = match self.runtime_kind {
+            RuntimeKind::Podman => PODMAN_APPTAINER_RUN_ARGS.map(String::from).into(),
+            _ => DOCKER_APPTAINER_RUN_ARGS.map(String::from).into(),
+        };
+        if let (RuntimeKind::Docker, Some(profile)) = (self.runtime_kind, &self.apparmor_profile) {
+            args.extend(["--security-opt".into(), format!("apparmor={profile}")]);
+        }
         args.extend(["-e".into(), "HOME=/tmp".into()]);
         if let Some(user) = owner_of(&job.project_dir) {
             args.extend(["--user".into(), user]);
@@ -269,6 +329,40 @@ mod tests {
 
     fn executor() -> SnakemakeExecutor {
         SnakemakeExecutor::new("podman", "img:1")
+    }
+
+    /// Podman gets its own spelling of the options Apptainer needs, Docker keeps the old ones.
+    #[test]
+    fn podman_uses_keep_id_and_unmask() {
+        let job = job(local(), vec![]);
+        let podman = executor()
+            .with_runtime_kind(RuntimeKind::Podman)
+            .launch_spec(&job)
+            .unwrap()
+            .args;
+        assert!(podman.contains(&"--userns=keep-id".to_string()));
+        assert!(podman.contains(&"unmask=ALL".to_string()));
+        assert!(!podman.contains(&"systempaths=unconfined".to_string()));
+        let docker = executor().launch_spec(&job).unwrap().args;
+        assert!(docker.contains(&"systempaths=unconfined".to_string()));
+        assert!(!docker.contains(&"--userns=keep-id".to_string()));
+    }
+
+    /// The AppArmor profile is passed to Docker only, and only when configured.
+    #[test]
+    fn apparmor_profile_is_a_docker_option() {
+        let job = job(local(), vec![]);
+        let profiled = || executor().with_apparmor_profile(Some("macworp-snakemake".into()));
+        let docker = profiled().launch_spec(&job).unwrap().args;
+        assert!(docker.contains(&"apparmor=macworp-snakemake".to_string()));
+        let podman = profiled()
+            .with_runtime_kind(RuntimeKind::Podman)
+            .launch_spec(&job)
+            .unwrap()
+            .args;
+        assert!(!podman.iter().any(|a| a.starts_with("apparmor=")));
+        let plain = executor().launch_spec(&job).unwrap().args;
+        assert!(!plain.iter().any(|a| a.starts_with("apparmor=")));
     }
 
     #[test]

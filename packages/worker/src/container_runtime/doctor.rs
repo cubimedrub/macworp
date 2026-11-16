@@ -441,7 +441,12 @@ mod tests {
         );
         assert_eq!(
             report.runtime_for(&Engine::Snakemake).unwrap().info.kind,
-            RuntimeKind::Docker
+            // the first runtime supporting the engine wins, Podman does on Linux hosts
+            if cfg!(target_os = "linux") {
+                RuntimeKind::Podman
+            } else {
+                RuntimeKind::Docker
+            }
         );
         assert!(report.checks.iter().all(|c| c.name != "engines"));
         assert_eq!(report.into_runtimes().unwrap().len(), 2);
@@ -508,10 +513,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn podman_cannot_run_snakemake_docker_can() {
+    async fn podman_runs_snakemake_on_linux_hosts_only_docker_everywhere() {
         let podman = doctor_with(vec![Mock::ok(RuntimeKind::Podman, "5.2.1", true)]).await;
-        assert_eq!(podman.unavailable_engines(), vec![Engine::Snakemake]);
-        assert!(podman.to_string().contains("cannot run Snakemake"));
+        if cfg!(target_os = "linux") {
+            assert!(podman.unavailable_engines().is_empty());
+        } else {
+            assert_eq!(podman.unavailable_engines(), vec![Engine::Snakemake]);
+            assert!(podman.to_string().contains("cannot run Snakemake"));
+        }
 
         let docker = doctor_with(vec![Mock::ok(RuntimeKind::Docker, "27.0.1", true)]).await;
         assert!(docker.unavailable_engines().is_empty());

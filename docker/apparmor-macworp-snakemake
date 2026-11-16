@@ -1,0 +1,55 @@
+# AppArmor profile for the Snakemake engine container on Linux hosts that restrict unprivileged
+# user namespaces (Ubuntu 24.04+: kernel.apparmor_restrict_unprivileged_userns=1).
+#
+# Why: Apptainer inside the engine container creates a user namespace and mounts in it. Docker's
+# default profile (`docker-default`) denies mounts, and `apparmor=unconfined` is refused the
+# user namespace by the host restriction. A profile that allows `userns` and mounts fixes both.
+# It is `docker-default` with those two rules added; everything else stays as Docker ships it.
+# Capabilities, seccomp and the `--user` the executor sets still apply from the runtime.
+#
+# Load (once per host, and after every edit):
+#   sudo apparmor_parser -r -W docker/apparmor-macworp-snakemake
+# Use:
+#   docker run --security-opt apparmor=macworp-snakemake ...
+# Remove:
+#   sudo apparmor_parser -R docker/apparmor-macworp-snakemake
+
+abi <abi/4.0>,
+
+#include <tunables/global>
+
+profile macworp-snakemake flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network,
+  capability,
+  file,
+  umount,
+
+  # Added to docker-default: what Apptainer needs
+  userns,
+  mount,
+  remount,
+  pivot_root,
+
+  # Containers may signal each other, the runtime may signal them
+  signal (receive) peer=unconfined,
+  signal (send,receive) peer=macworp-snakemake,
+
+  deny @{PROC}/* w,   # deny write for all files directly in /proc (not in a subdir)
+  deny @{PROC}/sys/[^k]** w,
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+
+  ptrace (trace,read,tracedby,readby) peer=macworp-snakemake,
+}

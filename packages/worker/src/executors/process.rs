@@ -62,6 +62,9 @@ pub struct LaunchSpec {
     /// Name of the container started by the process. On cancel the container is stopped through
     /// the runtime, killing only the client process would leave it running.
     pub container_name: Option<String>,
+    /// Directory created for this run only (files the engine container reads). [`super::run_spec`]
+    /// removes it when the run ended, whatever the outcome.
+    pub scratch_directory: Option<PathBuf>,
 }
 
 /// Starts the process, forwards its output line by line and stops it when `cancel` turns `true`.
@@ -166,6 +169,7 @@ mod tests {
             program: "sh".into(),
             args: vec!["-c".into(), script.into()],
             container_name: None,
+            scratch_directory: None,
         }
     }
 
@@ -231,6 +235,7 @@ mod tests {
             program: "/nonexistent/macworp-test".into(),
             args: vec![],
             container_name: None,
+            scratch_directory: None,
         };
         let (outcome, _) = run(spec, cancel).await;
         assert!(matches!(

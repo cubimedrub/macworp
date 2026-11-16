@@ -359,115 +359,87 @@ pub fn split_path(name: &str) -> Option<Vec<String>> {
     keys.iter().all(|key| !key.is_empty()).then_some(keys)
 }
 
-/// A node of the Snakemake `--config` tree: a value or a nested dictionary.
-#[derive(Debug)]
-enum ConfigNode {
-    /// A value: plain command line text (used at the top level) and its Python literal (used
-    /// inside a dictionary)
-    Leaf { plain: String, literal: String },
-    /// Nested dictionary in insertion order
-    Branch(Vec<(String, ConfigNode)>),
-}
-
-impl ConfigNode {
-    /// The node as a Python literal: a value, or a dictionary `{'key': value, ...}`.
-    fn literal(&self) -> String {
-        match self {
-            Self::Leaf { literal, .. } => literal.clone(),
-            Self::Branch(children) => {
-                let items: Vec<String> = children
-                    .iter()
-                    .map(|(key, node)| format!("{}: {}", python_string(key), node.literal()))
-                    .collect();
-                format!("{{{}}}", items.join(", "))
-            }
-        }
-    }
-}
-
-/// Values of the parameters of a Snakemake workflow as `--config` entries. Names with dots
-/// (`ref.species`) are nested: Snakemake takes a nested value as a Python dictionary
-/// (`--config "ref={'species': 'human'}"`), so every top level name becomes one entry.
-#[derive(Debug, Default)]
-struct ConfigEntries(Vec<(String, ConfigNode)>);
-
-impl ConfigEntries {
-    /// Adds the value of a parameter at the place its dotted name says.
-    ///
-    /// # Arguments
-    /// * `parameter` - The parameter, its name is the path
-    /// * `plain` - Its rendered value, see [`value_string`]
-    ///
-    /// Fails with [`Error::InvalidName`] for a malformed path (empty key, bad escape, see [`split_path`]) or a name that is
-    /// both a value and a dictionary (`a` and `a.b`).
-    fn insert(&mut self, parameter: &Parameter, plain: String) -> Result<(), Error> {
-        let name = parameter.name();
-        let segments = split_path(name).ok_or_else(|| Error::InvalidName(name.to_string()))?;
-        let literal = python_literal(parameter, &plain);
-        let mut level = &mut self.0;
-        for (index, segment) in segments.iter().enumerate() {
-            let last = index + 1 == segments.len();
-            let position = level.iter().position(|(key, _)| key == segment);
-            if last {
-                if position.is_some() {
-                    return Err(Error::InvalidName(name.to_string()));
-                }
-                level.push((segment.clone(), ConfigNode::Leaf { plain, literal }));
-                return Ok(());
-            }
-            let position = position.unwrap_or_else(|| {
-                level.push((segment.clone(), ConfigNode::Branch(Vec::new())));
-                level.len() - 1
-            });
-            match &mut level[position].1 {
-                ConfigNode::Branch(children) => level = children,
-                ConfigNode::Leaf { .. } => return Err(Error::InvalidName(name.to_string())),
-            }
-        }
-        unreachable!("a name has at least one segment")
-    }
-
-    /// The `--config` arguments: `name=value` for top level values, `name={...}` for dictionaries.
-    fn render(&self) -> Vec<String> {
-        self.0
-            .iter()
-            .map(|(key, node)| match node {
-                ConfigNode::Leaf { plain, .. } => format!("{key}={plain}"),
-                branch => format!("{key}={}", branch.literal()),
-            })
-            .collect()
-    }
-}
-
-/// `text` as a single quoted Python string literal.
-fn python_string(text: &str) -> String {
-    let mut literal = String::from("'");
-    for c in text.chars() {
-        match c {
-            '\\' => literal.push_str("\\\\"),
-            '\'' => literal.push_str("\\'"),
-            '\n' => literal.push_str("\\n"),
-            '\r' => literal.push_str("\\r"),
-            other => literal.push(other),
-        }
-    }
-    literal.push('\'');
-    literal
-}
-
-/// The rendered value of a parameter as a Python literal for use inside a dictionary: numbers
-/// bare, a true/false choice as `True`/`False`, everything else as a quoted string.
+/// The rendered value of a parameter as a JSON value for a Snakemake configuration file:
+/// numbers as numbers, a true/false choice as a boolean, everything else as a string.
 ///
 /// # Arguments
 /// * `parameter` - The parameter, decides how the value is read
 /// * `plain` - Its rendered value, see [`value_string`]
-fn python_literal(parameter: &Parameter, plain: &str) -> String {
+fn configuration_value(parameter: &Parameter, plain: String) -> Value {
+    let number = || serde_json::from_str::<serde_json::Number>(&plain).ok();
     match parameter {
-        Parameter::Integer(_) | Parameter::Float(_) => plain.to_string(),
-        Parameter::ValueSelect(_) if plain == "true" => "True".to_string(),
-        Parameter::ValueSelect(_) if plain == "false" => "False".to_string(),
-        _ => python_string(plain),
+        Parameter::Integer(_) | Parameter::Float(_) => {
+            number().map_or(Value::String(plain), Value::Number)
+        }
+        Parameter::ValueSelect(_) if plain == "true" => Value::Bool(true),
+        Parameter::ValueSelect(_) if plain == "false" => Value::Bool(false),
+        _ => Value::String(plain),
     }
+}
+
+/// Puts `value` into the nested object `root` at the place the keys say, creating the objects
+/// on the way. Fails with [`Error::InvalidName`] (`name`) if a key on the way holds a value or
+/// the last key is taken already.
+///
+/// # Arguments
+/// * `root` - The object to add to
+/// * `keys` - Path of keys, at least one
+/// * `value` - The value for the last key
+/// * `name` - The parameter name, for the error
+fn insert_nested(
+    root: &mut serde_json::Map<String, Value>,
+    keys: &[String],
+    value: Value,
+    name: &str,
+) -> Result<(), Error> {
+    let invalid = || Error::InvalidName(name.to_string());
+    let (last, parents) = keys.split_last().ok_or_else(invalid)?;
+    let mut level = root;
+    for key in parents {
+        level = level
+            .entry(key.clone())
+            .or_insert_with(|| Value::Object(Default::default()))
+            .as_object_mut()
+            .ok_or_else(invalid)?;
+    }
+    if level.contains_key(last) {
+        return Err(invalid());
+    }
+    level.insert(last.clone(), value);
+    Ok(())
+}
+
+/// The workflow parameters of a Snakemake workflow as the content of its configuration file
+/// (`--configfile`, JSON is valid YAML). Passing them as `--config name=value` would make
+/// Snakemake parse every value again. Names with dots (`ref.species`) are nested objects,
+/// `\.` is a literal dot (see [`split_path`]). Numbers and true/false choices keep their type,
+/// all other values are strings. Parameters without a value are skipped.
+///
+/// `None` if no parameter has a value. Fails with [`Error::InvalidName`] for a malformed name
+/// or one that is both a value and an object (`a` and `a.b`).
+///
+/// # Arguments
+/// * `config` - The workflow configuration with the parameter values applied
+/// * `reference_directory` - Absolute directory of the global reference data, see [`value_string`]
+pub fn render_snakemake_configuration(
+    config: &WorkflowConfiguration,
+    reference_directory: Option<&Path>,
+) -> Result<Option<Value>, Error> {
+    let mut root = serde_json::Map::new();
+    for p in config
+        .fixed_parameters()
+        .iter()
+        .chain(config.dynamic_parameters())
+        .filter(|p| !matches!(p, Parameter::Group(_)))
+    {
+        validate_name(p.name())?;
+        if let Some(plain) = value_string(p, reference_directory)? {
+            let keys =
+                split_path(p.name()).ok_or_else(|| Error::InvalidName(p.name().to_string()))?;
+            insert_nested(&mut root, &keys, configuration_value(p, plain), p.name())?;
+        }
+    }
+    Ok((!root.is_empty()).then_some(Value::Object(root)))
 }
 
 /// Flag for a Container parameter: single character names are short options (`-v`), longer
@@ -484,7 +456,8 @@ fn container_flag(name: &str) -> String {
 /// shell string: pass them to the process directly, no quoting needed).
 ///
 /// * Nextflow: engine parameters `-name value`, workflow parameters `--name value`
-/// * Snakemake: engine parameters `--name value`, workflow parameters `--config name=value ...`
+/// * Snakemake: engine parameters `--name value`, workflow parameters are not arguments, see
+///   [`render_snakemake_configuration`]
 ///
 /// * Container: no engine parameters, workflow parameters `-n value` (single character name) or
 ///   `--name value`, passed to the image
@@ -521,33 +494,17 @@ pub fn render_args(
         }
     }
 
-    let params = config
-        .fixed_parameters()
-        .iter()
-        .chain(config.dynamic_parameters())
-        .filter(|p| !matches!(p, Parameter::Group(_)));
-    match config.engine() {
-        Engine::Nextflow => {
-            for p in params {
-                validate_name(p.name())?;
-                if let Some(v) = value_string(p, reference_directory)? {
-                    args.push(format!("--{}", p.name()));
-                    args.push(v);
-                }
-            }
-        }
-        _ => {
-            let mut entries = ConfigEntries::default();
-            for p in params {
-                validate_name(p.name())?;
-                if let Some(v) = value_string(p, reference_directory)? {
-                    entries.insert(p, v)?;
-                }
-            }
-            let pairs = entries.render();
-            if !pairs.is_empty() {
-                args.push("--config".to_string());
-                args.extend(pairs);
+    if *config.engine() == Engine::Nextflow {
+        let params = config
+            .fixed_parameters()
+            .iter()
+            .chain(config.dynamic_parameters())
+            .filter(|p| !matches!(p, Parameter::Group(_)));
+        for p in params {
+            validate_name(p.name())?;
+            if let Some(v) = value_string(p, reference_directory)? {
+                args.push(format!("--{}", p.name()));
+                args.push(v);
             }
         }
     }
@@ -651,15 +608,42 @@ mod tests {
     fn snakemake() {
         let mut c = config(Engine::Snakemake);
         apply_values(&mut c, &[pv("threads", json!(2)), pv("name", json!("x y"))]).unwrap();
+        assert!(render_args(&c, None).unwrap().is_empty());
         assert_eq!(
-            render_args(&c, None).unwrap(),
-            ["--config", "mode=fast", "threads=2", "name=x y"]
+            render_snakemake_configuration(&c, None).unwrap(),
+            Some(json!({"mode": "fast", "threads": 2, "name": "x y"}))
         );
     }
 
-    /// Dotted names are nested into one Python dictionary per top level name.
+    /// Values Snakemake would parse on the command line stay exactly as typed.
     #[test]
-    fn snakemake_nested_names_render_as_dictionaries() {
+    fn snakemake_values_are_not_reinterpreted() {
+        let mut c = config(Engine::Snakemake);
+        c.fixed_parameters_mut().clear();
+        c.dynamic_parameters_mut().clear();
+        for (name, value) in [
+            ("a", "line one\nline two"),
+            ("b", "a: b"),
+            ("c", "7"),
+            ("d", "say \"hi\""),
+            ("e", "[1,2]"),
+        ] {
+            let mut text = Text::new(name.into(), "".into(), "".into());
+            *text.value_mut() = Some(value.into());
+            c.dynamic_parameters_mut().push(Parameter::Text(text));
+        }
+        assert_eq!(
+            render_snakemake_configuration(&c, None).unwrap(),
+            Some(json!({
+                "a": "line one\nline two", "b": "a: b", "c": "7",
+                "d": "say \"hi\"", "e": "[1,2]"
+            }))
+        );
+    }
+
+    /// Dotted names are nested into one object per top level name.
+    #[test]
+    fn snakemake_nested_names_render_as_objects() {
         let mut c = config(Engine::Snakemake);
         c.fixed_parameters_mut().clear();
         let mut select = ValueSelect::new("trimming.activate".into(), "".into(), "".into());
@@ -687,14 +671,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            render_args(&c, None).unwrap(),
-            [
-                "--config",
-                "threads=2",
-                "ref={'species': 'it\\'s', 'release': 100}",
-                "trimming={'activate': False}",
-                "params={'star': {'index': 'a\\\\b'}}",
-            ]
+            render_snakemake_configuration(&c, None).unwrap(),
+            Some(json!({
+                "threads": 2,
+                "ref": {"species": "it's", "release": 100},
+                "trimming": {"activate": false},
+                "params": {"star": {"index": "a\\b"}},
+            }))
         );
     }
 
@@ -711,7 +694,10 @@ mod tests {
                 c.dynamic_parameters_mut().push(Parameter::Text(text));
             }
             assert!(
-                matches!(render_args(&c, None), Err(Error::InvalidName(_))),
+                matches!(
+                    render_snakemake_configuration(&c, None),
+                    Err(Error::InvalidName(_))
+                ),
                 "{names:?}"
             );
         }
@@ -746,8 +732,8 @@ mod tests {
             c.dynamic_parameters_mut().push(Parameter::Text(text));
         }
         assert_eq!(
-            render_args(&c, None).unwrap(),
-            ["--config", "ref={'v1.2': 'x', 'v1.3': 'x'}"]
+            render_snakemake_configuration(&c, None).unwrap(),
+            Some(json!({"ref": {"v1.2": "x", "v1.3": "x"}}))
         );
     }
 
@@ -756,6 +742,7 @@ mod tests {
         let mut c = config(Engine::Snakemake);
         c.fixed_parameters_mut().clear();
         assert!(render_args(&c, None).unwrap().is_empty());
+        assert_eq!(render_snakemake_configuration(&c, None).unwrap(), None);
     }
 
     #[test]

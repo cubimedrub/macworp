@@ -617,13 +617,10 @@ async fn run_scenario(engine: Engine) {
     }
     assert!(!log_text.is_empty(), "no log lines stored");
 
-    let mut expected = expected_params(&token);
-    if engine == Engine::Snakemake {
-        // `snakemake --config` folds a line break in a value into a space, see PLAN.md P5
-        // "Snakemake parameters through a config file"
-        expected = expected.replace("line one\n", "line one ");
-    }
-    assert_eq!(read(&project_dir, "results/params.txt"), expected);
+    assert_eq!(
+        read(&project_dir, "results/params.txt"),
+        expected_params(&token)
+    );
     assert_files(&project_dir, &token);
     assert_folders(&project_dir, &token);
 }

@@ -73,9 +73,9 @@ Consequences and open points:
 Snakemake 9 removed `--wms-monitor`. Progress comes from the
 [`snakemake-logger-plugin-panoptes`](https://github.com/panoptes-organization/snakemake-logger-plugin-panoptes) (installed in the engine image, pinned) via `--logger panoptes --logger-panoptes-address <worker log proxy>/snakemake`. The log proxy (`packages/worker/src/log_proxy`) mimics the Panoptes API the plugin talks to. Verified 2026-11-16: task counts arrive (`tasks_total`/`tasks_done`) in the end-to-end run.
 
-## Snakemake: parameter values through `--config`
+## Snakemake: parameter values through a configuration file
 
-Workflow parameters are passed with `--config name=value`. Snakemake parses the value itself, which corrupts some values (checked with 9.11): a line break becomes a space, `say "hi"` loses its closing quote, `a: b` and `{a: 1}` become dictionaries, `[1,2]` a list, `"7"` an integer; quoting does not help. The end-to-end test knows the line-break case. Fix planned: pass values through a config file (PLAN.md P5).
+Workflow parameters are written as JSON (valid YAML) to `config.json` in a scratch directory of the run (`<temp dir>/macworp-run-<id>-*`, readable by everyone, removed when the run ended) and passed with `--configfile`; the directory is mounted read-only like the workflow files. Dotted parameter names become nested objects, numbers and true/false choices keep their type, everything else is a string. `--config name=value` is not used because Snakemake parses each value again (checked with 9.11: a line break becomes a space, `say "hi"` loses its closing quote, `a: b` and `{a: 1}` become dictionaries, `[1,2]` a list, `"7"` an integer; quoting does not help). Verified 2026-11-16 on Docker Desktop (macOS): the end-to-end run keeps the line break. The scratch directory must be visible to the runtime; podman machine and WSL are unverified.
 
 ## End-to-end test coverage
 

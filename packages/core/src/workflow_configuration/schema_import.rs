@@ -358,7 +358,7 @@ mod tests {
     use crate::workflow_configuration::{
         WorkflowConfiguration,
         parameters::parameter::IsParameter,
-        render::{apply_values, render_args},
+        render::{apply_values, render_args, render_snakemake_configuration},
     };
     use serde_json::json;
 
@@ -641,7 +641,7 @@ required: [genome]
         }
     }
 
-    /// Imported Snakemake parameters render as `--config name=value`.
+    /// Imported Snakemake parameters render into the configuration file.
     #[test]
     fn snakemake_parameters_render() {
         let imported = parameters_from_snakemake_schema(SNAKEMAKE_SCHEMA);
@@ -655,9 +655,10 @@ required: [genome]
             }
         });
         apply_values(&mut config, &values).unwrap();
-        let args = render_args(&config, None).unwrap();
-        assert!(args.contains(&"--config".to_string()), "{args:?}");
-        assert!(args.contains(&"genome=GRCh37".to_string()), "{args:?}");
-        assert!(args.contains(&"threads=8".to_string()), "{args:?}");
+        let rendered = render_snakemake_configuration(&config, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(rendered["genome"], json!("GRCh37"));
+        assert_eq!(rendered["threads"], json!(8));
     }
 }

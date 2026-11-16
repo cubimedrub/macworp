@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 
-use macworp_core::workflow_configuration::{engine::Engine, render::render_args, source::Source};
+use macworp_core::workflow_configuration::{
+    engine::Engine,
+    render::{render_args, render_snakemake_configuration},
+    source::Source,
+};
 use tokio::sync::{mpsc, watch};
 
 use super::containerized_execution::path_arg;
@@ -50,15 +54,96 @@ impl SnakemakeExecutor {
         }
     }
 
+    /// Writes the workflow parameters of the job as JSON into a new directory of its own, `None`
+    /// if no parameter has a value. Snakemake reads it with `--configfile`, so it never parses
+    /// the values itself. The directory is readable by every user, the engine runs as the owner
+    /// of the project directory.
+    ///
+    /// # Arguments
+    /// * `job` - the job whose parameters are written
+    fn write_configuration(job: &Job) -> Result<Option<(PathBuf, PathBuf)>, ExecutorError> {
+        let Some(values) =
+            render_snakemake_configuration(&job.configuration, job.reference_dir.as_deref())?
+        else {
+            return Ok(None);
+        };
+        let io = |error| ExecutorError::Io("the Snakemake configuration", error);
+        let directory = tempfile::Builder::new()
+            .prefix(&format!("macworp-run-{}-", job.run_id))
+            .tempdir()
+            .map_err(io)?
+            .keep();
+        let file = directory.join("config.json");
+        let written = (|| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755))?;
+            }
+            std::fs::write(&file, values.to_string())?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644))?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = written {
+            let _ = std::fs::remove_dir_all(&directory);
+            return Err(io(error));
+        }
+        Ok(Some((directory, file)))
+    }
+
     /// The `<runtime> run ...` command for the job, see [`containerized_spec`].
     ///
     /// Snakemake works in the project directory (`--directory`). It insists on a core count, so
-    /// `--cores all` is added unless an engine parameter sets one.
+    /// `--cores all` is added unless an engine parameter sets one. The workflow parameters go
+    /// into a file in a scratch directory (mounted read-only, removed by [`run_spec`] after the
+    /// run), see [`Self::write_configuration`].
     pub fn launch_spec(&self, job: &Job) -> Result<LaunchSpec, ExecutorError> {
+        let config = &job.configuration;
+        // Checked first so a failing job leaves no scratch directory behind
+        match config.source() {
+            Source::Local(_) => {}
+            Source::Remote(_) => {
+                return Err(ExecutorError::UnsupportedSource(
+                    "remote (not cloned by the worker yet)".into(),
+                ));
+            }
+            Source::NfCore(_) => return Err(ExecutorError::UnsupportedSource("nf-core".into())),
+            Source::Image(_) => return Err(ExecutorError::UnsupportedSource("image".into())),
+        }
+        let configuration = Self::write_configuration(job)?;
+        match self.launch_spec_with(job, configuration.as_ref()) {
+            Ok(mut spec) => {
+                spec.scratch_directory = configuration.map(|(directory, _)| directory);
+                Ok(spec)
+            }
+            Err(error) => {
+                if let Some((directory, _)) = configuration {
+                    let _ = std::fs::remove_dir_all(directory);
+                }
+                Err(error)
+            }
+        }
+    }
+
+    /// [`Self::launch_spec`] once the parameter file is written.
+    ///
+    /// # Arguments
+    /// * `job` - the job to run
+    /// * `configuration` - scratch directory and parameter file, `None` without parameters
+    fn launch_spec_with(
+        &self,
+        job: &Job,
+        configuration: Option<&(PathBuf, PathBuf)>,
+    ) -> Result<LaunchSpec, ExecutorError> {
         let config = &job.configuration;
 
         let mut read_only: Vec<&std::path::Path> = Vec::new();
         read_only.extend(job.reference_dir.as_deref());
+        read_only.extend(configuration.map(|(directory, _)| directory.as_path()));
         let mut command: Vec<String> = vec![
             "snakemake".into(),
             "--directory".into(),
@@ -80,6 +165,9 @@ impl SnakemakeExecutor {
             }
             Source::NfCore(_) => return Err(ExecutorError::UnsupportedSource("nf-core".into())),
             Source::Image(_) => return Err(ExecutorError::UnsupportedSource("image".into())),
+        }
+        if let Some((_, file)) = configuration {
+            command.extend(["--configfile".into(), path_arg(file)]);
         }
         if !config
             .engine_parameters()
@@ -303,6 +391,76 @@ mod tests {
         let tail: Vec<_> = spec.args.iter().skip_while(|a| *a != "snakemake").collect();
         assert_eq!(tail.iter().filter(|a| a.as_str() == "--cores").count(), 1);
         assert!(spec.args.ends_with(&["--cores".into(), "4".into()]));
+    }
+
+    /// Applies one text parameter value to the job's configuration.
+    ///
+    /// # Arguments
+    /// * `job` - job to change
+    /// * `name` - name of the new dynamic parameter
+    /// * `value` - its value
+    fn add_text(job: &mut Job, name: &str, value: &str) {
+        use macworp_core::workflow_configuration::parameters::{
+            Parameter, parameter::IsParameterWithValue, text::Text,
+        };
+        let mut text = Text::new(name.into(), "".into(), "".into());
+        *text.value_mut() = Some(value.into());
+        job.configuration
+            .dynamic_parameters_mut()
+            .push(Parameter::Text(text));
+    }
+
+    /// Values go into a read-only mounted JSON file, exactly as typed, never onto the command line
+    #[test]
+    fn parameters_are_passed_through_a_file() {
+        let mut job = job(local(), vec![]);
+        add_text(&mut job, "a", "line one\nline two");
+        add_text(&mut job, "b", "7");
+        add_text(&mut job, "ref.species", "say \"hi\"");
+        let spec = executor().launch_spec(&job).unwrap();
+        let directory = spec.scratch_directory.clone().unwrap();
+        let position = spec.args.iter().position(|a| a == "--configfile").unwrap();
+        let file = std::path::PathBuf::from(&spec.args[position + 1]);
+        assert_eq!(file, directory.join("config.json"));
+        assert!(!spec.args.iter().any(|a| a == "--config"));
+        assert!(
+            spec.args
+                .contains(&format!("{0}:{0}:ro", directory.display()))
+        );
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(
+            written,
+            serde_json::json!({
+                "a": "line one\nline two", "b": "7", "ref": {"species": "say \"hi\""}
+            })
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// No parameter value, no file and no scratch directory
+    #[test]
+    fn no_values_write_no_file() {
+        let spec = executor().launch_spec(&job(local(), vec![])).unwrap();
+        assert_eq!(spec.scratch_directory, None);
+        assert!(!spec.args.iter().any(|a| a == "--configfile"));
+    }
+
+    /// The scratch directory is gone after the run
+    #[tokio::test]
+    async fn scratch_directory_is_removed_after_the_run() {
+        let mut job = job(local(), vec![]);
+        add_text(&mut job, "a", "x");
+        let mut spec = executor().launch_spec(&job).unwrap();
+        let directory = spec.scratch_directory.clone().unwrap();
+        assert!(directory.exists());
+        // Not a real container run: replace the runtime by a command that succeeds
+        spec.program = "true".into();
+        spec.container_name = None;
+        let (logs, _receiver) = mpsc::channel(8);
+        let (_cancel, cancelled) = watch::channel(false);
+        run_spec(Ok(spec), logs, cancelled).await;
+        assert!(!directory.exists());
     }
 
     #[test]

@@ -59,17 +59,27 @@ pub fn containerized_spec(
         program: PathBuf::from(runtime_binary),
         args,
         container_name: Some(container_name),
+        scratch_directory: None,
     }
 }
 
-/// Runs the spec, or reports why there is none as a failed run.
+/// Runs the spec, or reports why there is none as a failed run. The scratch directory of the
+/// spec is removed afterwards.
 pub async fn run_spec(
     spec: Result<LaunchSpec, ExecutorError>,
     logs: mpsc::Sender<LogLine>,
     cancel: watch::Receiver<bool>,
 ) -> Outcome {
     match spec {
-        Ok(spec) => run_process(&spec, logs, cancel).await,
+        Ok(spec) => {
+            let outcome = run_process(&spec, logs, cancel).await;
+            if let Some(directory) = &spec.scratch_directory
+                && let Err(error) = std::fs::remove_dir_all(directory)
+            {
+                tracing::warn!("Cannot remove {}: {error}", directory.display());
+            }
+            outcome
+        }
         Err(e) => Outcome::Failed {
             exit_code: None,
             error: Some(e.to_string()),

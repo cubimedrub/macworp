@@ -78,7 +78,9 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
                 NextflowExecutor::new(&binary, nextflow::DEFAULT_IMAGE)
                     .with_engine_access(engine_access),
             ),
-            Engine::Snakemake => Arc::new(SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE)),
+            Engine::Snakemake => {
+                Arc::new(SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE))
+            }
             _ => Arc::new(ContainerExecutor::new(&binary)),
         };
         executors.push(Arc::new(OnRuntime {

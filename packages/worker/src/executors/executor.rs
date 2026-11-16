@@ -11,6 +11,9 @@ pub enum Error {
     Render(#[from] RenderError),
     #[error("Workflow source is not supported by this executor: {0}")]
     UnsupportedSource(String),
+    /// A file the engine needs could not be written (for example the Snakemake configuration)
+    #[error("Cannot write {0}: {1}")]
+    Io(&'static str, std::io::Error),
 }
 
 /// Runs jobs of one workflow engine.

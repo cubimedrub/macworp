@@ -8,9 +8,9 @@ pub mod executors;
 pub mod http_job_source;
 /// Where a worker gets jobs from and reports to
 pub mod job_source;
-/// HTTP receiver for the monitoring events of the engines (weblog / wms-monitor)
+/// HTTP receiver for the monitoring events of the engines (weblog / Snakemake panoptes logger)
 pub mod log_proxy;
-/// Turns engine monitoring events (Nextflow weblog, Snakemake wms-monitor) into progress numbers
+/// Turns engine monitoring events (Nextflow weblog, Snakemake panoptes logger plugin) into progress numbers
 pub mod progress;
 /// Claims jobs and runs them with the executor of their engine
 pub mod worker;

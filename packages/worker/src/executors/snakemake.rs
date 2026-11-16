@@ -15,12 +15,31 @@ pub const DEFAULT_IMAGE: &str = "macworp-snakemake:latest";
 /// Engine parameters that already say how many cores to use
 const CORE_PARAMETERS: &[&str] = &["cores", "c", "jobs", "j"];
 
+/// Engine parameters that already choose how software is deployed, so no default is added
+const DEPLOYMENT_PARAMETERS: &[&str] = &[
+    "software-deployment-method",
+    "sdm",
+    "use-apptainer",
+    "use-singularity",
+    "use-conda",
+    "use-envmodules",
+];
+
+/// `run` options Apptainer needs inside the engine container, see `docs/container-runtimes.md`:
+/// it creates user namespaces and mounts `/proc` in them, which the default seccomp profile and
+/// the masked `/proc` paths of the runtime forbid. No extra capability, no device and no socket.
+const APPTAINER_RUN_ARGS: [&str; 4] = [
+    "--security-opt",
+    "seccomp=unconfined",
+    "--security-opt",
+    "systempaths=unconfined",
+];
+
 /// Runs Snakemake inside an engine image through the container runtime.
 #[derive(Debug, Clone)]
 pub struct SnakemakeExecutor {
     runtime_binary: PathBuf,
     image: String,
-    engine_access: Vec<String>,
 }
 
 impl SnakemakeExecutor {
@@ -28,15 +47,7 @@ impl SnakemakeExecutor {
         Self {
             runtime_binary: runtime_binary.into(),
             image: image.into(),
-            engine_access: Vec::new(),
         }
-    }
-
-    /// Extra `run` arguments so the engine can start sibling containers, see
-    /// [`crate::container_runtime::RuntimeInfo::engine_access_args`].
-    pub fn with_engine_access(mut self, args: Vec<String>) -> Self {
-        self.engine_access = args;
-        self
     }
 
     /// The `<runtime> run ...` command for the job, see [`containerized_spec`].
@@ -77,12 +88,28 @@ impl SnakemakeExecutor {
         {
             command.extend(["--cores".into(), "all".into()]);
         }
+        if !config
+            .engine_parameters()
+            .iter()
+            .any(|p| DEPLOYMENT_PARAMETERS.contains(&p.name()))
+        {
+            command.extend(["--software-deployment-method".into(), "apptainer".into()]);
+            // Apptainer binds the working directory, home and /tmp on its own, the rest of the
+            // read-only inputs (workflow files, reference data) it only sees when asked
+            if !read_only.is_empty() {
+                let binds: Vec<String> = read_only
+                    .iter()
+                    .map(|dir| format!("-B {0}:{0}:ro", path_arg(dir)))
+                    .collect();
+                command.extend(["--apptainer-args".into(), binds.join(" ")]);
+            }
+        }
         if let Some(progress) = &job.progress {
             command.extend([
-                "--wms-monitor".into(),
+                "--logger".into(),
+                "panoptes".into(),
+                "--logger-panoptes-address".into(),
                 format!("{}/snakemake", progress.base_url),
-                "--wms-monitor-arg".into(),
-                format!("project_id={}", job.run_id),
             ]);
         }
         command.extend(render_args(config, job.reference_dir.as_deref())?);
@@ -92,9 +119,43 @@ impl SnakemakeExecutor {
             &self.image,
             job,
             &read_only,
-            &self.engine_access,
+            &self.run_args(job),
             command,
         ))
+    }
+
+    /// Extra `run` arguments of the engine container: what Apptainer needs
+    /// ([`APPTAINER_RUN_ARGS`]), a writable home for its image cache and, where known, the user
+    /// that owns the project directory. Apptainer cannot unpack images as root, so the engine
+    /// runs as that user, which also keeps the files it writes owned by them.
+    ///
+    /// # Arguments
+    /// * `job` - the job whose project directory decides the user
+    fn run_args(&self, job: &Job) -> Vec<String> {
+        let mut args: Vec<String> = APPTAINER_RUN_ARGS.map(String::from).into();
+        args.extend(["-e".into(), "HOME=/tmp".into()]);
+        if let Some(user) = owner_of(&job.project_dir) {
+            args.extend(["--user".into(), user]);
+        }
+        args
+    }
+}
+
+/// `<uid>:<gid>` of the owner of `path`, `None` where unknown (missing path, not a Unix host).
+///
+/// # Arguments
+/// * `path` - file or directory to look at
+fn owner_of(path: &std::path::Path) -> Option<String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = std::fs::metadata(path).ok()?;
+        Some(format!("{}:{}", metadata.uid(), metadata.gid()))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        None
     }
 }
 
@@ -154,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn progress_endpoint_adds_wms_monitor() {
+    fn progress_endpoint_adds_panoptes_logger() {
         let mut job = job(local(), vec![]);
         job.progress = Some(ProgressEndpoint {
             base_url: "http://host.docker.internal:4000/tok".into(),
@@ -164,13 +225,13 @@ mod tests {
             ],
         });
         let args = executor().launch_spec(&job).unwrap().args;
-        let monitor = args.iter().position(|a| a == "--wms-monitor").unwrap();
+        let logger = args.iter().position(|a| a == "--logger").unwrap();
+        assert_eq!(args[logger + 1], "panoptes");
+        assert_eq!(args[logger + 2], "--logger-panoptes-address");
         assert_eq!(
-            args[monitor + 1],
+            args[logger + 3],
             "http://host.docker.internal:4000/tok/snakemake"
         );
-        assert_eq!(args[monitor + 2], "--wms-monitor-arg");
-        assert_eq!(args[monitor + 3], "project_id=3");
         assert!(args.contains(&"--add-host".to_string()));
     }
 
@@ -192,6 +253,12 @@ mod tests {
                 "/data/p1",
                 "-v",
                 "/w:/w:ro",
+                "--security-opt",
+                "seccomp=unconfined",
+                "--security-opt",
+                "systempaths=unconfined",
+                "-e",
+                "HOME=/tmp",
                 "img:1",
                 "snakemake",
                 "--directory",
@@ -199,9 +266,34 @@ mod tests {
                 "--snakefile",
                 "/w/Snakefile",
                 "--cores",
-                "all"
+                "all",
+                "--software-deployment-method",
+                "apptainer",
+                "--apptainer-args",
+                "-B /w:/w:ro"
             ]
         );
+    }
+
+    /// A deployment method chosen by the workflow author is not overridden
+    #[test]
+    fn engine_parameter_sets_deployment_method() {
+        let params = vec![EngineParameter::new("use-conda".into(), String::new())];
+        let args = executor().launch_spec(&job(local(), params)).unwrap().args;
+        assert!(!args.iter().any(|a| a == "--software-deployment-method"));
+        assert!(!args.iter().any(|a| a == "--apptainer-args"));
+    }
+
+    /// The engine runs as the owner of the project directory, Apptainer cannot unpack as root
+    #[cfg(unix)]
+    #[test]
+    fn engine_runs_as_project_owner() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut job = job(local(), vec![]);
+        job.project_dir = directory.path().to_path_buf();
+        let args = executor().launch_spec(&job).unwrap().args;
+        let user = args.iter().position(|a| a == "--user").unwrap();
+        assert_eq!(Some(args[user + 1].clone()), owner_of(directory.path()));
     }
 
     #[test]

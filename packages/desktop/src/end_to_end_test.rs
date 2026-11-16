@@ -7,7 +7,7 @@
 //! A further test checks that Snakemake is rejected when the runtime cannot run it (podman).
 //!
 //! Needs podman or docker, so the tests are ignored by default. Nextflow also needs the
-//! `macworp-nextflow:latest` image (see `docker/engine-nextflow.dockerfile`), the Container test
+//! `macworp-nextflow:latest` image (see `docker/engine.dockerfile` (target `nextflow`)), the Container test
 //! builds its image itself (pulls `alpine:3`). A test skips with a message when the selected
 //! runtime cannot run its engine.
 //!
@@ -39,7 +39,7 @@ use macworp_core::{
 use macworp_ui_core::client::Client;
 use macworp_worker::{
     container_runtime::{ContainerRuntime, RuntimePreference},
-    executors::nextflow::DEFAULT_IMAGE,
+    executors::{nextflow::DEFAULT_IMAGE, snakemake},
 };
 use serde_json::{json, Value};
 
@@ -146,6 +146,10 @@ fn workflow_configuration(engine: &Engine, workflow_dir: &Path) -> WorkflowConfi
         Engine::Nextflow => (
             json!([{"name": "ansi-log", "value": "false"}]),
             json!({"Local": {"location": workflow_dir, "script": "main.nf"}}),
+        ),
+        Engine::Snakemake => (
+            json!([]),
+            json!({"Local": {"location": workflow_dir, "script": "Snakefile"}}),
         ),
         Engine::Container => (json!([]), json!({"Image": {"image": CONTAINER_IMAGE}})),
         other => panic!("no end-to-end workflow for {other}"),
@@ -339,6 +343,14 @@ impl TestApp {
             workflow_dir.join("main.nf"),
         )
         .unwrap();
+        fs::copy(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fixtures/end_to_end/snakemake/Snakefile"
+            ),
+            workflow_dir.join("Snakefile"),
+        )
+        .unwrap();
 
         let password = "end-to-end-password";
         let database_url = format!("sqlite://{}", root.join("db.sqlite").display());
@@ -520,7 +532,17 @@ async fn prepare_image(runtime: &dyn ContainerRuntime, engine: &Engine) -> bool 
                 return true;
             }
             eprintln!(
-                "SKIPPED, image {DEFAULT_IMAGE} not found (see docker/engine-nextflow.dockerfile)"
+                "SKIPPED, image {DEFAULT_IMAGE} not found (build it with `docker build -f docker/engine.dockerfile --target nextflow -t macworp-nextflow:latest docker`)"
+            );
+            false
+        }
+        Engine::Snakemake => {
+            let image = snakemake::DEFAULT_IMAGE;
+            if image_exists(runtime, image).await {
+                return true;
+            }
+            eprintln!(
+                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target snakemake -t macworp-snakemake:latest docker`)"
             );
             false
         }
@@ -584,25 +606,32 @@ async fn run_scenario(engine: Engine) {
         "{run:?}\n--- log ---\n{log_text}"
     );
     assert_eq!(run.exit_code, Some(0));
-    // Only Nextflow reports tasks, a container workflow has an indeterminate progress
-    let expected_progress = if engine == Engine::Nextflow {
-        (1, 1)
-    } else {
-        (0, 0)
-    };
-    assert_eq!(
-        (run.tasks_total, run.tasks_done),
-        expected_progress,
-        "progress not as expected"
-    );
+    // A container workflow has an indeterminate progress, the engines report their tasks
+    match engine {
+        Engine::Nextflow => assert_eq!((run.tasks_total, run.tasks_done), (1, 1)),
+        Engine::Snakemake => {
+            assert!(run.tasks_total > 0, "no tasks reported: {run:?}");
+            assert_eq!(run.tasks_done, run.tasks_total, "tasks left: {run:?}");
+        }
+        _ => assert_eq!((run.tasks_total, run.tasks_done), (0, 0)),
+    }
     assert!(!log_text.is_empty(), "no log lines stored");
 
-    assert_eq!(
-        read(&project_dir, "results/params.txt"),
-        expected_params(&token)
-    );
+    let mut expected = expected_params(&token);
+    if engine == Engine::Snakemake {
+        // `snakemake --config` folds a line break in a value into a space, see PLAN.md P5
+        // "Snakemake parameters through a config file"
+        expected = expected.replace("line one\n", "line one ");
+    }
+    assert_eq!(read(&project_dir, "results/params.txt"), expected);
     assert_files(&project_dir, &token);
     assert_folders(&project_dir, &token);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs docker and the macworp-snakemake image"]
+async fn runs_snakemake_workflow_with_all_parameter_types() {
+    run_scenario(Engine::Snakemake).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -1,0 +1,79 @@
+# End-to-end test workflow, does the same as ../workflow/main.nf. Receives the same parameters
+# twice, once as fixed parameters (prefix `fixed_`) and once as dynamic ones (prefix `dyn_`) in
+# `--config`.
+#
+# * writes every parameter value into results/params.txt
+# * overwrites every given file with the test token
+# * replaces `old.txt` in every given folder with `<token>.marker`
+# * overwrites every file matched by the glob with the test token
+#
+# The report itself is written by a rule in an image, which exercises Apptainer (Snakemake runs
+# the rule with `bash`, so the image needs one).
+import glob as globber
+import os
+
+token = str(config.get("token", ""))
+if not token:
+    raise ValueError("token is required")
+
+
+def paths(value):
+    return [part for part in str(value).split(",") if part]
+
+
+lines = []
+for prefix in ["fixed", "dyn"]:
+    values = {
+        name: config[f"{prefix}_{name}"]
+        for name in [
+            "text", "multiline", "integer", "float", "glob", "file", "files",
+            "folder", "folders", "select", "multiselect",
+        ]
+    }
+    matches = sorted(globber.glob(str(values["glob"])), key=os.path.basename)
+    for match in matches:
+        with open(match, "w") as handle:
+            handle.write(token)
+    for target in paths(values["file"]) + paths(values["files"]):
+        with open(target, "w") as handle:
+            handle.write(token)
+    for folder in paths(values["folder"]) + paths(values["folders"]):
+        old = os.path.join(folder, "old.txt")
+        if os.path.exists(old):
+            os.remove(old)
+        with open(os.path.join(folder, f"{token}.marker"), "w") as handle:
+            handle.write(token)
+
+    lines.append(f"{prefix}_text => {values['text']}")
+    lines.append(f"{prefix}_multiline => {values['multiline']}")
+    lines.append(f"{prefix}_integer => {values['integer']}")
+    lines.append(f"{prefix}_float => {values['float']}")
+    lines.append(f"{prefix}_glob => {values['glob']}")
+    lines.append(f"{prefix}_glob_matches => {','.join(os.path.basename(m) for m in matches)}")
+    lines.append(f"{prefix}_file => {values['file']}")
+    lines.append(f"{prefix}_files => {values['files']}")
+    lines.append(f"{prefix}_folder => {values['folder']}")
+    lines.append(f"{prefix}_folders => {values['folders']}")
+    lines.append(f"{prefix}_select => {values['select']}")
+    lines.append(f"{prefix}_multiselect => {values['multiselect']}")
+lines.append(f"token => {token}")
+
+os.makedirs(".report", exist_ok=True)
+with open(".report/params.in", "w") as handle:
+    handle.write("\n".join(lines) + "\n")
+
+
+rule all:
+    input:
+        "results/params.txt",
+
+
+rule report:
+    input:
+        ".report/params.in",
+    output:
+        "results/params.txt",
+    container:
+        "docker://debian:bookworm-slim"
+    shell:
+        "cp {input} {output}"

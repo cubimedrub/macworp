@@ -55,7 +55,8 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
             continue;
         };
         let binary = runtime.binary().to_path_buf();
-        let engine_access = if engine == Engine::Container {
+        // Only Nextflow talks to the runtime socket, Snakemake runs its tool containers with Apptainer
+        let engine_access = if engine != Engine::Nextflow {
             Vec::new()
         } else {
             match runtime.info().await {
@@ -66,7 +67,7 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
                 }
             }
         };
-        if engine != Engine::Container && engine_access.is_empty() {
+        if engine == Engine::Nextflow && engine_access.is_empty() {
             tracing::warn!(
                 "No {} socket found, {engine} cannot start sibling containers",
                 runtime.kind()
@@ -77,10 +78,7 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
                 NextflowExecutor::new(&binary, nextflow::DEFAULT_IMAGE)
                     .with_engine_access(engine_access),
             ),
-            Engine::Snakemake => Arc::new(
-                SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE)
-                    .with_engine_access(engine_access),
-            ),
+            Engine::Snakemake => Arc::new(SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE)),
             _ => Arc::new(ContainerExecutor::new(&binary)),
         };
         executors.push(Arc::new(OnRuntime {

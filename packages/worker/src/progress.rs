@@ -17,7 +17,7 @@ pub struct ProgressUpdate {
 /// Turns the monitoring events of an engine into [`ProgressUpdate`]s.
 ///
 /// Nextflow (`-with-weblog`) reports one event per task state change, so the tracker counts them.
-/// Snakemake (`--wms-monitor`) reports absolute `done`/`total` numbers.
+/// Snakemake (panoptes logger plugin, `--logger panoptes`) reports absolute `done`/`total` numbers.
 #[derive(Debug, Clone)]
 pub struct ProgressTracker {
     engine: Engine,

@@ -100,7 +100,7 @@ impl Drop for RegisteredRun {
 }
 
 /// HTTP server the engines report their progress to: Nextflow with `-with-weblog`, Snakemake with
-/// `--wms-monitor` (it mimics the Panoptes API Snakemake expects). The events are turned into
+/// `--logger panoptes` (it mimics the Panoptes API the logger plugin expects). The events are turned into
 /// [`ProgressUpdate`]s per run.
 ///
 /// The engine runs in a container, so the server listens on all interfaces. Every run gets an

@@ -1,0 +1,82 @@
+# Container runtimes and engine images: decisions
+
+Every workflow engine runs **inside an engine image**, started by the worker through the host's container runtime (Docker, Podman, later WSL containers). This page records what was tried, what works on which runtime, and why. It is the place for every runtime-related decision; ADRs ([0004](adr/0004-windows-strategy.md) for the overall strategy) link here for the details. When a spike changes a rule, update the table and the section below, and put the date and the host in the entry.
+
+## What runs where
+
+| Engine | Image | Docker | Podman | WSL containers (`wslc`) |
+| --- | --- | --- | --- | --- |
+| Nextflow | `macworp-nextflow` | yes | yes | no |
+| Snakemake | `macworp-snakemake` | yes | **no** (see below) | no |
+| Container (single image) | the workflow's own | yes | yes | yes |
+| CWL (Toil) | `macworp-cwl` | not built yet (P5) | | |
+
+The code side of this table is `RuntimeKind::supports_engine` (`packages/worker/src/container_runtime/runtime.rs`); the start-up doctor (`macworp_worker doctor`) reports what a host can run and the UI greys out the rest.
+
+## Engine images
+
+**One multi-stage `docker/engine.dockerfile`, one target per engine**, not one image with all engines and not unrelated files.
+
+- Shared `base` stage: container CLIs (`docker.io`, `podman-remote`), git, bash, procps, curl.
+- Targets `nextflow`, `snakemake` (later `cwl`) add their engine only. Build with
+  `docker build -f docker/engine.dockerfile --target snakemake -t macworp-snakemake:latest docker`.
+- Why not a single image: its size (JRE + two Python stacks + Apptainer), engine versions could not be pinned independently (a bump would rebuild and re-tag every engine), and the extra privileges one engine needs (below) would apply to all of them.
+- Why not separate files: shared layers and one place to bump the base.
+- Versions are `ARG`s (`NXF_VER`, `SNAKEMAKE_VER`, `PANOPTES_PLUGIN_VER`).
+
+## Nextflow: sibling containers through the runtime socket
+
+Decided in [ADR 0004](adr/0004-windows-strategy.md), spike 2026-10-22 on macOS.
+
+- Nextflow starts the tool containers of its processes itself. The engine container gets the runtime socket (`RuntimeInfo::engine_access_args`) and a docker CLI, so the tool containers are **siblings** on the host runtime.
+- The project directory is bind-mounted at the **identical path** inside the engine container, so mounts the engine creates resolve on the host.
+- Works on Docker Desktop (`/var/run/docker.sock`) and on a rootless podman machine (`remoteSocket`, `--security-opt label=disable`).
+- Nested podman inside the engine container was **rejected**: `mount proc to proc: Operation not permitted` with default settings, needs extra privileges, and every run re-pulls images.
+- Cost: the socket gives the engine control of the host runtime. Hardening is P6.
+
+## Snakemake: Apptainer inside the engine container
+
+Spike 2026-11-16 on macOS (Apple silicon, Docker Desktop 29, Podman 6.1 machine). Snakemake 9.11.
+
+**Snakemake does not use the runtime socket.** Rules with a `container:` are run by Apptainer, which pulls the image itself and runs it in its own namespaces. So the "Docker only because of the socket" assumption from the plan was wrong: the real requirement is that Apptainer can start inside the engine container. Findings, in the order they were hit:
+
+| Attempt (all inside `macworp-snakemake`) | Result |
+| --- | --- |
+| default container, root | `Failed to create user namespace` |
+| `--cap-add SYS_ADMIN`, seccomp/apparmor unconfined, root | user namespace ok, then `could not open /dev/loop0: operation not permitted` (no loop device in a container) |
+| same + `--device /dev/fuse` + squashfuse, root | Apptainer skips its FUSE driver as root and still wants the loop device |
+| `--userns`, root or not, SIF mounted with squashfuse | `exec /bin/sh failed: invalid argument` |
+| `--privileged` | works, but is the full-privilege sandbox we want to avoid |
+| **non-root user, squashfuse removed, `seccomp=unconfined` + `systempaths=unconfined`** | **works** (Apptainer unpacks the image into a temporary sandbox with `unsquashfs`) |
+| the same as root | `unsquashfs` extraction fails |
+| the same on Podman (`systempaths=unconfined` or `unmask=ALL`) | `can't mount proc filesystem to /proc: permission denied` |
+
+**Decision.** The Snakemake executor starts the engine with:
+
+- `--security-opt seccomp=unconfined --security-opt systempaths=unconfined`: Apptainer creates user namespaces and mounts `/proc` in them, which the default seccomp profile and the masked `/proc` paths forbid. No capabilities, no devices, no socket.
+- `--user <uid>:<gid>` of the project directory's owner (Apptainer cannot unpack as root; files the workflow writes stay owned by that user). The image entrypoint adds a `/etc/passwd` entry for that uid, without it Apptainer stops with `unknown userid`.
+- `-e HOME=/tmp` for Apptainer's cache.
+- The image has **no squashfuse** (removed in the Dockerfile) and `squashfs-tools` instead, so there is no need for `/dev/fuse` or a loop device.
+- `--software-deployment-method apptainer` and `--apptainer-args "-B <dir>:<dir>:ro ..."` for the workflow and reference directories. Both are skipped when an engine parameter already picks a deployment method (`use-conda`, `sdm`, ...).
+
+Consequences and open points:
+
+- **Docker only.** Podman fails mounting `/proc` even unmasked (rootless, in the machine VM). Not retried on Linux hosts with native rootless podman; verify there before lifting the limit.
+- On **Linux hosts with AppArmor** (Ubuntu 24.04 restricts unprivileged user namespaces) an additional `--security-opt apparmor=unconfined` is probably needed. Not verified, Docker Desktop has no AppArmor. Check in the CI matrix (P7).
+- The rule's image needs `bash` (Snakemake runs shell rules with `bash -c`), `alpine` does not work.
+- A weaker sandbox than other engines (seccomp and `/proc` masking off for the engine container only). Revisit in P6 with `--cap-add` combinations and a custom seccomp profile.
+- Images from a registry are pulled by Apptainer, not by the runtime: they do not appear in `docker images`, and the P6 image GC does not see them. They are cached under `<project>/.snakemake/singularity`.
+- Apptainer: the GitHub release `.deb` is amd64 only; the image uses `ppa:apptainer/ppa` which also serves arm64 (Apple silicon).
+
+## Snakemake: progress reporting
+
+Snakemake 9 removed `--wms-monitor`. Progress comes from the
+[`snakemake-logger-plugin-panoptes`](https://github.com/panoptes-organization/snakemake-logger-plugin-panoptes) (installed in the engine image, pinned) via `--logger panoptes --logger-panoptes-address <worker log proxy>/snakemake`. The log proxy (`packages/worker/src/log_proxy`) mimics the Panoptes API the plugin talks to. Verified 2026-11-16: task counts arrive (`tasks_total`/`tasks_done`) in the end-to-end run.
+
+## Snakemake: parameter values through `--config`
+
+Workflow parameters are passed with `--config name=value`. Snakemake parses the value itself, which corrupts some values (checked with 9.11): a line break becomes a space, `say "hi"` loses its closing quote, `a: b` and `{a: 1}` become dictionaries, `[1,2]` a list, `"7"` an integer; quoting does not help. The end-to-end test knows the line-break case. Fix planned: pass values through a config file (PLAN.md P5).
+
+## End-to-end test coverage
+
+`cargo test -p macworp_desktop end_to_end_test -- --ignored` runs one scenario per engine (all parameter types, fixed and dynamic) on the selected runtime (`MACWORP_CONTAINER_RUNTIME`). Needs the engine images built as above. Passing on Docker (macOS) for Nextflow, Snakemake and Container, and on Podman for Nextflow and Container; Podman is expected to reject Snakemake runs.

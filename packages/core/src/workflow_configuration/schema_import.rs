@@ -358,7 +358,7 @@ mod tests {
     use crate::workflow_configuration::{
         WorkflowConfiguration,
         parameters::parameter::IsParameter,
-        render::{apply_values, render_args, render_snakemake_configuration},
+        render::{apply_values, render_parameter_file},
     };
     use serde_json::json;
 
@@ -496,12 +496,9 @@ mod tests {
             value,
         });
         apply_values(&mut config, &values).unwrap();
-        let args = render_args(&config, None).unwrap();
-        assert!(
-            args.windows(2).any(|w| w == ["--input", "sheet.csv"]),
-            "{args:?}"
-        );
-        assert!(args.windows(2).any(|w| w == ["--threads", "8"]), "{args:?}");
+        let rendered = render_parameter_file(&config, None).unwrap().unwrap();
+        assert_eq!(rendered["input"], json!("sheet.csv"));
+        assert_eq!(rendered["threads"], json!(8));
     }
 
     /// A Snakemake config schema as found in the wild (YAML, 2020-12 dialect).
@@ -655,9 +652,7 @@ required: [genome]
             }
         });
         apply_values(&mut config, &values).unwrap();
-        let rendered = render_snakemake_configuration(&config, None)
-            .unwrap()
-            .unwrap();
+        let rendered = render_parameter_file(&config, None).unwrap().unwrap();
         assert_eq!(rendered["genome"], json!("GRCh37"));
         assert_eq!(rendered["threads"], json!(8));
     }

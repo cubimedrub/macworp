@@ -8,6 +8,8 @@ mod executor;
 mod job;
 /// Executor for Nextflow, runs the engine inside an engine image
 pub mod nextflow;
+/// The workflow parameters of a job as a file for the engine
+mod parameter_file;
 /// Starts a process, forwards its output and stops it on cancel
 mod process;
 /// Executor for Snakemake, runs the engine inside an engine image
@@ -18,5 +20,6 @@ mod standard;
 pub use containerized_execution::{containerized_spec, run_spec};
 pub use executor::{Error as ExecutorError, Executor};
 pub use job::{Job, LogLine, Outcome};
+pub use parameter_file::ParameterFile;
 pub use process::{LaunchSpec, run_process};
 pub use standard::standard_executors;

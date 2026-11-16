@@ -1,20 +1,30 @@
 use std::path::PathBuf;
 
-use macworp_core::workflow_configuration::{
-    engine::Engine,
-    render::{render_args, render_snakemake_configuration},
-    source::Source,
-};
+use macworp_core::workflow_configuration::{engine::Engine, render::render_args, source::Source};
 use tokio::sync::{mpsc, watch};
 
 use super::containerized_execution::path_arg;
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, containerized_spec, run_spec,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
+    run_spec,
 };
 use crate::container_runtime::BoxFuture;
 
 /// Engine image used unless configured otherwise, see the engine-in-container ADR.
 pub const DEFAULT_IMAGE: &str = "macworp-snakemake:latest";
+
+/// Environment variable that replaces [`DEFAULT_IMAGE`], for example to run an older Snakemake
+/// version (an image built from `docker/engine.dockerfile` with another version argument).
+pub const IMAGE_VARIABLE: &str = "MACWORP_SNAKEMAKE_IMAGE";
+
+/// The engine image to run: the value of [`IMAGE_VARIABLE`] if set and not empty, else
+/// [`DEFAULT_IMAGE`].
+pub fn image() -> String {
+    std::env::var(IMAGE_VARIABLE)
+        .ok()
+        .filter(|image| !image.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_IMAGE.to_string())
+}
 
 /// Engine parameters that already say how many cores to use
 const CORE_PARAMETERS: &[&str] = &["cores", "c", "jobs", "j"];
@@ -54,53 +64,12 @@ impl SnakemakeExecutor {
         }
     }
 
-    /// Writes the workflow parameters of the job as JSON into a new directory of its own, `None`
-    /// if no parameter has a value. Snakemake reads it with `--configfile`, so it never parses
-    /// the values itself. The directory is readable by every user, the engine runs as the owner
-    /// of the project directory.
-    ///
-    /// # Arguments
-    /// * `job` - the job whose parameters are written
-    fn write_configuration(job: &Job) -> Result<Option<(PathBuf, PathBuf)>, ExecutorError> {
-        let Some(values) =
-            render_snakemake_configuration(&job.configuration, job.reference_dir.as_deref())?
-        else {
-            return Ok(None);
-        };
-        let io = |error| ExecutorError::Io("the Snakemake configuration", error);
-        let directory = tempfile::Builder::new()
-            .prefix(&format!("macworp-run-{}-", job.run_id))
-            .tempdir()
-            .map_err(io)?
-            .keep();
-        let file = directory.join("config.json");
-        let written = (|| {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755))?;
-            }
-            std::fs::write(&file, values.to_string())?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644))?;
-            }
-            Ok(())
-        })();
-        if let Err(error) = written {
-            let _ = std::fs::remove_dir_all(&directory);
-            return Err(io(error));
-        }
-        Ok(Some((directory, file)))
-    }
-
     /// The `<runtime> run ...` command for the job, see [`containerized_spec`].
     ///
     /// Snakemake works in the project directory (`--directory`). It insists on a core count, so
     /// `--cores all` is added unless an engine parameter sets one. The workflow parameters go
     /// into a file in a scratch directory (mounted read-only, removed by [`run_spec`] after the
-    /// run), see [`Self::write_configuration`].
+    /// run), see [`ParameterFile`].
     pub fn launch_spec(&self, job: &Job) -> Result<LaunchSpec, ExecutorError> {
         let config = &job.configuration;
         // Checked first so a failing job leaves no scratch directory behind
@@ -114,15 +83,15 @@ impl SnakemakeExecutor {
             Source::NfCore(_) => return Err(ExecutorError::UnsupportedSource("nf-core".into())),
             Source::Image(_) => return Err(ExecutorError::UnsupportedSource("image".into())),
         }
-        let configuration = Self::write_configuration(job)?;
-        match self.launch_spec_with(job, configuration.as_ref()) {
+        let parameters = ParameterFile::write(job)?;
+        match self.launch_spec_with(job, parameters.as_ref()) {
             Ok(mut spec) => {
-                spec.scratch_directory = configuration.map(|(directory, _)| directory);
+                spec.scratch_directory = parameters.map(|file| file.directory().to_path_buf());
                 Ok(spec)
             }
             Err(error) => {
-                if let Some((directory, _)) = configuration {
-                    let _ = std::fs::remove_dir_all(directory);
+                if let Some(file) = parameters {
+                    file.discard();
                 }
                 Err(error)
             }
@@ -133,17 +102,17 @@ impl SnakemakeExecutor {
     ///
     /// # Arguments
     /// * `job` - the job to run
-    /// * `configuration` - scratch directory and parameter file, `None` without parameters
+    /// * `parameters` - the written parameter file, `None` without parameters
     fn launch_spec_with(
         &self,
         job: &Job,
-        configuration: Option<&(PathBuf, PathBuf)>,
+        parameters: Option<&ParameterFile>,
     ) -> Result<LaunchSpec, ExecutorError> {
         let config = &job.configuration;
 
         let mut read_only: Vec<&std::path::Path> = Vec::new();
         read_only.extend(job.reference_dir.as_deref());
-        read_only.extend(configuration.map(|(directory, _)| directory.as_path()));
+        read_only.extend(parameters.map(ParameterFile::directory));
         let mut command: Vec<String> = vec![
             "snakemake".into(),
             "--directory".into(),
@@ -166,8 +135,8 @@ impl SnakemakeExecutor {
             Source::NfCore(_) => return Err(ExecutorError::UnsupportedSource("nf-core".into())),
             Source::Image(_) => return Err(ExecutorError::UnsupportedSource("image".into())),
         }
-        if let Some((_, file)) = configuration {
-            command.extend(["--configfile".into(), path_arg(file)]);
+        if let Some(parameters) = parameters {
+            command.extend(["--configfile".into(), path_arg(parameters.file())]);
         }
         if !config
             .engine_parameters()
@@ -421,7 +390,7 @@ mod tests {
         let directory = spec.scratch_directory.clone().unwrap();
         let position = spec.args.iter().position(|a| a == "--configfile").unwrap();
         let file = std::path::PathBuf::from(&spec.args[position + 1]);
-        assert_eq!(file, directory.join("config.json"));
+        assert_eq!(file, directory.join("parameters.json"));
         assert!(!spec.args.iter().any(|a| a == "--config"));
         assert!(
             spec.args

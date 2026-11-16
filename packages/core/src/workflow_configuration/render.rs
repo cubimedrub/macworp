@@ -409,22 +409,29 @@ fn insert_nested(
     Ok(())
 }
 
-/// The workflow parameters of a Snakemake workflow as the content of its configuration file
-/// (`--configfile`, JSON is valid YAML). Passing them as `--config name=value` would make
-/// Snakemake parse every value again. Names with dots (`ref.species`) are nested objects,
-/// `\.` is a literal dot (see [`split_path`]). Numbers and true/false choices keep their type,
-/// all other values are strings. Parameters without a value are skipped.
+/// The workflow parameters of a Nextflow or Snakemake workflow as the content of the file the
+/// engine reads them from (`-params-file` for Nextflow, `--configfile` for Snakemake; JSON is
+/// valid YAML). Passing them on the command line would make the engine parse every value again
+/// (a text `7` becomes a number, `a: b` a dictionary, a line break a space). Names with dots
+/// (`ref.species`) are nested objects, `\.` is a literal dot (see [`split_path`]). Numbers and
+/// true/false choices keep their type, all other values are strings. Parameters without a value
+/// are skipped.
 ///
-/// `None` if no parameter has a value. Fails with [`Error::InvalidName`] for a malformed name
-/// or one that is both a value and an object (`a` and `a.b`).
+/// `None` if no parameter has a value, and always for an engine that takes arguments instead
+/// (Container, see [`render_args`]). Fails with [`Error::InvalidName`] for a malformed name or
+/// one that is both a value and an object (`a` and `a.b`), and with the errors of
+/// [`value_string`]. Call it next to [`render_args`] to check a configuration before a run.
 ///
 /// # Arguments
 /// * `config` - The workflow configuration with the parameter values applied
 /// * `reference_directory` - Absolute directory of the global reference data, see [`value_string`]
-pub fn render_snakemake_configuration(
+pub fn render_parameter_file(
     config: &WorkflowConfiguration,
     reference_directory: Option<&Path>,
 ) -> Result<Option<Value>, Error> {
+    if !matches!(config.engine(), Engine::Nextflow | Engine::Snakemake) {
+        return Ok(None);
+    }
     let mut root = serde_json::Map::new();
     for p in config
         .fixed_parameters()
@@ -455,9 +462,10 @@ fn container_flag(name: &str) -> String {
 /// Renders engine parameters and fixed + dynamic parameters into engine arguments (argv, not a
 /// shell string: pass them to the process directly, no quoting needed).
 ///
-/// * Nextflow: engine parameters `-name value`, workflow parameters `--name value`
+/// * Nextflow: engine parameters `-name value`, workflow parameters are not arguments, see
+///   [`render_parameter_file`]
 /// * Snakemake: engine parameters `--name value`, workflow parameters are not arguments, see
-///   [`render_snakemake_configuration`]
+///   [`render_parameter_file`]
 ///
 /// * Container: no engine parameters, workflow parameters `-n value` (single character name) or
 ///   `--name value`, passed to the image
@@ -494,20 +502,6 @@ pub fn render_args(
         }
     }
 
-    if *config.engine() == Engine::Nextflow {
-        let params = config
-            .fixed_parameters()
-            .iter()
-            .chain(config.dynamic_parameters())
-            .filter(|p| !matches!(p, Parameter::Group(_)));
-        for p in params {
-            validate_name(p.name())?;
-            if let Some(v) = value_string(p, reference_directory)? {
-                args.push(format!("--{}", p.name()));
-                args.push(v);
-            }
-        }
-    }
     Ok(args)
 }
 
@@ -590,17 +584,13 @@ mod tests {
         .unwrap();
         assert_eq!(
             render_args(&c, None).unwrap(),
-            [
-                "-profile",
-                "docker",
-                "-resume",
-                "--mode",
-                "fast",
-                "--threads",
-                "4",
-                "--input",
-                "a.fq,b.fq"
-            ]
+            ["-profile", "docker", "-resume"]
+        );
+        assert_eq!(
+            render_parameter_file(&c, None).unwrap(),
+            Some(json!({
+                "mode": "fast", "threads": 4, "input": "a.fq,b.fq"
+            }))
         );
     }
 
@@ -610,7 +600,7 @@ mod tests {
         apply_values(&mut c, &[pv("threads", json!(2)), pv("name", json!("x y"))]).unwrap();
         assert!(render_args(&c, None).unwrap().is_empty());
         assert_eq!(
-            render_snakemake_configuration(&c, None).unwrap(),
+            render_parameter_file(&c, None).unwrap(),
             Some(json!({"mode": "fast", "threads": 2, "name": "x y"}))
         );
     }
@@ -633,7 +623,7 @@ mod tests {
             c.dynamic_parameters_mut().push(Parameter::Text(text));
         }
         assert_eq!(
-            render_snakemake_configuration(&c, None).unwrap(),
+            render_parameter_file(&c, None).unwrap(),
             Some(json!({
                 "a": "line one\nline two", "b": "a: b", "c": "7",
                 "d": "say \"hi\"", "e": "[1,2]"
@@ -671,7 +661,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            render_snakemake_configuration(&c, None).unwrap(),
+            render_parameter_file(&c, None).unwrap(),
             Some(json!({
                 "threads": 2,
                 "ref": {"species": "it's", "release": 100},
@@ -694,10 +684,7 @@ mod tests {
                 c.dynamic_parameters_mut().push(Parameter::Text(text));
             }
             assert!(
-                matches!(
-                    render_snakemake_configuration(&c, None),
-                    Err(Error::InvalidName(_))
-                ),
+                matches!(render_parameter_file(&c, None), Err(Error::InvalidName(_))),
                 "{names:?}"
             );
         }
@@ -732,7 +719,7 @@ mod tests {
             c.dynamic_parameters_mut().push(Parameter::Text(text));
         }
         assert_eq!(
-            render_snakemake_configuration(&c, None).unwrap(),
+            render_parameter_file(&c, None).unwrap(),
             Some(json!({"ref": {"v1.2": "x", "v1.3": "x"}}))
         );
     }
@@ -742,7 +729,7 @@ mod tests {
         let mut c = config(Engine::Snakemake);
         c.fixed_parameters_mut().clear();
         assert!(render_args(&c, None).unwrap().is_empty());
-        assert_eq!(render_snakemake_configuration(&c, None).unwrap(), None);
+        assert_eq!(render_parameter_file(&c, None).unwrap(), None);
     }
 
     #[test]
@@ -771,7 +758,10 @@ mod tests {
         let mut c = config(Engine::Nextflow);
         *c.dynamic_parameters_mut()[1].name_mut() = "-x".into();
         apply_values(&mut c, &[pv("-x", json!("v"))]).unwrap();
-        assert_eq!(render_args(&c, None), Err(Error::InvalidName("-x".into())));
+        assert_eq!(
+            render_parameter_file(&c, None),
+            Err(Error::InvalidName("-x".into()))
+        );
     }
 
     #[test]
@@ -821,7 +811,10 @@ mod tests {
         c.dynamic_parameters_mut()
             .push(Parameter::ValueSelect(select(false)));
         apply_values(&mut c, &[pv("mode2", json!("b"))]).unwrap();
-        assert_eq!(&render_args(&c, None).unwrap()[2..], ["--mode2", "b"]);
+        assert_eq!(
+            render_parameter_file(&c, None).unwrap().unwrap()["mode2"],
+            json!("b")
+        );
         assert!(matches!(
             apply_values(&mut c, &[pv("mode2", json!("z"))]),
             Err(Error::OutOfRange(..))
@@ -838,7 +831,10 @@ mod tests {
         c.dynamic_parameters_mut()
             .push(Parameter::ValueSelect(select(true)));
         apply_values(&mut c, &[pv("mode2", json!(["a", "b"]))]).unwrap();
-        assert_eq!(&render_args(&c, None).unwrap()[2..], ["--mode2", "a,b"]);
+        assert_eq!(
+            render_parameter_file(&c, None).unwrap().unwrap()["mode2"],
+            json!("a,b")
+        );
         assert_eq!(
             value_json(c.dynamic_parameters().last().unwrap()),
             json!(["a", "b"])
@@ -850,7 +846,10 @@ mod tests {
         let mut c = config(Engine::Nextflow);
         c.dynamic_parameters_mut()
             .push(Parameter::Group(Group::new("S".into(), "".into())));
-        assert_eq!(render_args(&c, None).unwrap(), ["--mode", "fast"]);
+        assert_eq!(
+            render_parameter_file(&c, None).unwrap(),
+            Some(json!({"mode": "fast"}))
+        );
     }
 
     #[test]
@@ -865,7 +864,10 @@ mod tests {
             Err(Error::InvalidPath(_))
         ));
         apply_values(&mut c, &[pv("input", json!("/a/b.fq"))]).unwrap();
-        assert_eq!(&render_args(&c, None).unwrap()[2..], ["--input", "a/b.fq"]);
+        assert_eq!(
+            render_parameter_file(&c, None).unwrap().unwrap()["input"],
+            json!("a/b.fq")
+        );
     }
 
     /// A path not matching the parameter's pattern is rejected; the lenient variant skips it.
@@ -907,11 +909,11 @@ mod tests {
         .unwrap();
         let reference = Path::new("/data/reference");
         assert_eq!(
-            &render_args(&c, Some(reference)).unwrap()[2..],
-            ["--input", "/data/reference/hg38/a.fa,reads/b.fq"]
+            render_parameter_file(&c, Some(reference)).unwrap().unwrap()["input"],
+            json!("/data/reference/hg38/a.fa,reads/b.fq")
         );
         assert_eq!(
-            render_args(&c, None),
+            render_parameter_file(&c, None),
             Err(Error::ReferenceUnavailable("input".into()))
         );
         assert!(matches!(

@@ -5,12 +5,26 @@ use tokio::sync::{mpsc, watch};
 
 use super::containerized_execution::path_arg;
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, containerized_spec, run_spec,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
+    run_spec,
 };
 use crate::container_runtime::BoxFuture;
 
 /// Engine image used unless configured otherwise, see the engine-in-container ADR.
 pub const DEFAULT_IMAGE: &str = "macworp-nextflow:latest";
+
+/// Environment variable that replaces [`DEFAULT_IMAGE`], for example to run an older Nextflow
+/// version (an image built from `docker/engine.dockerfile` with another version argument).
+pub const IMAGE_VARIABLE: &str = "MACWORP_NEXTFLOW_IMAGE";
+
+/// The engine image to run: the value of [`IMAGE_VARIABLE`] if set and not empty, else
+/// [`DEFAULT_IMAGE`].
+pub fn image() -> String {
+    std::env::var(IMAGE_VARIABLE)
+        .ok()
+        .filter(|image| !image.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_IMAGE.to_string())
+}
 
 /// Runs Nextflow inside an engine image through the container runtime.
 #[derive(Debug, Clone)]
@@ -36,7 +50,9 @@ impl NextflowExecutor {
         self
     }
 
-    /// The `<runtime> run ...` command for the job, see [`containerized_spec`].
+    /// The `<runtime> run ...` command for the job, see [`containerized_spec`]. The workflow
+    /// parameters go into a file (`-params-file`, mounted read-only, removed by [`run_spec`]
+    /// after the run), see [`ParameterFile`].
     pub fn launch_spec(&self, job: &Job) -> Result<LaunchSpec, ExecutorError> {
         let config = &job.configuration;
 
@@ -74,15 +90,23 @@ impl NextflowExecutor {
             ]);
         }
         command.extend(render_args(config, job.reference_dir.as_deref())?);
+        // Last step that can fail, so no scratch directory is left behind by an error
+        let parameters = ParameterFile::write(job)?;
+        if let Some(parameters) = &parameters {
+            command.extend(["-params-file".into(), path_arg(parameters.file())]);
+            read_only.push(parameters.directory());
+        }
 
-        Ok(containerized_spec(
+        let mut spec = containerized_spec(
             &self.runtime_binary,
             &self.image,
             job,
             &read_only,
             &self.engine_access,
             command,
-        ))
+        );
+        spec.scratch_directory = parameters.map(|file| file.directory().to_path_buf());
+        Ok(spec)
     }
 }
 
@@ -233,6 +257,55 @@ mod tests {
                 .unwrap();
             assert_eq!(spec.args.last().unwrap(), "nf-core/rnaseq");
         }
+    }
+
+    /// Applies one text parameter value to the job's configuration.
+    ///
+    /// # Arguments
+    /// * `job` - job to change
+    /// * `name` - name of the new dynamic parameter
+    /// * `value` - its value
+    fn add_text(job: &mut Job, name: &str, value: &str) {
+        use macworp_core::workflow_configuration::parameters::{
+            Parameter, parameter::IsParameterWithValue, text::Text,
+        };
+        let mut text = Text::new(name.into(), "".into(), "".into());
+        *text.value_mut() = Some(value.into());
+        job.configuration
+            .dynamic_parameters_mut()
+            .push(Parameter::Text(text));
+    }
+
+    /// Values go into a read-only mounted JSON file, exactly as typed, never onto the command line
+    #[test]
+    fn parameters_are_passed_through_a_file() {
+        let mut job = job(Source::Local(LocalSource::new(
+            "/w".into(),
+            "main.nf".into(),
+        )));
+        add_text(&mut job, "a", "line one\nline two");
+        add_text(&mut job, "b", "7");
+        add_text(&mut job, "ref.species", "say \"hi\"");
+        let spec = executor().launch_spec(&job).unwrap();
+        let directory = spec.scratch_directory.clone().unwrap();
+        let position = spec.args.iter().position(|a| a == "-params-file").unwrap();
+        let file = PathBuf::from(&spec.args[position + 1]);
+        assert_eq!(file, directory.join("parameters.json"));
+        let image = spec.args.iter().position(|a| a == "img:1").unwrap();
+        assert!(!spec.args[image..].iter().any(|a| a.starts_with("--")));
+        assert!(
+            spec.args
+                .contains(&format!("{0}:{0}:ro", directory.display()))
+        );
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(
+            written,
+            serde_json::json!({
+                "a": "line one\nline two", "b": "7", "ref": {"species": "say \"hi\""}
+            })
+        );
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

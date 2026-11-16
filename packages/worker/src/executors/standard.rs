@@ -75,12 +75,9 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
         }
         let inner: Arc<dyn Executor> = match engine {
             Engine::Nextflow => Arc::new(
-                NextflowExecutor::new(&binary, nextflow::DEFAULT_IMAGE)
-                    .with_engine_access(engine_access),
+                NextflowExecutor::new(&binary, nextflow::image()).with_engine_access(engine_access),
             ),
-            Engine::Snakemake => {
-                Arc::new(SnakemakeExecutor::new(&binary, snakemake::DEFAULT_IMAGE))
-            }
+            Engine::Snakemake => Arc::new(SnakemakeExecutor::new(&binary, snakemake::image())),
             _ => Arc::new(ContainerExecutor::new(&binary)),
         };
         executors.push(Arc::new(OnRuntime {

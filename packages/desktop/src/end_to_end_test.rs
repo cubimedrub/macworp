@@ -39,7 +39,7 @@ use macworp_core::{
 use macworp_ui_core::client::Client;
 use macworp_worker::{
     container_runtime::{ContainerRuntime, RuntimePreference},
-    executors::{nextflow::DEFAULT_IMAGE, snakemake},
+    executors::{nextflow, snakemake},
 };
 use serde_json::{json, Value};
 
@@ -528,17 +528,18 @@ async fn image_exists(runtime: &dyn ContainerRuntime, image: &str) -> bool {
 async fn prepare_image(runtime: &dyn ContainerRuntime, engine: &Engine) -> bool {
     match engine {
         Engine::Nextflow => {
-            if image_exists(runtime, DEFAULT_IMAGE).await {
+            let image = nextflow::image();
+            if image_exists(runtime, &image).await {
                 return true;
             }
             eprintln!(
-                "SKIPPED, image {DEFAULT_IMAGE} not found (build it with `docker build -f docker/engine.dockerfile --target nextflow -t macworp-nextflow:latest docker`)"
+                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target nextflow -t macworp-nextflow:latest docker`)"
             );
             false
         }
         Engine::Snakemake => {
-            let image = snakemake::DEFAULT_IMAGE;
-            if image_exists(runtime, image).await {
+            let image = snakemake::image();
+            if image_exists(runtime, &image).await {
                 return true;
             }
             eprintln!(

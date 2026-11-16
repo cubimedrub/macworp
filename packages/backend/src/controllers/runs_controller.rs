@@ -12,7 +12,7 @@ use macworp_core::{
     requests::{ParameterValue, WorkflowStartRequest},
     responses::{LastRunResponse, RunLogsResponse, RunResponse},
     routing::RunsRouting,
-    workflow_configuration::render::{apply_values, render_args},
+    workflow_configuration::render::{apply_values, render_args, render_parameter_file},
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
@@ -308,7 +308,9 @@ impl RunsController {
             tracing::info!(sha = %provenance.commit, "pinned remote workflow source");
         }
         // Fail now instead of in the worker
-        render_args(&configuration, Some(&state.reference_directory().get()))?;
+        let reference_directory = state.reference_directory().get();
+        render_args(&configuration, Some(&reference_directory))?;
+        render_parameter_file(&configuration, Some(&reference_directory))?;
 
         let parameters: serde_json::Map<String, serde_json::Value> = payload
             .parameters

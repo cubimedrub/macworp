@@ -73,9 +73,13 @@ Consequences and open points:
 Snakemake 9 removed `--wms-monitor`. Progress comes from the
 [`snakemake-logger-plugin-panoptes`](https://github.com/panoptes-organization/snakemake-logger-plugin-panoptes) (installed in the engine image, pinned) via `--logger panoptes --logger-panoptes-address <worker log proxy>/snakemake`. The log proxy (`packages/worker/src/log_proxy`) mimics the Panoptes API the plugin talks to. Verified 2026-11-16: task counts arrive (`tasks_total`/`tasks_done`) in the end-to-end run.
 
-## Snakemake: parameter values through a configuration file
+## Workflow parameters: Nextflow and Snakemake read a file
 
-Workflow parameters are written as JSON (valid YAML) to `config.json` in a scratch directory of the run (`<temp dir>/macworp-run-<id>-*`, readable by everyone, removed when the run ended) and passed with `--configfile`; the directory is mounted read-only like the workflow files. Dotted parameter names become nested objects, numbers and true/false choices keep their type, everything else is a string. `--config name=value` is not used because Snakemake parses each value again (checked with 9.11: a line break becomes a space, `say "hi"` loses its closing quote, `a: b` and `{a: 1}` become dictionaries, `[1,2]` a list, `"7"` an integer; quoting does not help). Verified 2026-11-16 on Docker Desktop (macOS): the end-to-end run keeps the line break. The scratch directory must be visible to the runtime; podman machine and WSL are unverified.
+Workflow parameters are written as JSON (valid YAML) to `parameters.json` in a scratch directory of the run (`<temp dir>/macworp-run-<id>-*`, readable by everyone, removed by the worker when the run ended) and passed with `-params-file` (Nextflow) or `--configfile` (Snakemake); the directory is mounted read-only like the workflow files (`executors/parameter_file.rs`, `core::render::render_parameter_file`). Dotted parameter names become nested objects, numbers and true/false choices keep their type, everything else is a string. The Container engine still gets `--name value` arguments. The backend renders the file content at run start too, so invalid names or values fail there and not in the worker.
+
+Command line parameters are not used because the engines parse each value again. Snakemake `--config` (checked with 9.11): a line break becomes a space, `say "hi"` loses its closing quote, `a: b` and `{a: 1}` become dictionaries, `[1,2]` a list, `"7"` an integer; quoting does not help. Nextflow `--name value` types values too (a text `7` becomes a number). Verified 2026-11-16 on Docker Desktop (macOS): the end-to-end runs of both engines keep the line break. The scratch directory must be visible to the runtime; podman machine and WSL are unverified.
+
+Engine versions: the engine image is `macworp-nextflow:latest` / `macworp-snakemake:latest`; `MACWORP_NEXTFLOW_IMAGE` / `MACWORP_SNAKEMAKE_IMAGE` replace it (for example an older version built from `docker/engine.dockerfile` with another `NXF_VER` / `SNAKEMAKE_VER`). The end-to-end test honours them too.
 
 ## End-to-end test coverage
 

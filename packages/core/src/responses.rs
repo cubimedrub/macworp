@@ -105,6 +105,10 @@ pub struct WorkflowSchemasResponse {
     pub input_schema: Option<serde_json::Value>,
     /// Snakemake schemas (`*.schema.yaml` in `workflow/schemas` and `config`)
     pub snakemake_schemas: Vec<SchemaFile>,
+    /// The main CWL document of a CWL workflow (the script the executor runs), whose `inputs`
+    /// generate the parameter form. Empty for other engines or when the script is unreadable.
+    #[serde(default)]
+    pub cwl_files: Vec<SchemaFile>,
 }
 
 /// State of the background download of a workflow's remote repository into the cache, started

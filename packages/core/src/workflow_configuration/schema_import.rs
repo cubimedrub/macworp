@@ -5,6 +5,7 @@ use crate::workflow_configuration::render::escape_path_segment;
 use crate::workflow_configuration::parameters::{
     Parameter,
     group::Group,
+    number::{Float, Integer},
     parameter::{IsParameterWithValue, Parameter as GenericParameter},
     path::Path as PathParameter,
     sample_sheet::SampleSheet,
@@ -85,6 +86,215 @@ pub fn parameters_from_snakemake_schema(text: &str) -> Imported {
             skipped: vec![("schema".to_string(), format!("invalid YAML: {error}"))],
             ..Imported::default()
         },
+    }
+}
+
+/// Generates parameters from the text of a CWL document (the workflow's main script) out of its
+/// `inputs`, given as a map (`id: type`) or a list (`- id: ...`); a `$graph` document uses its
+/// `main` process (else the first one). Optional types (`string?`, `[null, string]`) are unwrapped.
+/// `string`, `int`/`long`, `float`/`double`, `boolean`, enums, `File` and `Directory` become
+/// parameters; arrays, records, `Any`, unions of several types, ids with a dot (CWL input names
+/// are flat) and unknown types are skipped and reported. Invalid YAML imports nothing.
+///
+/// # Arguments
+/// * `text` - Content of the `.cwl` file
+pub fn parameters_from_cwl(text: &str) -> Imported {
+    let skipped = |reason: String| Imported {
+        skipped: vec![("schema".to_string(), reason)],
+        ..Imported::default()
+    };
+    let document = match serde_norway::from_str::<Value>(text) {
+        Ok(document) if document.is_object() => document,
+        Ok(_) => return skipped("not a mapping".to_string()),
+        Err(error) => return skipped(format!("invalid YAML: {error}")),
+    };
+    let process = match document.get("$graph").and_then(Value::as_array) {
+        Some(graph) => graph
+            .iter()
+            .find(|entry| {
+                entry
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| id.trim_start_matches('#') == "main")
+            })
+            .or_else(|| graph.first()),
+        None => Some(&document),
+    };
+    let Some(inputs) = process.and_then(|process| process.get("inputs")) else {
+        return skipped("no inputs".to_string());
+    };
+    let entries: Vec<(String, &Value)> = match inputs {
+        Value::Object(map) => map.iter().map(|(id, v)| (id.clone(), v)).collect(),
+        Value::Array(list) => list
+            .iter()
+            .filter_map(|v| Some((v.get("id")?.as_str()?.to_string(), v)))
+            .collect(),
+        _ => return skipped("inputs is neither a map nor a list".to_string()),
+    };
+    let mut imported = Imported::default();
+    for (id, definition) in entries {
+        let name = cwl_local_name(&id);
+        match cwl_parameter(name, definition) {
+            Ok(parameter) => imported.parameters.push(parameter),
+            Err(reason) => imported.skipped.push((name.to_string(), reason)),
+        }
+    }
+    imported
+}
+
+/// The last segment of a CWL identifier (`#main/reads`, `file.cwl#reads` → `reads`).
+///
+/// # Arguments
+/// * `id` - Identifier as written in the document
+fn cwl_local_name(id: &str) -> &str {
+    id.rsplit(['/', '#']).next().unwrap_or(id)
+}
+
+/// Converts one CWL input definition into a parameter, or the reason it cannot be one.
+///
+/// # Arguments
+/// * `name` - Input name
+/// * `definition` - Either the type alone (`string`, `[null, File]`, `{type: enum, ...}`) or an
+///   object with `type`, `label`, `doc` and `default`
+fn cwl_parameter(name: &str, definition: &Value) -> Result<Parameter, String> {
+    if name.is_empty() || name.contains('.') {
+        return Err("name not usable as a flat input name".to_string());
+    }
+    let fields = definition.as_object();
+    let type_value = match fields {
+        Some(fields) if is_type_object(fields) => definition,
+        Some(fields) => fields.get("type").ok_or("no type")?,
+        None => definition,
+    };
+    let label = fields
+        .and_then(|f| f.get("label"))
+        .and_then(Value::as_str)
+        .map_or_else(|| name.to_string(), str::to_string);
+    let desc = match fields.and_then(|f| f.get("doc")) {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(lines)) => lines
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    };
+    let default = fields.and_then(|f| f.get("default"));
+    let default_string = default.and_then(|d| match d {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    });
+
+    match cwl_type(type_value)? {
+        CwlType::Name(kind) => match kind.as_str() {
+            "string" => {
+                let mut text = Text::new(name.to_string(), label, desc);
+                *text.value_mut() = default_string;
+                Ok(Parameter::Text(text))
+            }
+            "int" | "long" => {
+                let mut integer = Integer::new(name.to_string(), label, desc);
+                *integer.value_mut() = default.and_then(Value::as_i64);
+                Ok(Parameter::Integer(integer))
+            }
+            "float" | "double" => {
+                let mut float = Float::new(name.to_string(), label, desc);
+                *float.value_mut() = default.and_then(Value::as_f64);
+                Ok(Parameter::Float(float))
+            }
+            "boolean" => Ok(truth_choice(
+                name,
+                label,
+                desc,
+                default.and_then(Value::as_bool).map(|b| b.to_string()),
+            )),
+            "File" | "Directory" => {
+                let mut path = PathParameter::new(name.to_string(), label, desc);
+                *path.is_excepting_files_mut() = kind == "File";
+                *path.is_excepting_folders_mut() = kind == "Directory";
+                Ok(Parameter::Path(path))
+            }
+            other => Err(format!("unsupported type `{other}`")),
+        },
+        CwlType::Enum(symbols) => Ok(choice(
+            name,
+            label,
+            desc,
+            symbols,
+            default_string.map(|d| cwl_local_name(&d).to_string()),
+        )),
+    }
+}
+
+/// Whether an object is a type description (`{type: enum|array|record, ...}`) rather than an input
+/// definition that has a `type` field of its own.
+///
+/// # Arguments
+/// * `fields` - The object
+fn is_type_object(fields: &serde_json::Map<String, Value>) -> bool {
+    matches!(
+        fields.get("type").and_then(Value::as_str),
+        Some("enum" | "array" | "record")
+    ) && !fields.contains_key("label")
+        && !fields.contains_key("doc")
+        && !fields.contains_key("default")
+        && !fields.contains_key("inputBinding")
+        && !fields.contains_key("id")
+}
+
+/// A CWL type after unwrapping optionality.
+enum CwlType {
+    /// A primitive or class name (`string`, `File`, ...)
+    Name(String),
+    /// An enum with its symbols reduced to local names
+    Enum(Vec<String>),
+}
+
+/// Reduces a CWL type to a single [`CwlType`]: `X?` and `[null, X]` become `X`, anything with
+/// several non-null alternatives, arrays and records fail.
+///
+/// # Arguments
+/// * `value` - The type as written in the document
+fn cwl_type(value: &Value) -> Result<CwlType, String> {
+    match value {
+        Value::String(name) => {
+            let name = name.strip_suffix('?').unwrap_or(name);
+            if name.ends_with("[]") {
+                return Err("array types are not supported".to_string());
+            }
+            Ok(CwlType::Name(name.to_string()))
+        }
+        Value::Array(alternatives) => {
+            // YAML reads a bare `null` as a null value, JSON-style documents write the string
+            let mut rest = alternatives
+                .iter()
+                .filter(|a| !a.is_null() && a.as_str() != Some("null"));
+            match (rest.next(), rest.next()) {
+                (Some(only), None) => cwl_type(only),
+                (None, _) => Err("only null".to_string()),
+                _ => Err("union of several types".to_string()),
+            }
+        }
+        Value::Object(fields) => match fields.get("type").and_then(Value::as_str) {
+            Some("enum") => Ok(CwlType::Enum(
+                fields
+                    .get("symbols")
+                    .and_then(Value::as_array)
+                    .map(|symbols| {
+                        symbols
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(|s| cwl_local_name(s).to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            )),
+            Some("array") => Err("array types are not supported".to_string()),
+            Some("record") => Err("record types are not supported".to_string()),
+            _ => Err("unknown type".to_string()),
+        },
+        _ => Err("unknown type".to_string()),
     }
 }
 
@@ -271,17 +481,12 @@ fn import_property(imported: &mut Imported, name: &str, property: &Value, nextfl
         match schema_type(property) {
             Some("string") => {
                 if let Some(values) = property.get("enum").and_then(Value::as_array) {
-                    let mut select = ValueSelect::new(name.to_string(), label, desc);
-                    *select.options_mut() = values
+                    let options: Vec<String> = values
                         .iter()
                         .filter_map(Value::as_str)
-                        .map(|v| SelectOption {
-                            label: v.to_string(),
-                            value: v.to_string(),
-                        })
+                        .map(str::to_string)
                         .collect();
-                    *select.value_mut() = default_string.map(|d| vec![d]);
-                    Parameter::ValueSelect(select)
+                    choice(name, label, desc, options, default_string)
                 } else if matches!(format, Some("file-path" | "directory-path" | "path")) {
                     let mut path = PathParameter::new(name.to_string(), label, desc);
                     // `file-path` selects files, `directory-path` folders, `path` either
@@ -332,23 +537,57 @@ fn import_property(imported: &mut Imported, name: &str, property: &Value, nextfl
             }
             // No boolean parameter type: a true/false choice
             Some("boolean") => {
-                let mut select = ValueSelect::new(name.to_string(), label, desc);
-                *select.options_mut() = ["true", "false"]
-                    .iter()
-                    .map(|v| SelectOption {
-                        label: v.to_string(),
-                        value: v.to_string(),
-                    })
-                    .collect();
-                *select.value_mut() = default
-                    .and_then(Value::as_bool)
-                    .map(|b| vec![b.to_string()]);
-                Parameter::ValueSelect(select)
+                let default = default.and_then(Value::as_bool).map(|b| b.to_string());
+                truth_choice(name, label, desc, default)
             }
             _ => return skip("unsupported type"),
         }
     };
     imported.parameters.push(parameter);
+}
+
+/// A [`ValueSelect`] offering `options` (label = value).
+///
+/// # Arguments
+/// * `name` - Parameter name
+/// * `label` - Parameter label
+/// * `desc` - Parameter description
+/// * `options` - Selectable values
+/// * `default` - Preselected value
+fn choice(
+    name: &str,
+    label: String,
+    desc: String,
+    options: Vec<String>,
+    default: Option<String>,
+) -> Parameter {
+    let mut select = ValueSelect::new(name.to_string(), label, desc);
+    *select.options_mut() = options
+        .into_iter()
+        .map(|value| SelectOption {
+            label: value.clone(),
+            value,
+        })
+        .collect();
+    *select.value_mut() = default.map(|d| vec![d]);
+    Parameter::ValueSelect(select)
+}
+
+/// A true/false [`ValueSelect`] (there is no boolean parameter type).
+///
+/// # Arguments
+/// * `name` - Parameter name
+/// * `label` - Parameter label
+/// * `desc` - Parameter description
+/// * `default` - Preselected `"true"` or `"false"`
+fn truth_choice(name: &str, label: String, desc: String, default: Option<String>) -> Parameter {
+    choice(
+        name,
+        label,
+        desc,
+        vec!["true".to_string(), "false".to_string()],
+        default,
+    )
 }
 
 #[cfg(test)]
@@ -655,5 +894,144 @@ required: [genome]
         let rendered = render_parameter_file(&config, None, None).unwrap().unwrap();
         assert_eq!(rendered["genome"], json!("GRCh37"));
         assert_eq!(rendered["threads"], json!(8));
+    }
+
+    /// A CWL document written with an input map covering every supported type.
+    const CWL_MAP: &str = r#"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+  reads:
+    type: File
+    label: Reads
+    doc: [first line, second line]
+  folder: Directory?
+  name: {type: string, default: sample}
+  threads: {type: [null, int], default: 4}
+  ratio: double
+  verbose: {type: boolean, default: true}
+  mode:
+    type:
+      type: enum
+      symbols: ["file.cwl#mode/fast", "file.cwl#mode/slow"]
+    default: fast
+  many: File[]
+  anything: Any
+  pair: [string, int]
+  rec: {type: record, fields: []}
+  dotted.name: string
+outputs: {}
+steps: {}
+"#;
+
+    /// Each CWL type maps to its parameter type; optional types are unwrapped.
+    #[test]
+    fn cwl_types_are_mapped() {
+        let imported = parameters_from_cwl(CWL_MAP);
+        match find(&imported, "reads") {
+            Parameter::Path(p) => {
+                assert!(p.is_excepting_files());
+                assert!(!p.is_excepting_folders());
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(find(&imported, "reads").label(), "Reads");
+        match find(&imported, "folder") {
+            Parameter::Path(p) => {
+                assert!(!p.is_excepting_files());
+                assert!(p.is_excepting_folders());
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(
+            matches!(find(&imported, "name"), Parameter::Text(t) if t.value() == Some(&"sample".to_string()))
+        );
+        assert!(
+            matches!(find(&imported, "threads"), Parameter::Integer(i) if i.value() == Some(&4))
+        );
+        assert!(matches!(find(&imported, "ratio"), Parameter::Float(_)));
+        match find(&imported, "verbose") {
+            Parameter::ValueSelect(s) => {
+                assert_eq!(s.value(), Some(&vec!["true".to_string()]));
+                assert_eq!(s.options().len(), 2);
+            }
+            other => panic!("{other:?}"),
+        }
+        match find(&imported, "mode") {
+            Parameter::ValueSelect(s) => {
+                let values: Vec<_> = s.options().iter().map(|o| o.value.as_str()).collect();
+                assert_eq!(values, ["fast", "slow"]);
+                assert_eq!(s.value(), Some(&vec!["fast".to_string()]));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Arrays, records, `Any`, unions and dotted names are reported, never imported.
+    #[test]
+    fn cwl_unsupported_inputs_are_skipped() {
+        let imported = parameters_from_cwl(CWL_MAP);
+        let skipped: Vec<_> = imported.skipped.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(skipped, ["many", "anything", "pair", "rec", "dotted.name"]);
+        assert_eq!(imported.parameters.len(), 7);
+    }
+
+    /// The list form with `#`-prefixed ids and a `$graph` document with a `main` process.
+    #[test]
+    fn cwl_list_and_graph_forms() {
+        let list = "inputs:\n  - id: '#main/reads'\n    type: File\n  - id: n\n    type: int\n";
+        let imported = parameters_from_cwl(list);
+        let names: Vec<_> = imported.parameters.iter().map(|p| p.name()).collect();
+        assert_eq!(names, ["reads", "n"]);
+
+        let graph = r#"
+$graph:
+  - id: tool
+    inputs: {other: string}
+  - id: '#main'
+    inputs: {wanted: string}
+"#;
+        let imported = parameters_from_cwl(graph);
+        assert_eq!(imported.parameters.len(), 1);
+        assert_eq!(imported.parameters[0].name(), "wanted");
+    }
+
+    /// Invalid YAML, non-mappings and documents without inputs import nothing and do not panic.
+    #[test]
+    fn cwl_garbage_does_not_panic() {
+        for text in ["", "- a", "{{{", "class: Workflow", "inputs: 3"] {
+            let imported = parameters_from_cwl(text);
+            assert!(imported.parameters.is_empty(), "{text:?}");
+            assert_eq!(imported.skipped.len(), 1, "{text:?}");
+        }
+    }
+
+    /// Imported CWL parameters render into the input object.
+    #[test]
+    fn cwl_parameters_render() {
+        let imported = parameters_from_cwl(CWL_MAP);
+        let mut config = WorkflowConfiguration::default();
+        *config.engine_mut() = crate::workflow_configuration::engine::Engine::Cwl;
+        *config.dynamic_parameters_mut() = imported.parameters;
+        let values = [
+            ("reads", json!(["a.fq"])),
+            ("threads", json!(8)),
+            ("verbose", json!(["false"])),
+        ]
+        .map(|(name, value)| ParameterValue {
+            name: name.to_string(),
+            value,
+        });
+        apply_values(&mut config, &values).unwrap();
+        let rendered = render_parameter_file(&config, None, Some(std::path::Path::new("/p")))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            rendered["reads"],
+            json!({"class": "File", "path": "/p/a.fq"})
+        );
+        assert_eq!(rendered["threads"], json!(8));
+        assert_eq!(rendered["verbose"], json!(false));
+        assert_eq!(rendered["mode"], json!("fast"));
     }
 }

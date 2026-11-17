@@ -299,6 +299,62 @@ async fn local_workflow_returns_the_newest_upload() {
     assert_eq!(body["snakemake_schemas"], json!([]));
 }
 
+/// A CWL workflow returns its main script as `cwl_files`; a missing script and other engines
+/// get an empty list.
+#[tokio::test]
+async fn cwl_workflow_returns_its_main_script() {
+    use macworp_core::workflow_configuration::{engine::Engine, source::LocalSource};
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let workflow = app.workflow(&alice, "w").await;
+
+    let save = |engine: Engine| {
+        let mut configuration = WorkflowConfiguration::default();
+        *configuration.engine_mut() = engine;
+        *configuration.source_mut() =
+            Source::Local(LocalSource::new("local".into(), "tool.cwl".into()));
+        json!({"name": "w", "description": "", "configuration": configuration})
+    };
+    let (status, body) = app
+        .post(
+            &alice,
+            &format!("/workflow-integrations/update/{}", workflow.id),
+            Some(save(Engine::Cwl)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // Script not uploaded yet
+    let (_, body) = schemas(&app, &alice, workflow.id).await;
+    assert_eq!(body["cwl_files"], json!([]));
+
+    upload(
+        &app,
+        &alice,
+        workflow.id,
+        &[("tool.cwl", "inputs: {a: string}\n"), ("other.cwl", "x")],
+    )
+    .await;
+    let (status, body) = schemas(&app, &alice, workflow.id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["cwl_files"],
+        json!([{"path": "tool.cwl", "content": "inputs: {a: string}\n"}])
+    );
+
+    // Another engine never reads the script
+    let (status, body) = app
+        .post(
+            &alice,
+            &format!("/workflow-integrations/update/{}", workflow.id),
+            Some(save(Engine::Nextflow)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, body) = schemas(&app, &alice, workflow.id).await;
+    assert_eq!(body["cwl_files"], json!([]));
+}
+
 /// Sources without schema files answer with an empty response, an unreachable repository that
 /// is not cached is a 502.
 #[tokio::test]

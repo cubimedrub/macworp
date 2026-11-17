@@ -35,6 +35,9 @@ use macworp_core::workflow_configuration::{
 pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Name of the file in a mirror whose mtime records the last successful fetch.
+/// Largest main CWL document returned by [`WorkflowRepositoryCache::schemas`].
+pub const CWL_DOCUMENT_LIMIT: usize = 1024 * 1024;
+
 const FETCHED_MARKER: &str = "macworp-fetched";
 /// Name of the file in a checkout whose mtime records the last use (for GC).
 const USED_MARKER: &str = ".macworp-last-used";
@@ -495,11 +498,14 @@ impl WorkflowRepositoryCache {
 
     /// Reads the schema files of a workflow from `directory`: `nextflow_schema.json`, the sample
     /// sheet schema it points to (default `assets/schema_input.json`) and Snakemake
-    /// `*.schema.yaml` files. Missing or unparsable files are skipped.
+    /// `*.schema.yaml` files, plus the main CWL document when `cwl_script` is given. Missing or
+    /// unparsable files are skipped.
     ///
     /// # Arguments
     /// * `directory` - Checkout or local workflow directory
-    pub fn schemas(directory: &Path) -> WorkflowSchemasResponse {
+    /// * `cwl_script` - Main script of a CWL workflow relative to `directory`, `None` for other
+    ///   engines; read as text up to [`CWL_DOCUMENT_LIMIT`] bytes
+    pub fn schemas(directory: &Path, cwl_script: Option<&Path>) -> WorkflowSchemasResponse {
         let json = |relative: &Path| -> Option<serde_json::Value> {
             serde_json::from_slice(&Self::read_file(directory, relative).ok()?).ok()
         };
@@ -541,11 +547,23 @@ impl WorkflowRepositoryCache {
                 }
             }
         }
+        let mut cwl_files = Vec::new();
+        if let Some(script) = cwl_script
+            && let Ok(bytes) = Self::read_file(directory, script)
+            && bytes.len() <= CWL_DOCUMENT_LIMIT
+            && let Ok(content) = String::from_utf8(bytes)
+        {
+            cwl_files.push(SchemaFile {
+                path: script.display().to_string(),
+                content,
+            });
+        }
         WorkflowSchemasResponse {
             commit: None,
             nextflow_schema,
             input_schema,
             snakemake_schemas,
+            cwl_files,
         }
     }
 
@@ -861,7 +879,7 @@ mod tests {
         let resolved = cache.resolve(&id, None).unwrap();
         assert_eq!(resolved.sha.len(), 40);
         assert!(resolved.directory.join("main.nf").is_file());
-        let schemas = WorkflowRepositoryCache::schemas(&resolved.directory);
+        let schemas = WorkflowRepositoryCache::schemas(&resolved.directory, None);
         assert!(schemas.nextflow_schema.is_some(), "nextflow_schema.json");
         assert!(schemas.input_schema.is_some(), "assets/schema_input.json");
 
@@ -1172,7 +1190,7 @@ mod tests {
         .unwrap();
         fs::write(root.join("workflow/schemas/bad.schema.yaml"), [0xff, 0xfe]).unwrap();
 
-        let found = WorkflowRepositoryCache::schemas(root);
+        let found = WorkflowRepositoryCache::schemas(root, None);
         assert!(found.nextflow_schema.is_some());
         assert_eq!(found.input_schema.unwrap()["type"], "array");
         assert_eq!(found.snakemake_schemas.len(), 1);
@@ -1189,12 +1207,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            WorkflowRepositoryCache::schemas(root).input_schema.unwrap()["type"],
+            WorkflowRepositoryCache::schemas(root, None)
+                .input_schema
+                .unwrap()["type"],
             "object"
         );
         let empty = tempfile::tempdir().unwrap();
         assert_eq!(
-            WorkflowRepositoryCache::schemas(empty.path()),
+            WorkflowRepositoryCache::schemas(empty.path(), None),
             WorkflowSchemasResponse::default()
         );
     }

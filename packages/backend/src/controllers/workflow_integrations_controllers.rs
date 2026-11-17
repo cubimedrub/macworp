@@ -240,7 +240,7 @@ impl WorkflowIntegrationsController {
             ..
         }: Authorized<WorkflowIntegration, Viewer>,
     ) -> Result<Json<macworp_core::responses::WorkflowSchemasResponse>, Error> {
-        use macworp_core::workflow_configuration::source::Source;
+        use macworp_core::workflow_configuration::{engine::Engine, source::Source};
         let cache = state.workflow_repository_cache();
         let mut configuration = workflow_integration.configuration.clone();
         state.confine_local_source(workflow_integration.id, &mut configuration);
@@ -252,8 +252,12 @@ impl WorkflowIntegrationsController {
                 return Ok(Default::default());
             };
             let directory = macworp_core::paths::resolve_in_storage(&storage, local.location());
-            let mut schemas =
-                crate::workflow_repository_cache::WorkflowRepositoryCache::schemas(&directory);
+            let cwl_script =
+                (configuration.engine() == &Engine::Cwl).then(|| local.script().clone());
+            let mut schemas = crate::workflow_repository_cache::WorkflowRepositoryCache::schemas(
+                &directory,
+                cwl_script.as_deref(),
+            );
             schemas.commit = provenance.map(|p| p.commit);
             Ok::<_, crate::workflow_repository_cache::Error>(schemas)
         })

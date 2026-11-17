@@ -8,7 +8,8 @@ use macworp_core::{
         engine::{Engine, EngineParameter},
         parameters::Parameter,
         schema_import::{
-            parameters_from_nextflow_schema, parameters_from_snakemake_schema, Imported,
+            parameters_from_cwl, parameters_from_nextflow_schema, parameters_from_snakemake_schema,
+            Imported,
         },
         source::Source,
     },
@@ -444,6 +445,13 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     merged.merge(parameters_from_snakemake_schema(&file.content), &file.path);
                 }
                 merged
+            }
+            Engine::Cwl => {
+                let file = schemas
+                    .cwl_files
+                    .first()
+                    .ok_or(Error::NoSchema("CWL main script"))?;
+                parameters_from_cwl(&file.content)
             }
             _ => return Err(Error::NoSchema("schema import for this engine")),
         };
@@ -1035,7 +1043,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                     }
                 }
 
-                if matches!(workflow_integration.read().inner().configuration().engine(), Engine::Nextflow | Engine::Snakemake)
+                if matches!(workflow_integration.read().inner().configuration().engine(), Engine::Nextflow | Engine::Snakemake | Engine::Cwl)
                     && workflow_integration.read().inner().my_role.is_some_and(|role| role >= Role::Editor)
                 {
                     div {
@@ -1044,7 +1052,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                             id: "import-schema-btn",
                             r#type: "button",
                             class: "btn btn-sm btn-outline-secondary",
-                            title: "Add the parameters of the saved workflow's schema (nextflow_schema.json or Snakemake *.schema.yaml)",
+                            title: "Add the parameters of the saved workflow's schema (nextflow_schema.json, Snakemake *.schema.yaml or the inputs of the CWL main script)",
                             onclick: move |_| { import_action.call(); },
                             i { class: "fa-solid fa-file-import me-1" }
                             "Import from schema"

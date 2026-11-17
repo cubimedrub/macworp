@@ -45,9 +45,6 @@ pub enum Error {
     /// directory (parameter name)
     #[error("Parameter `{0}` uses the global reference data, which is not available here")]
     ReferenceUnavailable(String),
-    /// Rendering exists only for Nextflow, Snakemake and Container so far
-    #[error("Command line rendering is not supported for engine `{0}` yet")]
-    UnsupportedEngine(String),
 }
 
 /// Names end up in command line flags, so they must not be able to form another flag or contain
@@ -288,6 +285,33 @@ pub fn apply_values_lenient(
     skipped
 }
 
+/// The paths of a `Path` parameter as strings, `Path` values below
+/// [`crate::paths::REFERENCE_PREFIX`] rewritten onto the reference directory.
+///
+/// # Arguments
+/// * `parameter` - The parameter the paths belong to, for the error
+/// * `paths` - The values of the parameter
+/// * `reference_directory` - Absolute directory of the global reference data, without it a
+///   reference path is an error
+fn resolve_paths(
+    parameter: &Parameter,
+    paths: &[std::path::PathBuf],
+    reference_directory: Option<&Path>,
+) -> Result<Vec<String>, Error> {
+    let mut rendered = Vec::with_capacity(paths.len());
+    for path in paths {
+        rendered.push(match strip_reference_prefix(path) {
+            Some(rest) => reference_directory
+                .ok_or_else(|| Error::ReferenceUnavailable(parameter.name().to_string()))?
+                .join(rest)
+                .display()
+                .to_string(),
+            None => path.display().to_string(),
+        });
+    }
+    Ok(rendered)
+}
+
 /// Renders the value of a parameter as it is passed on the command line, `None` if unset.
 ///
 /// # Arguments
@@ -306,22 +330,7 @@ fn value_string(
         Parameter::Float(p) => p.value().map(|v| v.to_string()),
         Parameter::Path(p) => match p.value() {
             None => None,
-            Some(paths) => {
-                let mut rendered = Vec::with_capacity(paths.len());
-                for path in paths {
-                    rendered.push(match strip_reference_prefix(path) {
-                        Some(rest) => reference_directory
-                            .ok_or_else(|| {
-                                Error::ReferenceUnavailable(parameter.name().to_string())
-                            })?
-                            .join(rest)
-                            .display()
-                            .to_string(),
-                        None => path.display().to_string(),
-                    });
-                }
-                Some(rendered.join(","))
-            }
+            Some(paths) => Some(resolve_paths(parameter, paths, reference_directory)?.join(",")),
         },
         Parameter::ValueSelect(p) => p.value().map(|values| values.join(",")),
         Parameter::Group(_) => None,
@@ -409,29 +418,83 @@ fn insert_nested(
     Ok(())
 }
 
-/// The workflow parameters of a Nextflow or Snakemake workflow as the content of the file the
-/// engine reads them from (`-params-file` for Nextflow, `--configfile` for Snakemake; JSON is
-/// valid YAML). Passing them on the command line would make the engine parse every value again
+/// The value of a parameter as a JSON value of a CWL input object, `None` if unset. Like
+/// [`configuration_value`], except that `Path` values are `File` or `Directory` objects
+/// (`{"class": "File", "path": ...}`, an array of them for several paths): CWL inputs of these
+/// types do not accept plain strings. A path that is a directory on this host becomes a
+/// `Directory`, every other one a `File`.
+///
+/// # Arguments
+/// * `parameter` - The parameter, decides how the value is read
+/// * `reference_directory` - Absolute directory of the global reference data, see [`value_string`]
+/// * `project_directory` - Absolute project directory the relative paths are joined onto (CWL
+///   resolves relative paths against the input file, not the working directory); `None` leaves
+///   them relative
+fn cwl_value(
+    parameter: &Parameter,
+    reference_directory: Option<&Path>,
+    project_directory: Option<&Path>,
+) -> Result<Option<Value>, Error> {
+    let Parameter::Path(p) = parameter else {
+        return Ok(value_string(parameter, reference_directory)?
+            .map(|plain| configuration_value(parameter, plain)));
+    };
+    let Some(paths) = p.value() else {
+        return Ok(None);
+    };
+    let mut objects: Vec<Value> = resolve_paths(parameter, paths, reference_directory)?
+        .into_iter()
+        .map(|path| match project_directory {
+            Some(base) => base.join(path).display().to_string(),
+            None => path,
+        })
+        .map(|path| {
+            let class = if Path::new(&path).is_dir() {
+                "Directory"
+            } else {
+                "File"
+            };
+            serde_json::json!({ "class": class, "path": path })
+        })
+        .collect();
+    Ok(match objects.len() {
+        0 => None,
+        1 => objects.pop(),
+        _ => Some(Value::Array(objects)),
+    })
+}
+
+/// The workflow parameters of a Nextflow, Snakemake or CWL workflow as the content of the file the
+/// engine reads them from (`-params-file` for Nextflow, `--configfile` for Snakemake, the input
+/// object for CWL; JSON is valid YAML). Passing them on the command line would make the engine parse every value again
 /// (a text `7` becomes a number, `a: b` a dictionary, a line break a space). Names with dots
 /// (`ref.species`) are nested objects, `\.` is a literal dot (see [`split_path`]). Numbers and
 /// true/false choices keep their type, all other values are strings. Parameters without a value
 /// are skipped.
 ///
 /// `None` if no parameter has a value, and always for an engine that takes arguments instead
-/// (Container, see [`render_args`]). Fails with [`Error::InvalidName`] for a malformed name or
-/// one that is both a value and an object (`a` and `a.b`), and with the errors of
+/// (Container, see [`render_args`]). Fails with [`Error::InvalidName`] for a malformed name (CWL:
+/// also one with a dot, input names are flat) or one that is both a value and an object (`a` and `a.b`), and with the errors of
 /// [`value_string`]. Call it next to [`render_args`] to check a configuration before a run.
 ///
 /// # Arguments
 /// * `config` - The workflow configuration with the parameter values applied
 /// * `reference_directory` - Absolute directory of the global reference data, see [`value_string`]
+/// * `project_directory` - Absolute project directory, CWL paths are made absolute with it (the
+///   other engines run in it, so their relative paths work as they are); `None` leaves them
+///   relative, enough to check a configuration
 pub fn render_parameter_file(
     config: &WorkflowConfiguration,
     reference_directory: Option<&Path>,
+    project_directory: Option<&Path>,
 ) -> Result<Option<Value>, Error> {
-    if !matches!(config.engine(), Engine::Nextflow | Engine::Snakemake) {
+    if !matches!(
+        config.engine(),
+        Engine::Nextflow | Engine::Snakemake | Engine::Cwl
+    ) {
         return Ok(None);
     }
+    let is_cwl = config.engine() == &Engine::Cwl;
     let mut root = serde_json::Map::new();
     for p in config
         .fixed_parameters()
@@ -440,9 +503,16 @@ pub fn render_parameter_file(
         .filter(|p| !matches!(p, Parameter::Group(_)))
     {
         validate_name(p.name())?;
-        if let Some(plain) = value_string(p, reference_directory)? {
-            let keys =
-                split_path(p.name()).ok_or_else(|| Error::InvalidName(p.name().to_string()))?;
+        let keys = split_path(p.name()).ok_or_else(|| Error::InvalidName(p.name().to_string()))?;
+        if is_cwl {
+            // The names of a CWL input object are flat
+            if keys.len() != 1 {
+                return Err(Error::InvalidName(p.name().to_string()));
+            }
+            if let Some(value) = cwl_value(p, reference_directory, project_directory)? {
+                insert_nested(&mut root, &keys, value, p.name())?;
+            }
+        } else if let Some(plain) = value_string(p, reference_directory)? {
             insert_nested(&mut root, &keys, configuration_value(p, plain), p.name())?;
         }
     }
@@ -466,6 +536,8 @@ fn container_flag(name: &str) -> String {
 ///   [`render_parameter_file`]
 /// * Snakemake: engine parameters `--name value`, workflow parameters are not arguments, see
 ///   [`render_parameter_file`]
+/// * CWL (Toil): engine parameters `--name value`, workflow parameters are the input object of
+///   [`render_parameter_file`]
 ///
 /// * Container: no engine parameters, workflow parameters `-n value` (single character name) or
 ///   `--name value`, passed to the image
@@ -481,7 +553,7 @@ pub fn render_args(
 ) -> Result<Vec<String>, Error> {
     let engine_prefix = match config.engine() {
         Engine::Nextflow => "-",
-        Engine::Snakemake => "--",
+        Engine::Snakemake | Engine::Cwl => "--",
         Engine::Container => {
             if !config.engine_parameters().is_empty() {
                 return Err(Error::EngineParametersUnsupported(
@@ -490,7 +562,6 @@ pub fn render_args(
             }
             return render_container_args(config, reference_directory);
         }
-        other => return Err(Error::UnsupportedEngine(other.to_string())),
     };
 
     let mut args = Vec::new();
@@ -587,7 +658,7 @@ mod tests {
             ["-profile", "docker", "-resume"]
         );
         assert_eq!(
-            render_parameter_file(&c, None).unwrap(),
+            render_parameter_file(&c, None, None).unwrap(),
             Some(json!({
                 "mode": "fast", "threads": 4, "input": "a.fq,b.fq"
             }))
@@ -600,7 +671,7 @@ mod tests {
         apply_values(&mut c, &[pv("threads", json!(2)), pv("name", json!("x y"))]).unwrap();
         assert!(render_args(&c, None).unwrap().is_empty());
         assert_eq!(
-            render_parameter_file(&c, None).unwrap(),
+            render_parameter_file(&c, None, None).unwrap(),
             Some(json!({"mode": "fast", "threads": 2, "name": "x y"}))
         );
     }
@@ -623,7 +694,7 @@ mod tests {
             c.dynamic_parameters_mut().push(Parameter::Text(text));
         }
         assert_eq!(
-            render_parameter_file(&c, None).unwrap(),
+            render_parameter_file(&c, None, None).unwrap(),
             Some(json!({
                 "a": "line one\nline two", "b": "a: b", "c": "7",
                 "d": "say \"hi\"", "e": "[1,2]"
@@ -661,7 +732,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            render_parameter_file(&c, None).unwrap(),
+            render_parameter_file(&c, None, None).unwrap(),
             Some(json!({
                 "threads": 2,
                 "ref": {"species": "it's", "release": 100},
@@ -684,7 +755,10 @@ mod tests {
                 c.dynamic_parameters_mut().push(Parameter::Text(text));
             }
             assert!(
-                matches!(render_parameter_file(&c, None), Err(Error::InvalidName(_))),
+                matches!(
+                    render_parameter_file(&c, None, None),
+                    Err(Error::InvalidName(_))
+                ),
                 "{names:?}"
             );
         }
@@ -719,7 +793,7 @@ mod tests {
             c.dynamic_parameters_mut().push(Parameter::Text(text));
         }
         assert_eq!(
-            render_parameter_file(&c, None).unwrap(),
+            render_parameter_file(&c, None, None).unwrap(),
             Some(json!({"ref": {"v1.2": "x", "v1.3": "x"}}))
         );
     }
@@ -729,7 +803,7 @@ mod tests {
         let mut c = config(Engine::Snakemake);
         c.fixed_parameters_mut().clear();
         assert!(render_args(&c, None).unwrap().is_empty());
-        assert_eq!(render_parameter_file(&c, None).unwrap(), None);
+        assert_eq!(render_parameter_file(&c, None, None).unwrap(), None);
     }
 
     #[test]
@@ -759,7 +833,7 @@ mod tests {
         *c.dynamic_parameters_mut()[1].name_mut() = "-x".into();
         apply_values(&mut c, &[pv("-x", json!("v"))]).unwrap();
         assert_eq!(
-            render_parameter_file(&c, None),
+            render_parameter_file(&c, None, None),
             Err(Error::InvalidName("-x".into()))
         );
     }
@@ -788,10 +862,62 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_engine() {
+    fn cwl() {
+        let mut c = config(Engine::Cwl);
+        c.engine_parameters_mut()
+            .push(EngineParameter::new("maxCores".into(), "2".into()));
+        apply_values(
+            &mut c,
+            &[
+                pv("threads", json!(2)),
+                pv("name", json!("x y")),
+                pv("input", json!(["a.fq", "b.fq"])),
+            ],
+        )
+        .unwrap();
+        assert_eq!(render_args(&c, None).unwrap(), ["--maxCores", "2"]);
+        assert_eq!(
+            render_parameter_file(&c, None, Some(Path::new("/no/such/p"))).unwrap(),
+            Some(json!({
+                "mode": "fast", "threads": 2, "name": "x y",
+                "input": [
+                    {"class": "File", "path": "/no/such/p/a.fq"},
+                    {"class": "File", "path": "/no/such/p/b.fq"}
+                ]
+            }))
+        );
+    }
+
+    /// An existing directory is a `Directory`, a single path is not wrapped in an array.
+    #[test]
+    fn cwl_path_classes() {
+        let project = std::env::temp_dir().canonicalize().unwrap();
+        let mut c = config(Engine::Cwl);
+        // A project-relative path of an existing folder: the project itself is the folder
+        let name = project.file_name().unwrap().to_str().unwrap().to_string();
+        let parent = project.parent().unwrap();
+        apply_values(&mut c, &[pv("input", json!([name.clone()]))]).unwrap();
+        let rendered = render_parameter_file(&c, None, Some(parent))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            rendered["input"],
+            json!({"class": "Directory", "path": project.to_str().unwrap()})
+        );
+    }
+
+    /// CWL input names are flat: no nesting through dots.
+    #[test]
+    fn cwl_rejects_nested_names() {
+        let mut c = config(Engine::Cwl);
+        c.fixed_parameters_mut().push(Parameter::Text({
+            let mut t = Text::new("a.b".into(), "A".into(), "".into());
+            *t.value_mut() = Some("1".into());
+            t
+        }));
         assert!(matches!(
-            render_args(&config(Engine::Cwl), None),
-            Err(Error::UnsupportedEngine(_))
+            render_parameter_file(&c, None, None),
+            Err(Error::InvalidName(_))
         ));
     }
 
@@ -812,7 +938,7 @@ mod tests {
             .push(Parameter::ValueSelect(select(false)));
         apply_values(&mut c, &[pv("mode2", json!("b"))]).unwrap();
         assert_eq!(
-            render_parameter_file(&c, None).unwrap().unwrap()["mode2"],
+            render_parameter_file(&c, None, None).unwrap().unwrap()["mode2"],
             json!("b")
         );
         assert!(matches!(
@@ -832,7 +958,7 @@ mod tests {
             .push(Parameter::ValueSelect(select(true)));
         apply_values(&mut c, &[pv("mode2", json!(["a", "b"]))]).unwrap();
         assert_eq!(
-            render_parameter_file(&c, None).unwrap().unwrap()["mode2"],
+            render_parameter_file(&c, None, None).unwrap().unwrap()["mode2"],
             json!("a,b")
         );
         assert_eq!(
@@ -847,7 +973,7 @@ mod tests {
         c.dynamic_parameters_mut()
             .push(Parameter::Group(Group::new("S".into(), "".into())));
         assert_eq!(
-            render_parameter_file(&c, None).unwrap(),
+            render_parameter_file(&c, None, None).unwrap(),
             Some(json!({"mode": "fast"}))
         );
     }
@@ -865,7 +991,7 @@ mod tests {
         ));
         apply_values(&mut c, &[pv("input", json!("/a/b.fq"))]).unwrap();
         assert_eq!(
-            render_parameter_file(&c, None).unwrap().unwrap()["input"],
+            render_parameter_file(&c, None, None).unwrap().unwrap()["input"],
             json!("a/b.fq")
         );
     }
@@ -909,11 +1035,13 @@ mod tests {
         .unwrap();
         let reference = Path::new("/data/reference");
         assert_eq!(
-            render_parameter_file(&c, Some(reference)).unwrap().unwrap()["input"],
+            render_parameter_file(&c, Some(reference), None)
+                .unwrap()
+                .unwrap()["input"],
             json!("/data/reference/hg38/a.fa,reads/b.fq")
         );
         assert_eq!(
-            render_parameter_file(&c, None),
+            render_parameter_file(&c, None, None),
             Err(Error::ReferenceUnavailable("input".into()))
         );
         assert!(matches!(

@@ -24,7 +24,11 @@ impl ParameterFile {
     /// # Arguments
     /// * `job` - the job whose parameters are written
     pub fn write(job: &Job) -> Result<Option<Self>, ExecutorError> {
-        let Some(values) = render_parameter_file(&job.configuration, job.reference_dir.as_deref())?
+        let Some(values) = render_parameter_file(
+            &job.configuration,
+            job.reference_dir.as_deref(),
+            Some(&job.project_dir),
+        )?
         else {
             return Ok(None);
         };

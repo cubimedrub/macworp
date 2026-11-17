@@ -6,6 +6,7 @@ use tokio::sync::{mpsc, watch};
 use super::{
     Executor, Job, LogLine, Outcome,
     container::ContainerExecutor,
+    cwl::{self, CwlExecutor},
     nextflow::{self, NextflowExecutor},
     snakemake::{self, SnakemakeExecutor},
 };
@@ -47,7 +48,12 @@ impl Executor for OnRuntime {
 /// * `runtimes` - usable runtimes, most preferred first
 pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<Arc<dyn Executor>> {
     let mut executors: Vec<Arc<dyn Executor>> = Vec::new();
-    for engine in [Engine::Nextflow, Engine::Snakemake, Engine::Container] {
+    for engine in [
+        Engine::Nextflow,
+        Engine::Snakemake,
+        Engine::Cwl,
+        Engine::Container,
+    ] {
         let Some(runtime) = runtimes
             .iter()
             .find(|runtime| runtime.supports_engine(&engine))
@@ -55,8 +61,9 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
             continue;
         };
         let binary = runtime.binary().to_path_buf();
-        // Only Nextflow talks to the runtime socket, Snakemake runs its tool containers with Apptainer
-        let engine_access = if engine != Engine::Nextflow {
+        // Nextflow and Toil talk to the runtime socket, Snakemake runs its tool containers with Apptainer
+        let uses_socket = matches!(engine, Engine::Nextflow | Engine::Cwl);
+        let engine_access = if !uses_socket {
             Vec::new()
         } else {
             match runtime.info().await {
@@ -67,7 +74,7 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
                 }
             }
         };
-        if engine == Engine::Nextflow && engine_access.is_empty() {
+        if uses_socket && engine_access.is_empty() {
             tracing::warn!(
                 "No {} socket found, {engine} cannot start sibling containers",
                 runtime.kind()
@@ -77,6 +84,9 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
             Engine::Nextflow => Arc::new(
                 NextflowExecutor::new(&binary, nextflow::image()).with_engine_access(engine_access),
             ),
+            Engine::Cwl => {
+                Arc::new(CwlExecutor::new(&binary, cwl::image()).with_engine_access(engine_access))
+            }
             Engine::Snakemake => Arc::new(
                 SnakemakeExecutor::new(&binary, snakemake::image())
                     .with_runtime_kind(runtime.kind())
@@ -151,6 +161,7 @@ mod tests {
             vec![
                 (Engine::Nextflow, Some(RuntimeKind::Podman)),
                 (Engine::Snakemake, Some(snakemake_runtime)),
+                (Engine::Cwl, Some(RuntimeKind::Podman)),
                 (Engine::Container, Some(RuntimeKind::Podman)),
             ]
         );
@@ -161,9 +172,9 @@ mod tests {
     async fn single_runtimes() {
         let podman = assignment(&[RuntimeKind::Podman]).await;
         if cfg!(target_os = "linux") {
-            assert_eq!(podman.len(), 3);
+            assert_eq!(podman.len(), 4);
         } else {
-            assert_eq!(podman.len(), 2);
+            assert_eq!(podman.len(), 3);
             assert!(
                 podman
                     .iter()
@@ -171,7 +182,7 @@ mod tests {
             );
         }
         let docker = assignment(&[RuntimeKind::Docker]).await;
-        assert_eq!(docker.len(), 3);
+        assert_eq!(docker.len(), 4);
         assert!(
             docker
                 .iter()

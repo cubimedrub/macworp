@@ -39,7 +39,7 @@ use macworp_core::{
 use macworp_ui_core::client::Client;
 use macworp_worker::{
     container_runtime::{ContainerRuntime, RuntimePreference},
-    executors::{nextflow, snakemake},
+    executors::{cwl, nextflow, snakemake},
 };
 use serde_json::{json, Value};
 
@@ -547,6 +547,16 @@ async fn prepare_image(runtime: &dyn ContainerRuntime, engine: &Engine) -> bool 
             );
             false
         }
+        Engine::Cwl => {
+            let image = cwl::image();
+            if image_exists(runtime, &image).await {
+                return true;
+            }
+            eprintln!(
+                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target cwl -t macworp-cwl:latest docker`)"
+            );
+            false
+        }
         Engine::Container => {
             let build = tokio::process::Command::new(runtime.binary())
                 .args(["build", "-t", CONTAINER_IMAGE])
@@ -572,7 +582,6 @@ async fn prepare_image(runtime: &dyn ContainerRuntime, engine: &Engine) -> bool 
             }
             panic!("cannot build {CONTAINER_IMAGE}:\n{output}");
         }
-        other => panic!("no end-to-end workflow for {other}"),
     }
 }
 
@@ -678,5 +687,55 @@ async fn snakemake_is_rejected_when_runtime_cannot_run_it() {
     assert!(
         error.contains("409") && error.contains("not available"),
         "unexpected error: {error}"
+    );
+}
+
+/// Runs a CWL tool through Toil: text, number and a file (a project-relative path the engine gets
+/// as a `File`) end up in the output the engine collects into the project directory.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a container runtime, the macworp-cwl image and network access to pull debian"]
+async fn runs_cwl_workflow() {
+    let engine = Engine::Cwl;
+    let Some((runtime, unavailable_engines)) = require_runtime(&engine).await else {
+        return;
+    };
+    if !prepare_image(runtime.as_ref(), &engine).await {
+        return;
+    }
+    let app = TestApp::start(runtime, unavailable_engines).await;
+    fs::copy(
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/end_to_end/cwl/tool.cwl"
+        ),
+        app.workflow_dir.join("tool.cwl"),
+    )
+    .unwrap();
+    write(&app.project_dir, "data/in.txt", "file content\n");
+    let configuration: WorkflowConfiguration = serde_json::from_value(json!({
+        "engine": "Cwl",
+        "engine_parameters": [],
+        "source": {"Local": {"location": app.workflow_dir, "script": "tool.cwl"}},
+        "fixed_parameters": [
+            text("message", false, "hello cwl"),
+            {"Integer": {"name": "count", "label": "", "desc": "", "value": 3, "min": 1, "max": 10}},
+            path("input", false, 1, &["data/in.txt"]),
+        ],
+        "dynamic_parameters": [],
+    }))
+    .unwrap();
+    let run = app.start_run(configuration, Vec::new()).await.unwrap();
+    let (run, log_text) = app.finished_run(run.id).await;
+    let project_dir = app.project_dir.clone();
+    let _temp = app.stop().await;
+
+    assert_eq!(
+        run.status,
+        RunStatus::Succeeded,
+        "{run:?}\n--- log ---\n{log_text}"
+    );
+    assert_eq!(
+        read(&project_dir, "cwl_result.txt"),
+        "hello cwl\n3\nfile content\n"
     );
 }

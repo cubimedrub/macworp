@@ -496,7 +496,7 @@ mod tests {
             value,
         });
         apply_values(&mut config, &values).unwrap();
-        let rendered = render_parameter_file(&config, None).unwrap().unwrap();
+        let rendered = render_parameter_file(&config, None, None).unwrap().unwrap();
         assert_eq!(rendered["input"], json!("sheet.csv"));
         assert_eq!(rendered["threads"], json!(8));
     }
@@ -652,7 +652,7 @@ required: [genome]
             }
         });
         apply_values(&mut config, &values).unwrap();
-        let rendered = render_parameter_file(&config, None).unwrap().unwrap();
+        let rendered = render_parameter_file(&config, None, None).unwrap().unwrap();
         assert_eq!(rendered["genome"], json!("GRCh37"));
         assert_eq!(rendered["threads"], json!(8));
     }

@@ -9,7 +9,7 @@ Every workflow engine runs **inside an engine image**, started by the worker thr
 | Nextflow | `macworp-nextflow` | yes | yes | no |
 | Snakemake | `macworp-snakemake` | yes | **no** (see below) | no |
 | Container (single image) | the workflow's own | yes | yes | yes |
-| CWL (Toil) | `macworp-cwl` | not built yet (P5) | | |
+| CWL (Toil) | `macworp-cwl` | yes | yes | no |
 
 The code side of this table is `RuntimeKind::supports_engine` (`packages/worker/src/container_runtime/runtime.rs`); the start-up doctor (`macworp_worker doctor`) reports what a host can run and the UI greys out the rest.
 
@@ -18,11 +18,11 @@ The code side of this table is `RuntimeKind::supports_engine` (`packages/worker/
 **One multi-stage `docker/engine.dockerfile`, one target per engine**, not one image with all engines and not unrelated files.
 
 - Shared `base` stage: container CLIs (`docker.io`, `podman-remote`), git, bash, procps, curl.
-- Targets `nextflow`, `snakemake` (later `cwl`) add their engine only. Build with
+- Targets `nextflow`, `snakemake`, `cwl` add their engine only. Build with
   `docker build -f docker/engine.dockerfile --target snakemake -t macworp-snakemake:latest docker`.
 - Why not a single image: its size (JRE + two Python stacks + Apptainer), engine versions could not be pinned independently (a bump would rebuild and re-tag every engine), and the extra privileges one engine needs (below) would apply to all of them.
 - Why not separate files: shared layers and one place to bump the base.
-- Versions are `ARG`s (`NXF_VER`, `SNAKEMAKE_VER`, `PANOPTES_PLUGIN_VER`).
+- Versions are `ARG`s (`NXF_VER`, `SNAKEMAKE_VER`, `PANOPTES_PLUGIN_VER`, `TOIL_VER`).
 
 ## Nextflow: sibling containers through the runtime socket
 
@@ -90,14 +90,25 @@ Docker on such a host needs the AppArmor profile `docker/apparmor-macworp-snakem
 Snakemake 9 removed `--wms-monitor`. Progress comes from the
 [`snakemake-logger-plugin-panoptes`](https://github.com/panoptes-organization/snakemake-logger-plugin-panoptes) (installed in the engine image, pinned) via `--logger panoptes --logger-panoptes-address <worker log proxy>/snakemake`. The log proxy (`packages/worker/src/log_proxy`) mimics the Panoptes API the plugin talks to. Verified 2026-11-16: task counts arrive (`tasks_total`/`tasks_done`) in the end-to-end run.
 
+## CWL: Toil with sibling containers through the runtime socket
+
+Spike and implementation 2026-11-17, macOS (Docker Desktop 29.9, podman 6.1 machine), Toil 9.6.0.
+
+- Toil (`toil-cwl-runner`) starts `DockerRequirement` images through the runtime socket exactly like Nextflow: same `engine_access_args`, engine container as root, no Apptainer, no extra security options. Works on Docker and on the rootless podman machine (`--security-opt label=disable`). `--podman` is not needed, the docker CLI talks to the podman socket.
+- Toil pre-pulls the images with `cwl-docker-extract`, which lives in the venv: the image puts `/opt/toil/bin` on `PATH` (without it the run fails with `No such file or directory: 'cwl-docker-extract'`).
+- Toil mounts files from its working directory into the tool containers, so the working directory must exist on the host: the executor uses `<project>/.toil` (`--workDir`, `--jobStore <project>/.toil/jobstore`, created by the executor, Toil does not create the parent) and `--outdir <project>`. Engine parameters `jobStore` / `workDir` replace the defaults. The empty `.toil` directory stays in the project.
+- Workflow parameters are the CWL input object (JSON file, `core::render::render_parameter_file`). `Path` values become `File` / `Directory` objects with absolute paths (relative paths would be read relative to the input file); a directory on the host is a `Directory`, anything else a `File`. Input names are flat (no dotted nesting).
+- Progress: Toil has no event hook. Its leader log (`Issued job ...`, `CWL step complete`) could be parsed; not done, a CWL run shows indeterminate progress.
+- Only local sources; remote CWL repositories are not cloned by the worker yet.
+
 ## Workflow parameters: Nextflow and Snakemake read a file
 
 Workflow parameters are written as JSON (valid YAML) to `parameters.json` in a scratch directory of the run (`<temp dir>/macworp-run-<id>-*`, readable by everyone, removed by the worker when the run ended) and passed with `-params-file` (Nextflow) or `--configfile` (Snakemake); the directory is mounted read-only like the workflow files (`executors/parameter_file.rs`, `core::render::render_parameter_file`). Dotted parameter names become nested objects, numbers and true/false choices keep their type, everything else is a string. The Container engine still gets `--name value` arguments. The backend renders the file content at run start too, so invalid names or values fail there and not in the worker.
 
 Command line parameters are not used because the engines parse each value again. Snakemake `--config` (checked with 9.11): a line break becomes a space, `say "hi"` loses its closing quote, `a: b` and `{a: 1}` become dictionaries, `[1,2]` a list, `"7"` an integer; quoting does not help. Nextflow `--name value` types values too (a text `7` becomes a number). Verified 2026-11-16 on Docker Desktop (macOS): the end-to-end runs of both engines keep the line break. The scratch directory must be visible to the runtime; podman machine and WSL are unverified.
 
-Engine versions: the engine image is `macworp-nextflow:latest` / `macworp-snakemake:latest`; `MACWORP_NEXTFLOW_IMAGE` / `MACWORP_SNAKEMAKE_IMAGE` replace it (for example an older version built from `docker/engine.dockerfile` with another `NXF_VER` / `SNAKEMAKE_VER`). The end-to-end test honours them too.
+Engine versions: the engine image is `macworp-nextflow:latest` / `macworp-snakemake:latest`; `MACWORP_NEXTFLOW_IMAGE` / `MACWORP_SNAKEMAKE_IMAGE` / `MACWORP_CWL_IMAGE` replace it (for example an older version built from `docker/engine.dockerfile` with another `NXF_VER` / `SNAKEMAKE_VER`). The end-to-end test honours them too.
 
 ## End-to-end test coverage
 
-`cargo test -p macworp_desktop end_to_end_test -- --ignored` runs one scenario per engine (all parameter types, fixed and dynamic) on the selected runtime (`MACWORP_CONTAINER_RUNTIME`). Needs the engine images built as above. Passing on Docker (macOS) for Nextflow, Snakemake and Container, and on Podman for Nextflow and Container; Podman is expected to reject Snakemake runs.
+`cargo test -p macworp_desktop end_to_end_test -- --ignored` runs one scenario per engine (all parameter types, fixed and dynamic) on the selected runtime (`MACWORP_CONTAINER_RUNTIME`). Needs the engine images built as above. `runs_cwl_workflow` (text, number, file through Toil) is a smaller scenario, not the all-parameter-types one. Passing on Docker (macOS) for Nextflow, Snakemake, CWL and Container, and on Podman for Nextflow, CWL and Container; Podman is expected to reject Snakemake runs.

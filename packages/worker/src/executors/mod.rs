@@ -2,6 +2,8 @@
 pub mod container;
 /// Builds and runs the `<runtime> run ...` command shared by all executors
 mod containerized_execution;
+/// Executor for CWL workflows, runs Toil inside an engine image
+pub mod cwl;
 /// The `Executor` trait implemented per workflow engine, and its error
 mod executor;
 /// Types describing a claimed run and how it ended

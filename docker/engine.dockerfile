@@ -4,6 +4,7 @@
 #
 #   docker build -f docker/engine.dockerfile --target nextflow  -t macworp-nextflow:latest  docker
 #   docker build -f docker/engine.dockerfile --target snakemake -t macworp-snakemake:latest docker
+#   docker build -f docker/engine.dockerfile --target cwl       -t macworp-cwl:latest       docker
 
 # Shared by all engines: container CLIs and basic tools
 FROM ubuntu:24.04 AS base
@@ -61,3 +62,17 @@ RUN chmod 666 /etc/passwd \
       'exec "$@"' > /usr/local/bin/engine-entrypoint \
     && chmod 755 /usr/local/bin/engine-entrypoint
 ENTRYPOINT ["/usr/local/bin/engine-entrypoint"]
+
+# CWL through Toil (Python venv of its own). Toil starts `DockerRequirement` images through the
+# runtime socket like Nextflow does (docker CLI from the base image, `DOCKER_HOST` points at the
+# mount). Its image pre-pull calls `cwl-docker-extract` from the venv, so the venv is on PATH.
+FROM base AS cwl
+
+ARG TOIL_VER=9.6.0
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-venv python3-pip nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/toil \
+    && /opt/toil/bin/pip install --no-cache-dir "toil[cwl]==${TOIL_VER}" \
+    && /opt/toil/bin/toil-cwl-runner --version
+ENV PATH=/opt/toil/bin:$PATH

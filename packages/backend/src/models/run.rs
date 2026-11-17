@@ -47,6 +47,10 @@ pub struct Model {
     /// Repository and commit of a remote or nf-core workflow, `None` for local workflows
     #[sea_orm(nullable)]
     pub provenance: Option<RunProvenance>,
+    /// Name of the snapshot of the global reference data this run reads (see
+    /// `reference_snapshots`), `None` when it reads the live reference folder
+    #[sea_orm(nullable)]
+    pub reference_snapshot: Option<String>,
     /// Tasks the engine announced so far, grows during the run
     pub tasks_total: i32,
     /// Tasks the engine finished
@@ -614,6 +618,23 @@ impl Entity {
             .await?
             .map(|run| run.cancel_requested)
             .ok_or(Error::NotFound)
+    }
+
+    /// Names of the reference snapshots of queued and running runs. Sweeping must keep them.
+    ///
+    /// # Arguments
+    /// * `db` - Database connection or transaction
+    pub async fn active_reference_snapshots<C: ConnectionTrait>(
+        db: &C,
+    ) -> Result<std::collections::HashSet<String>, Error> {
+        Ok(Entity::find()
+            .filter(Column::Status.is_in([RunStatus::Queued, RunStatus::Running]))
+            .filter(Column::ReferenceSnapshot.is_not_null())
+            .all(db)
+            .await?
+            .into_iter()
+            .filter_map(|run| run.reference_snapshot)
+            .collect())
     }
 
     /// Local source locations of queued and running runs. The repository cache must not delete

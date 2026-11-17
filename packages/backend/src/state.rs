@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use sea_orm::{Database, DatabaseConnection, EntityTrait};
@@ -11,15 +12,22 @@ use crate::{
     error::Error,
     nf_core_index::NfCoreIndex,
     reference_directory::ReferenceDirectory,
+    reference_snapshots::ReferenceSnapshots,
     worker_registry::WorkerRegistry,
     workflow_repository_cache::WorkflowRepositoryCache,
 };
+
+/// Name of the folder below the storage root holding the per-run reference snapshots.
+pub const REFERENCE_SNAPSHOTS_DIRECTORY_NAME: &str = "reference_snapshots";
 
 pub struct State {
     config: Configuration,
     db: DatabaseConnection,
     workers: WorkerRegistry,
     reference_directory: ReferenceDirectory,
+    /// Per-run snapshots of the reference data, `None` where the app does not write the
+    /// reference data itself (desktop: the user's own folder, runs read it directly)
+    reference_snapshots: Option<ReferenceSnapshots>,
     workflow_repository_cache: Arc<WorkflowRepositoryCache>,
     nf_core_index: Arc<NfCoreIndex>,
     /// Latest background download per workflow, with a sequence number so a slow older
@@ -30,6 +38,12 @@ pub struct State {
 impl State {
     async fn new(config: Configuration, db: DatabaseConnection) -> Result<Self, Error> {
         let reference_directory = ReferenceDirectory::below(&config.storage_directory());
+        let reference_snapshots = Some(ReferenceSnapshots::new(
+            reference_directory.clone(),
+            config
+                .storage_directory()
+                .join(REFERENCE_SNAPSHOTS_DIRECTORY_NAME),
+        ));
         let workflow_repository_cache = Arc::new(WorkflowRepositoryCache::new(
             config.cache_directory(),
             std::time::Duration::from_secs(config.branch_cache_seconds()),
@@ -44,6 +58,7 @@ impl State {
             db,
             workers: WorkerRegistry::default(),
             reference_directory,
+            reference_snapshots,
             workflow_repository_cache,
             nf_core_index,
             prefetches: Mutex::default(),
@@ -179,8 +194,63 @@ impl State {
     /// # Arguments
     /// * `reference_directory` - The handle to use from now on
     pub fn with_reference_directory(mut self, reference_directory: ReferenceDirectory) -> Self {
+        self.reference_snapshots = self.reference_snapshots.map(|snapshots| {
+            ReferenceSnapshots::new(reference_directory.clone(), snapshots.root().to_path_buf())
+        });
         self.reference_directory = reference_directory;
         self
+    }
+
+    /// Turns per-run reference snapshots on (the standalone default) for a state that has none,
+    /// stored below `root`. Used where the integration state needs them, e.g. in tests.
+    ///
+    /// # Arguments
+    /// * `root` - Folder for the snapshots, must be on the filesystem of the reference data
+    pub fn with_reference_snapshots(mut self, root: PathBuf) -> Self {
+        self.reference_snapshots = Some(ReferenceSnapshots::new(
+            self.reference_directory.clone(),
+            root,
+        ));
+        self
+    }
+
+    /// The per-run snapshots of the reference data, `None` where runs read the live folder.
+    pub fn reference_snapshots(&self) -> Option<&ReferenceSnapshots> {
+        self.reference_snapshots.as_ref()
+    }
+
+    /// Reference data directory a run reads: its snapshot, or the live folder for runs without
+    /// one (embedded desktop worker, runs queued before snapshots existed).
+    ///
+    /// # Arguments
+    /// * `run` - The run being handed to a worker
+    pub fn reference_directory_of(&self, run: &crate::models::Run) -> PathBuf {
+        match (&self.reference_snapshots, &run.reference_snapshot) {
+            (Some(snapshots), Some(name)) => snapshots.path_of(name),
+            _ => self.reference_directory.get(),
+        }
+    }
+
+    /// Deletes snapshots no queued or running run uses and that are older than `grace`. Returns
+    /// how many were removed; 0 without snapshots.
+    ///
+    /// # Arguments
+    /// * `grace` - Minimum age of an unreferenced snapshot, covers the window between creating
+    ///   a snapshot and storing its run
+    pub async fn sweep_reference_snapshots(
+        &self,
+        grace: std::time::Duration,
+    ) -> Result<usize, Error> {
+        let Some(snapshots) = self.reference_snapshots.clone() else {
+            return Ok(0);
+        };
+        let in_use = crate::models::RunTable::active_reference_snapshots(&self.db)
+            .await
+            .map_err(|error| Error::ReferenceSnapshot(error.to_string()))?;
+        tokio::task::spawn_blocking(move || snapshots.sweep(&in_use, grace))
+            .await
+            .map_err(|error| Error::ReferenceSnapshot(error.to_string()))?
+            .map_err(|error| Error::ReferenceSnapshot(error.to_string()))
     }
 
     /// Deletes cached checkouts unused for `checkout_max_age_days` that no queued or running
@@ -423,6 +493,9 @@ impl State {
             .await
             .map_err(Error::DatabaseConnection)?;
 
-        Self::new(config, db).await
+        let mut state = Self::new(config, db).await?;
+        // The reference folder is the user's own; the app never writes into it
+        state.reference_snapshots = None;
+        Ok(state)
     }
 }

@@ -57,6 +57,17 @@ impl DirectoryFiles {
         Ok(final_path)
     }
 
+    /// Whether `name` (a file name, not a path) is an unfinished upload or text write left by
+    /// [`Self::stream_to_file`] or [`Self::write_text`]. Such files are not part of the data.
+    ///
+    /// # Arguments
+    /// * `name` - File name to check
+    pub fn is_unfinished_name(name: &str) -> bool {
+        name.starts_with('.')
+            && (name.ends_with(&format!(".{PARTIAL_UPLOAD_SUFFIX}"))
+                || name.ends_with(&format!(".{PARTIAL_TEXT_SUFFIX}")))
+    }
+
     /// Name of the hidden sibling a file is written to before it is renamed over `path`:
     /// `.<file name>.<suffix>` in the same folder. The suffix is appended to the whole file name
     /// (never replaces an extension), so `genome.fa` and `genome.fai` get distinct siblings, and

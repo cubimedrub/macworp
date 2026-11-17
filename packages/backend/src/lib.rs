@@ -16,6 +16,11 @@ pub mod models;
 pub mod nf_core_index;
 /// Shared location of the global reference data
 pub mod reference_directory;
+pub mod reference_snapshots;
+
+/// How long an unreferenced reference snapshot survives: a snapshot is made before its run is
+/// stored, so a young one may belong to a run being started.
+const REFERENCE_SNAPSHOT_GRACE: std::time::Duration = std::time::Duration::from_secs(600);
 /// State of the backend, e.g. connection pool
 mod state;
 /// Fixtures for the HTTP-level tests
@@ -141,6 +146,14 @@ where
                     Ok(count) => tracing::info!("Refreshed {count} cached workflow repositories"),
                     Err(error) => tracing::error!("{error}"),
                 }
+            }
+            match state
+                .sweep_reference_snapshots(REFERENCE_SNAPSHOT_GRACE)
+                .await
+            {
+                Ok(0) => {}
+                Ok(removed) => tracing::info!("Removed {removed} unused reference snapshots"),
+                Err(error) => tracing::error!("{error}"),
             }
             match models::RunTable::requeue_expired(state.db(), max_attempts).await {
                 Ok(result) if result != models::RequeuedRuns::default() => {

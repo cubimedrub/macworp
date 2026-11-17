@@ -156,7 +156,7 @@ impl<F: IsFilesystem + 'static> WorkerController<F> {
             return Ok(Json(WorkerClaimResponse {
                 run_id: run.id,
                 project_dir,
-                reference_dir: std::path::absolute(state.reference_directory().get())
+                reference_dir: std::path::absolute(state.reference_directory_of(&run))
                     .ok()
                     .map(|path| state.config().relative_to_storage(&path)),
                 configuration: run.configuration,

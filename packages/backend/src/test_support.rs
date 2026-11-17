@@ -50,11 +50,27 @@ impl TestApp {
         Self::new_with(|_| {}).await
     }
 
+    /// Like [`Self::new`], with per-run reference snapshots turned on (as in the standalone
+    /// backend) below `<storage>/reference_snapshots`; local workflow paths are allowed so a run
+    /// can start without an uploaded workflow.
+    pub async fn new_with_reference_snapshots() -> Self {
+        Self::build(|c| *c.allow_local_paths_mut() = true, true).await
+    }
+
     /// Like [`Self::new`], but lets `adjust` change the configuration first.
     ///
     /// # Arguments
     /// * `adjust` - Called with the default test configuration before the backend state is built
     pub async fn new_with(adjust: impl FnOnce(&mut Configuration)) -> Self {
+        Self::build(adjust, false).await
+    }
+
+    /// Builds the app.
+    ///
+    /// # Arguments
+    /// * `adjust` - Called with the default test configuration before the backend state is built
+    /// * `reference_snapshots` - Whether runs get a snapshot of the reference data
+    async fn build(adjust: impl FnOnce(&mut Configuration), reference_snapshots: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut configuration = Configuration::default();
         *configuration.worker_mut() = crate::configuration::WorkerCredentials::new(
@@ -69,6 +85,12 @@ impl TestApp {
         state
             .reference_directory()
             .set(directory.path().join("reference"));
+        let state = if reference_snapshots {
+            let root = directory.path().join("reference_snapshots");
+            state.with_reference_snapshots(root)
+        } else {
+            state
+        };
         std::fs::create_dir_all(directory.path().join("reference")).unwrap();
         Migrator::up(state.db(), None).await.unwrap();
         let state = Arc::new(state);

@@ -549,3 +549,59 @@ async fn path_patterns_are_enforced() {
         .await;
     assert_ne!(status, StatusCode::BAD_REQUEST, "{response}");
 }
+
+/// A run reads the reference data as it was when the run was started: files replaced, deleted or
+/// added afterwards are not in what the worker gets, the snapshot is removed after the run
+/// ended, and a start that is not stored leaves no snapshot behind.
+#[tokio::test]
+async fn run_gets_a_snapshot_of_the_reference_data() {
+    let app = TestApp::new_with_reference_snapshots().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    announce(&app, "w1", json!(["Nextflow", "Container", "Snakemake", "Cwl"])).await;
+    let reference = app.state.reference_directory().get();
+    std::fs::write(reference.join("genome.fa"), "old").unwrap();
+    std::fs::write(reference.join("genome.fa.fai"), "old index").unwrap();
+
+    let (status, response) = app
+        .post(
+            &alice,
+            &format!("/runs/start/{}", project.id),
+            Some(json!({"workflow_id": workflow.id, "comment": "", "parameters": []})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+
+    // An admin replaces one file, deletes the other and adds a new one
+    std::fs::write(reference.join("genome.fa.new"), "new").unwrap();
+    std::fs::rename(reference.join("genome.fa.new"), reference.join("genome.fa")).unwrap();
+    std::fs::remove_file(reference.join("genome.fa.fai")).unwrap();
+    std::fs::write(reference.join("added.txt"), "added").unwrap();
+
+    let (status, claimed) = claim(&app).await;
+    assert_eq!(status, StatusCode::OK, "{claimed}");
+    let snapshot = std::path::PathBuf::from(claimed["reference_dir"].as_str().unwrap());
+    assert!(snapshot.is_absolute());
+    assert_ne!(snapshot, reference, "the worker must not get the live folder");
+    assert_eq!(std::fs::read(snapshot.join("genome.fa")).unwrap(), b"old");
+    assert_eq!(std::fs::read(snapshot.join("genome.fa.fai")).unwrap(), b"old index");
+    assert!(!snapshot.join("added.txt").exists());
+
+    // Referenced while the run is active, removed once it is over
+    let grace = std::time::Duration::ZERO;
+    assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 0);
+    assert!(snapshot.exists());
+    RunTable::finish(
+        app.state.db(),
+        claimed["run_id"].as_i64().unwrap(),
+        RunStatus::Succeeded,
+        Some(0),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 1);
+    assert!(!snapshot.exists());
+}

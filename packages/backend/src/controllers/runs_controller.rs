@@ -75,6 +75,9 @@ pub enum Error {
     /// The run is already finished and cannot be cancelled, 409
     #[error("Run already finished")]
     AlreadyFinished,
+    /// The snapshot of the reference data could not be made, 500
+    #[error("{0}")]
+    ReferenceSnapshot(#[from] crate::reference_snapshots::Error),
 }
 
 impl From<AuthorizationError> for Error {
@@ -123,7 +126,7 @@ impl IntoResponse for Error {
                 (StatusCode::BAD_GATEWAY, self.to_string()).into_response()
             }
             Error::Source(_) => (StatusCode::BAD_REQUEST, self.to_string()).into_response(),
-            Error::SourceTask | Error::Database(_) => {
+            Error::SourceTask | Error::Database(_) | Error::ReferenceSnapshot(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         }
@@ -318,9 +321,20 @@ impl RunsController {
             .map(|p| (p.name, p.value))
             .collect();
 
+        // Point-in-time view of the reference data: later changes by admins never reach this run
+        let reference_snapshot_name = match state.reference_snapshots().cloned() {
+            Some(snapshots) => Some(
+                tokio::task::spawn_blocking(move || snapshots.create())
+                    .await
+                    .map_err(|_| Error::SourceTask)??,
+            ),
+            None => None,
+        };
+
         let max_runs = state.config().max_runs_per_project();
         let comment = payload.comment;
         let user_id = user.id;
+        let stored_snapshot = reference_snapshot_name.clone();
         let run = state
             .db()
             .transaction::<_, Run, Error>(|txn| {
@@ -332,6 +346,7 @@ impl RunsController {
                         started_by: Set(Some(user_id)),
                         configuration: Set(configuration),
                         provenance: Set(provenance),
+                        reference_snapshot: Set(reference_snapshot_name),
                         parameters: Set(serde_json::Value::Object(parameters)),
                         comment: Set(comment),
                         status: Set(RunStatus::Queued),
@@ -348,7 +363,19 @@ impl RunsController {
             .map_err(|err| match err {
                 TransactionError::Connection(err) => Error::Database(err),
                 TransactionError::Transaction(err) => err,
-            })?;
+            });
+        let run = match run {
+            Ok(run) => run,
+            Err(error) => {
+                // No run points to the snapshot, do not wait for the sweep
+                if let (Some(name), Some(snapshots)) =
+                    (stored_snapshot, state.reference_snapshots().cloned())
+                {
+                    let _ = tokio::task::spawn_blocking(move || snapshots.remove(&name)).await;
+                }
+                return Err(error);
+            }
+        };
 
         Self::respond(&state, user_id, run).await
     }

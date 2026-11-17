@@ -15,6 +15,8 @@ use thiserror::Error;
 use tokio::process::Command;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Starting a container takes longer than querying the runtime
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -142,6 +144,15 @@ pub trait ContainerRuntime: fmt::Debug + Send + Sync {
     }
     /// Queries the runtime; failure means it is installed but not usable (e.g. daemon down).
     fn info(&self) -> BoxFuture<'_, Result<RuntimeInfo, Error>>;
+    /// Starts a short-lived container (`<runtime> run --rm <args>`) to find out whether the
+    /// runtime accepts certain options, for example an AppArmor profile. The default does
+    /// nothing and reports success.
+    ///
+    /// # Arguments
+    /// * `args` - everything after `run --rm`: options, image, command
+    fn probe_container(&self, _args: Vec<String>) -> BoxFuture<'_, Result<(), Error>> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// Runtime driven through its command line client (portable, also works inside WSL).
@@ -175,29 +186,21 @@ impl CliRuntime {
         self.binary.display().to_string()
     }
 
-    async fn query(&self) -> Result<RuntimeInfo, Error> {
+    /// Runs the binary with `args` and returns its output if it exits successfully.
+    async fn run_checked<S: AsRef<std::ffi::OsStr>>(
+        &self,
+        args: &[S],
+        timeout: Duration,
+    ) -> Result<std::process::Output, Error> {
         let binary = self.binary_display();
-        let args: &[&str] = match self.kind {
-            RuntimeKind::Podman => &["info", "--format", "json"],
-            RuntimeKind::Docker => &["info", "--format", "{{json .}}"],
-            // `info` and a machine readable format are not documented for wslc, `version` is
-            #[cfg(windows)]
-            RuntimeKind::Wslc => &["version"],
-        };
-
         let output = Command::new(&self.binary)
             .args(args)
             .stdin(Stdio::null())
             .kill_on_drop(true)
             .output();
 
-        let output = match tokio::time::timeout(self.timeout, output).await {
-            Err(_) => {
-                return Err(Error::Timeout {
-                    binary,
-                    timeout: self.timeout,
-                });
-            }
+        let output = match tokio::time::timeout(timeout, output).await {
+            Err(_) => return Err(Error::Timeout { binary, timeout }),
             Ok(Err(source)) if source.kind() == io::ErrorKind::NotFound => {
                 return Err(Error::NotFound(binary));
             }
@@ -212,7 +215,20 @@ impl CliRuntime {
                 stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
             });
         }
+        Ok(output)
+    }
 
+    async fn query(&self) -> Result<RuntimeInfo, Error> {
+        let binary = self.binary_display();
+        let args: &[&str] = match self.kind {
+            RuntimeKind::Podman => &["info", "--format", "json"],
+            RuntimeKind::Docker => &["info", "--format", "{{json .}}"],
+            // `info` and a machine readable format are not documented for wslc, `version` is
+            #[cfg(windows)]
+            RuntimeKind::Wslc => &["version"],
+        };
+
+        let output = self.run_checked(args, self.timeout).await?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let parsed = match self.kind {
             RuntimeKind::Podman => parse_podman_info(&stdout),
@@ -243,6 +259,14 @@ impl ContainerRuntime for CliRuntime {
 
     fn info(&self) -> BoxFuture<'_, Result<RuntimeInfo, Error>> {
         Box::pin(self.query())
+    }
+
+    fn probe_container(&self, args: Vec<String>) -> BoxFuture<'_, Result<(), Error>> {
+        Box::pin(async move {
+            let mut full = vec!["run".to_string(), "--rm".to_string()];
+            full.extend(args);
+            self.run_checked(&full, PROBE_TIMEOUT).await.map(drop)
+        })
     }
 }
 

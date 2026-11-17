@@ -222,16 +222,124 @@ pub async fn doctor_with(candidates: Vec<Arc<dyn ContainerRuntime>>) -> DoctorRe
         }
     }
 
-    let report = DoctorReport { checks, runtimes };
-    if let Some(check) = report.engines_check() {
-        let mut report = report;
-        report.checks.push(check);
-        return report;
-    }
+    let mut report = DoctorReport { checks, runtimes };
+    let engines = report.engines_check();
+    let apparmor = report
+        .apparmor_check(
+            host_restricts_userns(),
+            crate::executors::snakemake::apparmor_profile().as_deref(),
+            &crate::executors::snakemake::image(),
+        )
+        .await;
+    report
+        .checks
+        .extend([engines, apparmor].into_iter().flatten());
     report
 }
 
+/// Whether the host restricts unprivileged user namespaces through AppArmor (Ubuntu 24.04+),
+/// `None` where the setting does not exist (other kernels, other platforms).
+fn host_restricts_userns() -> Option<bool> {
+    let value =
+        std::fs::read_to_string("/proc/sys/kernel/apparmor_restrict_unprivileged_userns").ok()?;
+    Some(value.trim() == "1")
+}
+
 impl DoctorReport {
+    /// The Docker runtime that runs Snakemake, `None` if another runtime does (the AppArmor
+    /// profile only concerns Docker).
+    fn docker_for_snakemake(&self) -> Option<&UsableRuntime> {
+        self.runtime_for(&Engine::Snakemake)
+            .filter(|usable| usable.info.kind == RuntimeKind::Docker)
+    }
+
+    /// AppArmor check for Snakemake on Docker: warns when the host restricts user namespaces and
+    /// no profile is configured, and when a configured profile is not loaded (found by starting
+    /// a throwaway container with it). `None` if nothing is wrong or nothing applies.
+    ///
+    /// # Arguments
+    /// * `restricts_userns` - see [`host_restricts_userns`]
+    /// * `profile` - the configured profile, see `snakemake::apparmor_profile`
+    /// * `image` - engine image the probe container starts from
+    async fn apparmor_check(
+        &self,
+        restricts_userns: Option<bool>,
+        profile: Option<&str>,
+        image: &str,
+    ) -> Option<Check> {
+        let docker = self.docker_for_snakemake()?;
+        match profile {
+            None => Self::apparmor_missing_check(restricts_userns),
+            Some(profile) => Some(Self::apparmor_probe(&*docker.runtime, profile, image).await),
+        }
+    }
+
+    /// Warning for a restricted host without a configured profile, Apptainer in the engine
+    /// container then fails with `Failed to set mount propagation`.
+    ///
+    /// # Arguments
+    /// * `restricts_userns` - see [`host_restricts_userns`]
+    fn apparmor_missing_check(restricts_userns: Option<bool>) -> Option<Check> {
+        if restricts_userns != Some(true) {
+            return None;
+        }
+        Some(Check {
+            name: "apparmor".to_string(),
+            status: CheckStatus::Warn,
+            message: format!(
+                "this host restricts unprivileged user namespaces and Snakemake runs on docker: load docker/apparmor-macworp-snakemake (`sudo apparmor_parser -r -W docker/apparmor-macworp-snakemake`) and set {}=macworp-snakemake, or Snakemake container rules fail",
+                crate::executors::snakemake::APPARMOR_PROFILE_VARIABLE
+            ),
+        })
+    }
+
+    /// Starts a container under `profile` to see whether Docker accepts it (it refuses a profile
+    /// that is not loaded). Needs the engine image locally: without it nothing is verified.
+    ///
+    /// # Arguments
+    /// * `runtime` - the Docker runtime
+    /// * `profile` - name of the configured AppArmor profile
+    /// * `image` - engine image the probe container starts from
+    async fn apparmor_probe(runtime: &dyn ContainerRuntime, profile: &str, image: &str) -> Check {
+        let name = "apparmor".to_string();
+        let args = [
+            "--pull",
+            "never",
+            "--security-opt",
+            &format!("apparmor={profile}"),
+            "--entrypoint",
+            "true",
+            image,
+        ]
+        .map(String::from)
+        .to_vec();
+        match runtime.probe_container(args).await {
+            Ok(()) => Check {
+                name,
+                status: CheckStatus::Ok,
+                message: format!("AppArmor profile `{profile}` is loaded"),
+            },
+            Err(RuntimeError::Failed { stderr, .. })
+                if stderr.contains("No such image") || stderr.contains("Unable to find image") =>
+            {
+                Check {
+                    name,
+                    status: CheckStatus::Ok,
+                    message: format!(
+                        "AppArmor profile `{profile}` not verified, engine image `{image}` is not available locally"
+                    ),
+                }
+            }
+            Err(error) => Check {
+                name,
+                status: CheckStatus::Warn,
+                message: format!(
+                    "docker cannot start a container with AppArmor profile `{profile}`, Snakemake container rules will fail: {error}; load it with `sudo apparmor_parser -r -W docker/apparmor-macworp-snakemake`"
+                ),
+            },
+        }
+    }
+
     /// Warning naming the engines no usable runtime can run, `None` if all can run.
     fn engines_check(&self) -> Option<Check> {
         if !self.is_ok() {
@@ -332,6 +440,8 @@ mod tests {
     struct Mock {
         kind: RuntimeKind,
         result: Result<RuntimeInfo, String>,
+        /// Outcome of `probe_container`, error = stderr
+        probe: Result<(), String>,
     }
 
     impl Mock {
@@ -345,6 +455,7 @@ mod tests {
                     storage_root: None,
                     socket: None,
                 }),
+                probe: Ok(()),
             })
         }
 
@@ -352,6 +463,7 @@ mod tests {
             Arc::new(Self {
                 kind,
                 result: Err("daemon unreachable".to_string()),
+                probe: Ok(()),
             })
         }
     }
@@ -372,6 +484,14 @@ mod tests {
                     stderr: stderr.clone(),
                 }),
             };
+            Box::pin(async move { result })
+        }
+        fn probe_container(&self, _args: Vec<String>) -> BoxFuture<'_, Result<(), RuntimeError>> {
+            let result = self.probe.clone().map_err(|stderr| RuntimeError::Failed {
+                binary: "mock".to_string(),
+                status: "exit status: 125".to_string(),
+                stderr,
+            });
             Box::pin(async move { result })
         }
     }
@@ -403,6 +523,57 @@ mod tests {
         let report = doctor_with(vec![Mock::ok(RuntimeKind::Docker, "27.1.1", false)]).await;
         assert!(report.is_ok());
         assert!(report.checks.iter().any(|c| c.status == CheckStatus::Warn));
+    }
+
+    #[tokio::test]
+    async fn apparmor_warning_needs_docker_restriction_and_no_profile() {
+        let docker = doctor_with(vec![Mock::ok(RuntimeKind::Docker, "27.1.1", true)]).await;
+        let warns = async |report: &DoctorReport, restricted, profile| {
+            report
+                .apparmor_check(restricted, profile, "img")
+                .await
+                .is_some_and(|check| check.status == CheckStatus::Warn)
+        };
+        assert!(warns(&docker, Some(true), None).await);
+        assert!(!warns(&docker, Some(true), Some("macworp-snakemake")).await);
+        assert!(!warns(&docker, Some(false), None).await);
+        assert!(!warns(&docker, None, None).await);
+        // Podman runs Snakemake on Linux hosts, so Docker is not the Snakemake runtime there
+        let both = doctor_with(vec![
+            Mock::ok(RuntimeKind::Podman, "5.2.1", true),
+            Mock::ok(RuntimeKind::Docker, "27.1.1", true),
+        ])
+        .await;
+        assert_eq!(
+            warns(&both, Some(true), None).await,
+            !cfg!(target_os = "linux")
+        );
+    }
+
+    /// A configured profile is probed with a container: loaded, not loaded, image missing.
+    #[tokio::test]
+    async fn apparmor_probe_reports_unloaded_profiles() {
+        let probe = async |result: Result<(), &str>| {
+            let docker = Arc::new(Mock {
+                kind: RuntimeKind::Docker,
+                result: Ok(RuntimeInfo {
+                    kind: RuntimeKind::Docker,
+                    version: "27.1.1".into(),
+                    rootless: Some(true),
+                    storage_root: None,
+                    socket: None,
+                }),
+                probe: result.map_err(String::from),
+            });
+            DoctorReport::apparmor_probe(&*docker, "macworp-snakemake", "img").await
+        };
+        assert_eq!(probe(Ok(())).await.status, CheckStatus::Ok);
+        let unloaded = probe(Err("apparmor profile not found")).await;
+        assert_eq!(unloaded.status, CheckStatus::Warn);
+        assert!(unloaded.message.contains("apparmor_parser"));
+        let no_image = probe(Err("Unable to find image 'img' locally")).await;
+        assert_eq!(no_image.status, CheckStatus::Ok);
+        assert!(no_image.message.contains("not verified"));
     }
 
     #[tokio::test]

@@ -25,7 +25,10 @@ ENV JAVA_HOME=/opt/java/openjdk PATH=/opt/java/openjdk/bin:$PATH
 RUN curl -fsSL https://get.nextflow.io | bash \
     && mv nextflow /usr/local/bin/nextflow \
     && chmod 755 /usr/local/bin/nextflow \
-    && nextflow -version
+    && nextflow -version \
+    # The engine runs as the worker's user, not root: it must read the framework jar and may
+    # write plugins and caches below NXF_HOME (the directory only lives as long as the container)
+    && chmod -R a+rwX /opt/nextflow
 
 # Snakemake (Python venv of its own) with Apptainer, which Snakemake uses to run `container:` images
 FROM base AS snakemake

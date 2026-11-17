@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, watch};
 
 use super::containerized_execution::path_arg;
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec, worker_user_args,
     run_spec,
 };
 use crate::container_runtime::{BoxFuture, RuntimeKind};
@@ -229,20 +229,17 @@ impl SnakemakeExecutor {
             &self.image,
             job,
             &read_only,
-            &self.run_args(job),
+            &self.run_args(),
             command,
         ))
     }
 
     /// Extra `run` arguments of the engine container: what Apptainer needs
-    /// ([`DOCKER_APPTAINER_RUN_ARGS`] / [`PODMAN_APPTAINER_RUN_ARGS`] by runtime), a writable home
-    /// for its image cache and, where known, the user
-    /// that owns the project directory. Apptainer cannot unpack images as root, so the engine
-    /// runs as that user, which also keeps the files it writes owned by them.
-    ///
-    /// # Arguments
-    /// * `job` - the job whose project directory decides the user
-    fn run_args(&self, job: &Job) -> Vec<String> {
+    /// ([`DOCKER_APPTAINER_RUN_ARGS`] / [`PODMAN_APPTAINER_RUN_ARGS`] by runtime) and the worker's
+    /// user with a writable home for the image cache ([`worker_user_args`]). Apptainer cannot
+    /// unpack images as root, and running as the worker keeps the files the engine writes owned
+    /// by the user of the shared storage.
+    fn run_args(&self) -> Vec<String> {
         let mut args: Vec<String> = match self.runtime_kind {
             RuntimeKind::Podman => PODMAN_APPTAINER_RUN_ARGS.map(String::from).into(),
             _ => DOCKER_APPTAINER_RUN_ARGS.map(String::from).into(),
@@ -250,29 +247,8 @@ impl SnakemakeExecutor {
         if let (RuntimeKind::Docker, Some(profile)) = (self.runtime_kind, &self.apparmor_profile) {
             args.extend(["--security-opt".into(), format!("apparmor={profile}")]);
         }
-        args.extend(["-e".into(), "HOME=/tmp".into()]);
-        if let Some(user) = owner_of(&job.project_dir) {
-            args.extend(["--user".into(), user]);
-        }
+        args.extend(worker_user_args());
         args
-    }
-}
-
-/// `<uid>:<gid>` of the owner of `path`, `None` where unknown (missing path, not a Unix host).
-///
-/// # Arguments
-/// * `path` - file or directory to look at
-fn owner_of(path: &std::path::Path) -> Option<String> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        let metadata = std::fs::metadata(path).ok()?;
-        Some(format!("{}:{}", metadata.uid(), metadata.gid()))
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-        None
     }
 }
 
@@ -392,7 +368,7 @@ mod tests {
         let name = spec.container_name.clone().unwrap();
         assert!(name.starts_with("macworp-run-3-"), "{name}");
         assert_eq!(
-            spec.args,
+            super::super::containerized_execution::without_worker_user(spec.args.clone()),
             [
                 "run",
                 "--rm",
@@ -408,8 +384,6 @@ mod tests {
                 "seccomp=unconfined",
                 "--security-opt",
                 "systempaths=unconfined",
-                "-e",
-                "HOME=/tmp",
                 "img:1",
                 "snakemake",
                 "--directory",
@@ -435,16 +409,13 @@ mod tests {
         assert!(!args.iter().any(|a| a == "--apptainer-args"));
     }
 
-    /// The engine runs as the owner of the project directory, Apptainer cannot unpack as root
+    /// The engine runs as the worker's user, Apptainer cannot unpack as root
     #[cfg(unix)]
     #[test]
-    fn engine_runs_as_project_owner() {
-        let directory = tempfile::tempdir().unwrap();
-        let mut job = job(local(), vec![]);
-        job.project_dir = directory.path().to_path_buf();
-        let args = executor().launch_spec(&job).unwrap().args;
+    fn engine_runs_as_worker_user() {
+        let args = executor().launch_spec(&job(local(), vec![])).unwrap().args;
         let user = args.iter().position(|a| a == "--user").unwrap();
-        assert_eq!(Some(args[user + 1].clone()), owner_of(directory.path()));
+        assert_eq!(Some(args[user + 1].clone()), crate::executors::worker_user());
     }
 
     #[test]

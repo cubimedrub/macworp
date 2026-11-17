@@ -89,15 +89,25 @@ impl RuntimeInfo {
     /// podman was rejected: needs extra privileges and has no shared image cache. `None` if the
     /// runtime offers no socket (wslc). A rootful socket is root-equivalent, see doctor.
     pub fn engine_access_args(&self) -> Option<Vec<String>> {
-        let (socket, extra): (PathBuf, &[&str]) = match self.kind {
-            // SELinux (Fedora CoreOS machine, RHEL) denies the container access to the socket
-            RuntimeKind::Podman => (self.socket.clone()?, &["--security-opt", "label=disable"]),
-            RuntimeKind::Docker => (
-                self.socket
-                    .clone()
-                    .unwrap_or_else(|| PathBuf::from(DEFAULT_DOCKER_SOCKET)),
-                &[],
+        let (socket, extra): (PathBuf, Vec<String>) = match self.kind {
+            // SELinux (Fedora CoreOS machine, RHEL) denies the container access to the socket.
+            // `keep-id` maps the worker's user to itself, so the engine, which runs as that
+            // user, owns the socket inside the container as it does outside.
+            RuntimeKind::Podman => (
+                self.socket.clone()?,
+                ["--security-opt", "label=disable", "--userns=keep-id"]
+                    .map(String::from)
+                    .into(),
             ),
+            RuntimeKind::Docker => {
+                let socket = self
+                    .socket
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from(DEFAULT_DOCKER_SOCKET));
+                // The engine runs as the worker's user, who needs the socket's group
+                let group = Self::socket_group(&socket);
+                (socket, vec!["--group-add".into(), group])
+            }
             #[cfg(windows)]
             RuntimeKind::Wslc => return None,
         };
@@ -107,8 +117,29 @@ impl RuntimeInfo {
             "-e".to_string(),
             format!("DOCKER_HOST=unix://{ENGINE_SOCKET}"),
         ];
-        args.extend(extra.iter().map(|arg| arg.to_string()));
+        args.extend(extra);
         Some(args)
+    }
+
+    /// Group id (as text) that gives the engine container access to a Docker socket.
+    ///
+    /// On a Linux host that is the group of the socket file (`docker`, or the user's own group
+    /// for rootless Docker). Elsewhere the daemon runs in a VM (Docker Desktop) and mounts the
+    /// socket as `root:root`, so group `0` is the one that grants access (verified on macOS with
+    /// Docker Desktop, the mount is `0:0 660`).
+    ///
+    /// # Arguments
+    /// * `socket` - the socket path on the host
+    fn socket_group(socket: &Path) -> String {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if let Ok(metadata) = std::fs::metadata(socket) {
+                return metadata.gid().to_string();
+            }
+        }
+        let _ = socket;
+        "0".into()
     }
 }
 
@@ -374,7 +405,8 @@ mod tests {
                 "-e",
                 "DOCKER_HOST=unix:///run/container.sock",
                 "--security-opt",
-                "label=disable"
+                "label=disable",
+                "--userns=keep-id"
             ]
         );
         info.socket = None;
@@ -384,6 +416,14 @@ mod tests {
         assert_eq!(
             docker.engine_access_args().unwrap()[1],
             "/var/run/docker.sock:/run/container.sock"
+        );
+        // The engine runs as the worker's user and needs the socket's group
+        assert!(
+            docker
+                .engine_access_args()
+                .unwrap()
+                .windows(2)
+                .any(|pair| pair[0] == "--group-add")
         );
     }
 

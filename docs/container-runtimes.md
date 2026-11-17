@@ -112,3 +112,12 @@ Engine versions: the engine image is `macworp-nextflow:latest` / `macworp-snakem
 ## End-to-end test coverage
 
 `cargo test -p macworp_desktop end_to_end_test -- --ignored` runs one scenario per engine (all parameter types, fixed and dynamic) on the selected runtime (`MACWORP_CONTAINER_RUNTIME`). Needs the engine images built as above. `runs_cwl_workflow` (text, number, file through Toil) is a smaller scenario, not the all-parameter-types one. Passing on Docker (macOS) for Nextflow, Snakemake, CWL and Container, and on Podman for Nextflow, CWL and Container; Podman is expected to reject Snakemake runs.
+
+## Engine user (2026-11-17, macOS: Docker Desktop and podman machine)
+
+Nextflow, CWL (Toil) and Snakemake engine containers run as the worker's `uid:gid` (`--user`, `HOME=/tmp`), so what they write below the shared storage belongs to the user that owns the storage and the worker can manage it. The `Container` engine keeps the user of the workflow author's image.
+
+- **Docker**: the runtime socket is only usable with its group, `--group-add <gid>`. On a Linux host that is the group of the socket file. Docker Desktop mounts the socket as `root:root 660`, group `0` works (verified, without it `permission denied while trying to connect to the docker API`).
+- **Podman (rootless)**: `--userns=keep-id` maps the user to itself, the socket is then owned by that user inside the container (verified on the podman machine, `--group-add keep-groups` is not supported in remote mode).
+- **Nextflow image**: `/opt/nextflow` is world readable and writable (the framework jar was `0600 root`, so a non-root engine failed with `Unable to access jarfile`).
+- Not verified: file ownership on a Linux host, Docker with the group path on Linux, Nextflow task containers (started through the socket, root unless the workflow sets `docker.runOptions`).

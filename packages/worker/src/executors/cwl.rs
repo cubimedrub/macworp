@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, watch};
 
 use super::containerized_execution::path_arg;
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec, worker_user_args,
     run_spec,
 };
 use crate::container_runtime::BoxFuture;
@@ -125,12 +125,20 @@ impl CwlExecutor {
             &self.image,
             job,
             &read_only,
-            &self.engine_access,
+            &self.run_args(),
             command,
         );
         spec.scratch_directory = parameters.map(|file| file.directory().to_path_buf());
         Ok(spec)
     }
+
+    /// Extra `run` arguments of the engine container: the worker's user
+        /// ([`worker_user_args`]) and the runtime socket access.
+        fn run_args(&self) -> Vec<String> {
+            let mut args = worker_user_args();
+            args.extend(self.engine_access.iter().cloned());
+            args
+        }
 }
 
 impl Executor for CwlExecutor {
@@ -199,13 +207,23 @@ mod tests {
         CwlExecutor::new("podman", "img:1")
     }
 
+    /// The engine runs as the worker's user, so what it writes belongs to the storage user
+    #[cfg(unix)]
+    #[test]
+    fn engine_runs_as_worker_user() {
+        let args = executor().launch_spec(&job(local())).unwrap().args;
+        let user = args.iter().position(|a| a == "--user").unwrap();
+        assert_eq!(Some(args[user + 1].clone()), crate::executors::worker_user());
+        assert!(args.windows(2).any(|pair| pair == ["-e", "HOME=/tmp"]));
+    }
+
     /// Outputs go to the project, work files below it, the tool comes last.
     #[test]
     fn local_source() {
         let spec = executor().launch_spec(&job(local())).unwrap();
         let name = spec.container_name.clone().unwrap();
         assert_eq!(
-            spec.args,
+            super::super::containerized_execution::without_worker_user(spec.args.clone()),
             [
                 "run",
                 "--rm",

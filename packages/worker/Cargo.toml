@@ -28,3 +28,6 @@ tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json", "form"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }

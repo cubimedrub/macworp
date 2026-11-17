@@ -10,6 +10,36 @@ pub(super) fn path_arg(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// `<uid>:<gid>` of the worker process, `None` where there is no such thing (not a Unix host).
+pub fn worker_user() -> Option<String> {
+    #[cfg(unix)]
+    {
+        // SAFETY: `geteuid` and `getegid` have no preconditions and cannot fail
+        let (user, group) = unsafe { (libc::geteuid(), libc::getegid()) };
+        Some(format!("{user}:{group}"))
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
+/// `run` arguments that make an engine container run as the worker's user instead of root, so
+/// everything the engine writes below the shared storage belongs to the user that owns it and the
+/// worker can manage (clean up) it. `HOME` points at `/tmp` because that user has no home
+/// directory in the image. Empty where [`worker_user`] is unknown (the engine then runs as the
+/// image's user).
+///
+/// Reaching the runtime socket as that user is part of
+/// [`crate::container_runtime::RuntimeInfo::engine_access_args`], Snakemake adds its own options
+/// for Apptainer.
+pub fn worker_user_args() -> Vec<String> {
+    match worker_user() {
+        Some(user) => vec!["--user".into(), user, "-e".into(), "HOME=/tmp".into()],
+        None => Vec::new(),
+    }
+}
+
 /// `<runtime> run --rm --name macworp-run-<id>-<random> -v <project>:<project> -w <project> [-v <dir>:<dir>:ro]... <image> <command>`
 ///
 /// The project directory is mounted read-write and every `read_only` directory read-only, all at
@@ -86,4 +116,18 @@ pub async fn run_spec(
             reason: Some(FailureReason::StartFailed),
         },
     }
+}
+
+/// `args` without the worker's user options ([`worker_user_args`]), so argument lists can be
+/// compared on any host (the user differs per machine and is absent off Unix).
+///
+/// # Arguments
+/// * `args` - the `run` arguments of a launch spec
+#[cfg(test)]
+pub(super) fn without_worker_user(mut args: Vec<String>) -> Vec<String> {
+    let user = worker_user_args();
+    if let Some(start) = args.windows(user.len().max(1)).position(|part| part == user) {
+        args.drain(start..start + user.len());
+    }
+    args
 }

@@ -15,8 +15,13 @@ use tokio_util::io::StreamReader;
 
 use crate::filesystems::errors::{Error, RemoteFilesystemError};
 
-/// Extension of the file a chunked upload is written to until it is complete.
-const PARTIAL_UPLOAD_EXTENSION: &str = "macworp_partial_upload";
+/// Suffix of the hidden file a chunked upload is written to until it is complete.
+const PARTIAL_UPLOAD_SUFFIX: &str = "macworp_partial_upload";
+
+/// Suffix of the hidden temporary file [`DirectoryFiles::write_text`] writes before it renames it
+/// over the target. Differs from [`PARTIAL_UPLOAD_SUFFIX`] so a text write never touches a
+/// chunked upload of the same file.
+const PARTIAL_TEXT_SUFFIX: &str = "macworp_partial_text";
 
 /// File operations confined to one base directory on the local disk of the backend. Shared by
 /// the project storage of the remote filesystem and the global reference data.
@@ -50,6 +55,22 @@ impl DirectoryFiles {
             }
         }
         Ok(final_path)
+    }
+
+    /// Name of the hidden sibling a file is written to before it is renamed over `path`:
+    /// `.<file name>.<suffix>` in the same folder. The suffix is appended to the whole file name
+    /// (never replaces an extension), so `genome.fa` and `genome.fai` get distinct siblings, and
+    /// the leading dot keeps unfinished files out of plain `*` globs.
+    ///
+    /// # Arguments
+    /// * `path` - Final path of the file, relative or absolute
+    /// * `suffix` - Marker that says what kind of unfinished file it is
+    fn partial_path(path: &Path, suffix: &str) -> PathBuf {
+        let file_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        path.with_file_name(format!(".{file_name}.{suffix}"))
     }
 
     /// Creates an empty file to file to reserve storage space to make sure the incomming content
@@ -93,7 +114,7 @@ impl DirectoryFiles {
         let target_path = Self::join_paths(project_path, &file_path)?;
         let partial_upload_path = Self::join_paths(
             project_path,
-            &file_path.with_extension(PARTIAL_UPLOAD_EXTENSION),
+            &Self::partial_path(&file_path, PARTIAL_UPLOAD_SUFFIX),
         )?;
 
         tokio::fs::create_dir_all(target_path.parent().ok_or_else(|| {
@@ -219,15 +240,11 @@ impl DirectoryFiles {
             return Err(Error::TextFileTooLarge(limit));
         }
         let target_path = Self::join_paths(base, path)?;
-        let file_name = target_path
-            .file_name()
-            .ok_or_else(|| RemoteFilesystemError::NoParentPath(target_path.clone()))?
-            .to_string_lossy()
-            .into_owned();
-        let temporary_path = Self::join_paths(
-            base,
-            &path.with_file_name(format!(".{file_name}.{PARTIAL_UPLOAD_EXTENSION}")),
-        )?;
+        if target_path.file_name().is_none() {
+            return Err(RemoteFilesystemError::NoParentPath(target_path).into());
+        }
+        let temporary_path =
+            Self::join_paths(base, &Self::partial_path(path, PARTIAL_TEXT_SUFFIX))?;
         if let Some(parent) = target_path.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(|error| {
                 Error::RemoteFilesystem(RemoteFilesystemError::CreateProjectSubDirectory(error))
@@ -290,5 +307,136 @@ impl DirectoryFiles {
                 RemoteFilesystemError::PathDoesNotExist(path),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Uploads `content` as one chunk to `name` below `base`.
+    ///
+    /// # Arguments
+    /// * `base` - Directory the upload is confined to
+    /// * `name` - Target file name
+    /// * `content` - Whole file content
+    async fn upload(base: &Path, name: &str, content: &'static [u8]) {
+        let size = content.len() as u64;
+        DirectoryFiles::stream_to_file(
+            base,
+            PathBuf::from(name),
+            ContentRangeHeaderValue::new("bytes", (0, size - 1), Some(size)),
+            futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(content))]),
+        )
+        .await
+        .unwrap();
+    }
+
+    /// The unfinished file keeps the whole file name, so names that differ only in their
+    /// extension never share one, and it is hidden.
+    #[test]
+    fn partial_path_appends_instead_of_replacing_the_extension() {
+        let fasta = DirectoryFiles::partial_path(Path::new("refs/genome.fa"), "p");
+        let index = DirectoryFiles::partial_path(Path::new("refs/genome.fai"), "p");
+        assert_eq!(fasta, Path::new("refs/.genome.fa.p"));
+        assert_eq!(index, Path::new("refs/.genome.fai.p"));
+        assert_ne!(fasta, index);
+        assert_eq!(
+            DirectoryFiles::partial_path(Path::new("noext"), "p"),
+            Path::new(".noext.p")
+        );
+    }
+
+    /// Two uploads of files that differ only in their extension, interleaved chunk by chunk,
+    /// both end up with their own content.
+    #[tokio::test]
+    async fn interleaved_uploads_with_different_extensions_do_not_collide() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path();
+        let chunk = |name: &str, range: (u64, u64), data: &'static [u8]| {
+            DirectoryFiles::stream_to_file(
+                base,
+                PathBuf::from(name),
+                ContentRangeHeaderValue::new("bytes", range, Some(4)),
+                futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(data))]),
+            )
+        };
+        chunk("genome.fa", (0, 1), b"AA").await.unwrap();
+        chunk("genome.fai", (0, 1), b"11").await.unwrap();
+        chunk("genome.fa", (2, 3), b"CC").await.unwrap();
+        chunk("genome.fai", (2, 3), b"22").await.unwrap();
+        assert_eq!(std::fs::read(base.join("genome.fa")).unwrap(), b"AACC");
+        assert_eq!(std::fs::read(base.join("genome.fai")).unwrap(), b"1122");
+    }
+
+    /// While an upload is unfinished only a hidden file exists, and a finished upload leaves
+    /// nothing but the target.
+    #[tokio::test]
+    async fn unfinished_upload_is_hidden_and_finished_upload_leaves_no_partial() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path();
+        DirectoryFiles::stream_to_file(
+            base,
+            PathBuf::from("a.txt"),
+            ContentRangeHeaderValue::new("bytes", (0, 1), Some(4)),
+            futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"ab"))]),
+        )
+        .await
+        .unwrap();
+        let visible = |base: &Path| {
+            std::fs::read_dir(base)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|name| !name.starts_with('.'))
+                .count()
+        };
+        assert_eq!(visible(base), 0);
+        assert!(base.join(".a.txt.macworp_partial_upload").is_file());
+        DirectoryFiles::stream_to_file(
+            base,
+            PathBuf::from("a.txt"),
+            ContentRangeHeaderValue::new("bytes", (2, 3), Some(4)),
+            futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"cd"))]),
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(base.join("a.txt")).unwrap(), b"abcd");
+        assert_eq!(std::fs::read_dir(base).unwrap().count(), 1);
+    }
+
+    /// An upload replaces an existing file with a new inode, the old content stays readable
+    /// through a hard link taken before (the property the per-run reference snapshot relies on).
+    #[tokio::test]
+    async fn upload_over_an_existing_file_keeps_hard_links_on_the_old_content() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path();
+        upload(base, "ref.txt", b"old").await;
+        std::fs::hard_link(base.join("ref.txt"), base.join("snapshot.txt")).unwrap();
+        upload(base, "ref.txt", b"new").await;
+        assert_eq!(std::fs::read(base.join("ref.txt")).unwrap(), b"new");
+        assert_eq!(std::fs::read(base.join("snapshot.txt")).unwrap(), b"old");
+    }
+
+    /// A text write and a chunked upload of the same file use different temporary files.
+    #[tokio::test]
+    async fn text_write_does_not_touch_an_unfinished_upload() {
+        let directory = tempfile::tempdir().unwrap();
+        let base = directory.path();
+        DirectoryFiles::stream_to_file(
+            base,
+            PathBuf::from("a.txt"),
+            ContentRangeHeaderValue::new("bytes", (0, 1), Some(4)),
+            futures_util::stream::iter([Ok::<_, std::io::Error>(Bytes::from_static(b"ab"))]),
+        )
+        .await
+        .unwrap();
+        DirectoryFiles::write_text(base, Path::new("a.txt"), "text", 100)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(base.join("a.txt")).unwrap(), b"text");
+        assert_eq!(
+            std::fs::read(base.join(".a.txt.macworp_partial_upload")).unwrap()[..2],
+            *b"ab"
+        );
     }
 }

@@ -22,8 +22,14 @@ impl UploadableFile {
         }
     }
 
+    /// Path the file is uploaded to, relative to the project root.
+    ///
+    /// The entry's `fullPath` is anchored at the drop root (it starts with `/`), and
+    /// `PathBuf::join` replaces the base when given an absolute path. The leading `/` is
+    /// therefore stripped so the file ends up inside the selected target directory.
     pub fn upload_path(&self) -> PathBuf {
-        self.target_directory.join(self.inner.full_path())
+        self.target_directory
+            .join(self.inner.full_path().trim_start_matches('/'))
     }
 }
 

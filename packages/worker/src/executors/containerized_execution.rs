@@ -40,6 +40,28 @@ pub fn worker_user_args() -> Vec<String> {
     }
 }
 
+/// Whether SELinux enforces its policy on this host (Fedora, RHEL): `/sys/fs/selinux/enforce`
+/// reads `1`. `false` where SELinux is absent or permissive, and off Linux.
+pub fn selinux_enforcing() -> bool {
+    std::fs::read_to_string("/sys/fs/selinux/enforce").is_ok_and(|value| value.trim() == "1")
+}
+
+/// `run` arguments that keep SELinux from denying the engine container its bind mounts (project,
+/// workflow, reference data, image cache): the host files carry labels the container's type may
+/// not touch. Disabling the label confinement of this one container is chosen over `:z`/`:Z`,
+/// which would relabel the host directories for good (including folders the desktop user picks
+/// and shared network storage without labels). Empty when SELinux does not enforce.
+///
+/// # Arguments
+/// * `enforcing` - see [`selinux_enforcing`]
+pub fn selinux_args(enforcing: bool) -> Vec<String> {
+    if enforcing {
+        vec!["--security-opt".into(), "label=disable".into()]
+    } else {
+        Vec::new()
+    }
+}
+
 /// `<runtime> run --rm --name macworp-run-<id>-<random> -v <project>:<project> -w <project> [-v <dir>:<dir>:ro]... <image> <command>`
 ///
 /// The project directory is mounted read-write and every `read_only` directory read-only, all at
@@ -78,6 +100,7 @@ pub fn containerized_spec(
         let dir = path_arg(dir);
         args.extend(["-v".into(), format!("{dir}:{dir}:ro")]);
     }
+    args.extend(selinux_args(selinux_enforcing()));
     args.extend(engine_access.iter().cloned());
     if let Some(progress) = &job.progress {
         args.extend(progress.run_args.iter().cloned());
@@ -118,8 +141,9 @@ pub async fn run_spec(
     }
 }
 
-/// `args` without the worker's user options ([`worker_user_args`]), so argument lists can be
-/// compared on any host (the user differs per machine and is absent off Unix).
+/// `args` without the worker's user options ([`worker_user_args`]) and the SELinux option
+/// ([`selinux_args`]), so argument lists can be compared on any host (the user differs per
+/// machine and is absent off Unix, SELinux enforces only on some Linux hosts).
 ///
 /// # Arguments
 /// * `args` - the `run` arguments of a launch spec
@@ -132,5 +156,31 @@ pub(super) fn without_worker_user(mut args: Vec<String>) -> Vec<String> {
     {
         args.drain(start..start + user.len());
     }
+    let label = selinux_args(true);
+    if let Some(start) = args.windows(label.len()).position(|part| part == label) {
+        args.drain(start..start + label.len());
+    }
     args
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The label option is added when SELinux enforces and nothing otherwise, and the test
+    /// helper strips it again so argument lists compare equal on every host.
+    #[test]
+    fn selinux_option_only_when_enforcing() {
+        assert_eq!(
+            selinux_args(true),
+            ["--security-opt".to_string(), "label=disable".to_string()]
+        );
+        assert!(selinux_args(false).is_empty());
+        let args = vec!["run".to_string()]
+            .into_iter()
+            .chain(selinux_args(true))
+            .chain(["img".to_string()])
+            .collect();
+        assert_eq!(without_worker_user(args), ["run", "img"]);
+    }
 }

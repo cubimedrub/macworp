@@ -137,3 +137,10 @@ Per-workflow switch `cleanup_on_success` (workflow editor, Nextflow and CWL only
   (skipped when `jobStore` or `workDir` is an engine parameter).
 - Snakemake, Container: nothing (`.snakemake/` holds the knowledge for incremental reruns).
 - A cleanup failure is logged by the worker, the run stays `Succeeded`.
+
+## SELinux (2026-11-18, Fedora 45 ARM VM, Docker 29)
+- With SELinux `Enforcing` every bind mount of an engine container (project, workflow, parameter file, reference data, image cache) fails with "Permission denied", for all engines including `Container` (control run of the e2e). `Permissive` passes.
+- `containerized_spec` adds `--security-opt label=disable` when `/sys/fs/selinux/enforce` is `1` (`executors::selinux_enforcing` / `selinux_args`). Only the engine container loses its label confinement, the host policy and other containers are unchanged. `doctor` shows a `selinux` warning with this.
+- Not `:z`/`:Z`: they relabel host directories for good, including folders the desktop user picks and storage without labels (NFS). Not a custom policy type for now: mounted paths change per run and the engine needs the runtime socket (P6).
+- Verified on the Fedora VM, Docker, `Enforcing`: e2e Container, Nextflow (no container tasks in the fixture) and Snakemake pass. **CWL fails**: Toil starts the tool container through the socket and its bind mounts are denied (`cannot create result.txt`); no option reaches that container (see PLAN.md SELinux item).
+- **Not covered:** containers the engine starts itself through the socket (Nextflow tasks, CWL tool containers, Snakemake without Apptainer) keep the daemon's default label and may hit the same denial on their bind mounts; check and, if needed, inject `docker.runOptions = --security-opt label=disable` (Nextflow). Podman on Fedora not checked.

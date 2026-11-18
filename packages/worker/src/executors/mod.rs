@@ -19,7 +19,9 @@ pub mod snakemake;
 /// Executors of all engines a container runtime supports
 mod standard;
 
-pub use containerized_execution::{containerized_spec, run_spec, worker_user, worker_user_args};
+pub use containerized_execution::{
+    containerized_spec, run_spec, selinux_args, selinux_enforcing, worker_user, worker_user_args,
+};
 pub use executor::{Error as ExecutorError, Executor};
 pub use job::{Job, LogLine, Outcome};
 pub use parameter_file::ParameterFile;

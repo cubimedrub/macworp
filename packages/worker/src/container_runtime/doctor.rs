@@ -77,6 +77,22 @@ pub struct DoctorReport {
 }
 
 impl DoctorReport {
+    /// Notice that engine containers run without SELinux confinement, `None` when SELinux does
+    /// not enforce or no runtime is usable. Without the option every bind mount would be denied.
+    ///
+    /// # Arguments
+    /// * `enforcing` - see [`crate::executors::selinux_enforcing`]
+    fn selinux_check(&self, enforcing: bool) -> Option<Check> {
+        if !enforcing || self.runtimes.is_empty() {
+            return None;
+        }
+        Some(Check {
+            name: "selinux".to_string(),
+            status: CheckStatus::Warn,
+            message: "SELinux is enforcing: engine containers run with `--security-opt label=disable` (their bind mounts would be denied otherwise); other containers and the host stay confined. Containers that the engine itself starts (for example Nextflow tasks) are not covered".to_string(),
+        })
+    }
+
     /// At least one runtime is usable. Warnings do not fail.
     pub fn is_ok(&self) -> bool {
         !self.runtimes.is_empty()
@@ -231,9 +247,10 @@ pub async fn doctor_with(candidates: Vec<Arc<dyn ContainerRuntime>>) -> DoctorRe
             &crate::executors::snakemake::image(),
         )
         .await;
+    let selinux = report.selinux_check(crate::executors::selinux_enforcing());
     report
         .checks
-        .extend([engines, apparmor].into_iter().flatten());
+        .extend([engines, apparmor, selinux].into_iter().flatten());
     report
 }
 
@@ -516,6 +533,18 @@ mod tests {
                 .all(|c| c.status == CheckStatus::Ok || c.name == "engines")
         );
         assert!(report.into_runtimes().is_ok());
+    }
+
+    /// The SELinux notice shows only when SELinux enforces and a runtime is usable.
+    #[tokio::test]
+    async fn selinux_notice_needs_enforcing_and_a_runtime() {
+        let report = doctor_with(vec![Mock::ok(RuntimeKind::Docker, "27.1.1", true)]).await;
+        let notice = report.selinux_check(true).unwrap();
+        assert_eq!(notice.status, CheckStatus::Warn);
+        assert!(notice.message.contains("label=disable"));
+        assert!(report.selinux_check(false).is_none());
+        let none = doctor_with(vec![]).await;
+        assert!(none.selinux_check(true).is_none());
     }
 
     #[tokio::test]

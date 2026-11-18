@@ -6,6 +6,9 @@
 //! workflow is the image built from `tests/fixtures/end_to_end/container`, which does the same.
 //! A further test checks that Snakemake is rejected when the runtime cannot run it (podman).
 //!
+//! The `reference_change` submodule runs a workflow that reads the global reference data twice
+//! while the test changes it in between, to see what a run observes without and with a snapshot.
+//!
 //! Needs podman or docker, so the tests are ignored by default. Nextflow also needs the
 //! `macworp-nextflow:latest` image (see `docker/engine.dockerfile` (target `nextflow`)), the Container test
 //! builds its image itself (pulls `alpine:3`). A test skips with a message when the selected
@@ -42,6 +45,8 @@ use macworp_worker::{
     executors::{cwl, nextflow, snakemake},
 };
 use serde_json::{json, Value};
+
+mod reference_change;
 
 const USER_NAME: &str = "admin";
 const SEED: &str = "seed";
@@ -318,6 +323,10 @@ struct TestApp {
     jwt: String,
     project_dir: PathBuf,
     workflow_dir: PathBuf,
+    /// The live global reference data
+    reference_directory: PathBuf,
+    /// The location the worker hands to runs as reference data, starts at the live folder
+    worker_reference: macworp_backend::reference_directory::ReferenceDirectory,
     shutdown: tokio::sync::oneshot::Sender<()>,
     backend: tokio::task::JoinHandle<Result<(), macworp_backend::error::Error>>,
     stop: tokio::sync::watch::Sender<bool>,
@@ -370,6 +379,9 @@ impl TestApp {
         let reference_directory = root.join("reference");
         std::fs::create_dir_all(&reference_directory).unwrap();
         let reference_directory_for_backend = reference_directory.clone();
+        let worker_reference = macworp_backend::reference_directory::ReferenceDirectory::new(
+            reference_directory.clone(),
+        );
         let cache_directory = root.join("workflows").join("remote_cache");
         let backend = tokio::spawn(async move {
             Backend::<LocalFilesystem>::start(
@@ -411,7 +423,7 @@ impl TestApp {
             &database_url,
             max_log_bytes,
             vec![runtime],
-            macworp_backend::reference_directory::ReferenceDirectory::new(reference_directory),
+            worker_reference.clone(),
         )
         .await
         .unwrap();
@@ -420,6 +432,8 @@ impl TestApp {
             jwt,
             project_dir,
             workflow_dir,
+            reference_directory,
+            worker_reference,
             shutdown,
             backend,
             stop,

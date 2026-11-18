@@ -242,9 +242,33 @@ fn short_commit(commit: &str) -> &str {
     commit.get(..7).unwrap_or(commit)
 }
 
+/// A size in bytes for people: binary units, one decimal from KiB up.
+///
+/// # Arguments
+/// * `bytes` - Size in bytes
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
 /// Progress bar, latest detail and output of one run
 fn run_details(run: &RunResponse, chunks: &[RunLogChunk], hidden_chunks: usize) -> Element {
     let view = progress_view(run);
+    let last_changed = run
+        .reference_fingerprint
+        .as_ref()
+        .and_then(|fingerprint| fingerprint.last_modified)
+        .map(|time| time.format("%Y-%m-%d %H:%M UTC").to_string());
     rsx! {
         div { class: "card-body",
             div { class: "progress mb-1", style: "height: 1.5rem", role: "progressbar",
@@ -279,6 +303,18 @@ fn run_details(run: &RunResponse, chunks: &[RunLogChunk], hidden_chunks: usize) 
                     code { "{provenance.script.display()}" }
                 }
             }
+            if let Some(fingerprint) = run.reference_fingerprint.as_ref() {
+                small { class: "text-muted d-block",
+                    "Reference data at start: "
+                    code { "{fingerprint.file_count}" }
+                    " files, "
+                    code { "{format_bytes(fingerprint.total_bytes)}" }
+                    if let Some(last_changed) = last_changed.as_ref() {
+                        ", last changed "
+                        code { "{last_changed}" }
+                    }
+                }
+            }
             // column-reverse keeps the view at the end while output grows
             div {
                 class: "mt-2 bg-dark rounded",
@@ -296,5 +332,20 @@ fn run_details(run: &RunResponse, chunks: &[RunLogChunk], hidden_chunks: usize) 
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_bytes;
+
+    /// Sizes below 1 KiB stay exact, larger ones use binary units with one decimal.
+    #[test]
+    fn format_bytes_uses_binary_units() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(1023), "1023 B");
+        assert_eq!(format_bytes(1024), "1.0 KiB");
+        assert_eq!(format_bytes(1536), "1.5 KiB");
+        assert_eq!(format_bytes(5 * 1024 * 1024 * 1024), "5.0 GiB");
     }
 }

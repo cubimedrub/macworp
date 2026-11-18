@@ -322,7 +322,7 @@ impl RunsController {
             .collect();
 
         // Point-in-time view of the reference data: later changes by admins never reach this run
-        let reference_snapshot_name = match state.reference_snapshots().cloned() {
+        let reference_snapshot = match state.reference_snapshots().cloned() {
             Some(snapshots) => Some(
                 tokio::task::spawn_blocking(move || snapshots.create())
                     .await
@@ -334,7 +334,11 @@ impl RunsController {
         let max_runs = state.config().max_runs_per_project();
         let comment = payload.comment;
         let user_id = user.id;
-        let stored_snapshot = reference_snapshot_name.clone();
+        let stored_snapshot = reference_snapshot.as_ref().map(|snapshot| snapshot.name.clone());
+        let (reference_snapshot_name, reference_fingerprint) = match reference_snapshot {
+            Some(snapshot) => (Some(snapshot.name), Some(snapshot.fingerprint)),
+            None => (None, None),
+        };
         let run = state
             .db()
             .transaction::<_, Run, Error>(|txn| {
@@ -347,6 +351,7 @@ impl RunsController {
                         configuration: Set(configuration),
                         provenance: Set(provenance),
                         reference_snapshot: Set(reference_snapshot_name),
+                        reference_fingerprint: Set(reference_fingerprint),
                         parameters: Set(serde_json::Value::Object(parameters)),
                         comment: Set(comment),
                         status: Set(RunStatus::Queued),

@@ -110,6 +110,7 @@ mod tests {
             error: None,
             failure_reason: None,
             provenance: None,
+            reference_fingerprint: None,
             tasks_total: total,
             tasks_done: done,
             progress_message: None,

@@ -5,12 +5,33 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use macworp_core::entities::ReferenceFingerprint;
 use thiserror::Error;
 
 use crate::{filesystems::directory_files::DirectoryFiles, reference_directory::ReferenceDirectory};
 
 /// Distinguishes snapshots created within the same nanosecond.
 static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// A snapshot that was just created.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Snapshot {
+    /// Folder name below the snapshot root, see [`ReferenceSnapshots::path_of`]
+    pub name: String,
+    /// What the snapshot contains, stored with the run
+    pub fingerprint: ReferenceFingerprint,
+}
+
+/// Running totals while a tree is linked.
+#[derive(Default)]
+struct Totals {
+    /// Files linked so far
+    file_count: u64,
+    /// Their summed size in bytes
+    total_bytes: u64,
+    /// Newest modification time seen
+    last_modified: Option<SystemTime>,
+}
 
 /// Errors of creating, removing and sweeping reference snapshots.
 #[derive(Error, Debug)]
@@ -76,9 +97,10 @@ impl ReferenceSnapshots {
         self.root.join(name)
     }
 
-    /// Creates a snapshot of the reference data as it is now and returns its name. Blocks on
-    /// the filesystem, call it from `spawn_blocking`. A failed snapshot leaves nothing behind.
-    pub fn create(&self) -> Result<String, Error> {
+    /// Creates a snapshot of the reference data as it is now and returns its name and
+    /// fingerprint. Blocks on the filesystem, call it from `spawn_blocking`. A failed snapshot
+    /// leaves nothing behind.
+    pub fn create(&self) -> Result<Snapshot, Error> {
         let nanoseconds = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_nanos());
@@ -90,11 +112,20 @@ impl ReferenceSnapshots {
         std::fs::create_dir_all(&self.root)?;
         std::fs::create_dir(&destination)?;
         let reference = self.reference_directory.get();
-        if let Err(error) = self.link_tree(&reference, &destination) {
+        let mut totals = Totals::default();
+        if let Err(error) = self.link_tree(&reference, &destination, &mut totals) {
             let _ = std::fs::remove_dir_all(&destination);
             return Err(error);
         }
-        Ok(name)
+        Ok(Snapshot {
+            name,
+            fingerprint: ReferenceFingerprint {
+                file_count: totals.file_count,
+                total_bytes: totals.total_bytes,
+                last_modified: totals.last_modified.map(chrono::DateTime::from),
+                snapshot_at: chrono::Utc::now(),
+            },
+        })
     }
 
     /// Recreates the folder tree below `source` in `destination` with hard links for files.
@@ -102,7 +133,13 @@ impl ReferenceSnapshots {
     /// # Arguments
     /// * `source` - Live folder to read
     /// * `destination` - Existing, empty folder to fill
-    fn link_tree(&self, source: &Path, destination: &Path) -> Result<(), Error> {
+    /// * `totals` - Counts every linked file
+    fn link_tree(
+        &self,
+        source: &Path,
+        destination: &Path,
+        totals: &mut Totals,
+    ) -> Result<(), Error> {
         for entry in std::fs::read_dir(source)? {
             let entry = entry?;
             let file_name = entry.file_name();
@@ -114,8 +151,12 @@ impl ReferenceSnapshots {
             let target = destination.join(&file_name);
             if file_type.is_dir() {
                 std::fs::create_dir(&target)?;
-                self.link_tree(&entry.path(), &target)?;
+                self.link_tree(&entry.path(), &target, totals)?;
             } else if file_type.is_file() {
+                let metadata = entry.metadata()?;
+                totals.file_count += 1;
+                totals.total_bytes += metadata.len();
+                totals.last_modified = totals.last_modified.max(metadata.modified().ok());
                 std::fs::hard_link(entry.path(), &target).map_err(|error| {
                     if error.kind() == std::io::ErrorKind::CrossesDevices {
                         Error::CrossesDevices {
@@ -202,7 +243,7 @@ mod tests {
     fn snapshot_links_files_and_skips_symlinks_and_partial_uploads() {
         let directory = tempfile::tempdir().unwrap();
         let (_, snapshots) = fixture(directory.path());
-        let name = snapshots.create().unwrap();
+        let name = snapshots.create().unwrap().name;
         let snapshot = snapshots.path_of(&name);
         assert_eq!(std::fs::read(snapshot.join("genome/genome.fa")).unwrap(), b"fasta");
         assert!(!snapshot.join("link").exists());
@@ -214,7 +255,7 @@ mod tests {
     fn snapshot_is_unaffected_by_later_replacement_and_deletion() {
         let directory = tempfile::tempdir().unwrap();
         let (reference, snapshots) = fixture(directory.path());
-        let name = snapshots.create().unwrap();
+        let name = snapshots.create().unwrap().name;
         let snapshot = snapshots.path_of(&name);
         // replace like an upload does: new file renamed over the target
         std::fs::write(reference.join("genome/new"), "replaced").unwrap();
@@ -229,7 +270,7 @@ mod tests {
     fn snapshot_does_not_see_later_files() {
         let directory = tempfile::tempdir().unwrap();
         let (reference, snapshots) = fixture(directory.path());
-        let name = snapshots.create().unwrap();
+        let name = snapshots.create().unwrap().name;
         std::fs::write(reference.join("later.txt"), "x").unwrap();
         assert!(!snapshots.path_of(&name).join("later.txt").exists());
     }
@@ -239,7 +280,10 @@ mod tests {
     fn snapshots_have_unique_names() {
         let directory = tempfile::tempdir().unwrap();
         let (_, snapshots) = fixture(directory.path());
-        assert_ne!(snapshots.create().unwrap(), snapshots.create().unwrap());
+        assert_ne!(
+            snapshots.create().unwrap().name,
+            snapshots.create().unwrap().name
+        );
     }
 
     /// An unreadable reference folder fails and leaves no half-made snapshot.
@@ -259,7 +303,7 @@ mod tests {
     fn remove_deletes_the_snapshot_and_tolerates_a_missing_one() {
         let directory = tempfile::tempdir().unwrap();
         let (_, snapshots) = fixture(directory.path());
-        let name = snapshots.create().unwrap();
+        let name = snapshots.create().unwrap().name;
         snapshots.remove(&name).unwrap();
         assert!(!snapshots.path_of(&name).exists());
         snapshots.remove(&name).unwrap();
@@ -270,8 +314,8 @@ mod tests {
     fn sweep_removes_only_old_unreferenced_snapshots() {
         let directory = tempfile::tempdir().unwrap();
         let (_, snapshots) = fixture(directory.path());
-        let in_use = snapshots.create().unwrap();
-        let unreferenced = snapshots.create().unwrap();
+        let in_use = snapshots.create().unwrap().name;
+        let unreferenced = snapshots.create().unwrap().name;
         let keep: HashSet<String> = [in_use.clone()].into();
         // young: protected by the grace period
         assert_eq!(snapshots.sweep(&keep, Duration::from_secs(3600)).unwrap(), 0);
@@ -280,5 +324,28 @@ mod tests {
         assert_eq!(snapshots.sweep(&keep, Duration::ZERO).unwrap(), 1);
         assert!(snapshots.path_of(&in_use).exists());
         assert!(!snapshots.path_of(&unreferenced).exists());
+    }
+
+    /// The fingerprint counts files and bytes of the linked tree (not the skipped entries) and
+    /// reports the newest modification time; an empty folder has no modification time.
+    #[test]
+    fn fingerprint_describes_the_snapshot() {
+        let directory = tempfile::tempdir().unwrap();
+        let (reference, snapshots) = fixture(directory.path());
+        std::fs::write(reference.join("second.txt"), "123").unwrap();
+        let fingerprint = snapshots.create().unwrap().fingerprint;
+        // genome.fa ("fasta" = 5 bytes) and second.txt (3 bytes); symlink and partial skipped
+        assert_eq!(fingerprint.file_count, 2);
+        assert_eq!(fingerprint.total_bytes, 8);
+        assert!(fingerprint.last_modified.unwrap() <= fingerprint.snapshot_at);
+
+        let empty = ReferenceSnapshots::new(
+            ReferenceDirectory::new(directory.path().join("empty")),
+            directory.path().join("snapshots_of_empty"),
+        );
+        std::fs::create_dir(directory.path().join("empty")).unwrap();
+        let fingerprint = empty.create().unwrap().fingerprint;
+        assert_eq!(fingerprint.file_count, 0);
+        assert_eq!(fingerprint.last_modified, None);
     }
 }

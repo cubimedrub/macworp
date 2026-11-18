@@ -1,5 +1,5 @@
 use macworp_core::{
-    entities::{FailureReason, RunProvenance, RunStatus},
+    entities::{FailureReason, ReferenceFingerprint, RunProvenance, RunStatus},
     responses::RunResponse,
     workflow_configuration::{WorkflowConfiguration, engine::Engine},
 };
@@ -51,6 +51,10 @@ pub struct Model {
     /// `reference_snapshots`), `None` when it reads the live reference folder
     #[sea_orm(nullable)]
     pub reference_snapshot: Option<String>,
+    /// File count, size and newest change of the reference data at run start, kept after the
+    /// snapshot is deleted; `None` together with `reference_snapshot`
+    #[sea_orm(nullable)]
+    pub reference_fingerprint: Option<ReferenceFingerprint>,
     /// Tasks the engine announced so far, grows during the run
     pub tasks_total: i32,
     /// Tasks the engine finished
@@ -168,6 +172,7 @@ impl Model {
             error: self.error,
             failure_reason: self.failure_reason,
             provenance: self.provenance,
+            reference_fingerprint: self.reference_fingerprint,
             tasks_total: self.tasks_total,
             tasks_done: self.tasks_done,
             progress_message: self.progress_message,

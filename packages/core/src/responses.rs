@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entities::{FailureReason, LogStream, Role, RunProvenance, RunStatus},
+    entities::{FailureReason, LogStream, ReferenceFingerprint, Role, RunProvenance, RunStatus},
     requests::ParameterValue,
     workflow_configuration::WorkflowConfiguration,
 };
@@ -179,6 +179,9 @@ pub struct RunResponse {
     /// Repository, reference and commit of a remote workflow, `None` for local workflows
     #[serde(default)]
     pub provenance: Option<RunProvenance>,
+    /// State of the global reference data the run read, `None` if it read the live folder
+    #[serde(default)]
+    pub reference_fingerprint: Option<ReferenceFingerprint>,
     /// Tasks the engine announced so far, grows during the run (0 if the engine reports none)
     pub tasks_total: i32,
     /// Tasks the engine finished

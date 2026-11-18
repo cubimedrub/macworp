@@ -572,6 +572,12 @@ async fn run_gets_a_snapshot_of_the_reference_data() {
         )
         .await;
     assert_eq!(status, StatusCode::OK, "{response}");
+    // The fingerprint describes the reference data at start and stays with the run
+    let fingerprint = &response["reference_fingerprint"];
+    assert_eq!(fingerprint["file_count"], 2, "{response}");
+    assert_eq!(fingerprint["total_bytes"], 3 + 9);
+    assert!(fingerprint["last_modified"].is_string());
+    assert!(fingerprint["snapshot_at"].is_string());
 
     // An admin replaces one file, deletes the other and adds a new one
     std::fs::write(reference.join("genome.fa.new"), "new").unwrap();

@@ -158,7 +158,40 @@ impl Executor for CwlExecutor {
                 .map_err(|error| ExecutorError::Io("the Toil working directory", error))?;
             Ok(spec)
         });
-        Box::pin(run_spec(spec, logs, cancel))
+        Box::pin(async move {
+            let outcome = run_spec(spec, logs, cancel).await;
+            if matches!(outcome, Outcome::Succeeded) && job.configuration.cleanup_on_success() {
+                Self::cleanup(job);
+            }
+            outcome
+        })
+    }
+}
+
+impl CwlExecutor {
+    /// Removes [`WORK_DIRECTORY`] from the project directory after a successful run. Toil
+    /// deletes its job store itself on success, what is left is the empty directory. Does
+    /// nothing when an engine parameter moved the job store or working files elsewhere
+    /// ([`LOCATION_PARAMETERS`]), because then the directory is not ours. A failure is only
+    /// logged, the run stays successful.
+    ///
+    /// # Arguments
+    /// * `job` - the finished job
+    fn cleanup(job: &Job) {
+        if job
+            .configuration
+            .engine_parameters()
+            .iter()
+            .any(|parameter| LOCATION_PARAMETERS.contains(&parameter.name()))
+        {
+            return;
+        }
+        let directory = job.project_dir.join(WORK_DIRECTORY);
+        if let Err(error) = std::fs::remove_dir_all(&directory)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!("Cannot remove {}: {error}", directory.display());
+        }
     }
 }
 
@@ -303,6 +336,45 @@ mod tests {
         ] {
             let result = executor().launch_spec(&job(source));
             assert!(matches!(result, Err(ExecutorError::UnsupportedSource(_))));
+        }
+    }
+
+    /// A job whose project directory is `directory`, with the engine parameters given.
+    ///
+    /// # Arguments
+    /// * `directory` - the project directory
+    /// * `parameters` - names of engine parameters to set (with an empty value)
+    fn cleanup_job(directory: &std::path::Path, parameters: &[&str]) -> Job {
+        let mut job = job(local());
+        job.project_dir = directory.to_path_buf();
+        *job.configuration.engine_parameters_mut() = parameters
+            .iter()
+            .map(|name| EngineParameter::new((*name).into(), String::new()))
+            .collect();
+        job
+    }
+
+    /// The leftover Toil directory is removed, a missing one is not an error.
+    #[test]
+    fn cleanup_removes_the_work_directory() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(project.path().join(WORK_DIRECTORY).join("jobstore")).unwrap();
+        std::fs::write(project.path().join("result.txt"), "kept").unwrap();
+        let job = cleanup_job(project.path(), &[]);
+        CwlExecutor::cleanup(&job);
+        assert!(!project.path().join(WORK_DIRECTORY).exists());
+        assert!(project.path().join("result.txt").exists());
+        CwlExecutor::cleanup(&job);
+    }
+
+    /// With a job store or working directory chosen by the workflow, `.toil` is not touched.
+    #[test]
+    fn cleanup_skips_workflows_with_their_own_locations() {
+        for parameter in LOCATION_PARAMETERS {
+            let project = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(project.path().join(WORK_DIRECTORY)).unwrap();
+            CwlExecutor::cleanup(&cleanup_job(project.path(), &[parameter]));
+            assert!(project.path().join(WORK_DIRECTORY).exists());
         }
     }
 }

@@ -780,6 +780,37 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         "{hint}. Runs of this workflow are rejected."
                     }
                 }
+                // Only Nextflow and CWL leave work files that can be deleted
+                if matches!(
+                    workflow_integration.read().inner().configuration.engine(),
+                    Engine::Nextflow | Engine::Cwl
+                ) {
+                    div {
+                        class: "form-check mb-3",
+                        input {
+                            class: "form-check-input",
+                            r#type: "checkbox",
+                            id: "workflow-integration-configuration-cleanup",
+                            checked: workflow_integration.read().inner().configuration.cleanup_on_success(),
+                            onchange: move |event| {
+                                *workflow_integration
+                                    .write()
+                                    .inner_mut()
+                                    .configuration
+                                    .cleanup_on_success_mut() = event.checked();
+                            },
+                        }
+                        label {
+                            class: "form-check-label",
+                            r#for: "workflow-integration-configuration-cleanup",
+                            "Delete work files after a successful run"
+                        }
+                        div {
+                            class: "form-text",
+                            "Failed and cancelled runs keep their work files, so only those can be resumed."
+                        }
+                    }
+                }
 
                 Separator{
                     label: "Source"

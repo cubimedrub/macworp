@@ -6,7 +6,7 @@ use tokio::sync::{mpsc, watch};
 use super::containerized_execution::path_arg;
 use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec, worker_user_args,
-    run_spec,
+    run_process, run_spec,
 };
 use crate::container_runtime::BoxFuture;
 
@@ -116,6 +116,24 @@ impl NextflowExecutor {
             args.extend(self.engine_access.iter().cloned());
             args
         }
+
+    /// The `<runtime> run ... nextflow clean -f` command that deletes the work directories of
+    /// the last run. It runs in the engine image like the run itself (same user, same project
+    /// mount), because task files may not belong to the worker's user on the host.
+    ///
+    /// # Arguments
+    /// * `job` - the job whose project directory is cleaned
+    pub fn cleanup_spec(&self, job: &Job) -> LaunchSpec {
+        let read_only: Vec<&std::path::Path> = Vec::new();
+        containerized_spec(
+            &self.runtime_binary,
+            &self.image,
+            job,
+            &read_only,
+            &self.run_args(),
+            vec!["nextflow".into(), "clean".into(), "-f".into()],
+        )
+    }
 }
 
 impl Executor for NextflowExecutor {
@@ -129,7 +147,20 @@ impl Executor for NextflowExecutor {
         logs: mpsc::Sender<LogLine>,
         cancel: watch::Receiver<bool>,
     ) -> BoxFuture<'a, Outcome> {
-        Box::pin(run_spec(self.launch_spec(job), logs, cancel))
+        Box::pin(async move {
+            let outcome = run_spec(self.launch_spec(job), logs.clone(), cancel.clone()).await;
+            // Only a successful run is cleaned: a failed or cancelled one keeps its work
+            // directories so it can be resumed
+            if matches!(outcome, Outcome::Succeeded) && job.configuration.cleanup_on_success() {
+                match run_process(&self.cleanup_spec(job), logs, cancel).await {
+                    Outcome::Failed { error, .. } => {
+                        tracing::warn!("Nextflow cleanup failed: {error:?}");
+                    }
+                    Outcome::Succeeded | Outcome::Cancelled => {}
+                }
+            }
+            outcome
+        })
     }
 }
 
@@ -214,6 +245,20 @@ mod tests {
         let user = args.iter().position(|a| a == "--user").unwrap();
         assert_eq!(Some(args[user + 1].clone()), crate::executors::worker_user());
         assert!(args.windows(2).any(|pair| pair == ["-e", "HOME=/tmp"]));
+    }
+
+    /// The cleanup runs `nextflow clean -f` in the engine image, in the project directory.
+    #[test]
+    fn cleanup_runs_nextflow_clean_in_the_engine_image() {
+        let spec = executor().cleanup_spec(&job(Source::Local(LocalSource::new(
+            "/w".into(),
+            "main.nf".into(),
+        ))));
+        let args = spec.args;
+        let image = args.iter().position(|a| a == "img:1").unwrap();
+        assert_eq!(args[image + 1..], ["nextflow", "clean", "-f"]);
+        assert!(args.contains(&"/data/p1:/data/p1".to_string()));
+        assert!(!args.iter().any(|a| a.ends_with(":ro")));
     }
 
     #[test]

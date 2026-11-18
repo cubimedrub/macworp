@@ -121,3 +121,16 @@ Nextflow, CWL (Toil) and Snakemake engine containers run as the worker's `uid:gi
 - **Podman (rootless)**: `--userns=keep-id` maps the user to itself, the socket is then owned by that user inside the container (verified on the podman machine, `--group-add keep-groups` is not supported in remote mode).
 - **Nextflow image**: `/opt/nextflow` is world readable and writable (the framework jar was `0600 root`, so a non-root engine failed with `Unable to access jarfile`).
 - Not verified: file ownership on a Linux host, Docker with the group path on Linux, Nextflow task containers (started through the socket, root unless the workflow sets `docker.runOptions`).
+
+## Cleanup after a successful run (2026-11-18, not run against a real engine)
+
+Per-workflow switch `cleanup_on_success` (workflow editor, Nextflow and CWL only). Only after a
+`Succeeded` run, never after failure or cancel, so those stay resumable.
+
+- Nextflow: a second `run --rm` of the engine image with the same user and project mount runs
+  `nextflow clean -f` (removes `work/` of the last run; `.nextflow/` and `.nextflow.log` stay).
+  Done in the container because task files can be root-owned on Linux hosts.
+- CWL: Toil deletes its job store on success itself; the worker removes the empty `.toil/`
+  (skipped when `jobStore` or `workDir` is an engine parameter).
+- Snakemake, Container: nothing (`.snakemake/` holds the knowledge for incremental reruns).
+- A cleanup failure is logged by the worker, the run stays `Succeeded`.

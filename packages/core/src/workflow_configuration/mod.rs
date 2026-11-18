@@ -23,9 +23,24 @@ pub struct WorkflowConfiguration {
     /// Parameters adjustable by the users
     dynamic_parameters: Vec<parameters::Parameter>,
     fixed_parameters: Vec<parameters::Parameter>,
+    /// Delete the engine's work files (Nextflow `work/`, CWL `.toil/`) after a run succeeded.
+    /// Failed and cancelled runs keep them so they can be resumed. Absent in configurations
+    /// stored before this field existed, which means `false`.
+    #[serde(default)]
+    cleanup_on_success: bool,
 }
 
 impl WorkflowConfiguration {
+    /// Whether the engine's work files are deleted after a successful run.
+    pub fn cleanup_on_success(&self) -> bool {
+        self.cleanup_on_success
+    }
+
+    /// Mutable access to the cleanup switch, see [`Self::cleanup_on_success`].
+    pub fn cleanup_on_success_mut(&mut self) -> &mut bool {
+        &mut self.cleanup_on_success
+    }
+
     pub fn engine(&self) -> &engine::Engine {
         &self.engine
     }
@@ -106,7 +121,32 @@ impl Default for WorkflowConfiguration {
             source: source::Source::Local(source::LocalSource::default()),
             dynamic_parameters: Vec::new(),
             fixed_parameters: Vec::new(),
+            cleanup_on_success: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod cleanup_tests {
+    use super::*;
+
+    /// Configurations stored before the switch existed still load, with cleanup off.
+    #[test]
+    fn missing_cleanup_switch_means_off() {
+        let mut value = serde_json::to_value(WorkflowConfiguration::default()).unwrap();
+        value.as_object_mut().unwrap().remove("cleanup_on_success");
+        let configuration: WorkflowConfiguration = serde_json::from_value(value).unwrap();
+        assert!(!configuration.cleanup_on_success());
+    }
+
+    /// The switch survives a serialization round trip.
+    #[test]
+    fn cleanup_switch_round_trips() {
+        let mut configuration = WorkflowConfiguration::default();
+        *configuration.cleanup_on_success_mut() = true;
+        let json = serde_json::to_string(&configuration).unwrap();
+        let loaded: WorkflowConfiguration = serde_json::from_str(&json).unwrap();
+        assert!(loaded.cleanup_on_success());
     }
 }
 

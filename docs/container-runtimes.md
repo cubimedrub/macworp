@@ -127,9 +127,12 @@ Nextflow, CWL (Toil) and Snakemake engine containers run as the worker's `uid:gi
 Per-workflow switch `cleanup_on_success` (workflow editor, Nextflow and CWL only). Only after a
 `Succeeded` run, never after failure or cancel, so those stay resumable.
 
-- Nextflow: a second `run --rm` of the engine image with the same user and project mount runs
-  `nextflow clean -f` (removes `work/` of the last run; `.nextflow/` and `.nextflow.log` stay).
-  Done in the container because task files can be root-owned on Linux hosts.
+- Nextflow: a second `run --rm` of the engine image with the project mount runs
+  `nextflow clean -f` (removes `work/` of the last run; `.nextflow/` and `.nextflow.log` stay)
+  **as root**, because task containers (started through the socket, possibly root-only images)
+  can leave root-owned files on Linux hosts. No `-u` is forced onto task containers. A final
+  `chown -R <uid>:<gid> .nextflow .nextflow.log` hands the bookkeeping back to the worker's
+  user. Not verified on a Linux host.
 - CWL: Toil deletes its job store on success itself; the worker removes the empty `.toil/`
   (skipped when `jobStore` or `workDir` is an engine parameter).
 - Snakemake, Container: nothing (`.snakemake/` holds the knowledge for incremental reruns).

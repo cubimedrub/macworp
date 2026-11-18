@@ -5,7 +5,7 @@ use tokio::sync::{mpsc, watch};
 
 use super::containerized_execution::path_arg;
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec, worker_user_args,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec, worker_user, worker_user_args,
     run_process, run_spec,
 };
 use crate::container_runtime::BoxFuture;
@@ -118,20 +118,34 @@ impl NextflowExecutor {
         }
 
     /// The `<runtime> run ... nextflow clean -f` command that deletes the work directories of
-    /// the last run. It runs in the engine image like the run itself (same user, same project
-    /// mount), because task files may not belong to the worker's user on the host.
+    /// the last run. It runs in the engine image like the run itself (same project mount) but
+    /// **as root**: Nextflow task containers start through the runtime socket and may run as
+    /// root (some images only work that way), so their files in `work/` can be root-owned on a
+    /// Linux host and the worker's user could not delete them. Root in the container is the
+    /// host user with rootless Podman. Afterwards the Nextflow bookkeeping that cleaning may have
+    /// rewritten (`.nextflow`, `.nextflow.log`) is handed back to the worker's user, see
+    /// [`worker_user`].
     ///
     /// # Arguments
     /// * `job` - the job whose project directory is cleaned
     pub fn cleanup_spec(&self, job: &Job) -> LaunchSpec {
         let read_only: Vec<&std::path::Path> = Vec::new();
+        let mut run_args = vec!["--user".to_string(), "0".to_string()];
+        run_args.extend(self.engine_access.iter().cloned());
+        let mut script = String::from("nextflow clean -f; status=$?;");
+        if let Some(user) = worker_user() {
+            script.push_str(&format!(
+                " chown -R {user} .nextflow .nextflow.log 2>/dev/null;"
+            ));
+        }
+        script.push_str(" exit $status");
         containerized_spec(
             &self.runtime_binary,
             &self.image,
             job,
             &read_only,
-            &self.run_args(),
-            vec!["nextflow".into(), "clean".into(), "-f".into()],
+            &run_args,
+            vec!["sh".into(), "-c".into(), script],
         )
     }
 }
@@ -247,16 +261,27 @@ mod tests {
         assert!(args.windows(2).any(|pair| pair == ["-e", "HOME=/tmp"]));
     }
 
-    /// The cleanup runs `nextflow clean -f` in the engine image, in the project directory.
+    /// The cleanup runs `nextflow clean -f` as root in the engine image and the project
+    /// directory, then returns the bookkeeping files to the worker's user.
     #[test]
-    fn cleanup_runs_nextflow_clean_in_the_engine_image() {
+    fn cleanup_runs_nextflow_clean_as_root_in_the_engine_image() {
         let spec = executor().cleanup_spec(&job(Source::Local(LocalSource::new(
             "/w".into(),
             "main.nf".into(),
         ))));
         let args = spec.args;
         let image = args.iter().position(|a| a == "img:1").unwrap();
-        assert_eq!(args[image + 1..], ["nextflow", "clean", "-f"]);
+        assert!(args[..image].windows(2).any(|pair| pair == ["--user", "0"]));
+        assert_eq!(args[..image].iter().filter(|a| *a == "--user").count(), 1);
+        assert_eq!(&args[image + 1..image + 3], ["sh", "-c"]);
+        let script = &args[image + 3];
+        assert!(script.starts_with("nextflow clean -f;"), "{script}");
+        assert!(script.ends_with("exit $status"), "{script}");
+        #[cfg(unix)]
+        assert!(script.contains(&format!(
+            "chown -R {} .nextflow .nextflow.log",
+            crate::executors::worker_user().unwrap()
+        )));
         assert!(args.contains(&"/data/p1:/data/p1".to_string()));
         assert!(!args.iter().any(|a| a.ends_with(":ro")));
     }

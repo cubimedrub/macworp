@@ -1,12 +1,12 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use macworp_core::workflow_configuration::{engine::Engine, render::render_args, source::Source};
 use tokio::sync::{mpsc, watch};
 
 use super::containerized_execution::path_arg;
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec, worker_user_args,
-    run_spec,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
+    run_spec, worker_user_args,
 };
 use crate::container_runtime::{BoxFuture, RuntimeKind};
 
@@ -53,6 +53,10 @@ const DEPLOYMENT_PARAMETERS: &[&str] = &[
     "use-conda",
     "use-envmodules",
 ];
+
+/// Engine parameters that already choose where Apptainer keeps pulled images, so no shared
+/// cache is set
+const CACHE_PARAMETERS: &[&str] = &["apptainer-prefix", "singularity-prefix"];
 
 /// `run` options Apptainer needs inside the engine container on Docker, see
 /// `docs/container-runtimes.md`: it creates user namespaces and mounts `/proc` in them, which the
@@ -204,6 +208,9 @@ impl SnakemakeExecutor {
             .any(|p| DEPLOYMENT_PARAMETERS.contains(&p.name()))
         {
             command.extend(["--software-deployment-method".into(), "apptainer".into()]);
+            if let Some(cache) = self.cache_directory(job) {
+                command.extend(["--apptainer-prefix".into(), path_arg(cache)]);
+            }
             // Apptainer binds the working directory, home and /tmp on its own, the rest of the
             // read-only inputs (workflow files, reference data) it only sees when asked
             if !read_only.is_empty() {
@@ -229,17 +236,41 @@ impl SnakemakeExecutor {
             &self.image,
             job,
             &read_only,
-            &self.run_args(),
+            &self.run_args(job),
             command,
         ))
+    }
+
+    /// The shared image cache to use for `job`: the one of the job, unless the author's engine
+    /// parameters or deployment method make Snakemake manage images itself, `None` then.
+    ///
+    /// # Arguments
+    /// * `job` - The run about to start
+    fn cache_directory<'a>(&self, job: &'a Job) -> Option<&'a Path> {
+        let parameters = job.configuration.engine_parameters();
+        let overridden = parameters
+            .iter()
+            .any(|p| CACHE_PARAMETERS.contains(&p.name()));
+        let own_deployment = parameters
+            .iter()
+            .any(|p| DEPLOYMENT_PARAMETERS.contains(&p.name()));
+        if overridden || own_deployment {
+            None
+        } else {
+            job.apptainer_cache.as_deref()
+        }
     }
 
     /// Extra `run` arguments of the engine container: what Apptainer needs
     /// ([`DOCKER_APPTAINER_RUN_ARGS`] / [`PODMAN_APPTAINER_RUN_ARGS`] by runtime) and the worker's
     /// user with a writable home for the image cache ([`worker_user_args`]). Apptainer cannot
     /// unpack images as root, and running as the worker keeps the files the engine writes owned
-    /// by the user of the shared storage.
-    fn run_args(&self) -> Vec<String> {
+    /// by the user of the shared storage. The shared image cache of `job` is mounted read-write
+    /// at its host path.
+    ///
+    /// # Arguments
+    /// * `job` - The run about to start
+    fn run_args(&self, job: &Job) -> Vec<String> {
         let mut args: Vec<String> = match self.runtime_kind {
             RuntimeKind::Podman => PODMAN_APPTAINER_RUN_ARGS.map(String::from).into(),
             _ => DOCKER_APPTAINER_RUN_ARGS.map(String::from).into(),
@@ -248,6 +279,10 @@ impl SnakemakeExecutor {
             args.extend(["--security-opt".into(), format!("apparmor={profile}")]);
         }
         args.extend(worker_user_args());
+        if let Some(cache) = self.cache_directory(job) {
+            let cache = path_arg(cache);
+            args.extend(["-v".into(), format!("{cache}:{cache}")]);
+        }
         args
     }
 }
@@ -294,6 +329,7 @@ mod tests {
             run_id: 3,
             project_dir: "/data/p1".into(),
             reference_dir: None,
+            apptainer_cache: None,
             configuration,
             progress: None,
         }
@@ -400,6 +436,36 @@ mod tests {
         );
     }
 
+    /// The shared image cache is passed to Snakemake and mounted read-write at its host path
+    #[test]
+    fn image_cache_is_shared() {
+        let mut job = job(local(), vec![]);
+        job.apptainer_cache = Some("/cache/apptainer".into());
+        let args = executor().launch_spec(&job).unwrap().args;
+        let prefix = args.iter().position(|a| a == "--apptainer-prefix").unwrap();
+        assert_eq!(args[prefix + 1], "/cache/apptainer");
+        let mount = args
+            .iter()
+            .position(|a| a == "/cache/apptainer:/cache/apptainer")
+            .unwrap();
+        assert_eq!(args[mount - 1], "-v");
+    }
+
+    /// An own cache or deployment method of the author wins, nothing is mounted then
+    #[test]
+    fn image_cache_yields_to_engine_parameters() {
+        for name in ["apptainer-prefix", "use-conda"] {
+            let params = vec![EngineParameter::new(name.into(), "x".into())];
+            let mut job = job(local(), params);
+            job.apptainer_cache = Some("/cache/apptainer".into());
+            let args = executor().launch_spec(&job).unwrap().args;
+            assert!(
+                !args.iter().any(|a| a.contains("/cache/apptainer")),
+                "{name}: {args:?}"
+            );
+        }
+    }
+
     /// A deployment method chosen by the workflow author is not overridden
     #[test]
     fn engine_parameter_sets_deployment_method() {
@@ -415,7 +481,10 @@ mod tests {
     fn engine_runs_as_worker_user() {
         let args = executor().launch_spec(&job(local(), vec![])).unwrap().args;
         let user = args.iter().position(|a| a == "--user").unwrap();
-        assert_eq!(Some(args[user + 1].clone()), crate::executors::worker_user());
+        assert_eq!(
+            Some(args[user + 1].clone()),
+            crate::executors::worker_user()
+        );
     }
 
     #[test]

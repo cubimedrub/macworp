@@ -872,11 +872,9 @@ async fn resume_is_refused_where_it_cannot_continue() {
     let (_, failed) = start_run(&app, &alice, project.id, workflow.id, None).await;
     let failed_id = failed["id"].as_i64().unwrap();
     let (_, snapshot) = claim_and_finish(&app, RunStatus::Failed).await;
-    let (status, _) =
-        start_run(&app, &alice, project.id, other_workflow.id, Some(failed_id)).await;
+    let (status, _) = start_run(&app, &alice, project.id, other_workflow.id, Some(failed_id)).await;
     assert_eq!(status, StatusCode::CONFLICT);
-    let (status, _) =
-        start_run(&app, &alice, other_project.id, workflow.id, Some(failed_id)).await;
+    let (status, _) = start_run(&app, &alice, other_project.id, workflow.id, Some(failed_id)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _) = start_run(&app, &alice, project.id, workflow.id, Some(9999)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);

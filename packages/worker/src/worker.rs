@@ -453,6 +453,7 @@ mod tests {
             run_id: 1,
             project_dir: "/p".into(),
             reference_dir: None,
+            apptainer_cache: None,
             configuration,
             progress: None,
         }

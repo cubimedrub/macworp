@@ -273,6 +273,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
                 max_log_bytes,
                 runtimes,
                 settings.reference_directory(),
+                settings.apptainer_cache(),
             )
             .await?,
         ),
@@ -332,6 +333,7 @@ async fn start_worker(
     max_log_bytes: u64,
     runtimes: Vec<Arc<dyn ContainerRuntime>>,
     reference_directory: macworp_backend::reference_directory::ReferenceDirectory,
+    apptainer_cache: macworp_backend::reference_directory::ReferenceDirectory,
 ) -> Result<(watch::Sender<bool>, tokio::task::JoinHandle<()>), Error> {
     let db = sea_orm::Database::connect(database_url)
         .await
@@ -344,7 +346,12 @@ async fn start_worker(
 
     let executors = standard_executors(&runtimes).await;
     let mut worker = Worker::new(
-        Arc::new(DbJobSource::new(db, max_log_bytes, reference_directory)),
+        Arc::new(DbJobSource::new(
+            db,
+            max_log_bytes,
+            reference_directory,
+            apptainer_cache,
+        )),
         executors,
         WorkerOptions::default(),
     );

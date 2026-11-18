@@ -121,7 +121,8 @@ pub struct Configuration {
     /// Storage root on standalone, shared (e.g. over NFS) between the backend and the workers.
     /// Everything the backend keeps on disk lives below it: `projects/<id>` (project data),
     /// `workflows/remote_cache` (repository cache), `global_reference_data` and
-    /// `workflows/local/<id>` (uploaded local workflows). Workers mount it wherever they like (`--storage-path`) and resolve the
+    /// `workflows/local/<id>` (uploaded local workflows) and `cache/apptainer` (image cache, created by
+    /// the workers). Workers mount it wherever they like (`--storage-path`) and resolve the
     /// paths they are given relative to it.
     storage_path: String,
     /// Seconds a fetched branch of a cached repository is trusted before it is fetched again.

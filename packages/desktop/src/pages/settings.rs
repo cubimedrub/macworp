@@ -29,6 +29,14 @@ pub fn SettingsPage() -> Element {
                  of the version it started with. Must be a folder the container runtime can read. \
                  Old copies are removed automatically after some time without use.",
         }
+        FolderSetting {
+            folder: Folder::ApptainerCache,
+            title: "Container image cache",
+            dialog_title: "Folder for the container image cache",
+            description: "Snakemake workflows with container rules pull their images here once and \
+                 reuse them in every project, instead of keeping a copy in each project folder. \
+                 Must be a folder the container runtime can write to.",
+        }
     }
 }
 

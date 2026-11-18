@@ -17,6 +17,9 @@ pub struct Job {
     /// Global reference data, mounted read-only at the same path. `Path` values below the
     /// reference prefix are rewritten onto it. `None` where the instance has none.
     pub reference_dir: Option<PathBuf>,
+    /// Image cache shared by all runs, mounted read-write at the same path for engines that pull
+    /// images themselves (Snakemake with Apptainer). `None` where there is none.
+    pub apptainer_cache: Option<PathBuf>,
     /// Workflow configuration snapshot with the user's parameter values already applied
     pub configuration: WorkflowConfiguration,
     /// Where the engine reports its progress, set by the worker for engines that do

@@ -325,6 +325,8 @@ struct TestApp {
     workflow_dir: PathBuf,
     /// The live global reference data
     reference_directory: PathBuf,
+    /// Shared image cache the worker was started with
+    apptainer_cache: PathBuf,
     /// The location the worker hands to runs as reference data, starts at the live folder
     worker_reference: macworp_backend::reference_directory::ReferenceDirectory,
     shutdown: tokio::sync::oneshot::Sender<()>,
@@ -378,6 +380,8 @@ impl TestApp {
         let (shutdown, shutdown_receiver) = tokio::sync::oneshot::channel::<()>();
         let reference_directory = root.join("reference");
         std::fs::create_dir_all(&reference_directory).unwrap();
+        let apptainer_cache = root.join("apptainer");
+        std::fs::create_dir_all(&apptainer_cache).unwrap();
         let reference_directory_for_backend = reference_directory.clone();
         let worker_reference = macworp_backend::reference_directory::ReferenceDirectory::new(
             reference_directory.clone(),
@@ -424,6 +428,7 @@ impl TestApp {
             max_log_bytes,
             vec![runtime],
             worker_reference.clone(),
+            macworp_backend::reference_directory::ReferenceDirectory::new(apptainer_cache.clone()),
         )
         .await
         .unwrap();
@@ -433,6 +438,7 @@ impl TestApp {
             project_dir,
             workflow_dir,
             reference_directory,
+            apptainer_cache,
             worker_reference,
             shutdown,
             backend,
@@ -623,6 +629,7 @@ async fn run_scenario(engine: Engine) {
         .unwrap();
     let (run, log_text) = app.finished_run(run.id).await;
     let project_dir = app.project_dir.clone();
+    let apptainer_cache = app.apptainer_cache.clone();
     let _temp = app.stop().await;
 
     assert_eq!(
@@ -641,6 +648,15 @@ async fn run_scenario(engine: Engine) {
         _ => assert_eq!((run.tasks_total, run.tasks_done), (0, 0)),
     }
     assert!(!log_text.is_empty(), "no log lines stored");
+    if engine == Engine::Snakemake {
+        // Pulled images land in the shared cache, not in the project
+        let cached = std::fs::read_dir(&apptainer_cache).unwrap().count();
+        assert!(cached > 0, "image cache is empty: {apptainer_cache:?}");
+        assert!(
+            !project_dir.join(".snakemake/singularity").exists(),
+            "images were cached in the project"
+        );
+    }
 
     assert_eq!(
         read(&project_dir, "results/params.txt"),

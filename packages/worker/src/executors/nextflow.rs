@@ -5,8 +5,8 @@ use tokio::sync::{mpsc, watch};
 
 use super::containerized_execution::path_arg;
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec, worker_user, worker_user_args,
-    run_process, run_spec,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
+    run_process, run_spec, worker_user, worker_user_args,
 };
 use crate::container_runtime::BoxFuture;
 
@@ -110,12 +110,12 @@ impl NextflowExecutor {
     }
 
     /// Extra `run` arguments of the engine container: the worker's user
-        /// ([`worker_user_args`]) and the runtime socket access.
-        fn run_args(&self) -> Vec<String> {
-            let mut args = worker_user_args();
-            args.extend(self.engine_access.iter().cloned());
-            args
-        }
+    /// ([`worker_user_args`]) and the runtime socket access.
+    fn run_args(&self) -> Vec<String> {
+        let mut args = worker_user_args();
+        args.extend(self.engine_access.iter().cloned());
+        args
+    }
 
     /// The `<runtime> run ... nextflow clean -f` command that deletes the work directories of
     /// the last run. It runs in the engine image like the run itself (same project mount) but
@@ -203,6 +203,7 @@ mod tests {
             run_id: 7,
             project_dir: "/data/p1".into(),
             reference_dir: None,
+            apptainer_cache: None,
             configuration,
             progress: None,
         }
@@ -255,9 +256,18 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn engine_runs_as_worker_user() {
-        let args = executor().launch_spec(&job(Source::Local(LocalSource::new("/w".into(), "main.nf".into())))).unwrap().args;
+        let args = executor()
+            .launch_spec(&job(Source::Local(LocalSource::new(
+                "/w".into(),
+                "main.nf".into(),
+            ))))
+            .unwrap()
+            .args;
         let user = args.iter().position(|a| a == "--user").unwrap();
-        assert_eq!(Some(args[user + 1].clone()), crate::executors::worker_user());
+        assert_eq!(
+            Some(args[user + 1].clone()),
+            crate::executors::worker_user()
+        );
         assert!(args.windows(2).any(|pair| pair == ["-e", "HOME=/tmp"]));
     }
 

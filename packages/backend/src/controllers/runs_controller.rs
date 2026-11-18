@@ -288,7 +288,9 @@ impl RunsController {
         }
 
         let resumed = match payload.resume_from_run {
-            Some(run_id) => Some(Self::resumable_run(&state, project.id, workflow.id, run_id).await?),
+            Some(run_id) => {
+                Some(Self::resumable_run(&state, project.id, workflow.id, run_id).await?)
+            }
             None => None,
         };
 
@@ -445,7 +447,8 @@ impl RunsController {
         if run.workflow_id != Some(workflow_id) {
             return Err(Error::NotResumable("it ran another workflow"));
         }
-        if let (Some(snapshots), Some(name)) = (state.reference_snapshots(), &run.reference_snapshot)
+        if let (Some(snapshots), Some(name)) =
+            (state.reference_snapshots(), &run.reference_snapshot)
             && !snapshots.path_of(name).is_dir()
         {
             return Err(Error::ReferenceSnapshotGone);

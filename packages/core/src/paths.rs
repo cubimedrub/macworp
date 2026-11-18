@@ -15,6 +15,10 @@ pub fn sanitize_relative(path: &Path) -> PathBuf {
         .collect()
 }
 
+/// Where the Apptainer image cache of Snakemake lives below the storage root, shared by all
+/// projects and by every worker mounting the same storage.
+pub const APPTAINER_CACHE_DIRECTORY: &str = "cache/apptainer";
+
 /// Name of the virtual top-level folder under which the global reference data appears in the
 /// file browser of every project. A `Path` parameter value starting with it is rewritten to the
 /// absolute reference directory when the run is rendered. Chosen to be unlikely to clash with a

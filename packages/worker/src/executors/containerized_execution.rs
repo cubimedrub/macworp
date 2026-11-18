@@ -126,7 +126,10 @@ pub async fn run_spec(
 #[cfg(test)]
 pub(super) fn without_worker_user(mut args: Vec<String>) -> Vec<String> {
     let user = worker_user_args();
-    if let Some(start) = args.windows(user.len().max(1)).position(|part| part == user) {
+    if let Some(start) = args
+        .windows(user.len().max(1))
+        .position(|part| part == user)
+    {
         args.drain(start..start + user.len());
     }
     args

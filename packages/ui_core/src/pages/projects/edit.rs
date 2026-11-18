@@ -97,8 +97,7 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
     let mut is_workflow_start_dialog_open = use_signal(|| false);
     // The run the start dialog resumes, `None` for a normal start
-    let mut resume_run: Signal<Option<macworp_core::responses::RunResponse>> =
-        use_signal(|| None);
+    let mut resume_run: Signal<Option<macworp_core::responses::RunResponse>> = use_signal(|| None);
     let mut is_share_dialog_open = use_signal(|| false);
     let sharing = SharingEnabled::from_context().is_enabled();
     let mut upload_queue = use_signal(VecDeque::<Result<T::File, T::Error>>::new);

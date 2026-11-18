@@ -5,6 +5,7 @@ use std::time::Duration;
 use macworp_backend::configuration::{REMOTE_CACHE_DIRECTORY_NAME, WORKFLOWS_DIRECTORY_NAME};
 use macworp_backend::reference_directory::{ReferenceDirectory, DEFAULT_DIRECTORY_NAME};
 use macworp_backend::workflow_repository_cache::WorkflowRepositoryCache;
+use macworp_core::paths::APPTAINER_CACHE_DIRECTORY;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -38,6 +39,10 @@ struct Stored {
     /// Folder of the workflow repository cache, `None` = the default below the app data directory
     #[serde(default)]
     workflow_cache_path: Option<PathBuf>,
+    /// Folder of the Apptainer image cache of Snakemake, `None` = the default below the app data
+    /// directory
+    #[serde(default)]
+    apptainer_cache_path: Option<PathBuf>,
 }
 
 /// The folders the user can move in the settings page.
@@ -47,6 +52,8 @@ pub enum Folder {
     Reference,
     /// Cache of fetched remote workflow repositories
     WorkflowCache,
+    /// Container images Snakemake pulls through Apptainer, shared by all projects
+    ApptainerCache,
 }
 
 /// The desktop settings: where the global reference data and the workflow cache live. Cloning
@@ -58,6 +65,8 @@ pub struct Settings {
     directory: PathBuf,
     /// Handle shared with the backend and the embedded worker
     reference_directory: ReferenceDirectory,
+    /// Handle shared with the embedded worker
+    apptainer_cache: ReferenceDirectory,
     /// Cache shared with the backend
     workflow_repository_cache: Arc<WorkflowRepositoryCache>,
     /// The explicit choices as saved, so changing one folder keeps the other
@@ -80,6 +89,12 @@ impl Settings {
                     .clone()
                     .unwrap_or_else(|| Self::default_path(directory, Folder::Reference)),
             ),
+            apptainer_cache: ReferenceDirectory::new(
+                stored
+                    .apptainer_cache_path
+                    .clone()
+                    .unwrap_or_else(|| Self::default_path(directory, Folder::ApptainerCache)),
+            ),
             workflow_repository_cache: Arc::new(WorkflowRepositoryCache::new(
                 stored
                     .workflow_cache_path
@@ -91,12 +106,18 @@ impl Settings {
         };
         std::fs::create_dir_all(settings.path(Folder::Reference))?;
         std::fs::create_dir_all(settings.path(Folder::WorkflowCache))?;
+        std::fs::create_dir_all(settings.path(Folder::ApptainerCache))?;
         Ok(settings)
     }
 
     /// The reference data handle for the backend and worker.
     pub fn reference_directory(&self) -> ReferenceDirectory {
         self.reference_directory.clone()
+    }
+
+    /// The image cache handle for the embedded worker.
+    pub fn apptainer_cache(&self) -> ReferenceDirectory {
+        self.apptainer_cache.clone()
     }
 
     /// The repository cache for the backend.
@@ -115,6 +136,7 @@ impl Settings {
             Folder::WorkflowCache => directory
                 .join(WORKFLOWS_DIRECTORY_NAME)
                 .join(REMOTE_CACHE_DIRECTORY_NAME),
+            Folder::ApptainerCache => directory.join(APPTAINER_CACHE_DIRECTORY),
         }
     }
 
@@ -126,6 +148,7 @@ impl Settings {
         match folder {
             Folder::Reference => self.reference_directory.get(),
             Folder::WorkflowCache => self.workflow_repository_cache.root(),
+            Folder::ApptainerCache => self.apptainer_cache.get(),
         }
     }
 
@@ -164,6 +187,7 @@ impl Settings {
         match folder {
             Folder::Reference => updated.global_reference_path = path,
             Folder::WorkflowCache => updated.workflow_cache_path = path,
+            Folder::ApptainerCache => updated.apptainer_cache_path = path,
         }
         std::fs::write(
             self.directory.join(FILE_NAME),
@@ -173,6 +197,7 @@ impl Settings {
         match folder {
             Folder::Reference => self.reference_directory.set(target),
             Folder::WorkflowCache => self.workflow_repository_cache.set_root(target),
+            Folder::ApptainerCache => self.apptainer_cache.set(target),
         }
         Ok(())
     }
@@ -201,7 +226,11 @@ mod tests {
     fn choice_is_persisted_and_applied() {
         let directory = tempfile::tempdir().unwrap();
         let settings = Settings::load(directory.path(), 3600).unwrap();
-        for folder in [Folder::Reference, Folder::WorkflowCache] {
+        for folder in [
+            Folder::Reference,
+            Folder::WorkflowCache,
+            Folder::ApptainerCache,
+        ] {
             assert!(settings.is_default(folder));
             assert!(settings.path(folder).is_dir());
         }
@@ -222,10 +251,17 @@ mod tests {
             .unwrap();
         assert_eq!(cache_handle.root(), cache);
 
+        let images = directory.path().join("images");
+        settings
+            .set_path(Folder::ApptainerCache, Some(images.clone()))
+            .unwrap();
+        assert_eq!(settings.apptainer_cache().get(), images);
+
         // Both choices survive a restart, changing one did not drop the other.
         let reloaded = Settings::load(directory.path(), 3600).unwrap();
         assert_eq!(reloaded.path(Folder::Reference), chosen);
         assert_eq!(reloaded.path(Folder::WorkflowCache), cache);
+        assert_eq!(reloaded.path(Folder::ApptainerCache), images);
 
         let file = directory.path().join("file");
         std::fs::write(&file, "x").unwrap();
@@ -237,8 +273,10 @@ mod tests {
 
         settings.set_path(Folder::Reference, None).unwrap();
         settings.set_path(Folder::WorkflowCache, None).unwrap();
+        settings.set_path(Folder::ApptainerCache, None).unwrap();
         let reloaded = Settings::load(directory.path(), 3600).unwrap();
         assert!(reloaded.is_default(Folder::Reference));
         assert!(reloaded.is_default(Folder::WorkflowCache));
+        assert!(reloaded.is_default(Folder::ApptainerCache));
     }
 }

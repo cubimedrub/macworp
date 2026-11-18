@@ -10,6 +10,7 @@ use std::{
 
 use macworp_core::{
     entities::LogStream,
+    paths::APPTAINER_CACHE_DIRECTORY,
     requests::{
         WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest,
         WorkerOutcome, WorkerProgressRequest,
@@ -254,10 +255,18 @@ impl JobSource for HttpJobSource {
                         run_id: claimed.run_id,
                         project_dir: claimed.project_dir,
                         reference_dir: claimed.reference_dir,
+                        apptainer_cache: None,
                         configuration: claimed.configuration,
                         progress: None,
                     };
                     job.resolve_storage(&self.storage_path);
+                    let cache = self.storage_path.join(APPTAINER_CACHE_DIRECTORY);
+                    match std::fs::create_dir_all(&cache) {
+                        Ok(()) => job.apptainer_cache = Some(cache),
+                        Err(e) => {
+                            tracing::warn!("Cannot create the image cache {}: {e}", cache.display())
+                        }
+                    }
                     Ok(Some(job))
                 }
                 status => Err(Error(format!("Claim rejected by the backend: {status}"))),
@@ -457,6 +466,27 @@ mod tests {
 
     /// Claim uses Basic, later calls the per-run token; the token is dropped after finish and
     /// then a heartbeat fails (no token) instead of leaking the credential
+    /// A claimed job carries the shared image cache below this machine's storage mount, and the
+    /// directory exists.
+    #[tokio::test]
+    async fn claim_sets_the_image_cache() {
+        let (url, _seen) = backend().await;
+        let storage = tempfile::tempdir().unwrap();
+        let source = HttpJobSource::new(
+            &format!("{url}/"),
+            storage.path().to_path_buf(),
+            "w".into(),
+            "pw".into(),
+            "n".into(),
+            vec![Engine::Nextflow],
+        )
+        .unwrap();
+        let job = source.claim().await.unwrap().unwrap();
+        let cache = storage.path().join(APPTAINER_CACHE_DIRECTORY);
+        assert_eq!(job.apptainer_cache, Some(cache.clone()));
+        assert!(cache.is_dir());
+    }
+
     #[tokio::test]
     async fn claim_uses_basic_then_run_token() {
         let (url, seen) = backend().await;

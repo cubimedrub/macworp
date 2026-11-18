@@ -19,6 +19,8 @@ pub struct DbJobSource {
     max_log_bytes: u64,
     /// Location of the global reference data
     reference_directory: ReferenceDirectory,
+    /// Location of the shared image cache
+    apptainer_cache: ReferenceDirectory,
 }
 
 fn source_error(error: impl std::fmt::Display) -> SourceError {
@@ -33,15 +35,19 @@ impl DbJobSource {
     /// * `max_log_bytes` - Log size limit per run
     /// * `reference_directory` - Where the global reference data currently lives, read at every
     ///   claim so a change in the settings applies to the next run
+    /// * `apptainer_cache` - Where the shared container image cache currently lives, read at
+    ///   every claim like `reference_directory`
     pub fn new(
         db: DatabaseConnection,
         max_log_bytes: u64,
         reference_directory: ReferenceDirectory,
+        apptainer_cache: ReferenceDirectory,
     ) -> Self {
         Self {
             db,
             max_log_bytes,
             reference_directory,
+            apptainer_cache,
         }
     }
 
@@ -89,6 +95,7 @@ impl JobSource for DbJobSource {
                             run_id: run.id,
                             project_dir,
                             reference_dir: std::path::absolute(self.reference_directory.get()).ok(),
+                            apptainer_cache: std::path::absolute(self.apptainer_cache.get()).ok(),
                             configuration: run.configuration,
                             progress: None,
                         }));
@@ -235,6 +242,7 @@ mod tests {
             db.clone(),
             0,
             ReferenceDirectory::new(PathBuf::from("reference")),
+            ReferenceDirectory::new(PathBuf::from("images")),
         );
         assert!(source.claim().await.unwrap().is_none());
 
@@ -280,6 +288,7 @@ mod tests {
             db.clone(),
             0,
             ReferenceDirectory::new(PathBuf::from("reference")),
+            ReferenceDirectory::new(PathBuf::from("images")),
         );
         let job = source.claim().await.unwrap().unwrap();
         assert_eq!(job.run_id, good);
@@ -298,6 +307,7 @@ mod tests {
             db.clone(),
             0,
             ReferenceDirectory::new(PathBuf::from("reference")),
+            ReferenceDirectory::new(PathBuf::from("images")),
         );
         source.finish(id, Outcome::Succeeded).await.unwrap();
         let run = RunTable::find_by_id(id).one(&db).await.unwrap().unwrap();
@@ -341,6 +351,7 @@ mod tests {
                 db.clone(),
                 0,
                 ReferenceDirectory::new(PathBuf::from("reference")),
+                ReferenceDirectory::new(PathBuf::from("images")),
             )),
             vec![Arc::new(EchoExecutor) as Arc<dyn Executor>],
             WorkerOptions {

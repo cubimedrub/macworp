@@ -84,6 +84,7 @@ mod tests {
             run_id: 5,
             project_dir: "/data/p1".into(),
             reference_dir: None,
+            apptainer_cache: None,
             configuration,
             progress: None,
         }

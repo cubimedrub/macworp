@@ -334,7 +334,9 @@ impl RunsController {
         let max_runs = state.config().max_runs_per_project();
         let comment = payload.comment;
         let user_id = user.id;
-        let stored_snapshot = reference_snapshot.as_ref().map(|snapshot| snapshot.name.clone());
+        let stored_snapshot = reference_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.name.clone());
         let (reference_snapshot_name, reference_fingerprint) = match reference_snapshot {
             Some(snapshot) => (Some(snapshot.name), Some(snapshot.fingerprint)),
             None => (None, None),

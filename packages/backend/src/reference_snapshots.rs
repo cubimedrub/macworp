@@ -8,7 +8,9 @@ use std::{
 use macworp_core::entities::ReferenceFingerprint;
 use thiserror::Error;
 
-use crate::{filesystems::directory_files::DirectoryFiles, reference_directory::ReferenceDirectory};
+use crate::{
+    filesystems::directory_files::DirectoryFiles, reference_directory::ReferenceDirectory,
+};
 
 /// Distinguishes snapshots created within the same nanosecond.
 static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -157,19 +159,27 @@ impl ReferenceSnapshots {
                 totals.file_count += 1;
                 totals.total_bytes += metadata.len();
                 totals.last_modified = totals.last_modified.max(metadata.modified().ok());
-                std::fs::hard_link(entry.path(), &target).map_err(|error| {
-                    if error.kind() == std::io::ErrorKind::CrossesDevices {
-                        Error::CrossesDevices {
-                            reference: self.reference_directory.get(),
-                            snapshots: self.root.clone(),
-                        }
-                    } else {
-                        Error::Io(error)
-                    }
-                })?;
+                std::fs::hard_link(entry.path(), &target)
+                    .map_err(|error| self.link_error(error))?;
             }
         }
         Ok(())
+    }
+
+    /// Turns the failure of a hard link into an [`Error`]: a link across filesystems gets the
+    /// dedicated error that says what to change.
+    ///
+    /// # Arguments
+    /// * `error` - What `std::fs::hard_link` returned
+    fn link_error(&self, error: std::io::Error) -> Error {
+        if error.kind() == std::io::ErrorKind::CrossesDevices {
+            Error::CrossesDevices {
+                reference: self.reference_directory.get(),
+                snapshots: self.root.clone(),
+            }
+        } else {
+            Error::Io(error)
+        }
     }
 
     /// Deletes the snapshot called `name`; a missing one is fine. Blocks on the filesystem.
@@ -228,7 +238,11 @@ mod tests {
         let reference = directory.join("reference");
         std::fs::create_dir_all(reference.join("genome")).unwrap();
         std::fs::write(reference.join("genome/genome.fa"), "fasta").unwrap();
-        std::fs::write(reference.join("genome/.genome.fa.macworp_partial_upload"), "x").unwrap();
+        std::fs::write(
+            reference.join("genome/.genome.fa.macworp_partial_upload"),
+            "x",
+        )
+        .unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink("/etc/hosts", reference.join("link")).unwrap();
         let snapshots = ReferenceSnapshots::new(
@@ -245,9 +259,16 @@ mod tests {
         let (_, snapshots) = fixture(directory.path());
         let name = snapshots.create().unwrap().name;
         let snapshot = snapshots.path_of(&name);
-        assert_eq!(std::fs::read(snapshot.join("genome/genome.fa")).unwrap(), b"fasta");
+        assert_eq!(
+            std::fs::read(snapshot.join("genome/genome.fa")).unwrap(),
+            b"fasta"
+        );
         assert!(!snapshot.join("link").exists());
-        assert!(!snapshot.join("genome/.genome.fa.macworp_partial_upload").exists());
+        assert!(
+            !snapshot
+                .join("genome/.genome.fa.macworp_partial_upload")
+                .exists()
+        );
     }
 
     /// Replacing or deleting live files afterwards does not change the snapshot.
@@ -259,10 +280,20 @@ mod tests {
         let snapshot = snapshots.path_of(&name);
         // replace like an upload does: new file renamed over the target
         std::fs::write(reference.join("genome/new"), "replaced").unwrap();
-        std::fs::rename(reference.join("genome/new"), reference.join("genome/genome.fa")).unwrap();
-        assert_eq!(std::fs::read(snapshot.join("genome/genome.fa")).unwrap(), b"fasta");
+        std::fs::rename(
+            reference.join("genome/new"),
+            reference.join("genome/genome.fa"),
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read(snapshot.join("genome/genome.fa")).unwrap(),
+            b"fasta"
+        );
         std::fs::remove_dir_all(reference.join("genome")).unwrap();
-        assert_eq!(std::fs::read(snapshot.join("genome/genome.fa")).unwrap(), b"fasta");
+        assert_eq!(
+            std::fs::read(snapshot.join("genome/genome.fa")).unwrap(),
+            b"fasta"
+        );
     }
 
     /// Files added after the snapshot are not in it.
@@ -318,7 +349,10 @@ mod tests {
         let unreferenced = snapshots.create().unwrap().name;
         let keep: HashSet<String> = [in_use.clone()].into();
         // young: protected by the grace period
-        assert_eq!(snapshots.sweep(&keep, Duration::from_secs(3600)).unwrap(), 0);
+        assert_eq!(
+            snapshots.sweep(&keep, Duration::from_secs(3600)).unwrap(),
+            0
+        );
         assert!(snapshots.path_of(&unreferenced).exists());
         // no grace: only the unreferenced one goes
         assert_eq!(snapshots.sweep(&keep, Duration::ZERO).unwrap(), 1);
@@ -347,5 +381,65 @@ mod tests {
         let fingerprint = empty.create().unwrap().fingerprint;
         assert_eq!(fingerprint.file_count, 0);
         assert_eq!(fingerprint.last_modified, None);
+    }
+
+    /// A link across filesystems is reported as [`Error::CrossesDevices`] naming both folders
+    /// (the error the OS gives is mapped, so this holds on every platform), other failures stay
+    /// plain I/O errors.
+    #[test]
+    fn link_across_filesystems_has_its_own_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let (reference, snapshots) = fixture(directory.path());
+        let crossing =
+            snapshots.link_error(std::io::Error::from(std::io::ErrorKind::CrossesDevices));
+        match crossing {
+            Error::CrossesDevices {
+                reference: shown_reference,
+                snapshots: shown_snapshots,
+            } => {
+                assert_eq!(shown_reference, reference);
+                assert_eq!(shown_snapshots, snapshots.root());
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+        let message = snapshots
+            .link_error(std::io::Error::from(std::io::ErrorKind::CrossesDevices))
+            .to_string();
+        assert!(message.contains("different filesystems"), "{message}");
+        assert!(matches!(
+            snapshots.link_error(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            Error::Io(_)
+        ));
+    }
+
+    /// With a snapshot folder on a really different filesystem (`/dev/shm` where it exists and
+    /// is not the temporary folder's device) creating a snapshot is refused and leaves nothing
+    /// behind, no silent copy. Skipped where no second filesystem is available.
+    #[cfg(unix)]
+    #[test]
+    fn snapshot_on_another_filesystem_is_refused_without_copying() {
+        use std::os::unix::fs::MetadataExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let (_, snapshots) = fixture(directory.path());
+        let other = Path::new("/dev/shm");
+        let same_device = |path: &Path| {
+            std::fs::metadata(path).map(|metadata| metadata.dev()).ok()
+                == std::fs::metadata(directory.path())
+                    .map(|metadata| metadata.dev())
+                    .ok()
+        };
+        if !other.is_dir() || same_device(other) {
+            eprintln!("skipped: no second filesystem at /dev/shm");
+            return;
+        }
+        let foreign_root = tempfile::tempdir_in(other).unwrap();
+        let across = ReferenceSnapshots::new(
+            snapshots.reference_directory.clone(),
+            foreign_root.path().to_path_buf(),
+        );
+        let error = across.create().unwrap_err();
+        assert!(matches!(error, Error::CrossesDevices { .. }), "{error}");
+        assert_eq!(std::fs::read_dir(foreign_root.path()).unwrap().count(), 0);
     }
 }

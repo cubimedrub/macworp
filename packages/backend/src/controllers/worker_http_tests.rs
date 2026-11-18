@@ -559,7 +559,12 @@ async fn run_gets_a_snapshot_of_the_reference_data() {
     let alice = app.user("alice").await;
     let project = app.project(&alice, "p").await;
     let workflow = app.workflow(&alice, "w").await;
-    announce(&app, "w1", json!(["Nextflow", "Container", "Snakemake", "Cwl"])).await;
+    announce(
+        &app,
+        "w1",
+        json!(["Nextflow", "Container", "Snakemake", "Cwl"]),
+    )
+    .await;
     let reference = app.state.reference_directory().get();
     std::fs::write(reference.join("genome.fa"), "old").unwrap();
     std::fs::write(reference.join("genome.fa.fai"), "old index").unwrap();
@@ -589,9 +594,15 @@ async fn run_gets_a_snapshot_of_the_reference_data() {
     assert_eq!(status, StatusCode::OK, "{claimed}");
     let snapshot = std::path::PathBuf::from(claimed["reference_dir"].as_str().unwrap());
     assert!(snapshot.is_absolute());
-    assert_ne!(snapshot, reference, "the worker must not get the live folder");
+    assert_ne!(
+        snapshot, reference,
+        "the worker must not get the live folder"
+    );
     assert_eq!(std::fs::read(snapshot.join("genome.fa")).unwrap(), b"old");
-    assert_eq!(std::fs::read(snapshot.join("genome.fa.fai")).unwrap(), b"old index");
+    assert_eq!(
+        std::fs::read(snapshot.join("genome.fa.fai")).unwrap(),
+        b"old index"
+    );
     assert!(!snapshot.join("added.txt").exists());
 
     // Referenced while the run is active, removed once it is over
@@ -610,4 +621,68 @@ async fn run_gets_a_snapshot_of_the_reference_data() {
     .unwrap();
     assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 1);
     assert!(!snapshot.exists());
+}
+
+/// Runs started at different times each read the reference data of their own start, however
+/// long they wait in the queue: the first run, claimed after the data changed twice, still gets
+/// the first state, the second run the second.
+#[tokio::test]
+async fn queued_runs_keep_the_reference_data_of_their_start() {
+    let app = TestApp::new_with_reference_snapshots().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    announce(
+        &app,
+        "w1",
+        json!(["Nextflow", "Container", "Snakemake", "Cwl"]),
+    )
+    .await;
+    let reference = app.state.reference_directory().get();
+    let start = format!("/runs/start/{}", project.id);
+    let body = json!({"workflow_id": workflow.id, "comment": "", "parameters": []});
+
+    std::fs::write(reference.join("version.txt"), "one").unwrap();
+    let (status, first) = app.post(&alice, &start, Some(body.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+
+    std::fs::write(reference.join("version.txt.new"), "two").unwrap();
+    std::fs::rename(
+        reference.join("version.txt.new"),
+        reference.join("version.txt"),
+    )
+    .unwrap();
+    let (status, second) = app.post(&alice, &start, Some(body)).await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+
+    std::fs::write(reference.join("version.txt.new"), "three").unwrap();
+    std::fs::rename(
+        reference.join("version.txt.new"),
+        reference.join("version.txt"),
+    )
+    .unwrap();
+
+    // Claimed oldest first, after the data changed twice since the first start
+    let (status, claimed_first) = claim(&app).await;
+    assert_eq!(status, StatusCode::OK, "{claimed_first}");
+    let (status, claimed_second) = claim(&app).await;
+    assert_eq!(status, StatusCode::OK, "{claimed_second}");
+    assert_eq!(claimed_first["run_id"], first["id"]);
+    assert_eq!(claimed_second["run_id"], second["id"]);
+
+    let first_dir = std::path::PathBuf::from(claimed_first["reference_dir"].as_str().unwrap());
+    let second_dir = std::path::PathBuf::from(claimed_second["reference_dir"].as_str().unwrap());
+    assert_ne!(first_dir, second_dir);
+    assert_eq!(
+        std::fs::read(first_dir.join("version.txt")).unwrap(),
+        b"one"
+    );
+    assert_eq!(
+        std::fs::read(second_dir.join("version.txt")).unwrap(),
+        b"two"
+    );
+    assert_eq!(
+        std::fs::read(reference.join("version.txt")).unwrap(),
+        b"three"
+    );
 }

@@ -78,6 +78,13 @@ pub enum Error {
     /// The snapshot of the reference data could not be made, 500
     #[error("{0}")]
     ReferenceSnapshot(#[from] crate::reference_snapshots::Error),
+    /// The run to resume is not resumable (not the newest run of the project, still active,
+    /// succeeded, or of another workflow), 409. Holds the reason.
+    #[error("Cannot resume this run: {0}")]
+    NotResumable(&'static str),
+    /// The run to resume lost its snapshot of the reference data, 409. Start a fresh run.
+    #[error("The reference data of this run is no longer kept, start a new run instead")]
+    ReferenceSnapshotGone,
 }
 
 impl From<AuthorizationError> for Error {
@@ -119,6 +126,8 @@ impl IntoResponse for Error {
             Error::RunLimitReached(_)
             | Error::WorkflowNotUploaded
             | Error::AlreadyFinished
+            | Error::NotResumable(_)
+            | Error::ReferenceSnapshotGone
             | Error::EngineUnavailable(_) => {
                 (StatusCode::CONFLICT, self.to_string()).into_response()
             }
@@ -278,12 +287,20 @@ impl RunsController {
             return Err(Error::EngineUnavailable(engine.clone()));
         }
 
+        let resumed = match payload.resume_from_run {
+            Some(run_id) => Some(Self::resumable_run(&state, project.id, workflow.id, run_id).await?),
+            None => None,
+        };
+
         // Only dynamic parameter values come from the client, everything else from the stored workflow
         let mut configuration = workflow.configuration.clone();
         state.confine_local_source(workflow.id, &mut configuration);
         // Uploaded files are pinned like remote checkouts: later uploads do not change this run
         state.pin_local_source(&mut configuration);
         apply_values(&mut configuration, &payload.parameters)?;
+        if resumed.is_some() {
+            configuration.enable_resume();
+        }
         // Remote sources are pinned to the commit they resolve to now: later fetches or moved
         // tags cannot change this run, and the engine reads the checkout without network.
         let cache = state.workflow_repository_cache();
@@ -321,26 +338,34 @@ impl RunsController {
             .map(|p| (p.name, p.value))
             .collect();
 
-        // Point-in-time view of the reference data: later changes by admins never reach this run
-        let reference_snapshot = match state.reference_snapshots().cloned() {
-            Some(snapshots) => Some(
-                tokio::task::spawn_blocking(move || snapshots.create())
-                    .await
-                    .map_err(|_| Error::SourceTask)??,
+        // Point-in-time view of the reference data: later changes by admins never reach this run.
+        // A resumed run keeps the snapshot of the run it continues, the engine's cache refers to
+        // its paths. `created_snapshot` is only set for a new one, which must be removed again if
+        // the run cannot be stored.
+        let (reference_snapshot_name, reference_fingerprint, created_snapshot) = match &resumed {
+            Some(previous) => (
+                previous.reference_snapshot.clone(),
+                previous.reference_fingerprint.clone(),
+                None,
             ),
-            None => None,
+            None => match state.reference_snapshots().cloned() {
+                Some(snapshots) => {
+                    let snapshot = tokio::task::spawn_blocking(move || snapshots.create())
+                        .await
+                        .map_err(|_| Error::SourceTask)??;
+                    (
+                        Some(snapshot.name.clone()),
+                        Some(snapshot.fingerprint),
+                        Some(snapshot.name),
+                    )
+                }
+                None => (None, None, None),
+            },
         };
 
         let max_runs = state.config().max_runs_per_project();
         let comment = payload.comment;
         let user_id = user.id;
-        let stored_snapshot = reference_snapshot
-            .as_ref()
-            .map(|snapshot| snapshot.name.clone());
-        let (reference_snapshot_name, reference_fingerprint) = match reference_snapshot {
-            Some(snapshot) => (Some(snapshot.name), Some(snapshot.fingerprint)),
-            None => (None, None),
-        };
         let run = state
             .db()
             .transaction::<_, Run, Error>(|txn| {
@@ -376,7 +401,7 @@ impl RunsController {
             Err(error) => {
                 // No run points to the snapshot, do not wait for the sweep
                 if let (Some(name), Some(snapshots)) =
-                    (stored_snapshot, state.reference_snapshots().cloned())
+                    (created_snapshot, state.reference_snapshots().cloned())
                 {
                     let _ = tokio::task::spawn_blocking(move || snapshots.remove(&name)).await;
                 }
@@ -385,6 +410,47 @@ impl RunsController {
         };
 
         Self::respond(&state, user_id, run).await
+    }
+
+    /// Loads the run a user wants to resume and checks that it can be.
+    ///
+    /// Only the newest run of the project can be resumed: the engine's cache lives in the
+    /// project folder and belongs to the run that used it last, and the reference snapshot of
+    /// older runs is released. The run must have failed or been cancelled and belong to the same
+    /// workflow, and its snapshot must still exist.
+    ///
+    /// # Arguments
+    /// * `state` - Application state
+    /// * `project_id` - Project the new run starts on
+    /// * `workflow_id` - Workflow the new run starts, must be the run's workflow
+    /// * `run_id` - Run to continue
+    async fn resumable_run(
+        state: &AppState,
+        project_id: i64,
+        workflow_id: i64,
+        run_id: i64,
+    ) -> Result<Run, Error> {
+        let run = RunTable::find_by_id(run_id)
+            .filter(RunColumn::ProjectId.eq(project_id))
+            .one(state.db())
+            .await?
+            .ok_or(Error::RunNotFound)?;
+        let newest = RunTable::newest_of_project(state.db(), project_id).await?;
+        if newest.map(|newest| newest.id) != Some(run.id) {
+            return Err(Error::NotResumable("a newer run exists in this project"));
+        }
+        if !run.can_be_resumed() {
+            return Err(Error::NotResumable("it did not fail and was not cancelled"));
+        }
+        if run.workflow_id != Some(workflow_id) {
+            return Err(Error::NotResumable("it ran another workflow"));
+        }
+        if let (Some(snapshots), Some(name)) = (state.reference_snapshots(), &run.reference_snapshot)
+            && !snapshots.path_of(name).is_dir()
+        {
+            return Err(Error::ReferenceSnapshotGone);
+        }
+        Ok(run)
     }
 
     /// Runs of a project, newest first

@@ -198,7 +198,7 @@ impl ReferenceSnapshots {
     /// Returns how many were removed. Blocks on the filesystem.
     ///
     /// # Arguments
-    /// * `in_use` - Names of the snapshots of queued and running runs
+    /// * `in_use` - Names of the snapshots some run still needs
     /// * `grace` - Minimum age before an unreferenced snapshot is removed
     pub fn sweep(&self, in_use: &HashSet<String>, grace: Duration) -> Result<usize, Error> {
         let Ok(entries) = std::fs::read_dir(&self.root) else {

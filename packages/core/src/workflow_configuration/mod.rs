@@ -42,6 +42,23 @@ impl WorkflowConfiguration {
         &mut self.engine_parameters
     }
 
+    /// Adds the engine's resume parameter ([`engine::Engine::resume_parameter`]) unless the
+    /// workflow already sets it. Does nothing for engines without one.
+    pub fn enable_resume(&mut self) {
+        let Some(name) = self.engine.resume_parameter() else {
+            return;
+        };
+        if self
+            .engine_parameters
+            .iter()
+            .any(|parameter| parameter.name() == name)
+        {
+            return;
+        }
+        self.engine_parameters
+            .push(engine::EngineParameter::new(name.into(), String::new()));
+    }
+
     pub fn source(&self) -> &source::Source {
         &self.source
     }
@@ -90,5 +107,44 @@ impl Default for WorkflowConfiguration {
             dynamic_parameters: Vec::new(),
             fixed_parameters: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+
+    /// Nextflow and CWL get their resume parameter once, Snakemake and Container none.
+    #[test]
+    fn enable_resume_adds_the_engine_parameter_once() {
+        for (engine, expected) in [
+            (engine::Engine::Nextflow, vec!["resume"]),
+            (engine::Engine::Cwl, vec!["restart"]),
+            (engine::Engine::Snakemake, vec![]),
+            (engine::Engine::Container, vec![]),
+        ] {
+            let mut configuration = WorkflowConfiguration::default();
+            *configuration.engine_mut() = engine;
+            configuration.enable_resume();
+            configuration.enable_resume();
+            let names: Vec<&str> = configuration
+                .engine_parameters()
+                .iter()
+                .map(|parameter| parameter.name())
+                .collect();
+            assert_eq!(names, expected);
+        }
+    }
+
+    /// A workflow that already sets the parameter (possibly with a value) keeps it unchanged.
+    #[test]
+    fn enable_resume_keeps_an_existing_parameter() {
+        let mut configuration = WorkflowConfiguration::default();
+        configuration
+            .engine_parameters_mut()
+            .push(engine::EngineParameter::new("resume".into(), "abc".into()));
+        configuration.enable_resume();
+        assert_eq!(configuration.engine_parameters().len(), 1);
+        assert_eq!(configuration.engine_parameters()[0].value(), "abc");
     }
 }

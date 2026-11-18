@@ -82,6 +82,13 @@ pub struct WorkflowStartRequest {
     pub comment: String,
     /// Values for the dynamic parameters
     pub parameters: Vec<ParameterValue>,
+    /// Continue this run instead of starting afresh: the new run reads the same snapshot of the
+    /// global reference data and the engine's resume parameter is added. `parameters` are taken
+    /// as sent, so a user can correct values (typically those of the failed run) before resuming;
+    /// the engine decides what to rerun for changed inputs. Only the newest run of
+    /// the project can be resumed, and only if it failed or was cancelled.
+    #[serde(default)]
+    pub resume_from_run: Option<i64>,
 }
 
 /// Request to create a group

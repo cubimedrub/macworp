@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use macworp_core::{
     requests::ParameterValue,
-    responses::WorkflowIntegrationResponse,
+    responses::{RunResponse, WorkflowIntegrationResponse},
     workflow_configuration::{
         parameters::{parameter::IsParameter, Parameter},
         render::{apply_values_lenient, value_json},
@@ -65,6 +65,9 @@ pub struct WorkflowStartDialogProps {
     pub is_open: ReadSignal<bool>,
     pub cancel_callback: Callback<(), ()>,
     pub start_callback: Callback<(i64, Vec<ParameterValue>), ()>,
+    /// The failed or cancelled run being resumed, `None` for a normal start. The dialog then
+    /// opens on that run's workflow with its values filled in, without a workflow choice.
+    pub resume: ReadSignal<Option<RunResponse>>,
 }
 
 /// Dialog for selecting a workflow integration to start and previewing its dynamic parameters.
@@ -73,6 +76,7 @@ pub struct WorkflowStartDialogProps {
 /// * `is_open` - A signal that indicates whether the dialog is open or not
 /// * `cancel_callback` - The callback to call when the dialog is closed without starting
 /// * `start_callback` - The callback to call with the selected workflow's id and the entered dynamic parameter values when the user confirms
+/// * `resume` - The run being resumed, if any: its workflow is preselected with its values and the dialog says so
 ///
 #[component]
 pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogProps) -> Element {
@@ -115,6 +119,22 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
             _ => return,
         };
         spawn(async move {
+            // Resuming: the run's own workflow, its values come from the history (the run is the
+            // newest of the project, so it is the last run of its workflow)
+            let resumed = props.resume.peek().clone();
+            if let Some(run) = resumed {
+                if let Some(integration) = integrations
+                    .into_iter()
+                    .find(|i| Some(i.id) == run.workflow_id)
+                {
+                    let prefilled =
+                        with_history(storage, config, props.project_id, integration).await;
+                    if selected.peek().is_none() {
+                        selected.set(Some(prefilled));
+                    }
+                }
+                return;
+            }
             let jwt = storage.read().jwt().ok().flatten();
             let Some(jwt) = jwt else { return };
             let client_config = config.read().clone();
@@ -172,7 +192,11 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                         class: "modal-header",
                         h5 {
                             class: "modal-title",
-                            "Start workflow"
+                            if let Some(run) = props.resume.read().as_ref() {
+                                "Resume run #{run.id}"
+                            } else {
+                                "Start workflow"
+                            }
                         }
                         button {
                             r#type: "button",
@@ -183,6 +207,14 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                     }
                     div {
                         class: "modal-body",
+                        if props.resume.read().is_some() {
+                            div { class: "alert alert-info",
+                                "The values below are those of the run you resume. Correct them if \
+                                 they caused the failure. The engine reuses what the run already \
+                                 finished and reruns tasks whose inputs changed. The workflow reads \
+                                 the same reference data as at the start of that run."
+                            }
+                        }
                         match &*selected.read() {
                             None => rsx! {
                                 match &*workflow_integrations.read() {
@@ -317,7 +349,7 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                     }
                     div {
                         class: "modal-footer",
-                        if selected.read().is_some() {
+                        if selected.read().is_some() && props.resume.read().is_none() {
                             button {
                                 r#type: "button",
                                 class: "btn btn-secondary",
@@ -352,7 +384,7 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                     props.start_callback.call((integration.inner().id, values));
                                 }
                             },
-                            "Start"
+                            if props.resume.read().is_some() { "Resume" } else { "Start" }
                         }
                     }
                 }

@@ -686,3 +686,281 @@ async fn queued_runs_keep_the_reference_data_of_their_start() {
         b"three"
     );
 }
+
+/// Starts a run of `workflow` on `project`, optionally resuming `resume_from_run`, and returns
+/// the status and body of the response.
+///
+/// # Arguments
+/// * `app` - The test application
+/// * `user` - Who starts the run
+/// * `project_id` - Project to run on
+/// * `workflow_id` - Workflow to run
+/// * `resume_from_run` - Run to continue, `None` for a fresh run
+async fn start_run(
+    app: &TestApp,
+    user: &crate::models::User,
+    project_id: i64,
+    workflow_id: i64,
+    resume_from_run: Option<i64>,
+) -> (StatusCode, Value) {
+    app.post(
+        user,
+        &format!("/runs/start/{project_id}"),
+        Some(json!({
+            "workflow_id": workflow_id,
+            "comment": "",
+            "parameters": [],
+            "resume_from_run": resume_from_run,
+        })),
+    )
+    .await
+}
+
+/// Claims the next run and ends it with `status`, returns the run id and the reference folder
+/// the worker was given.
+///
+/// # Arguments
+/// * `app` - The test application
+/// * `status` - Terminal status to store
+async fn claim_and_finish(app: &TestApp, status: RunStatus) -> (i64, std::path::PathBuf) {
+    let (code, claimed) = claim(app).await;
+    assert_eq!(code, StatusCode::OK, "{claimed}");
+    let run_id = claimed["run_id"].as_i64().unwrap();
+    RunTable::finish(app.state.db(), run_id, status, Some(1), None, None)
+        .await
+        .unwrap();
+    (
+        run_id,
+        std::path::PathBuf::from(claimed["reference_dir"].as_str().unwrap()),
+    )
+}
+
+/// Announces a worker that runs every engine, so claims succeed.
+///
+/// # Arguments
+/// * `app` - The test application
+async fn announce_all_engines(app: &TestApp) {
+    announce(
+        app,
+        "w1",
+        json!(["Nextflow", "Container", "Snakemake", "Cwl"]),
+    )
+    .await;
+}
+
+/// A failed run is resumed on the snapshot it started with, however the reference data changed
+/// since. The engine's resume parameter is added. The snapshot is kept while the failed run is
+/// the newest one and released when the resumed run succeeds.
+#[tokio::test]
+async fn resume_reuses_the_snapshot_of_the_failed_run() {
+    let app = TestApp::new_with_reference_snapshots().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    announce_all_engines(&app).await;
+    let reference = app.state.reference_directory().get();
+    std::fs::write(reference.join("genome.fa"), "old").unwrap();
+    let grace = std::time::Duration::ZERO;
+
+    let (status, first) = start_run(&app, &alice, project.id, workflow.id, None).await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    let (first_id, first_snapshot) = claim_and_finish(&app, RunStatus::Failed).await;
+
+    // The failed run is the newest of its project: its snapshot survives the sweep
+    std::fs::write(reference.join("genome.fa.new"), "new").unwrap();
+    std::fs::rename(reference.join("genome.fa.new"), reference.join("genome.fa")).unwrap();
+    assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 0);
+    assert!(first_snapshot.exists());
+
+    let (status, second) = start_run(&app, &alice, project.id, workflow.id, Some(first_id)).await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    assert_eq!(
+        second["reference_fingerprint"], first["reference_fingerprint"],
+        "the resumed run reports the data of the first start"
+    );
+    let stored = RunTable::find_by_id(second["id"].as_i64().unwrap())
+        .one(app.state.db())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        stored
+            .configuration
+            .engine_parameters()
+            .iter()
+            .map(|parameter| parameter.name())
+            .collect::<Vec<_>>(),
+        ["resume"]
+    );
+
+    let (second_id, second_snapshot) = claim_and_finish(&app, RunStatus::Failed).await;
+    assert_eq!(second_id, second["id"].as_i64().unwrap());
+    assert_eq!(second_snapshot, first_snapshot);
+    assert_eq!(
+        std::fs::read(second_snapshot.join("genome.fa")).unwrap(),
+        b"old"
+    );
+
+    // Resumed once more, then it succeeds: nothing is left to resume, the snapshot goes
+    let (status, third) = start_run(&app, &alice, project.id, workflow.id, Some(second_id)).await;
+    assert_eq!(status, StatusCode::OK, "{third}");
+    assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 0);
+    claim_and_finish(&app, RunStatus::Succeeded).await;
+    assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 1);
+    assert!(!first_snapshot.exists());
+}
+
+/// Only the newest run of a project keeps its snapshot after it failed: a fresh run after a
+/// failure releases the old snapshot, and a successful run keeps nothing.
+#[tokio::test]
+async fn only_the_newest_failed_run_keeps_its_snapshot() {
+    let app = TestApp::new_with_reference_snapshots().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let other_project = app.project(&alice, "q").await;
+    let workflow = app.workflow(&alice, "w").await;
+    announce_all_engines(&app).await;
+    std::fs::write(app.state.reference_directory().get().join("a.txt"), "a").unwrap();
+    let grace = std::time::Duration::ZERO;
+
+    // A failed run of each project, both newest in their project
+    for id in [project.id, other_project.id] {
+        let (status, run) = start_run(&app, &alice, id, workflow.id, None).await;
+        assert_eq!(status, StatusCode::OK, "{run}");
+        claim_and_finish(&app, RunStatus::Failed).await;
+    }
+    assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 0);
+
+    // A fresh run on the first project: its failed predecessor is no longer resumable
+    let (status, run) = start_run(&app, &alice, project.id, workflow.id, None).await;
+    assert_eq!(status, StatusCode::OK, "{run}");
+    assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 1);
+    let (_, snapshot) = claim_and_finish(&app, RunStatus::Succeeded).await;
+    // The second project keeps its failed run's snapshot, the successful run keeps none
+    assert_eq!(app.state.sweep_reference_snapshots(grace).await.unwrap(), 1);
+    assert!(!snapshot.exists());
+    let remaining = std::fs::read_dir(app.state.reference_snapshots().unwrap().root())
+        .unwrap()
+        .count();
+    assert_eq!(remaining, 1);
+}
+
+/// Resuming is refused for runs that cannot continue: unfinished, succeeded, not the newest of
+/// the project, of another workflow, of another project, or without their snapshot.
+#[tokio::test]
+async fn resume_is_refused_where_it_cannot_continue() {
+    let app = TestApp::new_with_reference_snapshots().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let other_project = app.project(&alice, "q").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let other_workflow = app.workflow(&alice, "v").await;
+    announce_all_engines(&app).await;
+
+    // Still queued
+    let (_, queued) = start_run(&app, &alice, project.id, workflow.id, None).await;
+    let queued_id = queued["id"].as_i64().unwrap();
+    let (status, _) = start_run(&app, &alice, project.id, workflow.id, Some(queued_id)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Succeeded
+    claim_and_finish(&app, RunStatus::Succeeded).await;
+    let (status, _) = start_run(&app, &alice, project.id, workflow.id, Some(queued_id)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // Failed, but another workflow, another project, or an unknown run
+    let (_, failed) = start_run(&app, &alice, project.id, workflow.id, None).await;
+    let failed_id = failed["id"].as_i64().unwrap();
+    let (_, snapshot) = claim_and_finish(&app, RunStatus::Failed).await;
+    let (status, _) =
+        start_run(&app, &alice, project.id, other_workflow.id, Some(failed_id)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) =
+        start_run(&app, &alice, other_project.id, workflow.id, Some(failed_id)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = start_run(&app, &alice, project.id, workflow.id, Some(9999)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Its snapshot vanished
+    std::fs::rename(&snapshot, snapshot.with_extension("moved")).unwrap();
+    let (status, body) = start_run(&app, &alice, project.id, workflow.id, Some(failed_id)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    std::fs::rename(snapshot.with_extension("moved"), &snapshot).unwrap();
+
+    // A newer run exists
+    let (status, newer) = start_run(&app, &alice, project.id, workflow.id, None).await;
+    assert_eq!(status, StatusCode::OK, "{newer}");
+    let (status, _) = start_run(&app, &alice, project.id, workflow.id, Some(failed_id)).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+}
+
+/// A resumed run uses the parameter values the client sends, so a user can correct the values
+/// that made the first run fail; the snapshot and the resume parameter still apply.
+#[tokio::test]
+async fn resume_takes_the_parameter_values_as_sent() {
+    use macworp_core::workflow_configuration::{
+        WorkflowConfiguration,
+        parameters::{Parameter, text::Text},
+    };
+
+    let app = TestApp::new_with_reference_snapshots().await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    announce_all_engines(&app).await;
+    let mut configuration = WorkflowConfiguration::default();
+    configuration
+        .dynamic_parameters_mut()
+        .push(Parameter::Text(Text::new(
+            "sample".into(),
+            "Sample".into(),
+            String::new(),
+        )));
+    let (status, response) = app
+        .post(
+            &alice,
+            &format!("/workflow-integrations/update/{}", workflow.id),
+            Some(json!({"name": "w", "description": "", "configuration": configuration})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+
+    let (status, first) = app
+        .post(
+            &alice,
+            &format!("/runs/start/{}", project.id),
+            Some(json!({
+                "workflow_id": workflow.id,
+                "comment": "",
+                "parameters": [{"name": "sample", "value": "s1"}],
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    let (first_id, _) = claim_and_finish(&app, RunStatus::Failed).await;
+
+    // The client sends a corrected value, the resumed run gets it
+    let (status, second) = app
+        .post(
+            &alice,
+            &format!("/runs/start/{}", project.id),
+            Some(json!({
+                "workflow_id": workflow.id,
+                "comment": "",
+                "parameters": [{"name": "sample", "value": "other"}],
+                "resume_from_run": first_id,
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    let stored = RunTable::find_by_id(second["id"].as_i64().unwrap())
+        .one(app.state.db())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.parameters, json!({"sample": "other"}));
+    assert_eq!(
+        second["reference_fingerprint"], first["reference_fingerprint"],
+        "still the reference data of the first start"
+    );
+}

@@ -1402,6 +1402,8 @@ impl<'a> RunsClient<'a> {
     /// * `workflow_id` - The workflow integration to run
     /// * `comment` - Comment stored with the run
     /// * `parameters` - Values of the workflow's dynamic parameters
+    /// * `resume_from_run` - Run to continue (same reference data snapshot, engine resume
+    ///   parameter), `None` for a fresh run
     pub async fn start(
         &self,
         jwt: &str,
@@ -1409,6 +1411,7 @@ impl<'a> RunsClient<'a> {
         workflow_id: i64,
         comment: String,
         parameters: Vec<ParameterValue>,
+        resume_from_run: Option<i64>,
     ) -> Result<RunResponse, Error> {
         let url =
             self.url(&RunsRouting::START_PATH.replace("{project_id}", &project_id.to_string()));
@@ -1416,6 +1419,7 @@ impl<'a> RunsClient<'a> {
             workflow_id,
             comment,
             parameters,
+            resume_from_run,
         };
         self.send(
             reqwest::Client::new().post(&url).json(&body),

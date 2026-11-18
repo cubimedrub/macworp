@@ -231,8 +231,11 @@ impl State {
         }
     }
 
-    /// Deletes snapshots no queued or running run uses and that are older than `grace`. Returns
-    /// how many were removed; 0 without snapshots.
+    /// Deletes snapshots no run needs and that are older than `grace`. A run needs its snapshot
+    /// while it is queued or running, and while it is the newest run of its project and failed
+    /// or was cancelled, so it can be resumed
+    /// ([`crate::models::RunTable::kept_reference_snapshots`]). Returns how many were removed;
+    /// 0 without snapshots.
     ///
     /// # Arguments
     /// * `grace` - Minimum age of an unreferenced snapshot, covers the window between creating
@@ -244,7 +247,7 @@ impl State {
         let Some(snapshots) = self.reference_snapshots.clone() else {
             return Ok(0);
         };
-        let in_use = crate::models::RunTable::active_reference_snapshots(&self.db)
+        let in_use = crate::models::RunTable::kept_reference_snapshots(&self.db)
             .await
             .map_err(|error| Error::ReferenceSnapshot(error.to_string()))?;
         tokio::task::spawn_blocking(move || snapshots.sweep(&in_use, grace))

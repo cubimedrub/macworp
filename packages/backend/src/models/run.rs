@@ -160,6 +160,13 @@ impl Model {
         !self.locked && self.status.is_terminal()
     }
 
+    /// Whether the run ended without finishing its work (failed or cancelled), the only states
+    /// a user can resume from. Starting a resume also requires the run to be the newest of its
+    /// project, see [`Entity::newest_of_project`].
+    pub fn can_be_resumed(&self) -> bool {
+        matches!(self.status, RunStatus::Failed | RunStatus::Cancelled)
+    }
+
     /// Converts to the API response. `workflow_name` is the current name of the workflow, empty if deleted.
     pub fn into_response(self, workflow_name: String) -> RunResponse {
         RunResponse {
@@ -625,21 +632,52 @@ impl Entity {
             .ok_or(Error::NotFound)
     }
 
-    /// Names of the reference snapshots of queued and running runs. Sweeping must keep them.
+    /// Names of the reference snapshots that sweeping must keep: those of queued and running
+    /// runs, and that of each project's newest run if it failed or was cancelled, because only
+    /// that run can be resumed (see [`Model::can_be_resumed`]). Once a newer run exists, or the
+    /// run succeeded, its snapshot is no longer kept.
     ///
     /// # Arguments
     /// * `db` - Database connection or transaction
-    pub async fn active_reference_snapshots<C: ConnectionTrait>(
+    pub async fn kept_reference_snapshots<C: ConnectionTrait>(
         db: &C,
     ) -> Result<std::collections::HashSet<String>, Error> {
-        Ok(Entity::find()
-            .filter(Column::Status.is_in([RunStatus::Queued, RunStatus::Running]))
-            .filter(Column::ReferenceSnapshot.is_not_null())
+        use sea_orm::QuerySelect;
+        let runs: Vec<(i64, RunStatus, Option<String>)> = Entity::find()
+            .select_only()
+            .columns([Column::ProjectId, Column::Status, Column::ReferenceSnapshot])
+            .order_by_desc(Column::Id)
+            .into_tuple()
             .all(db)
-            .await?
-            .into_iter()
-            .filter_map(|run| run.reference_snapshot)
-            .collect())
+            .await?;
+        let mut kept = std::collections::HashSet::new();
+        let mut seen_projects = std::collections::HashSet::new();
+        for (project_id, status, snapshot) in runs {
+            // Newest first, so the first run of a project is its newest
+            let newest = seen_projects.insert(project_id);
+            let Some(snapshot) = snapshot else { continue };
+            let resumable = newest && matches!(status, RunStatus::Failed | RunStatus::Cancelled);
+            if resumable || matches!(status, RunStatus::Queued | RunStatus::Running) {
+                kept.insert(snapshot);
+            }
+        }
+        Ok(kept)
+    }
+
+    /// The most recently created run of a project, whatever its status.
+    ///
+    /// # Arguments
+    /// * `db` - Database connection or transaction
+    /// * `project_id` - The project
+    pub async fn newest_of_project<C: ConnectionTrait>(
+        db: &C,
+        project_id: i64,
+    ) -> Result<Option<Model>, Error> {
+        Ok(Entity::find()
+            .filter(Column::ProjectId.eq(project_id))
+            .order_by_desc(Column::Id)
+            .one(db)
+            .await?)
     }
 
     /// Local source locations of queued and running runs. The repository cache must not delete

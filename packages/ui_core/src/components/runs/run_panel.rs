@@ -34,6 +34,11 @@ pub struct RunPanelProps {
     pub project_id: i64,
     /// Changes whenever a run was started, the panel then reloads at once and shows the newest run
     pub refresh: ReadSignal<u32>,
+    /// Called with a run when the user clicks Resume on it; the page opens the start dialog for
+    /// it, where the parameters can be corrected
+    pub resume_callback: Callback<RunResponse>,
+    /// Whether the user may start runs on the project (Editor); Resume starts one
+    pub can_resume: bool,
 }
 
 /// Runs of a project: list with cancel buttons, progress bar and the output of the selected run.
@@ -147,6 +152,7 @@ pub fn RunPanel<S: IsStorage + 'static>(props: RunPanelProps) -> Element {
         Ok::<(), Error<S>>(())
     });
 
+    let newest_id = runs.read().first().map(|run| run.id);
     let selected_run = selected
         .read()
         .and_then(|id| runs.read().iter().find(|r| r.id == id).cloned());
@@ -187,6 +193,21 @@ pub fn RunPanel<S: IsStorage + 'static>(props: RunPanelProps) -> Element {
                                 }
                                 span {
                                     span { class: "badge {status_class(&run.status)} me-2", "{run.status}" }
+                                    if props.can_resume && is_resumable(&run, newest_id) {
+                                        button {
+                                            // The selected row has the primary colour as background
+                                            class: if *selected.read() == Some(run.id) { "btn btn-sm btn-light" } else { "btn btn-sm btn-outline-primary" },
+                                            title: "Review the parameters and continue this run with the same reference data",
+                                            onclick: {
+                                                let run = run.clone();
+                                                move |event| {
+                                                    event.stop_propagation();
+                                                    props.resume_callback.call(run.clone());
+                                                }
+                                            },
+                                            "Resume"
+                                        }
+                                    }
                                     if !run.status.is_terminal() {
                                         button {
                                             class: "btn btn-sm btn-outline-danger",
@@ -205,7 +226,7 @@ pub fn RunPanel<S: IsStorage + 'static>(props: RunPanelProps) -> Element {
                     }
                 }
                 if let Some(run) = selected_run {
-                    {run_details(&run, &chunks.read(), *hidden_chunks.read())}
+                    {run_details(&run, newest_id, &chunks.read(), *hidden_chunks.read())}
                 }
             }
         }
@@ -232,6 +253,49 @@ fn stream_class(stream: &LogStream) -> &'static str {
         LogStream::Stderr => "text-warning",
         LogStream::Engine => "text-info",
     }
+}
+
+/// Whether a user can resume `run`: it failed or was cancelled, its workflow still exists and
+/// it is the newest run of the project (the engine's cache in the project folder belongs to the
+/// newest run, and older runs lose their reference data snapshot). The backend checks the same.
+///
+/// # Arguments
+/// * `run` - The run in question
+/// * `newest_id` - Id of the newest run of the project
+fn is_resumable(run: &RunResponse, newest_id: Option<i64>) -> bool {
+    matches!(run.status, RunStatus::Failed | RunStatus::Cancelled)
+        && run.workflow_id.is_some()
+        && newest_id == Some(run.id)
+}
+
+/// Tells the user how long the snapshot of the reference data behind `run` is kept and what
+/// that means for resuming, `None` where the run read the live folder (no snapshot). The text
+/// follows the rules of the backend sweep: a snapshot is kept while its run is queued or
+/// running, and while the run is the newest of its project and failed or was cancelled.
+///
+/// # Arguments
+/// * `run` - The run shown
+/// * `newest_id` - Id of the newest run of the project
+fn snapshot_note(run: &RunResponse, newest_id: Option<i64>) -> Option<&'static str> {
+    run.reference_fingerprint.as_ref()?;
+    Some(match run.status {
+        RunStatus::Queued | RunStatus::Running => {
+            "This run reads a snapshot of the reference data taken at its start. Changes made \
+             to the reference data meanwhile do not affect it."
+        }
+        RunStatus::Failed | RunStatus::Cancelled if is_resumable(run, newest_id) => {
+            "Resume opens the parameters of this run for correction and continues it with the same \
+             reference data as at its start, even if the reference data changed since. That data is kept \
+             until a resumed run succeeds or a newer run starts in this project."
+        }
+        RunStatus::Failed | RunStatus::Cancelled => {
+            "A newer run started in this project, so the reference data of this run was \
+             released and it can no longer be resumed."
+        }
+        RunStatus::Succeeded => {
+            "The snapshot of the reference data was released when the run succeeded."
+        }
+    })
 }
 
 /// First characters of a commit hash, as git shows it
@@ -262,8 +326,20 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 /// Progress bar, latest detail and output of one run
-fn run_details(run: &RunResponse, chunks: &[RunLogChunk], hidden_chunks: usize) -> Element {
+///
+/// # Arguments
+/// * `run` - The run shown
+/// * `newest_id` - Id of the newest run of the project, decides whether `run` can be resumed
+/// * `chunks` - Log output received so far
+/// * `hidden_chunks` - Number of older blocks dropped from `chunks`
+fn run_details(
+    run: &RunResponse,
+    newest_id: Option<i64>,
+    chunks: &[RunLogChunk],
+    hidden_chunks: usize,
+) -> Element {
     let view = progress_view(run);
+    let note = snapshot_note(run, newest_id);
     let last_changed = run
         .reference_fingerprint
         .as_ref()
@@ -315,6 +391,9 @@ fn run_details(run: &RunResponse, chunks: &[RunLogChunk], hidden_chunks: usize) 
                     }
                 }
             }
+            if let Some(note) = note {
+                small { class: "text-muted d-block mt-1", "{note}" }
+            }
             // column-reverse keeps the view at the end while output grows
             div {
                 class: "mt-2 bg-dark rounded",
@@ -337,7 +416,76 @@ fn run_details(run: &RunResponse, chunks: &[RunLogChunk], hidden_chunks: usize) 
 
 #[cfg(test)]
 mod tests {
-    use super::format_bytes;
+    use chrono::DateTime;
+    use macworp_core::entities::ReferenceFingerprint;
+
+    use super::*;
+
+    /// A run of workflow 1 with the given id and status; with a reference snapshot if `snapshot`.
+    ///
+    /// # Arguments
+    /// * `id` - Run id
+    /// * `status` - Status of the run
+    /// * `snapshot` - Whether the run read a reference data snapshot
+    fn run(id: i64, status: RunStatus, snapshot: bool) -> RunResponse {
+        RunResponse {
+            id,
+            project_id: 1,
+            workflow_id: Some(1),
+            workflow_name: "w".into(),
+            status,
+            exit_code: None,
+            error: None,
+            failure_reason: None,
+            provenance: None,
+            reference_fingerprint: snapshot.then_some(ReferenceFingerprint {
+                file_count: 1,
+                total_bytes: 1,
+                last_modified: None,
+                snapshot_at: DateTime::UNIX_EPOCH,
+            }),
+            tasks_total: 0,
+            tasks_done: 0,
+            progress_message: None,
+            comment: String::new(),
+            cancel_requested: false,
+            locked: false,
+            created_at: DateTime::UNIX_EPOCH,
+            started_at: None,
+            finished_at: None,
+        }
+    }
+
+    /// Only the newest run of a project, if it failed or was cancelled and its workflow still
+    /// exists, offers Resume.
+    #[test]
+    fn only_the_newest_failed_or_cancelled_run_can_be_resumed() {
+        let newest = Some(2);
+        assert!(is_resumable(&run(2, RunStatus::Failed, true), newest));
+        assert!(is_resumable(&run(2, RunStatus::Cancelled, true), newest));
+        assert!(!is_resumable(&run(2, RunStatus::Succeeded, true), newest));
+        assert!(!is_resumable(&run(2, RunStatus::Running, true), newest));
+        assert!(!is_resumable(&run(1, RunStatus::Failed, true), newest));
+        let mut deleted = run(2, RunStatus::Failed, true);
+        deleted.workflow_id = None;
+        assert!(!is_resumable(&deleted, newest));
+    }
+
+    /// The note explains the snapshot per state and is absent without a snapshot (desktop).
+    #[test]
+    fn snapshot_note_follows_the_retention_rules() {
+        let newest = Some(2);
+        assert!(snapshot_note(&run(2, RunStatus::Failed, false), newest).is_none());
+        let running = snapshot_note(&run(2, RunStatus::Running, true), newest).unwrap();
+        assert!(running.contains("do not affect"));
+        let resumable = snapshot_note(&run(2, RunStatus::Failed, true), newest).unwrap();
+        assert!(resumable.contains("Resume opens"));
+        assert!(resumable.contains("until a resumed run succeeds or a newer run starts"));
+        let released = snapshot_note(&run(1, RunStatus::Failed, true), newest).unwrap();
+        assert!(released.contains("can no longer be resumed"));
+        let succeeded = snapshot_note(&run(2, RunStatus::Succeeded, true), newest).unwrap();
+        assert!(succeeded.contains("released when the run succeeded"));
+    }
 
     /// Sizes below 1 KiB stay exact, larger ones use binary units with one decimal.
     #[test]

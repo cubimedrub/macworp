@@ -33,6 +33,21 @@ impl Engine {
         Engine::iter().collect()
     }
 
+    /// Name of the engine parameter that continues an interrupted run in the same project
+    /// folder, `None` if the engine needs none or cannot resume.
+    ///
+    /// * Nextflow: `-resume` reuses cached tasks.
+    /// * CWL (Toil): `--restart` continues from the job store a failed run left behind.
+    /// * Snakemake: reruns only what is missing or outdated by itself, no flag needed.
+    /// * Container: a single image, nothing to resume.
+    pub fn resume_parameter(&self) -> Option<&'static str> {
+        match self {
+            Engine::Nextflow => Some("resume"),
+            Engine::Cwl => Some("restart"),
+            Engine::Snakemake | Engine::Container => None,
+        }
+    }
+
     /// Source kinds this engine can run, each with default payload.
     pub fn supported_sources(&self) -> Vec<Source> {
         let local = Source::Local(LocalSource::default());

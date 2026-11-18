@@ -96,6 +96,9 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
     let mut subpath: Signal<PathBuf> = use_signal(PathBuf::new);
     let mut is_delete_confirmation_dialog_open = use_signal(|| false);
     let mut is_workflow_start_dialog_open = use_signal(|| false);
+    // The run the start dialog resumes, `None` for a normal start
+    let mut resume_run: Signal<Option<macworp_core::responses::RunResponse>> =
+        use_signal(|| None);
     let mut is_share_dialog_open = use_signal(|| false);
     let sharing = SharingEnabled::from_context().is_enabled();
     let mut upload_queue = use_signal(VecDeque::<Result<T::File, T::Error>>::new);
@@ -105,7 +108,11 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
     let mut run_refresh = use_signal(|| 0_u32);
 
     let mut start_run = use_action(
-        move |(workflow_id, parameters): (i64, Vec<ParameterValue>)| async move {
+        move |(workflow_id, parameters, resume_from_run): (
+            i64,
+            Vec<ParameterValue>,
+            Option<i64>,
+        )| async move {
             let jwt = storage
                 .read()
                 .jwt()
@@ -116,7 +123,14 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
 
             let run = Client::new(config.base_url().to_string(), config.timeout())
                 .runs()
-                .start(&jwt, props.id, workflow_id, String::new(), parameters)
+                .start(
+                    &jwt,
+                    props.id,
+                    workflow_id,
+                    String::new(),
+                    parameters,
+                    resume_from_run,
+                )
                 .await
                 .map_err(Error::<T::Storage>::StartRun)?;
             *run_refresh.write() += 1;
@@ -303,8 +317,10 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                 cancel_callback: Callback::new(move |_| is_workflow_start_dialog_open.set(false)),
                 start_callback: Callback::new(move |(workflow_id, parameters): (i64, Vec<ParameterValue>)| {
                     is_workflow_start_dialog_open.set(false);
-                    start_run.call((workflow_id, parameters));
-                })
+                    let resume_from_run = resume_run.peek().as_ref().map(|run| run.id);
+                    start_run.call((workflow_id, parameters, resume_from_run));
+                }),
+                resume: resume_run
             }
             if sharing {
                 ShareDialog::<T::Storage> {
@@ -342,7 +358,10 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                                 button {
                                     class: "btn btn-sm btn-outline-primary me-2",
                                     title: "Start workflow",
-                                    onclick: move |_| is_workflow_start_dialog_open.set(true),
+                                    onclick: move |_| {
+                                        resume_run.set(None);
+                                        is_workflow_start_dialog_open.set(true);
+                                    },
                                     i {
                                         class: "fa-solid fa-play me-1"
                                     }
@@ -433,6 +452,11 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                         RunPanel::<T::Storage> {
                             project_id: props.id,
                             refresh: run_refresh,
+                            can_resume: project.read().my_role.is_some_and(|role| role >= Role::Editor),
+                            resume_callback: Callback::new(move |run| {
+                                resume_run.set(Some(run));
+                                is_workflow_start_dialog_open.set(true);
+                            }),
                         }
                     }
                     FileBrowser<T::FileBrowser> {

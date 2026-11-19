@@ -98,7 +98,7 @@ mod tests {
         let name = spec.container_name.clone().unwrap();
         assert!(name.starts_with("macworp-run-5-"), "{name}");
         assert_eq!(
-            spec.args,
+            super::super::containerized_execution::without_worker_user(spec.args.clone()),
             [
                 "run",
                 "--rm",

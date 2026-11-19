@@ -63,6 +63,25 @@ fn FolderSetting(
         let settings = settings.clone();
         move || settings.is_default(folder)
     });
+    // `None` unless SELinux enforces, then whether containers can use the folder
+    let mut container_access = use_signal({
+        let settings = settings.clone();
+        move || settings.container_access(folder)
+    });
+    let mut toggle_access = use_action({
+        let settings = settings.clone();
+        move || {
+            let settings = settings.clone();
+            async move {
+                let allowed = !container_access.read().unwrap_or(false);
+                settings
+                    .set_container_access(folder, allowed)
+                    .map_err(dioxus::CapturedError::from_display)?;
+                container_access.set(settings.container_access(folder));
+                Ok::<(), dioxus::CapturedError>(())
+            }
+        }
+    });
     // The one place changes are made, so the shown path always matches what is saved
     let apply = {
         let settings = settings.clone();
@@ -70,6 +89,7 @@ fn FolderSetting(
             settings.set_path(folder, path)?;
             current.set(settings.path(folder));
             is_default.set(settings.is_default(folder));
+            container_access.set(settings.container_access(folder));
             Ok(())
         }
     };
@@ -111,7 +131,7 @@ fn FolderSetting(
     rsx! {
         h2 { class: "h4 mt-4", "{title}" }
         p { class: "text-body-secondary", "{description}" }
-        for result in [choose.value().map(|r| r.map(|_| ())), reset.value().map(|r| r.map(|_| ())), open.value().map(|r| r.map(|_| ()))] {
+        for result in [choose.value().map(|r| r.map(|_| ())), reset.value().map(|r| r.map(|_| ())), open.value().map(|r| r.map(|_| ())), toggle_access.value().map(|r| r.map(|_| ()))] {
             if let Some(Err(err)) = result {
                 div { class: "alert alert-danger", role: "alert", "{err}" }
             }
@@ -146,6 +166,28 @@ fn FolderSetting(
                 r#type: "button",
                 onclick: move |_| open.call(),
                 "Open"
+            }
+        }
+        if let Some(allowed) = *container_access.read() {
+            div {
+                class: "form-check form-switch mb-2",
+                input {
+                    class: "form-check-input",
+                    r#type: "checkbox",
+                    role: "switch",
+                    id: "container-access-{title}",
+                    checked: allowed,
+                    onchange: move |_| toggle_access.call(),
+                }
+                label {
+                    class: "form-check-label",
+                    r#for: "container-access-{title}",
+                    "Let containers use this folder (SELinux label)"
+                }
+            }
+            p {
+                class: "form-text",
+                "SELinux is enforcing on this computer. Containers that workflow engines start themselves (CWL tools, Nextflow tasks) are denied access to folders without the container label. Switching this on labels the folder and everything in it as container_file_t; switching it off gives it the label of its parent folder again. Other folders and the rest of the system are not changed."
             }
         }
         p {

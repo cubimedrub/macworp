@@ -6,6 +6,7 @@ use macworp_backend::configuration::{REMOTE_CACHE_DIRECTORY_NAME, WORKFLOWS_DIRE
 use macworp_backend::reference_directory::{ReferenceDirectory, DEFAULT_DIRECTORY_NAME};
 use macworp_backend::workflow_repository_cache::WorkflowRepositoryCache;
 use macworp_core::paths::APPTAINER_CACHE_DIRECTORY;
+use macworp_worker::selinux::DirectoryLabel;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -107,7 +108,64 @@ impl Settings {
         std::fs::create_dir_all(settings.path(Folder::Reference))?;
         std::fs::create_dir_all(settings.path(Folder::WorkflowCache))?;
         std::fs::create_dir_all(settings.path(Folder::ApptainerCache))?;
+        settings.label_default_folders();
         Ok(settings)
+    }
+
+    /// On an enforcing SELinux host, labels the folders at their default place (created and owned
+    /// by the app) so containers the engine starts itself can use them. Folders the user chose
+    /// are never touched; a failure is only logged.
+    fn label_default_folders(&self) {
+        if !macworp_worker::executors::selinux_enforcing() {
+            return;
+        }
+        for folder in [
+            Folder::Reference,
+            Folder::WorkflowCache,
+            Folder::ApptainerCache,
+        ] {
+            if !self.is_default(folder) {
+                continue;
+            }
+            let path = self.path(folder);
+            if let Err(error) = DirectoryLabel::of(&path).apply() {
+                tracing::warn!("Cannot label {} for containers: {error}", path.display());
+            }
+        }
+    }
+
+    /// Whether containers the engine starts itself can use `folder`: `Some(true)` when it carries
+    /// the container label, `None` where SELinux does not enforce (nothing to toggle).
+    ///
+    /// # Arguments
+    /// * `folder` - Which folder
+    pub fn container_access(&self, folder: Folder) -> Option<bool> {
+        if !macworp_worker::executors::selinux_enforcing() {
+            return None;
+        }
+        let path = self.path(folder);
+        Some(
+            DirectoryLabel::of(&path)
+                .current()
+                .is_some_and(|label| DirectoryLabel::allows_containers(&label)),
+        )
+    }
+
+    /// Labels `folder` and everything in it for containers, or gives it the label of its parent
+    /// folder again. The only way to label a folder the user picked, always on an explicit request.
+    ///
+    /// # Arguments
+    /// * `folder` - Which folder
+    /// * `allowed` - `true` labels it `container_file_t`, `false` restores the label of the parent folder
+    pub fn set_container_access(&self, folder: Folder, allowed: bool) -> Result<(), Error> {
+        let path = self.path(folder);
+        let label = DirectoryLabel::of(&path);
+        if allowed {
+            label.apply()
+        } else {
+            label.restore()
+        }?;
+        Ok(())
     }
 
     /// The reference data handle for the backend and worker.
@@ -278,5 +336,33 @@ mod tests {
         assert!(reloaded.is_default(Folder::Reference));
         assert!(reloaded.is_default(Folder::WorkflowCache));
         assert!(reloaded.is_default(Folder::ApptainerCache));
+    }
+
+    /// On an enforcing SELinux host the container label of a chosen folder can be switched on
+    /// and off; elsewhere there is nothing to toggle.
+    #[test]
+    fn container_label_can_be_toggled() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = Settings::load(directory.path(), 3600).unwrap();
+        let chosen = directory.path().join("picked");
+        settings
+            .set_path(Folder::Reference, Some(chosen.clone()))
+            .unwrap();
+        if !macworp_worker::executors::selinux_enforcing() {
+            assert_eq!(settings.container_access(Folder::Reference), None);
+            return;
+        }
+        std::fs::create_dir(chosen.join("inner")).unwrap();
+        assert_eq!(settings.container_access(Folder::Reference), Some(false));
+        settings
+            .set_container_access(Folder::Reference, true)
+            .unwrap();
+        assert_eq!(settings.container_access(Folder::Reference), Some(true));
+        let inner = DirectoryLabel::of(&chosen.join("inner")).current().unwrap();
+        assert!(DirectoryLabel::allows_containers(&inner));
+        settings
+            .set_container_access(Folder::Reference, false)
+            .unwrap();
+        assert_eq!(settings.container_access(Folder::Reference), Some(false));
     }
 }

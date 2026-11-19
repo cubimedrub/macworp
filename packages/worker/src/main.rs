@@ -49,7 +49,10 @@ async fn main() -> std::process::ExitCode {
         })
         .init();
 
-    let report = container_runtime::doctor(cli.configuration.container_runtime).await;
+    let mut report = container_runtime::doctor(cli.configuration.container_runtime).await;
+    if let Ok(storage) = cli.remote.storage_path() {
+        report.check_label_of(&storage);
+    }
 
     match cli.command.unwrap_or(Command::Run) {
         Command::Doctor => {

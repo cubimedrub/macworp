@@ -12,5 +12,7 @@ pub mod job_source;
 pub mod log_proxy;
 /// Turns engine monitoring events (Nextflow weblog, Snakemake panoptes logger plugin) into progress numbers
 pub mod progress;
+/// SELinux labels of the directories MAcWorP owns
+pub mod selinux;
 /// Claims jobs and runs them with the executor of their engine
 pub mod worker;

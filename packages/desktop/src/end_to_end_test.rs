@@ -343,6 +343,13 @@ impl TestApp {
             .tempdir_in(base_directory())
             .unwrap();
         let root = temp.path().canonicalize().unwrap();
+        // Containers the engine starts itself (CWL tools) need the test's own folder labelled on
+        // an enforcing SELinux host; created below it inherits the type
+        if macworp_worker::executors::selinux_enforcing() {
+            macworp_worker::selinux::DirectoryLabel::of(&root)
+                .apply()
+                .unwrap();
+        }
         let workflow_dir = root.join("workflow");
         let project_dir = root.join("project");
         fs::create_dir_all(&workflow_dir).unwrap();

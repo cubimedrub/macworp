@@ -1,9 +1,11 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, path::Path, sync::Arc};
 
 use clap::ValueEnum;
 use macworp_core::workflow_configuration::engine::Engine;
 use strum::IntoEnumIterator;
 use thiserror::Error;
+
+use crate::selinux::DirectoryLabel;
 
 use super::runtime::{
     CliRuntime, ContainerRuntime, Error as RuntimeError, RuntimeInfo, RuntimeKind,
@@ -77,6 +79,58 @@ pub struct DoctorReport {
 }
 
 impl DoctorReport {
+    /// Adds the `selinux-labels` check for a directory MAcWorP keeps its data in (the storage
+    /// root): on an enforcing host, containers the engine starts itself need it labelled
+    /// `container_file_t`. Nothing is added when SELinux does not enforce or no runtime is usable.
+    ///
+    /// # Arguments
+    /// * `directory` - The directory to check
+    pub fn check_label_of(&mut self, directory: &Path) {
+        let label = DirectoryLabel::of(directory);
+        let current = label.current();
+        let check = self.label_check(crate::executors::selinux_enforcing(), directory, current);
+        self.checks.extend(check);
+    }
+
+    /// The `selinux-labels` check, see [`Self::check_label_of`].
+    ///
+    /// # Arguments
+    /// * `enforcing` - see [`crate::executors::selinux_enforcing`]
+    /// * `directory` - The directory checked
+    /// * `current` - Its label, `None` if unreadable
+    fn label_check(
+        &self,
+        enforcing: bool,
+        directory: &Path,
+        current: Option<String>,
+    ) -> Option<Check> {
+        if !enforcing || self.runtimes.is_empty() {
+            return None;
+        }
+        let name = "selinux-labels".to_string();
+        let shown = directory.display();
+        Some(match current {
+            Some(label) if DirectoryLabel::allows_containers(&label) => Check {
+                name,
+                status: CheckStatus::Ok,
+                message: format!("`{shown}` is labelled {label}"),
+            },
+            Some(label) => Check {
+                name,
+                status: CheckStatus::Warn,
+                message: format!(
+                    "`{shown}` is labelled {label}: containers started by the engine itself (CWL tool containers, Nextflow tasks) cannot use their bind mounts. Label the directory for containers (nothing else is changed): {}",
+                    DirectoryLabel::of(directory).admin_command()
+                ),
+            },
+            None => Check {
+                name,
+                status: CheckStatus::Warn,
+                message: format!("the SELinux label of `{shown}` cannot be read"),
+            },
+        })
+    }
+
     /// Notice that engine containers run without SELinux confinement, `None` when SELinux does
     /// not enforce or no runtime is usable. Without the option every bind mount would be denied.
     ///
@@ -89,7 +143,7 @@ impl DoctorReport {
         Some(Check {
             name: "selinux".to_string(),
             status: CheckStatus::Warn,
-            message: "SELinux is enforcing: engine containers run with `--security-opt label=disable` (their bind mounts would be denied otherwise); other containers and the host stay confined. Containers that the engine itself starts (for example Nextflow tasks) are not covered".to_string(),
+            message: "SELinux is enforcing: engine containers run with `--security-opt label=disable` (their bind mounts would be denied otherwise); other containers and the host stay confined. Containers the engine itself starts (CWL tool containers, Nextflow tasks) need the data folders labelled `container_file_t`, see the `selinux-labels` check".to_string(),
         })
     }
 
@@ -525,12 +579,11 @@ mod tests {
     async fn rootless_podman_is_ok() {
         let report = doctor_with(vec![Mock::ok(RuntimeKind::Podman, "5.2.1", true)]).await;
         assert!(report.is_ok());
-        // only the engines check warns (Snakemake is Docker-only)
+        // only the engines check warns (Snakemake is Docker-only), and the notice of an enforcing
+        // SELinux host
         assert!(
-            report
-                .checks
-                .iter()
-                .all(|c| c.status == CheckStatus::Ok || c.name == "engines")
+            report.checks.iter().all(|c| c.status == CheckStatus::Ok
+                || ["engines", "selinux"].contains(&c.name.as_str()))
         );
         assert!(report.into_runtimes().is_ok());
     }
@@ -545,6 +598,26 @@ mod tests {
         assert!(report.selinux_check(false).is_none());
         let none = doctor_with(vec![]).await;
         assert!(none.selinux_check(true).is_none());
+    }
+
+    /// The label check passes for `container_file_t`, warns with the administrator command for
+    /// any other or unreadable label and is silent without enforcement.
+    #[tokio::test]
+    async fn directory_label_check_needs_container_type() {
+        let report = doctor_with(vec![Mock::ok(RuntimeKind::Docker, "27.1.1", true)]).await;
+        let dir = Path::new("/srv/macworp");
+        let check = |enforcing, label: Option<&str>| {
+            report.label_check(enforcing, dir, label.map(str::to_string))
+        };
+        let ok = check(true, Some("system_u:object_r:container_file_t:s0")).unwrap();
+        assert_eq!(ok.status, CheckStatus::Ok);
+        let home = check(true, Some("unconfined_u:object_r:user_home_t:s0")).unwrap();
+        assert_eq!(home.status, CheckStatus::Warn);
+        assert!(home.message.contains("semanage fcontext"));
+        assert_eq!(check(true, None).unwrap().status, CheckStatus::Warn);
+        assert!(check(false, None).is_none());
+        let none = doctor_with(vec![]).await;
+        assert!(none.label_check(true, dir, None).is_none());
     }
 
     #[tokio::test]

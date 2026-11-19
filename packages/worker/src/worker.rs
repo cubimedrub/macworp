@@ -454,6 +454,7 @@ mod tests {
             project_dir: "/p".into(),
             reference_dir: None,
             apptainer_cache: None,
+            cwl_cache: None,
             configuration,
             progress: None,
         }

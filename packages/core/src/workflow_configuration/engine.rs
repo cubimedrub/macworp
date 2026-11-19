@@ -37,14 +37,15 @@ impl Engine {
     /// folder, `None` if the engine needs none or cannot resume.
     ///
     /// * Nextflow: `-resume` reuses cached tasks.
-    /// * CWL (Toil): `--restart` continues from the job store a failed run left behind.
+    /// * CWL (Toil): none. `--restart` would continue the stored job graph with its stored
+    ///   inputs, ignoring corrected values. The worker starts afresh with a shared step cache
+    ///   instead (`--cachedir`), which skips the steps whose inputs did not change.
     /// * Snakemake: reruns only what is missing or outdated by itself, no flag needed.
     /// * Container: a single image, nothing to resume.
     pub fn resume_parameter(&self) -> Option<&'static str> {
         match self {
             Engine::Nextflow => Some("resume"),
-            Engine::Cwl => Some("restart"),
-            Engine::Snakemake | Engine::Container => None,
+            Engine::Cwl | Engine::Snakemake | Engine::Container => None,
         }
     }
 

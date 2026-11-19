@@ -154,12 +154,12 @@ mod cleanup_tests {
 mod resume_tests {
     use super::*;
 
-    /// Nextflow and CWL get their resume parameter once, Snakemake and Container none.
+    /// Nextflow gets its resume parameter once, CWL (step cache), Snakemake and Container none.
     #[test]
     fn enable_resume_adds_the_engine_parameter_once() {
         for (engine, expected) in [
             (engine::Engine::Nextflow, vec!["resume"]),
-            (engine::Engine::Cwl, vec!["restart"]),
+            (engine::Engine::Cwl, vec![]),
             (engine::Engine::Snakemake, vec![]),
             (engine::Engine::Container, vec![]),
         ] {

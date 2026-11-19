@@ -85,6 +85,7 @@ mod tests {
             project_dir: "/data/p1".into(),
             reference_dir: None,
             apptainer_cache: None,
+            cwl_cache: None,
             configuration,
             progress: None,
         }

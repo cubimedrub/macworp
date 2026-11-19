@@ -5,7 +5,7 @@ use std::time::Duration;
 use macworp_backend::configuration::{REMOTE_CACHE_DIRECTORY_NAME, WORKFLOWS_DIRECTORY_NAME};
 use macworp_backend::reference_directory::{ReferenceDirectory, DEFAULT_DIRECTORY_NAME};
 use macworp_backend::workflow_repository_cache::WorkflowRepositoryCache;
-use macworp_core::paths::APPTAINER_CACHE_DIRECTORY;
+use macworp_core::paths::{APPTAINER_CACHE_DIRECTORY, CWL_CACHE_DIRECTORY};
 use macworp_worker::selinux::DirectoryLabel;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -108,6 +108,7 @@ impl Settings {
         std::fs::create_dir_all(settings.path(Folder::Reference))?;
         std::fs::create_dir_all(settings.path(Folder::WorkflowCache))?;
         std::fs::create_dir_all(settings.path(Folder::ApptainerCache))?;
+        std::fs::create_dir_all(settings.cwl_cache())?;
         settings.label_default_folders();
         Ok(settings)
     }
@@ -131,6 +132,13 @@ impl Settings {
             if let Err(error) = DirectoryLabel::of(&path).apply() {
                 tracing::warn!("Cannot label {} for containers: {error}", path.display());
             }
+        }
+        let cwl_cache = self.cwl_cache();
+        if let Err(error) = DirectoryLabel::of(&cwl_cache).apply() {
+            tracing::warn!(
+                "Cannot label {} for containers: {error}",
+                cwl_cache.display()
+            );
         }
     }
 
@@ -176,6 +184,12 @@ impl Settings {
     /// The image cache handle for the embedded worker.
     pub fn apptainer_cache(&self) -> ReferenceDirectory {
         self.apptainer_cache.clone()
+    }
+
+    /// The folder of the CWL step cache, always below the app data directory (not movable in the
+    /// settings page). Created by [`Settings::load`].
+    pub fn cwl_cache(&self) -> PathBuf {
+        self.directory.join(CWL_CACHE_DIRECTORY)
     }
 
     /// The repository cache for the backend.

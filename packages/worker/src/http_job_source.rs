@@ -10,7 +10,7 @@ use std::{
 
 use macworp_core::{
     entities::LogStream,
-    paths::APPTAINER_CACHE_DIRECTORY,
+    paths::{APPTAINER_CACHE_DIRECTORY, CWL_CACHE_DIRECTORY},
     requests::{
         WorkerAnnounceRequest, WorkerClaimRequest, WorkerFinishRequest, WorkerLogsRequest,
         WorkerOutcome, WorkerProgressRequest,
@@ -256,6 +256,7 @@ impl JobSource for HttpJobSource {
                         project_dir: claimed.project_dir,
                         reference_dir: claimed.reference_dir,
                         apptainer_cache: None,
+                        cwl_cache: None,
                         configuration: claimed.configuration,
                         progress: None,
                     };
@@ -266,6 +267,14 @@ impl JobSource for HttpJobSource {
                         Err(e) => {
                             tracing::warn!("Cannot create the image cache {}: {e}", cache.display())
                         }
+                    }
+                    let cwl_cache = self.storage_path.join(CWL_CACHE_DIRECTORY);
+                    match std::fs::create_dir_all(&cwl_cache) {
+                        Ok(()) => job.cwl_cache = Some(cwl_cache),
+                        Err(e) => tracing::warn!(
+                            "Cannot create the CWL step cache {}: {e}",
+                            cwl_cache.display()
+                        ),
                     }
                     Ok(Some(job))
                 }
@@ -485,6 +494,9 @@ mod tests {
         let cache = storage.path().join(APPTAINER_CACHE_DIRECTORY);
         assert_eq!(job.apptainer_cache, Some(cache.clone()));
         assert!(cache.is_dir());
+        let cwl_cache = storage.path().join(CWL_CACHE_DIRECTORY);
+        assert_eq!(job.cwl_cache, Some(cwl_cache.clone()));
+        assert!(cwl_cache.is_dir());
     }
 
     #[tokio::test]

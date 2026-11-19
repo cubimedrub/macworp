@@ -327,6 +327,8 @@ struct TestApp {
     reference_directory: PathBuf,
     /// Shared image cache the worker was started with
     apptainer_cache: PathBuf,
+    /// Folder of the shared CWL step cache
+    cwl_cache: PathBuf,
     /// The location the worker hands to runs as reference data, starts at the live folder
     worker_reference: macworp_backend::reference_directory::ReferenceDirectory,
     shutdown: tokio::sync::oneshot::Sender<()>,
@@ -389,6 +391,8 @@ impl TestApp {
         std::fs::create_dir_all(&reference_directory).unwrap();
         let apptainer_cache = root.join("apptainer");
         std::fs::create_dir_all(&apptainer_cache).unwrap();
+        let cwl_cache = root.join("cwl");
+        std::fs::create_dir_all(&cwl_cache).unwrap();
         let reference_directory_for_backend = reference_directory.clone();
         let worker_reference = macworp_backend::reference_directory::ReferenceDirectory::new(
             reference_directory.clone(),
@@ -436,6 +440,7 @@ impl TestApp {
             vec![runtime],
             worker_reference.clone(),
             macworp_backend::reference_directory::ReferenceDirectory::new(apptainer_cache.clone()),
+            cwl_cache.clone(),
         )
         .await
         .unwrap();
@@ -446,6 +451,7 @@ impl TestApp {
             workflow_dir,
             reference_directory,
             apptainer_cache,
+            cwl_cache,
             worker_reference,
             shutdown,
             backend,
@@ -765,6 +771,7 @@ async fn runs_cwl_workflow() {
     let run = app.start_run(configuration, Vec::new()).await.unwrap();
     let (run, log_text) = app.finished_run(run.id).await;
     let project_dir = app.project_dir.clone();
+    let cwl_cache = app.cwl_cache.clone();
     let _temp = app.stop().await;
 
     assert_eq!(
@@ -776,4 +783,7 @@ async fn runs_cwl_workflow() {
         read(&project_dir, "cwl_result.txt"),
         "hello cwl\n3\nfile content\n"
     );
+    // The step went through the shared step cache that a later run reuses
+    let cached = std::fs::read_dir(&cwl_cache).unwrap().count();
+    assert!(cached > 0, "step cache is empty: {cwl_cache:?}");
 }

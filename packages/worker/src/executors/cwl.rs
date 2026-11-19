@@ -26,6 +26,21 @@ pub const WORK_DIRECTORY: &str = ".toil";
 /// added
 const LOCATION_PARAMETERS: &[&str] = &["jobStore", "workDir"];
 
+/// Directory below [`WORK_DIRECTORY`] where cwltool puts the temporary folders of the steps when
+/// a step cache is used. Without `--cachedir` Toil's file store handles them; with it cwltool
+/// falls back to the `/tmp` of the engine container, which the sibling tool containers cannot
+/// mount from the host.
+const TEMPORARY_DIRECTORY: &str = "tmp";
+
+/// Engine parameters that choose the step cache themselves, so the shared one is not added
+const CACHE_PARAMETERS: &[&str] = &["cachedir"];
+
+/// Memory Toil reserves for a job that declares none (`--defaultMemory`). Toil's own default is
+/// 2 GiB, which it refuses to schedule on a container runtime VM with less memory ("requesting
+/// ... more than the maximum"), also on a restart of a failed run. The value is a scheduling
+/// reservation, not a limit, and tools that need more declare `ramMin` themselves.
+const DEFAULT_MEMORY: &str = "512M";
+
 /// The engine image to run: the value of [`IMAGE_VARIABLE`] if set and not empty, else
 /// [`DEFAULT_IMAGE`].
 pub fn image() -> String {
@@ -75,6 +90,12 @@ impl CwlExecutor {
     /// read-only, removed by [`run_spec`] after the run), see [`ParameterFile`]. Only local
     /// sources are supported.
     ///
+    /// A run never restarts the job store of an earlier run (Toil would reuse the stored inputs
+    /// and ignore corrected values). Resuming instead starts afresh with the shared step cache
+    /// of the job (`--cachedir`, see [`Job::cwl_cache`]): steps whose inputs did not change are
+    /// served from it. cwltool then needs its temporary folders on a host path the tool
+    /// containers can mount, they go below [`WORK_DIRECTORY`].
+    ///
     /// # Arguments
     /// * `job` - the job to run
     pub fn launch_spec(&self, job: &Job) -> Result<LaunchSpec, ExecutorError> {
@@ -99,17 +120,35 @@ impl CwlExecutor {
             path_arg(&job.project_dir),
             "--disableProgress".into(),
         ];
-        if !configuration
-            .engine_parameters()
-            .iter()
-            .any(|p| LOCATION_PARAMETERS.contains(&p.name()))
-        {
+        if !Self::has_own_location(job) {
             let work = job.project_dir.join(WORK_DIRECTORY);
             command.extend([
                 "--workDir".into(),
                 path_arg(&work),
                 "--jobStore".into(),
                 path_arg(&work.join("jobstore")),
+            ]);
+        }
+        if !configuration
+            .engine_parameters()
+            .iter()
+            .any(|p| p.name() == "defaultMemory")
+        {
+            command.extend(["--defaultMemory".into(), DEFAULT_MEMORY.into()]);
+        }
+        if let Some(cache) = Self::cache_directory(job) {
+            let temporary = path_arg(
+                &job.project_dir
+                    .join(WORK_DIRECTORY)
+                    .join(TEMPORARY_DIRECTORY),
+            );
+            command.extend([
+                "--cachedir".into(),
+                path_arg(cache),
+                "--tmp-outdir-prefix".into(),
+                format!("{temporary}/"),
+                "--tmpdir-prefix".into(),
+                format!("{temporary}/"),
             ]);
         }
         command.extend(render_args(configuration, job.reference_dir.as_deref())?);
@@ -125,18 +164,79 @@ impl CwlExecutor {
             &self.image,
             job,
             &read_only,
-            &self.run_args(),
+            &self.run_args(job),
             command,
         );
         spec.scratch_directory = parameters.map(|file| file.directory().to_path_buf());
         Ok(spec)
     }
 
+    /// Makes the working directories of a run: [`WORK_DIRECTORY`] is emptied first (the job store
+    /// of a failed run is still there and a fresh run needs an empty one, unless the author's
+    /// engine parameters put it elsewhere), Toil does not create its working directory itself,
+    /// and with a step cache cwltool's temporary folder ([`TEMPORARY_DIRECTORY`]) must exist.
+    ///
+    /// # Arguments
+    /// * `job` - the run about to start
+    fn prepare_directories(job: &Job) -> Result<(), ExecutorError> {
+        let work = job.project_dir.join(WORK_DIRECTORY);
+        if !Self::has_own_location(job) {
+            match std::fs::remove_dir_all(&work) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(ExecutorError::Io("the old Toil working directory", error));
+                }
+            }
+        }
+        std::fs::create_dir_all(&work)
+            .map_err(|error| ExecutorError::Io("the Toil working directory", error))?;
+        if Self::cache_directory(job).is_some() {
+            std::fs::create_dir_all(work.join(TEMPORARY_DIRECTORY))
+                .map_err(|error| ExecutorError::Io("the Toil temporary directory", error))?;
+        }
+        Ok(())
+    }
+
+    /// Whether the author's engine parameters say where the job store or working files go, so
+    /// [`WORK_DIRECTORY`] is not used (and not cleared before a run).
+    ///
+    /// # Arguments
+    /// * `job` - the run about to start
+    fn has_own_location(job: &Job) -> bool {
+        job.configuration
+            .engine_parameters()
+            .iter()
+            .any(|p| LOCATION_PARAMETERS.contains(&p.name()))
+    }
+
+    /// The shared step cache to use for `job`: the one of the job unless the author's engine
+    /// parameters choose a cache themselves, `None` then (and where the job has none).
+    ///
+    /// # Arguments
+    /// * `job` - the run about to start
+    fn cache_directory(job: &Job) -> Option<&std::path::Path> {
+        let own = job
+            .configuration
+            .engine_parameters()
+            .iter()
+            .any(|p| CACHE_PARAMETERS.contains(&p.name()));
+        if own { None } else { job.cwl_cache.as_deref() }
+    }
+
     /// Extra `run` arguments of the engine container: the worker's user
-    /// ([`worker_user_args`]) and the runtime socket access.
-    fn run_args(&self) -> Vec<String> {
+    /// ([`worker_user_args`]), the runtime socket access and the shared step cache of `job`,
+    /// mounted read-write at its host path.
+    ///
+    /// # Arguments
+    /// * `job` - the run about to start
+    fn run_args(&self, job: &Job) -> Vec<String> {
         let mut args = worker_user_args();
         args.extend(self.engine_access.iter().cloned());
+        if let Some(cache) = Self::cache_directory(job) {
+            let cache = path_arg(cache);
+            args.extend(["-v".into(), format!("{cache}:{cache}")]);
+        }
         args
     }
 }
@@ -153,11 +253,9 @@ impl Executor for CwlExecutor {
         cancel: watch::Receiver<bool>,
     ) -> BoxFuture<'a, Outcome> {
         // Toil does not create its working directory itself
-        let spec = self.launch_spec(job).and_then(|spec| {
-            std::fs::create_dir_all(job.project_dir.join(WORK_DIRECTORY))
-                .map_err(|error| ExecutorError::Io("the Toil working directory", error))?;
-            Ok(spec)
-        });
+        let spec = self
+            .launch_spec(job)
+            .and_then(|spec| Self::prepare_directories(job).map(|()| spec));
         Box::pin(async move {
             let outcome = run_spec(spec, logs, cancel).await;
             if matches!(outcome, Outcome::Succeeded) && job.configuration.cleanup_on_success() {
@@ -226,6 +324,7 @@ mod tests {
             project_dir: "/data/p1".into(),
             reference_dir: None,
             apptainer_cache: None,
+            cwl_cache: None,
             configuration,
             progress: None,
         }
@@ -281,9 +380,67 @@ mod tests {
                 "/data/p1/.toil",
                 "--jobStore",
                 "/data/p1/.toil/jobstore",
+                "--defaultMemory",
+                "512M",
                 "/w/tool.cwl"
             ]
         );
+    }
+
+    /// The shared step cache is passed to Toil with temporary folders below the work directory
+    /// and mounted read-write at its host path.
+    #[test]
+    fn step_cache_is_shared() {
+        let mut job = job(local());
+        job.cwl_cache = Some("/cache/cwl".into());
+        let args = executor().launch_spec(&job).unwrap().args;
+        let at = args.iter().position(|a| a == "--cachedir").unwrap();
+        assert_eq!(
+            args[at..at + 6],
+            [
+                "--cachedir",
+                "/cache/cwl",
+                "--tmp-outdir-prefix",
+                "/data/p1/.toil/tmp/",
+                "--tmpdir-prefix",
+                "/data/p1/.toil/tmp/"
+            ]
+        );
+        assert!(args.contains(&"/cache/cwl:/cache/cwl".to_string()));
+    }
+
+    /// Without a cache in the job, or with an own `cachedir` of the author, nothing is added and
+    /// nothing is mounted.
+    #[test]
+    fn step_cache_is_optional_and_yields_to_engine_parameters() {
+        let args = executor().launch_spec(&job(local())).unwrap().args;
+        assert!(!args.iter().any(|a| a == "--cachedir"));
+
+        let mut job = job(local());
+        job.cwl_cache = Some("/cache/cwl".into());
+        *job.configuration.engine_parameters_mut() =
+            vec![EngineParameter::new("cachedir".into(), "/own".into())];
+        let args = executor().launch_spec(&job).unwrap().args;
+        assert_eq!(args.iter().filter(|a| *a == "--cachedir").count(), 1);
+        assert!(!args.iter().any(|a| a.contains("/cache/cwl")));
+    }
+
+    /// The job store of an earlier run is removed so a fresh run can start, the temporary folder
+    /// of the step cache is made, and an author's own job store location leaves `.toil` alone.
+    #[test]
+    fn old_job_store_is_cleared_before_a_run() {
+        let project = tempfile::tempdir().unwrap();
+        let old = project.path().join(WORK_DIRECTORY).join("jobstore");
+        std::fs::create_dir_all(&old).unwrap();
+        let mut job = cleanup_job(project.path(), &[]);
+        job.cwl_cache = Some("/cache/cwl".into());
+        CwlExecutor::prepare_directories(&job).unwrap();
+        assert!(!old.exists());
+        assert!(project.path().join(WORK_DIRECTORY).join("tmp").is_dir());
+
+        std::fs::create_dir_all(&old).unwrap();
+        CwlExecutor::prepare_directories(&cleanup_job(project.path(), &["jobStore"])).unwrap();
+        assert!(old.exists());
     }
 
     /// Engine parameters go before the tool, and a given job store replaces the default.
@@ -296,11 +453,31 @@ mod tests {
         ];
         let args = executor().launch_spec(&job).unwrap().args;
         assert!(!args.contains(&"/data/p1/.toil/jobstore".to_string()));
-        let tail = &args[args.len() - 5..];
+        let tail = &args[args.len() - 7..];
         assert_eq!(
             tail,
-            ["--jobStore", "/data/js", "--maxCores", "2", "/w/tool.cwl"]
+            [
+                "--defaultMemory",
+                "512M",
+                "--jobStore",
+                "/data/js",
+                "--maxCores",
+                "2",
+                "/w/tool.cwl"
+            ]
         );
+    }
+
+    /// A workflow that sets `defaultMemory` itself is not given the default twice.
+    #[test]
+    fn default_memory_yields_to_an_engine_parameter() {
+        let mut job = job(local());
+        *job.configuration.engine_parameters_mut() =
+            vec![EngineParameter::new("defaultMemory".into(), "4G".into())];
+        let args = executor().launch_spec(&job).unwrap().args;
+        assert_eq!(args.iter().filter(|a| *a == "--defaultMemory").count(), 1);
+        assert!(args.contains(&"4G".to_string()));
+        assert!(!args.contains(&"512M".to_string()));
     }
 
     /// Values go into a read-only mounted JSON input object after the tool.

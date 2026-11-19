@@ -197,6 +197,10 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                             } else {
                                 "Start workflow"
                             }
+                            if let Some(integration) = &*selected.read() {
+                                ": "
+                                strong { "{integration.inner().name}" }
+                            }
                         }
                         button {
                             r#type: "button",

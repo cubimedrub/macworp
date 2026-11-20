@@ -117,6 +117,13 @@ impl RuntimeInfo {
             "-e".to_string(),
             format!("DOCKER_HOST=unix://{ENGINE_SOCKET}"),
         ];
+        if self.kind == RuntimeKind::Podman {
+            // `podman-remote` of the engine image (Toil's Podman mode) reads this one
+            args.extend([
+                "-e".into(),
+                format!("CONTAINER_HOST=unix://{ENGINE_SOCKET}"),
+            ]);
+        }
         args.extend(extra);
         Some(args)
     }
@@ -404,6 +411,8 @@ mod tests {
                 "/run/user/1000/podman/podman.sock:/run/container.sock",
                 "-e",
                 "DOCKER_HOST=unix:///run/container.sock",
+                "-e",
+                "CONTAINER_HOST=unix:///run/container.sock",
                 "--security-opt",
                 "label=disable",
                 "--userns=keep-id"

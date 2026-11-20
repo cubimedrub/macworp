@@ -111,5 +111,7 @@ RUN apt-get update \
     && /opt/toil/bin/pip install --no-cache-dir "toil[cwl]==${TOIL_VER}" \
     && apt-get purge -y gcc python3-dev && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* \
-    && /opt/toil/bin/toil-cwl-runner --version
+    && /opt/toil/bin/toil-cwl-runner --version \
+    # Toil's `--podman` mode runs `podman`; against a Podman socket that is the remote client
+    && ln -s "$(command -v podman-remote)" /usr/local/bin/podman
 ENV PATH=/opt/toil/bin:$PATH

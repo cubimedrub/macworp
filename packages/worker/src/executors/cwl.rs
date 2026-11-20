@@ -8,7 +8,7 @@ use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
     default_engine_image, engine_image, run_spec, worker_user_args,
 };
-use crate::container_runtime::BoxFuture;
+use crate::container_runtime::{BoxFuture, RuntimeKind};
 
 /// Environment variable that replaces the default engine image as a whole, for example to run another Toil version
 /// (an image built from `docker/engine.dockerfile` with another version argument).
@@ -53,6 +53,9 @@ pub struct CwlExecutor {
     runtime_binary: PathBuf,
     image: String,
     engine_access: Vec<String>,
+    /// Runtime of `runtime_binary`: tool containers started through a Podman socket need Toil's
+    /// `--podman` mode
+    runtime_kind: RuntimeKind,
 }
 
 impl CwlExecutor {
@@ -64,7 +67,20 @@ impl CwlExecutor {
             runtime_binary: runtime_binary.into(),
             image: image.into(),
             engine_access: Vec::new(),
+            runtime_kind: RuntimeKind::Docker,
         }
+    }
+
+    /// Tells the executor which runtime its binary belongs to (default Docker). With Podman Toil
+    /// runs in its `--podman` mode: cwltool then starts the tool containers with
+    /// `--userns=keep-id`, so the mounted project files stay writable for the tool (a rootless
+    /// Podman socket otherwise maps the tool's user to a subordinate id that does not own them).
+    ///
+    /// # Arguments
+    /// * `kind` - the runtime kind of the binary given to [`Self::new`]
+    pub fn with_runtime_kind(mut self, kind: RuntimeKind) -> Self {
+        self.runtime_kind = kind;
+        self
     }
 
     /// Extra `run` arguments so the engine can start sibling containers, see
@@ -115,6 +131,9 @@ impl CwlExecutor {
             path_arg(&job.project_dir),
             "--disableProgress".into(),
         ];
+        if self.runtime_kind == RuntimeKind::Podman {
+            command.push("--podman".into());
+        }
         if !Self::has_own_location(job) {
             let work = job.project_dir.join(WORK_DIRECTORY);
             command.extend([
@@ -355,6 +374,19 @@ mod tests {
     /// Executor on podman with image `img:1`.
     fn executor() -> CwlExecutor {
         CwlExecutor::new("podman", "img:1")
+    }
+
+    /// Toil runs the tool containers in its Podman mode on a Podman runtime only.
+    #[test]
+    fn podman_runtime_selects_podman_mode() {
+        let docker = executor().launch_spec(&job(local())).unwrap().args;
+        assert!(!docker.contains(&"--podman".to_string()));
+        let podman = executor()
+            .with_runtime_kind(RuntimeKind::Podman)
+            .launch_spec(&job(local()))
+            .unwrap()
+            .args;
+        assert!(podman.contains(&"--podman".to_string()));
     }
 
     /// The step cache is passed from Toil 8 on, Toil 7 does not know `--cachedir`.

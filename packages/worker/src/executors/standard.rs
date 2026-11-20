@@ -84,9 +84,11 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
             Engine::Nextflow => Arc::new(
                 NextflowExecutor::new(&binary, nextflow::image()).with_engine_access(engine_access),
             ),
-            Engine::Cwl => {
-                Arc::new(CwlExecutor::new(&binary, cwl::image()).with_engine_access(engine_access))
-            }
+            Engine::Cwl => Arc::new(
+                CwlExecutor::new(&binary, cwl::image())
+                    .with_runtime_kind(runtime.kind())
+                    .with_engine_access(engine_access),
+            ),
             Engine::Snakemake => Arc::new(
                 SnakemakeExecutor::new(&binary, snakemake::image())
                     .with_runtime_kind(runtime.kind())

@@ -9,8 +9,8 @@
 //! runs only report what happens, they document the problem the snapshot solves.
 //!
 //! Nextflow and Snakemake signal with `ready` and wait for `go` in the project directory. The
-//! CWL tool cannot reach the project directory and sleeps instead, the test changes the data a
-//! while after the run started. The Container engine is not covered.
+//! CWL tool cannot reach the project directory and sleeps instead, the test changes the data once
+//! the tool container is running (Toil bind-mounts the original reference files into it). The Container engine is not covered.
 //!
 //! ```text
 //! cargo test -p macworp_desktop reference_change -- --ignored --nocapture
@@ -32,8 +32,8 @@ use super::{path, prepare_image, require_runtime, TestApp};
 /// Content of the reference files before the change
 const OLD: [&str; 2] = ["old-a", "old-b"];
 
-/// How long the CWL tool sleeps, and how long after the start the test changes the data
-const CWL_SLEEP: Duration = Duration::from_secs(60);
+/// Image of the CWL fixture tool (`tool.cwl`), what its container is recognised by.
+const CWL_TOOL_IMAGE: &str = "debian";
 
 /// How the reference data is changed while a run is between its two reads.
 #[derive(Clone, Copy, Debug)]
@@ -116,6 +116,7 @@ async fn observe(engine: Engine, change: Change, snapshot: bool) -> Option<Obser
     if !prepare_image(runtime.as_ref(), &engine).await {
         return None;
     }
+    let runtime_binary = runtime.binary().to_path_buf();
     let app = TestApp::start(runtime, unavailable_engines).await;
     let fixtures =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/end_to_end/reference_change");
@@ -143,23 +144,18 @@ async fn observe(engine: Engine, change: Change, snapshot: bool) -> Option<Obser
 
     // Wait until the run is between its reads, then change the data and let it go on
     if matches!(engine, Engine::Cwl) {
+        // Toil hands the reference files to the tool container as bind mounts of the original
+        // files, so what the tool reads is fixed when that container starts. Starting Toil, its
+        // imports and the container take an unpredictable time (a fixed delay made the result
+        // depend on the host's speed), so wait until the tool container is up.
         let started = std::time::Instant::now();
-        while app
-            .client
-            .runs()
-            .get(&app.jwt, run.id)
-            .await
-            .unwrap()
-            .status
-            != RunStatus::Running
-        {
+        while !tool_container_running(&runtime_binary).await {
             assert!(
                 started.elapsed() < Duration::from_secs(120),
-                "run did not start"
+                "the tool container did not start"
             );
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
-        tokio::time::sleep(CWL_SLEEP / 3).await;
         change.apply(&app.reference_directory);
     } else {
         let started = std::time::Instant::now();
@@ -190,6 +186,22 @@ async fn observe(engine: Engine, change: Change, snapshot: bool) -> Option<Obser
         status: run.status,
         result,
         log,
+    })
+}
+
+/// Whether the container of the CWL fixture tool (image [`CWL_TOOL_IMAGE`]) is running.
+///
+/// # Arguments
+/// * `runtime_binary` - the container runtime CLI the worker uses
+async fn tool_container_running(runtime_binary: &Path) -> bool {
+    let output = tokio::process::Command::new(runtime_binary)
+        .args(["ps", "--format", "{{.Image}}"])
+        .output()
+        .await;
+    output.is_ok_and(|output| {
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|image| image.contains(CWL_TOOL_IMAGE))
     })
 }
 

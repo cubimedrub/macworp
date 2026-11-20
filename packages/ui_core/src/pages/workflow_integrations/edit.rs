@@ -307,6 +307,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
         CurrentUser::from_context().is_none_or(|user| user.can_create_local_workflows());
     // Zip archive chosen in the file input, waiting to be uploaded
     let mut pending_archive = use_signal(|| None::<Vec<u8>>);
+    // Bumped after each pick to remount the file input, which clears its remembered file name
+    let mut upload_input_generation = use_signal(|| 0u32);
 
     // Background download of a remote repository, started by the server when the workflow is
     // saved; shown below the save button
@@ -926,6 +928,10 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                     div { class: "form-text", "Uploading workflow files is not allowed for you on this server." }
                                 } else {
                                 input {
+                                    // Browsers fire no change event when the same file name is picked again (e.g. a zip re-created after a fix),
+                                    // and a file input's value cannot be set from markup. A new key makes Dioxus replace the element with a fresh,
+                                    // empty one after each pick, so no JavaScript is needed to clear it.
+                                    key: "{upload_input_generation}",
                                     id: "workflow-integration-upload",
                                     type: "file",
                                     class: "form-control",
@@ -937,6 +943,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                                 upload_action.call();
                                             }
                                         }
+                                        // Remount the input via its key: the browser fires no change event when the same file name is chosen again (re-zipped after a fix)
+                                        upload_input_generation += 1;
                                     },
                                 }
                                 }

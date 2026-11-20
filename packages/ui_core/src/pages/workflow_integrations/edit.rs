@@ -1380,7 +1380,7 @@ fn EngineParameterEditor(workflow_integration: Signal<DisassambledWorkflowIntegr
             }
             div {
                 class: "form-text",
-                "Options passed to the engine. A retried run adds the engine's resume option by itself."
+                "Options passed to the engine. A retried run adds the engine's resume option by itself. When starting a run, users can only turn on or off trace, report, timeline, task graph and printed commands; everything else is set here."
             }
         }
     }

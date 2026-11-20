@@ -113,6 +113,36 @@ impl WorkflowConfiguration {
         Ok(())
     }
 
+    /// Turns engine switches on or off as a user asked when starting the workflow. Only the
+    /// switches users may change ([`engine_parameters::ParameterSpec::user_switchable`]: trace,
+    /// report, timeline, task graph, printed commands) are accepted; everything that changes
+    /// behaviour stays as the workflow's editors set it. Switching on what is already on, or off
+    /// what is not set, changes nothing.
+    ///
+    /// # Arguments
+    /// * `switches` - `(name, enabled)` pairs of the user, each name at most once
+    pub fn apply_engine_switches(
+        &mut self,
+        switches: &[(String, bool)],
+    ) -> Result<(), engine_parameters::Error> {
+        let mut seen = std::collections::HashSet::new();
+        for (name, enabled) in switches {
+            if !seen.insert(name.as_str()) {
+                return Err(engine_parameters::Error::Duplicate(name.clone()));
+            }
+            if !self.engine.user_switches().any(|spec| spec.name == name) {
+                return Err(engine_parameters::Error::NotUserSwitchable(name.clone()));
+            }
+            self.engine_parameters
+                .retain(|parameter| parameter.name() != name);
+            if *enabled {
+                self.engine_parameters
+                    .push(engine::EngineParameter::new(name.clone(), String::new()));
+            }
+        }
+        Ok(())
+    }
+
     /// Mutable access to the cleanup switch, see [`Self::cleanup_on_success`].
     pub fn cleanup_on_success_mut(&mut self) -> &mut bool {
         &mut self.cleanup_on_success

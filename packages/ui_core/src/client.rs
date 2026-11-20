@@ -11,7 +11,7 @@ use macworp_core::{
     entities::Role,
     requests::{
         GrantShareRequest, GroupMemberRequest, NewGroupRequest, NewProjectRequest, NewUserRequest,
-        NewWorkflowIntegrationRequest, ParameterValue, PasswordLoginRequest, PrincipalRequest,
+        NewWorkflowIntegrationRequest, PasswordLoginRequest, PrincipalRequest,
         ProjectCreateFolderRequest, ProjectPathDeletionRequest, ProjectWriteTextRequest,
         ResetPasswordRequest, RevokeShareRequest, UpdateGroupRequest, UpdateUserRequest,
         UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
@@ -1399,28 +1399,16 @@ impl<'a> RunsClient<'a> {
     /// # Arguments
     /// * `jwt` - The JWT for authentication
     /// * `project_id` - The project to run on
-    /// * `workflow_id` - The workflow integration to run
-    /// * `comment` - Comment stored with the run
-    /// * `parameters` - Values of the workflow's dynamic parameters
-    /// * `resume_from_run` - Run to continue (same reference data snapshot, engine resume
-    ///   parameter), `None` for a fresh run
+    /// * `body` - What to run: workflow, comment, dynamic parameter values, engine switches and
+    ///   the run to continue, if any
     pub async fn start(
         &self,
         jwt: &str,
         project_id: i64,
-        workflow_id: i64,
-        comment: String,
-        parameters: Vec<ParameterValue>,
-        resume_from_run: Option<i64>,
+        body: WorkflowStartRequest,
     ) -> Result<RunResponse, Error> {
         let url =
             self.url(&RunsRouting::START_PATH.replace("{project_id}", &project_id.to_string()));
-        let body = WorkflowStartRequest {
-            workflow_id,
-            comment,
-            parameters,
-            resume_from_run,
-        };
         self.send(
             reqwest::Client::new().post(&url).json(&body),
             jwt,

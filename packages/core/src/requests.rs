@@ -70,10 +70,21 @@ pub struct ParameterValue {
     pub value: serde_json::Value,
 }
 
+/// A switch of the engine a user turned on or off for one run (trace, report, timeline, task
+/// graph, printed commands), see `ParameterSpec::user_switchable`
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EngineSwitch {
+    /// Name of the engine parameter, without leading dashes
+    pub name: String,
+    /// Whether the run uses it
+    pub enabled: bool,
+}
+
 /// Request to start a workflow on a project.
 ///
-/// Only values of dynamic parameters are taken from the client. Engine, source, engine
-/// parameters and fixed parameters always come from the stored workflow.
+/// Only values of dynamic parameters and the engine switches users may change are taken from the
+/// client. Engine, source, the other engine parameters and fixed parameters always come from the
+/// stored workflow.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkflowStartRequest {
     /// Workflow integration ID
@@ -82,6 +93,11 @@ pub struct WorkflowStartRequest {
     pub comment: String,
     /// Values for the dynamic parameters
     pub parameters: Vec<ParameterValue>,
+    /// Engine switches the user turned on or off, anything else is rejected. They replace what
+    /// the workflow sets for these switches and are stored with the run, so a resumed run takes
+    /// those sent with it.
+    #[serde(default)]
+    pub engine_switches: Vec<EngineSwitch>,
     /// Continue this run instead of starting afresh: the new run reads the same snapshot of the
     /// global reference data and the engine's resume parameter is added. `parameters` are taken
     /// as sent, so a user can correct values (typically those of the failed run) before resuming;

@@ -495,10 +495,13 @@ impl TestApp {
             .start(
                 &self.jwt,
                 project.id,
-                workflow.id,
-                "end to end".into(),
-                values,
-                None,
+                macworp_core::requests::WorkflowStartRequest {
+                    workflow_id: workflow.id,
+                    comment: "end to end".into(),
+                    parameters: values,
+                    engine_switches: Vec::new(),
+                    resume_from_run: None,
+                },
             )
             .await
     }

@@ -1,8 +1,9 @@
 use dioxus::prelude::*;
 use macworp_core::{
-    requests::ParameterValue,
+    requests::{EngineSwitch, ParameterValue},
     responses::{RunResponse, WorkflowIntegrationResponse},
     workflow_configuration::{
+        engine::Engine,
         parameters::{parameter::IsParameter, Parameter},
         render::{apply_values_lenient, value_json},
     },
@@ -64,7 +65,7 @@ pub struct WorkflowStartDialogProps {
     pub project_id: i64,
     pub is_open: ReadSignal<bool>,
     pub cancel_callback: Callback<(), ()>,
-    pub start_callback: Callback<(i64, Vec<ParameterValue>), ()>,
+    pub start_callback: Callback<(i64, Vec<ParameterValue>, Vec<EngineSwitch>), ()>,
     /// The failed or cancelled run being resumed, `None` for a normal start. The dialog then
     /// opens on that run's workflow with its values filled in, without a workflow choice.
     pub resume: ReadSignal<Option<RunResponse>>,
@@ -75,7 +76,7 @@ pub struct WorkflowStartDialogProps {
 /// # Arguments
 /// * `is_open` - A signal that indicates whether the dialog is open or not
 /// * `cancel_callback` - The callback to call when the dialog is closed without starting
-/// * `start_callback` - The callback to call with the selected workflow's id and the entered dynamic parameter values when the user confirms
+/// * `start_callback` - The callback to call with the selected workflow's id, the entered dynamic parameter values and the engine switches (trace, report, ...) the user chose, when the user confirms
 /// * `resume` - The run being resumed, if any: its workflow is preselected with its values and the dialog says so
 ///
 #[component]
@@ -84,6 +85,9 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
     let config = use_context::<Signal<Configuration>>();
 
     let mut selected: Signal<Option<DisassambledWorkflowIntegration>> = use_signal(|| None);
+    // Engine switch choices for the selected workflow, by switch name
+    let mut switches: Signal<std::collections::BTreeMap<&'static str, bool>> =
+        use_signal(Default::default);
 
     use_effect(move || {
         if *props.is_open.read() {
@@ -130,6 +134,7 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                     let prefilled =
                         with_history(storage, config, props.project_id, integration).await;
                     if selected.peek().is_none() {
+                        switches.write().clear();
                         selected.set(Some(prefilled));
                     }
                 }
@@ -351,6 +356,15 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                         }
                                     }
                                 }
+                                EngineSwitches {
+                                    engine: integration.inner().configuration.engine().clone(),
+                                    set: integration
+                                        .engine_parameters()
+                                        .iter()
+                                        .map(|parameter| parameter.read().name().to_string())
+                                        .collect::<Vec<_>>(),
+                                    switches,
+                                }
                             },
                         }
                     }
@@ -388,7 +402,21 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                             }
                                         })
                                         .collect();
-                                    props.start_callback.call((integration.inner().id, values));
+                                    let engine_switches = integration
+                                        .inner()
+                                        .configuration
+                                        .engine()
+                                        .user_switches()
+                                        .map(|spec| EngineSwitch {
+                                            name: spec.name.to_string(),
+                                            enabled: switches
+                                                .read()
+                                                .get(spec.name)
+                                                .copied()
+                                                .unwrap_or_else(|| is_set(integration, spec.name)),
+                                        })
+                                        .collect();
+                                    props.start_callback.call((integration.inner().id, values, engine_switches));
                                 }
                             },
                             if props.resume.read().is_some() { "Resume" } else { "Start" }
@@ -442,6 +470,91 @@ fn ParameterGroup(props: ParameterGroupProps) -> Element {
                     }
                     {props.children}
                 }
+            }
+        }
+    }
+}
+
+/// Whether the workflow sets the engine parameter `name` (a switch that is on).
+///
+/// # Arguments
+/// * `integration` - the selected workflow
+/// * `name` - name of the engine parameter
+fn is_set(integration: &DisassambledWorkflowIntegration, name: &str) -> bool {
+    integration
+        .engine_parameters()
+        .iter()
+        .any(|parameter| parameter.read().name() == name)
+}
+
+/// Checkboxes for the engine switches users may turn on or off for one run (trace, report,
+/// timeline, task graph, printed commands; `Engine::user_switches`), preset to what the workflow
+/// sets. Everything else about the engine is up to those who edit the workflow. Shows nothing
+/// for engines without such switches.
+///
+/// # Arguments
+/// * `engine` - engine of the selected workflow
+/// * `set` - names of the engine parameters the workflow sets
+/// * `switches` - choices made so far by switch name, a name missing means "as the workflow
+///   has it"; read by the dialog when the run starts
+#[component]
+fn EngineSwitches(
+    engine: Engine,
+    set: Vec<String>,
+    mut switches: Signal<std::collections::BTreeMap<&'static str, bool>>,
+) -> Element {
+    // Folded by default: most runs need none of them
+    let mut collapsed = use_signal(|| true);
+    let specs: Vec<_> = engine.user_switches().collect();
+    if specs.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div {
+            class: "card mb-3",
+            div {
+                class: "card-header d-flex align-items-center",
+                role: "button",
+                onclick: move |_| collapsed.toggle(),
+                i { class: if collapsed() { "fas fa-chevron-right me-2" } else { "fas fa-chevron-down me-2" } }
+                strong { class: "me-auto", "Run options (advanced)" }
+                if collapsed() {
+                    span { class: "badge text-bg-secondary", "{specs.len()} option(s)" }
+                }
+            }
+            if !collapsed() {
+              div {
+                class: "card-body",
+                for spec in specs {
+                    {
+                        let checked = switches
+                            .read()
+                            .get(spec.name)
+                            .copied()
+                            .unwrap_or_else(|| set.iter().any(|name| name == spec.name));
+                        rsx! {
+                            div {
+                                key: "{spec.name}",
+                                class: "form-check",
+                                input {
+                                    class: "form-check-input",
+                                    r#type: "checkbox",
+                                    id: "run-switch-{spec.name}",
+                                    checked,
+                                    onchange: move |event| {
+                                        switches.write().insert(spec.name, event.checked());
+                                    },
+                                }
+                                label {
+                                    class: "form-check-label",
+                                    r#for: "run-switch-{spec.name}",
+                                    "{spec.description}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             }
         }
     }

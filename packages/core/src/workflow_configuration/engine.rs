@@ -232,13 +232,21 @@ mod tests {
     }
 }
 
+/// One engine parameter of a workflow, see [`super::engine_parameters`] for what is allowed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EngineParameter {
+    /// Name without leading dashes
     name: String,
+    /// Value, empty for a switch
     value: String,
 }
 
 impl EngineParameter {
+    /// A parameter.
+    ///
+    /// # Arguments
+    /// * `name` - name without leading dashes
+    /// * `value` - the value, empty for a switch
     pub fn new(name: String, value: String) -> Self {
         Self { name, value }
     }

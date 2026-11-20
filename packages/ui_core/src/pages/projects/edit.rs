@@ -1,7 +1,11 @@
 use std::{collections::VecDeque, future::Future, path::PathBuf, rc::Rc};
 
 use dioxus::prelude::*;
-use macworp_core::{entities::Role, requests::ParameterValue, responses::ProjectResponse};
+use macworp_core::{
+    entities::Role,
+    requests::{EngineSwitch, ParameterValue, WorkflowStartRequest},
+    responses::ProjectResponse,
+};
 use thiserror::Error;
 
 use crate::{
@@ -107,9 +111,10 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
     let mut run_refresh = use_signal(|| 0_u32);
 
     let mut start_run = use_action(
-        move |(workflow_id, parameters, resume_from_run): (
+        move |(workflow_id, parameters, engine_switches, resume_from_run): (
             i64,
             Vec<ParameterValue>,
+            Vec<EngineSwitch>,
             Option<i64>,
         )| async move {
             let jwt = storage
@@ -125,10 +130,13 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                 .start(
                     &jwt,
                     props.id,
-                    workflow_id,
-                    String::new(),
-                    parameters,
-                    resume_from_run,
+                    WorkflowStartRequest {
+                        workflow_id,
+                        comment: String::new(),
+                        parameters,
+                        engine_switches,
+                        resume_from_run,
+                    },
                 )
                 .await
                 .map_err(Error::<T::Storage>::StartRun)?;
@@ -314,10 +322,10 @@ pub fn Edit<T: IsProjectEdit + 'static>(props: EditProps) -> Element {
                 project_id: props.id,
                 is_open: is_workflow_start_dialog_open,
                 cancel_callback: Callback::new(move |_| is_workflow_start_dialog_open.set(false)),
-                start_callback: Callback::new(move |(workflow_id, parameters): (i64, Vec<ParameterValue>)| {
+                start_callback: Callback::new(move |(workflow_id, parameters, engine_switches): (i64, Vec<ParameterValue>, Vec<EngineSwitch>)| {
                     is_workflow_start_dialog_open.set(false);
                     let resume_from_run = resume_run.peek().as_ref().map(|run| run.id);
-                    start_run.call((workflow_id, parameters, resume_from_run));
+                    start_run.call((workflow_id, parameters, engine_switches, resume_from_run));
                 }),
                 resume: resume_run
             }

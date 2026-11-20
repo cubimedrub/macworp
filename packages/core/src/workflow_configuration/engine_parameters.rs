@@ -121,6 +121,12 @@ pub struct ParameterSpec {
     pub rule: ValueRule,
     /// One line for the editor: what the parameter does
     pub description: &'static str,
+    /// Whether users may switch it on or off when starting a run, not only the people who edit
+    /// the workflow. Only for switches that change what is recorded, not how the workflow
+    /// behaves (trace, report, timeline, task graph, printed commands). Everything that changes
+    /// behaviour or results (profiles, error handling, retries, resources) stays with the
+    /// workflow's editors.
+    pub user_switchable: bool,
 }
 
 impl ParameterSpec {
@@ -136,6 +142,18 @@ const fn spec(name: &'static str, rule: ValueRule, description: &'static str) ->
         name,
         rule,
         description,
+        user_switchable: false,
+    }
+}
+
+/// A switch that users may turn on or off when starting a run, see
+/// [`ParameterSpec::user_switchable`].
+const fn user_switch(name: &'static str, description: &'static str) -> ParameterSpec {
+    ParameterSpec {
+        name,
+        rule: ValueRule::Flag,
+        description,
+        user_switchable: true,
     }
 }
 
@@ -156,22 +174,10 @@ const NEXTFLOW: &[ParameterSpec] = &[
         ValueRule::OneOf(&["true", "false"]),
         "Colourful, updating console output (`false` gives plain log lines)",
     ),
-    spec(
-        "with-trace",
-        ValueRule::Flag,
-        "Write a trace file of all tasks",
-    ),
-    spec(
-        "with-report",
-        ValueRule::Flag,
-        "Write an HTML execution report",
-    ),
-    spec(
-        "with-timeline",
-        ValueRule::Flag,
-        "Write an HTML timeline of the tasks",
-    ),
-    spec("with-dag", ValueRule::Flag, "Write the task graph"),
+    user_switch("with-trace", "Write a trace file of all tasks"),
+    user_switch("with-report", "Write an HTML execution report"),
+    user_switch("with-timeline", "Write an HTML timeline of the tasks"),
+    user_switch("with-dag", "Write the task graph"),
     spec(
         "queue-size",
         ValueRule::Integer { min: 1 },
@@ -222,11 +228,7 @@ const SNAKEMAKE: &[ParameterSpec] = &[
         ValueRule::Integer { min: 0 },
         "How often a failed job is tried again",
     ),
-    spec(
-        "printshellcmds",
-        ValueRule::Flag,
-        "Print the shell commands of the jobs",
-    ),
+    user_switch("printshellcmds", "Print the shell commands of the jobs"),
 ];
 
 const CWL: &[ParameterSpec] = &[
@@ -297,6 +299,9 @@ pub enum Error {
     /// The same parameter twice.
     #[error("Engine parameter `{0}` is set twice")]
     Duplicate(String),
+    /// A user tried to switch a parameter that only the workflow's editors may set.
+    #[error("Engine parameter `{0}` can only be changed by those who edit the workflow")]
+    NotUserSwitchable(String),
 }
 
 impl Engine {
@@ -309,6 +314,13 @@ impl Engine {
             Engine::Cwl => CWL,
             Engine::Container => &[],
         }
+    }
+
+    /// The switches users may turn on or off when starting a run ([`ParameterSpec::user_switchable`]).
+    pub fn user_switches(&self) -> impl Iterator<Item = &'static ParameterSpec> {
+        self.parameter_specs()
+            .iter()
+            .filter(|spec| spec.user_switchable)
     }
 
     /// Checks one engine parameter against [`Self::parameter_specs`].
@@ -469,5 +481,66 @@ mod tests {
             Engine::Container.check_parameter("x", ""),
             Err(Error::Unsupported("Container".into()))
         );
+    }
+
+    /// Users can only switch the observability switches; everything else is refused.
+    #[test]
+    fn users_switch_only_observability_parameters() {
+        use crate::workflow_configuration::{WorkflowConfiguration, engine::EngineParameter};
+        let mut configuration = WorkflowConfiguration::default();
+        *configuration.engine_parameters_mut() = vec![
+            EngineParameter::new("profile".into(), "test".into()),
+            EngineParameter::new("with-trace".into(), String::new()),
+        ];
+        let switch = |name: &str, enabled: bool| vec![(name.to_string(), enabled)];
+        let names = |configuration: &WorkflowConfiguration| {
+            configuration
+                .engine_parameters()
+                .iter()
+                .map(|parameter| parameter.name().to_string())
+                .collect::<Vec<_>>()
+        };
+
+        let mut changed = configuration.clone();
+        changed
+            .apply_engine_switches(&[("with-dag".into(), true), ("with-trace".into(), false)])
+            .unwrap();
+        assert_eq!(names(&changed), ["profile", "with-dag"]);
+        // Switching on what is on, and off what is off, changes nothing
+        changed
+            .apply_engine_switches(&[("with-dag".into(), true), ("with-report".into(), false)])
+            .unwrap();
+        assert_eq!(names(&changed), ["profile", "with-dag"]);
+
+        for name in [
+            "profile",
+            "queue-size",
+            "process.cpus",
+            "resume",
+            "with-weblog",
+        ] {
+            assert_eq!(
+                configuration
+                    .clone()
+                    .apply_engine_switches(&switch(name, true)),
+                Err(Error::NotUserSwitchable(name.into())),
+                "{name}"
+            );
+        }
+        let twice = [switch("with-dag", true), switch("with-dag", false)].concat();
+        assert_eq!(
+            configuration.clone().apply_engine_switches(&twice),
+            Err(Error::Duplicate("with-dag".into()))
+        );
+        // Only the three engines' observability switches are open to users
+        assert_eq!(
+            Engine::Nextflow
+                .user_switches()
+                .map(|s| s.name)
+                .collect::<Vec<_>>(),
+            ["with-trace", "with-report", "with-timeline", "with-dag"]
+        );
+        assert_eq!(Engine::Cwl.user_switches().count(), 0);
+        assert!(Engine::Snakemake.user_switches().all(|spec| spec.is_flag()));
     }
 }

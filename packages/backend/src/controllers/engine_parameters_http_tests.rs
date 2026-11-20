@@ -73,3 +73,33 @@ async fn starting_checks_engine_parameters() {
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
 }
+
+/// Users can switch trace, report, timeline and task graph at start; everything that changes
+/// the workflow's behaviour (profile, error handling, resume, ...) is refused with 400.
+#[tokio::test]
+async fn starting_applies_only_observability_switches() {
+    let app = TestApp::new_with(|c| *c.fixed_unavailable_engines_mut() = Some(Vec::new())).await;
+    let alice = app.user("alice").await;
+    let project = app.project(&alice, "p").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let mut active = workflow.clone().into_active_model();
+    active.configuration = Set(configuration(&[("profile", "test"), ("with-trace", "")]));
+    active.update(app.state.db()).await.unwrap();
+
+    let start = |name: &str, enabled: bool| {
+        let body = json!({
+            "workflow_id": workflow.id,
+            "comment": "",
+            "parameters": [],
+            "engine_switches": [{"name": name, "enabled": enabled}],
+        });
+        let (app, alice, uri) = (&app, &alice, format!("/runs/start/{}", project.id));
+        async move { app.post(alice, &uri, Some(body)).await.0 }
+    };
+    for name in ["profile", "queue-size", "resume", "with-weblog"] {
+        assert_eq!(start(name, true).await, StatusCode::BAD_REQUEST, "{name}");
+    }
+    // Passes the engine parameter checks (a later step may still refuse the run)
+    assert_ne!(start("with-dag", true).await, StatusCode::BAD_REQUEST);
+    assert_ne!(start("with-trace", false).await, StatusCode::BAD_REQUEST);
+}

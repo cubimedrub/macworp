@@ -303,6 +303,14 @@ impl RunsController {
         configuration
             .validate_engine_parameters()
             .map_err(macworp_core::workflow_configuration::render::Error::from)?;
+        let switches: Vec<(String, bool)> = payload
+            .engine_switches
+            .iter()
+            .map(|switch| (switch.name.clone(), switch.enabled))
+            .collect();
+        configuration
+            .apply_engine_switches(&switches)
+            .map_err(macworp_core::workflow_configuration::render::Error::from)?;
         apply_values(&mut configuration, &payload.parameters)?;
         if resumed.is_some() {
             configuration.enable_resume();

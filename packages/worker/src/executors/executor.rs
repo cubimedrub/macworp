@@ -11,6 +11,9 @@ pub enum Error {
     Render(#[from] RenderError),
     #[error("Workflow source is not supported by this executor: {0}")]
     UnsupportedSource(String),
+    /// The pinned engine version is not a valid image tag
+    #[error("Invalid engine version: {0}")]
+    InvalidEngineVersion(String),
     /// A file the engine needs could not be written (for example the Snakemake configuration)
     #[error("Cannot write {0}: {1}")]
     Io(&'static str, std::io::Error),

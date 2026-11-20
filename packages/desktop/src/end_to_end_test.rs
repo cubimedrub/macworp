@@ -10,7 +10,7 @@
 //! while the test changes it in between, to see what a run observes without and with a snapshot.
 //!
 //! Needs podman or docker, so the tests are ignored by default. Nextflow also needs the
-//! `macworp-nextflow:latest` image (see `docker/engine.dockerfile` (target `nextflow`)), the Container test
+//! engine image of the default version (pulled from the registry or built from `docker/engine.dockerfile` (target `nextflow`)), the Container test
 //! builds its image itself (pulls `alpine:3`). A test skips with a message when the selected
 //! runtime cannot run its engine.
 //!
@@ -42,7 +42,7 @@ use macworp_core::{
 use macworp_ui_core::client::Client;
 use macworp_worker::{
     container_runtime::{ContainerRuntime, RuntimePreference},
-    executors::{cwl, nextflow, snakemake},
+    executors::{cwl, engine_image, nextflow, snakemake},
 };
 use serde_json::{json, Value};
 
@@ -560,34 +560,58 @@ async fn image_exists(runtime: &dyn ContainerRuntime, image: &str) -> bool {
 
 /// Makes sure the image of the engine exists. `false` (with a message) means skip the test.
 async fn prepare_image(runtime: &dyn ContainerRuntime, engine: &Engine) -> bool {
+    prepare_image_version(runtime, engine, None).await
+}
+
+/// The engine image `version` of `image` (the default image's repository with that tag),
+/// the image itself without a version.
+///
+/// # Arguments
+/// * `image` - the default image of the engine
+/// * `version` - the pinned engine version, if any
+fn pinned(image: String, version: Option<&str>) -> String {
+    engine_image(&image, version).expect("catalog versions are valid tags")
+}
+
+/// [`prepare_image`] for the image of a pinned engine version.
+///
+/// # Arguments
+/// * `runtime` - runtime the test runs on
+/// * `engine` - the engine under test
+/// * `version` - the pinned engine version, `None` for the default image
+async fn prepare_image_version(
+    runtime: &dyn ContainerRuntime,
+    engine: &Engine,
+    version: Option<&str>,
+) -> bool {
     match engine {
         Engine::Nextflow => {
-            let image = nextflow::image();
+            let image = pinned(nextflow::image(), version);
             if image_exists(runtime, &image).await {
                 return true;
             }
             eprintln!(
-                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target nextflow -t macworp-nextflow:latest docker`)"
+                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target nextflow -t {image} docker`, or pull it)"
             );
             false
         }
         Engine::Snakemake => {
-            let image = snakemake::image();
+            let image = pinned(snakemake::image(), version);
             if image_exists(runtime, &image).await {
                 return true;
             }
             eprintln!(
-                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target snakemake -t macworp-snakemake:latest docker`)"
+                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target snakemake -t {image} docker`, or pull it)"
             );
             false
         }
         Engine::Cwl => {
-            let image = cwl::image();
+            let image = pinned(cwl::image(), version);
             if image_exists(runtime, &image).await {
                 return true;
             }
             eprintln!(
-                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target cwl -t macworp-cwl:latest docker`)"
+                "SKIPPED, image {image} not found (build it with `docker build -f docker/engine.dockerfile --target cwl -t {image} docker`, or pull it)"
             );
             false
         }
@@ -622,10 +646,19 @@ async fn prepare_image(runtime: &dyn ContainerRuntime, engine: &Engine) -> bool 
 /// Runs the workflow of `engine` with all parameter types and checks what it wrote. The same
 /// parameters, project and expectations for every engine.
 async fn run_scenario(engine: Engine) {
+    run_scenario_version(engine, None).await;
+}
+
+/// [`run_scenario`] on a pinned engine version.
+///
+/// # Arguments
+/// * `engine` - the engine under test
+/// * `version` - the engine version the workflow pins, `None` for the default
+async fn run_scenario_version(engine: Engine, version: Option<&str>) {
     let Some((runtime, unavailable_engines)) = require_runtime(&engine).await else {
         return;
     };
-    if !prepare_image(runtime.as_ref(), &engine).await {
+    if !prepare_image_version(runtime.as_ref(), &engine, version).await {
         return;
     }
 
@@ -633,11 +666,10 @@ async fn run_scenario(engine: Engine) {
     seed_project(&app.project_dir);
     let token = format!("e2e-{}", uuid::Uuid::now_v7());
 
+    let mut configuration = workflow_configuration(&engine, &app.workflow_dir);
+    *configuration.engine_version_mut() = version.map(String::from);
     let run = app
-        .start_run(
-            workflow_configuration(&engine, &app.workflow_dir),
-            overrides(&token),
-        )
+        .start_run(configuration, overrides(&token))
         .await
         .unwrap();
     let (run, log_text) = app.finished_run(run.id).await;
@@ -697,6 +729,44 @@ async fn runs_container_workflow_with_all_parameter_types() {
     run_scenario(Engine::Container).await;
 }
 
+/// The scenario on every version of the engine catalog (Nextflow, Snakemake), each skipped when
+/// its image is missing (`make engine-images`).
+///
+/// # Arguments
+/// * `engine` - an engine with a catalog
+async fn run_scenario_all_versions(engine: Engine) {
+    for version in engine
+        .catalog()
+        .expect("engine has versions")
+        .versions
+        .clone()
+    {
+        eprintln!("--- {engine} {version}");
+        run_scenario_version(engine.clone(), Some(&version)).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs docker and the macworp-snakemake images of all versions"]
+async fn runs_snakemake_workflow_on_all_versions() {
+    run_scenario_all_versions(Engine::Snakemake).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a container runtime and the macworp-nextflow images of all versions"]
+async fn runs_nextflow_workflow_on_all_versions() {
+    run_scenario_all_versions(Engine::Nextflow).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a container runtime, the macworp-cwl images of all versions and network access to pull debian"]
+async fn runs_cwl_workflow_on_all_versions() {
+    for version in Engine::Cwl.catalog().unwrap().versions.clone() {
+        eprintln!("--- Cwl {version}");
+        run_cwl(Some(&version)).await;
+    }
+}
+
 /// Podman cannot run Snakemake, the backend answers 409 instead of queueing a run that fails
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs a container runtime"]
@@ -739,11 +809,19 @@ async fn snakemake_is_rejected_when_runtime_cannot_run_it() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs a container runtime, the macworp-cwl image and network access to pull debian"]
 async fn runs_cwl_workflow() {
+    run_cwl(None).await;
+}
+
+/// [`runs_cwl_workflow`] on a pinned Toil version.
+///
+/// # Arguments
+/// * `version` - the engine version the workflow pins, `None` for the default
+async fn run_cwl(version: Option<&str>) {
     let engine = Engine::Cwl;
     let Some((runtime, unavailable_engines)) = require_runtime(&engine).await else {
         return;
     };
-    if !prepare_image(runtime.as_ref(), &engine).await {
+    if !prepare_image_version(runtime.as_ref(), &engine, version).await {
         return;
     }
     let app = TestApp::start(runtime, unavailable_engines).await;
@@ -756,7 +834,7 @@ async fn runs_cwl_workflow() {
     )
     .unwrap();
     write(&app.project_dir, "data/in.txt", "file content\n");
-    let configuration: WorkflowConfiguration = serde_json::from_value(json!({
+    let mut configuration: WorkflowConfiguration = serde_json::from_value(json!({
         "engine": "Cwl",
         "engine_parameters": [],
         "source": {"Local": {"location": app.workflow_dir, "script": "tool.cwl"}},
@@ -768,6 +846,7 @@ async fn runs_cwl_workflow() {
         "dynamic_parameters": [],
     }))
     .unwrap();
+    *configuration.engine_version_mut() = version.map(String::from);
     let run = app.start_run(configuration, Vec::new()).await.unwrap();
     let (run, log_text) = app.finished_run(run.id).await;
     let project_dir = app.project_dir.clone();
@@ -783,7 +862,11 @@ async fn runs_cwl_workflow() {
         read(&project_dir, "cwl_result.txt"),
         "hello cwl\n3\nfile content\n"
     );
-    // The step went through the shared step cache that a later run reuses
+    // The step went through the shared step cache that a later run reuses (Toil 7 has none)
     let cached = std::fs::read_dir(&cwl_cache).unwrap().count();
-    assert!(cached > 0, "step cache is empty: {cwl_cache:?}");
+    if cwl::CwlExecutor::supports_step_cache(version) {
+        assert!(cached > 0, "step cache is empty: {cwl_cache:?}");
+    } else {
+        assert_eq!(cached, 0, "Toil 7 filled the step cache: {cwl_cache:?}");
+    }
 }

@@ -38,7 +38,7 @@ workflow {
     }
 
     def lines = []
-    for (prefix in ['fixed', 'dyn']) {
+    ['fixed', 'dyn'].each { prefix ->
         def text = params["${prefix}_text"]
         def multiline = params["${prefix}_multiline"]
         def integer = params["${prefix}_integer"]

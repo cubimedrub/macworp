@@ -6,24 +6,19 @@ use tokio::sync::{mpsc, watch};
 use super::containerized_execution::path_arg;
 use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
-    run_spec, worker_user_args,
+    default_engine_image, engine_image, run_spec, worker_user_args,
 };
 use crate::container_runtime::{BoxFuture, RuntimeKind};
 
-/// Engine image used unless configured otherwise, see the engine-in-container ADR.
-pub const DEFAULT_IMAGE: &str = "macworp-snakemake:latest";
-
-/// Environment variable that replaces [`DEFAULT_IMAGE`], for example to run an older Snakemake
+/// Environment variable that replaces the default engine image as a whole, for example to run an older Snakemake
 /// version (an image built from `docker/engine.dockerfile` with another version argument).
 pub const IMAGE_VARIABLE: &str = "MACWORP_SNAKEMAKE_IMAGE";
 
-/// The engine image to run: the value of [`IMAGE_VARIABLE`] if set and not empty, else
-/// [`DEFAULT_IMAGE`].
+/// The engine image to run unless the workflow pins a version, see [`default_engine_image`]:
+/// the value of [`IMAGE_VARIABLE`] if set and not empty, else the default of the engine catalog
+/// on the configured registry.
 pub fn image() -> String {
-    std::env::var(IMAGE_VARIABLE)
-        .ok()
-        .filter(|image| !image.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_IMAGE.to_string())
+    default_engine_image(&Engine::Snakemake, IMAGE_VARIABLE)
 }
 
 /// Environment variable naming an AppArmor profile for the engine container (Docker on Linux),
@@ -80,6 +75,45 @@ const PODMAN_APPTAINER_RUN_ARGS: [&str; 5] = [
     "--security-opt",
     "unmask=ALL",
 ];
+
+/// The command line dialect of a Snakemake major version. The images of versions 7 to 9 differ in
+/// how software deployment and progress reporting are switched on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Generation {
+    /// Snakemake 7 (and older): `--use-singularity` with `--singularity-prefix` /
+    /// `--singularity-args` (Apptainer provides the `singularity` command), progress through
+    /// `--wms-monitor`
+    V7,
+    /// Snakemake 8: `--software-deployment-method apptainer` with `--apptainer-prefix` /
+    /// `--apptainer-args`, progress through `--wms-monitor`
+    V8,
+    /// Snakemake 9: like 8, progress through the Panoptes logger plugin (`--logger panoptes`)
+    /// because `--wms-monitor` was removed
+    V9,
+}
+
+impl Generation {
+    /// The dialect of the engine a job runs on: the version pinned in the workflow, else the
+    /// default of the engine catalog (also when `MACWORP_SNAKEMAKE_IMAGE` replaces the image, the
+    /// executor cannot see what is in it). A version it cannot read is treated as the newest.
+    ///
+    /// # Arguments
+    /// * `pinned` - the engine version pinned in the workflow configuration, if any
+    pub fn of(pinned: Option<&str>) -> Self {
+        let default = Engine::Snakemake
+            .catalog()
+            .map(|catalog| catalog.default.as_str());
+        let major = pinned
+            .or(default)
+            .and_then(|version| version.split('.').next())
+            .and_then(|major| major.parse::<u32>().ok());
+        match major {
+            Some(major) if major <= 7 => Self::V7,
+            Some(8) => Self::V8,
+            _ => Self::V9,
+        }
+    }
+}
 
 /// Runs Snakemake inside an engine image through the container runtime.
 #[derive(Debug, Clone)]
@@ -166,6 +200,7 @@ impl SnakemakeExecutor {
         parameters: Option<&ParameterFile>,
     ) -> Result<LaunchSpec, ExecutorError> {
         let config = &job.configuration;
+        let generation = Generation::of(config.engine_version());
 
         let mut read_only: Vec<&std::path::Path> = Vec::new();
         read_only.extend(job.reference_dir.as_deref());
@@ -207,9 +242,18 @@ impl SnakemakeExecutor {
             .iter()
             .any(|p| DEPLOYMENT_PARAMETERS.contains(&p.name()))
         {
-            command.extend(["--software-deployment-method".into(), "apptainer".into()]);
+            match generation {
+                Generation::V7 => command.push("--use-singularity".into()),
+                Generation::V8 | Generation::V9 => {
+                    command.extend(["--software-deployment-method".into(), "apptainer".into()]);
+                }
+            }
+            let (prefix_option, arguments_option) = match generation {
+                Generation::V7 => ("--singularity-prefix", "--singularity-args"),
+                Generation::V8 | Generation::V9 => ("--apptainer-prefix", "--apptainer-args"),
+            };
             if let Some(cache) = self.cache_directory(job) {
-                command.extend(["--apptainer-prefix".into(), path_arg(cache)]);
+                command.extend([prefix_option.into(), path_arg(cache)]);
             }
             // Apptainer binds the working directory, home and /tmp on its own, the rest of the
             // read-only inputs (workflow files, reference data) it only sees when asked
@@ -218,22 +262,28 @@ impl SnakemakeExecutor {
                     .iter()
                     .map(|dir| format!("-B {0}:{0}:ro", path_arg(dir)))
                     .collect();
-                command.extend(["--apptainer-args".into(), binds.join(" ")]);
+                command.extend([arguments_option.into(), binds.join(" ")]);
             }
         }
         if let Some(progress) = &job.progress {
-            command.extend([
-                "--logger".into(),
-                "panoptes".into(),
-                "--logger-panoptes-address".into(),
-                format!("{}/snakemake", progress.base_url),
-            ]);
+            let address = format!("{}/snakemake", progress.base_url);
+            match generation {
+                Generation::V7 | Generation::V8 => {
+                    command.extend(["--wms-monitor".into(), address]);
+                }
+                Generation::V9 => command.extend([
+                    "--logger".into(),
+                    "panoptes".into(),
+                    "--logger-panoptes-address".into(),
+                    address,
+                ]),
+            }
         }
         command.extend(render_args(config, job.reference_dir.as_deref())?);
 
         Ok(containerized_spec(
             &self.runtime_binary,
-            &self.image,
+            &engine_image(&self.image, job.configuration.engine_version())?,
             job,
             &read_only,
             &self.run_args(job),
@@ -397,6 +447,70 @@ mod tests {
             "http://host.docker.internal:4000/tok/snakemake"
         );
         assert!(args.contains(&"--add-host".to_string()));
+    }
+
+    /// Arguments of a job that pins `version`, with a progress endpoint and a shared image cache.
+    ///
+    /// # Arguments
+    /// * `version` - the pinned Snakemake version, `None` for the catalog default
+    fn args_for_version(version: Option<&str>) -> Vec<String> {
+        let mut job = job(local(), vec![]);
+        *job.configuration.engine_version_mut() = version.map(String::from);
+        job.apptainer_cache = Some("/cache/apptainer".into());
+        job.progress = Some(ProgressEndpoint {
+            base_url: "http://host:4000/tok".into(),
+            run_args: vec![],
+        });
+        executor().launch_spec(&job).unwrap().args
+    }
+
+    /// The dialect follows the major version, an unpinned job the catalog default.
+    #[test]
+    fn generation_follows_the_major_version() {
+        assert_eq!(Generation::of(Some("7.32.4")), Generation::V7);
+        assert_eq!(Generation::of(Some("8.30.0")), Generation::V8);
+        assert_eq!(Generation::of(Some("9.27.2")), Generation::V9);
+        assert_eq!(Generation::of(Some("10.0.0")), Generation::V9);
+        assert_eq!(Generation::of(Some("nonsense")), Generation::V9);
+        let default = Engine::Snakemake.catalog().unwrap().default.clone();
+        assert_eq!(Generation::of(None), Generation::of(Some(&default)));
+    }
+
+    /// Snakemake 9 reports progress through the Panoptes logger and uses the Apptainer options.
+    #[test]
+    fn version_9_uses_logger_and_apptainer_options() {
+        let args = args_for_version(Some("9.27.2"));
+        assert!(args.contains(&"--logger".to_string()));
+        assert!(!args.contains(&"--wms-monitor".to_string()));
+        assert!(args.contains(&"--software-deployment-method".to_string()));
+        assert!(args.contains(&"--apptainer-prefix".to_string()));
+        assert!(args.contains(&"--apptainer-args".to_string()));
+    }
+
+    /// Snakemake 8 keeps the Apptainer options but reports progress through `--wms-monitor`.
+    #[test]
+    fn version_8_uses_wms_monitor_and_apptainer_options() {
+        let args = args_for_version(Some("8.30.0"));
+        let monitor = args.iter().position(|a| a == "--wms-monitor").unwrap();
+        assert_eq!(args[monitor + 1], "http://host:4000/tok/snakemake");
+        assert!(!args.contains(&"--logger".to_string()));
+        assert!(args.contains(&"--software-deployment-method".to_string()));
+        assert!(args.contains(&"--apptainer-prefix".to_string()));
+    }
+
+    /// Snakemake 7 only knows the Singularity spelling of the options.
+    #[test]
+    fn version_7_uses_singularity_options() {
+        let args = args_for_version(Some("7.32.4"));
+        assert!(args.contains(&"--wms-monitor".to_string()));
+        assert!(args.contains(&"--use-singularity".to_string()));
+        assert!(args.contains(&"--singularity-prefix".to_string()));
+        assert!(args.contains(&"--singularity-args".to_string()));
+        assert!(
+            !args
+                .iter()
+                .any(|a| a.contains("apptainer-") || a == "--software-deployment-method")
+        );
     }
 
     #[test]

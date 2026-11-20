@@ -775,6 +775,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                     }
                                 }
                                 *configuration.engine_mut() = engine;
+                                // Versions belong to one engine
+                                *configuration.engine_version_mut() = None;
                             }
                         },
                         for engine in Engine::iter() {
@@ -829,6 +831,48 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         div {
                             class: "form-text",
                             "Failed and cancelled runs keep their work files, so only those can be resumed."
+                        }
+                    }
+                }
+                // Engines without images of their own (`Container`) have no catalog and no versions
+                if let Some(catalog) = workflow_integration.read().inner().configuration.engine().catalog() {
+                    div {
+                        class: "mb-3",
+                        div {
+                            class: "input-group",
+                            span {
+                                class: "input-group-text",
+                                "Engine version"
+                            }
+                            select {
+                                class: "form-select",
+                                id: "workflow-integration-configuration-engine-version",
+                                aria_label: "Engine version",
+                                onchange: move |event| {
+                                    let value = event.value();
+                                    *workflow_integration
+                                        .write()
+                                        .inner_mut()
+                                        .configuration
+                                        .engine_version_mut() = (!value.is_empty()).then_some(value);
+                                },
+                                option {
+                                    value: "",
+                                    selected: workflow_integration.read().inner().configuration.engine_version().is_none(),
+                                    "Default ({catalog.default})"
+                                }
+                                for version in catalog.versions.iter() {
+                                    option {
+                                        value: "{version}",
+                                        selected: workflow_integration.read().inner().configuration.engine_version() == Some(version.as_str()),
+                                        "{version}"
+                                    }
+                                }
+                            }
+                        }
+                        div {
+                            class: "form-text",
+                            "Version of the engine the workflow runs on. The default may change with updates; pin a version to keep runs reproducible."
                         }
                     }
                 }

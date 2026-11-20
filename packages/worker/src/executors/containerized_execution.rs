@@ -10,6 +10,69 @@ pub(super) fn path_arg(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// Registry (and namespace) the prebuilt engine images are pulled from unless
+/// [`REGISTRY_VARIABLE`] says otherwise.
+pub const DEFAULT_REGISTRY: &str = "ghcr.io/cubimedrub";
+
+/// Environment variable that replaces [`DEFAULT_REGISTRY`], for a mirror or a private registry.
+/// An empty value leaves the image name without a registry, which finds locally built images
+/// (`macworp-nextflow:25.04.6`).
+pub const REGISTRY_VARIABLE: &str = "MACWORP_ENGINE_REGISTRY";
+
+/// The image `engine` runs on unless its workflow pins a version: the value of `variable` if
+/// set and not empty, else `<registry>/macworp-<engine>:<default version>` from the engine
+/// catalog ([`macworp_core::workflow_configuration::engine::Engine::catalog`]).
+///
+/// # Arguments
+/// * `engine` - an engine with prebuilt images (not `Container`)
+/// * `variable` - name of the environment variable that replaces the image as a whole
+pub fn default_engine_image(
+    engine: &macworp_core::workflow_configuration::engine::Engine,
+    variable: &str,
+) -> String {
+    if let Some(image) = std::env::var(variable)
+        .ok()
+        .filter(|image| !image.trim().is_empty())
+    {
+        return image;
+    }
+    let catalog = engine
+        .catalog()
+        .expect("engines with an executor image have a catalog");
+    let repository = engine.image_repository().expect("same as the catalog");
+    let registry = std::env::var(REGISTRY_VARIABLE).unwrap_or_else(|_| DEFAULT_REGISTRY.into());
+    let registry = registry.trim().trim_end_matches('/');
+    if registry.is_empty() {
+        format!("{repository}:{}", catalog.default)
+    } else {
+        format!("{registry}/{repository}:{}", catalog.default)
+    }
+}
+
+/// The engine image for a job: `image` with its tag replaced by the engine version pinned in
+/// the workflow (`macworp-nextflow:latest` + `25.04.6` = `macworp-nextflow:25.04.6`), `image`
+/// itself when the workflow pins nothing. Fails for a version that is not a valid image tag, so
+/// nothing but a tag reaches the runtime's command line.
+///
+/// # Arguments
+/// * `image` - the executor's default engine image
+/// * `version` - the version pinned in the workflow configuration, if any
+pub fn engine_image(image: &str, version: Option<&str>) -> Result<String, ExecutorError> {
+    let Some(version) = version else {
+        return Ok(image.to_string());
+    };
+    macworp_core::workflow_configuration::validate_engine_version(version)
+        .map_err(ExecutorError::InvalidEngineVersion)?;
+    // A colon after the last slash starts the tag (an earlier one belongs to a registry port);
+    // a digest (`@sha256:...`) is dropped with it
+    let name = image.split('@').next().unwrap_or(image);
+    let name = match name.rfind(':') {
+        Some(colon) if !name[colon..].contains('/') => &name[..colon],
+        _ => name,
+    };
+    Ok(format!("{name}:{version}"))
+}
+
 /// `<uid>:<gid>` of the worker process, `None` where there is no such thing (not a Unix host).
 pub fn worker_user() -> Option<String> {
     #[cfg(unix)]
@@ -182,5 +245,75 @@ mod tests {
             .chain(["img".to_string()])
             .collect();
         assert_eq!(without_worker_user(args), ["run", "img"]);
+    }
+}
+
+#[cfg(test)]
+/// Tests of [`engine_image`].
+mod engine_image_tests {
+    use super::*;
+
+    /// Without a pinned version the default image is used unchanged.
+    #[test]
+    fn unpinned_keeps_the_default() {
+        assert_eq!(
+            engine_image("macworp-nextflow:latest", None).unwrap(),
+            "macworp-nextflow:latest"
+        );
+    }
+
+    /// A pinned version replaces the tag (or digest) and keeps registry ports.
+    #[test]
+    fn pinned_replaces_the_tag() {
+        for (image, expected) in [
+            ("macworp-nextflow:latest", "macworp-nextflow:25.04.6"),
+            ("macworp-nextflow", "macworp-nextflow:25.04.6"),
+            (
+                "registry:5000/macworp-nextflow",
+                "registry:5000/macworp-nextflow:25.04.6",
+            ),
+            (
+                "registry:5000/macworp-nextflow:old",
+                "registry:5000/macworp-nextflow:25.04.6",
+            ),
+            ("macworp-nextflow@sha256:abc", "macworp-nextflow:25.04.6"),
+        ] {
+            assert_eq!(
+                engine_image(image, Some("25.04.6")).unwrap(),
+                expected,
+                "{image}"
+            );
+        }
+    }
+
+    /// A version that could be an option is rejected.
+    #[test]
+    fn invalid_version_is_rejected() {
+        assert!(matches!(
+            engine_image("macworp-nextflow:latest", Some("--privileged")),
+            Err(ExecutorError::InvalidEngineVersion(_))
+        ));
+    }
+}
+
+#[cfg(test)]
+/// Tests of [`default_engine_image`].
+mod default_engine_image_tests {
+    use super::*;
+    use macworp_core::workflow_configuration::engine::Engine;
+
+    /// Without overrides the image is the catalog default on the default registry.
+    #[test]
+    fn default_is_registry_repository_and_catalog_version() {
+        let image = default_engine_image(&Engine::Nextflow, "MACWORP_TEST_VARIABLE_NOT_SET");
+        let version = &Engine::Nextflow.catalog().unwrap().default;
+        // The registry variable may be set on a developer machine
+        if std::env::var(REGISTRY_VARIABLE).is_err() {
+            assert_eq!(
+                image,
+                format!("{DEFAULT_REGISTRY}/macworp-nextflow:{version}")
+            );
+        }
+        assert!(image.ends_with(&format!("macworp-nextflow:{version}")));
     }
 }

@@ -240,17 +240,59 @@ async fn snakemake_create(
     Ok(Json(json!({ "id": run.run_id })))
 }
 
+/// Form body of a Snakemake 8/9 status update: `msg` holds the JSON message as text.
 #[derive(Deserialize)]
 struct SnakemakeForm {
     msg: String,
 }
 
+/// Status update of Snakemake. Versions 8 and 9 post a form (`msg=<json>`), version 7 a JSON body
+/// (`{"msg": "<json>", ...}`) without a content type, so the body decides: a form content type is
+/// read as a form, anything else as JSON first and as a form second. Unreadable bodies are
+/// answered with success like every other event, they must never fail the workflow.
 async fn snakemake_event(
     State(registry): State<Registry>,
     Path(token): Path<String>,
-    Form(form): Form<SnakemakeForm>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
 ) -> StatusCode {
-    handle_event(&registry, &token, &form.msg)
+    use axum::extract::FromRequest;
+    const FORM: &str = "application/x-www-form-urlencoded";
+    let is_form = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with(FORM));
+    let from_json = || match serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()?
+        .get("msg")?
+    {
+        serde_json::Value::String(text) => Some(text.clone()),
+        other => Some(other.to_string()),
+    };
+    let from_form = async || {
+        // `Form` reads the query of a GET request, so the rebuilt request is a POST
+        let request = axum::extract::Request::builder()
+            .method(axum::http::Method::POST)
+            .header(axum::http::header::CONTENT_TYPE, FORM)
+            .body(axum::body::Body::from(body.clone()))
+            .ok()?;
+        Form::<SnakemakeForm>::from_request(request, &())
+            .await
+            .ok()
+            .map(|Form(form)| form.msg)
+    };
+    let message = if is_form {
+        from_form().await
+    } else {
+        match from_json() {
+            Some(message) => Some(message),
+            None => from_form().await,
+        }
+    };
+    match message {
+        Some(message) => handle_event(&registry, &token, &message),
+        None => StatusCode::OK,
+    }
 }
 
 #[cfg(test)]
@@ -325,6 +367,22 @@ mod tests {
         assert!(response.status().is_success());
         let update = updates.recv().await.unwrap();
         assert_eq!((update.total, update.done), (3, 1));
+
+        // Snakemake 7 posts a JSON body without a content type instead of a form
+        let body = serde_json::json!({
+            "id": "7",
+            "timestamp": "now",
+            "msg": r#"{"level":"progress","done":2,"total":3}"#,
+        });
+        let response = client
+            .post(format!("{base}/update_workflow_status"))
+            .body(body.to_string())
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        let update = updates.recv().await.unwrap();
+        assert_eq!((update.total, update.done), (3, 2));
     }
 
     #[tokio::test]

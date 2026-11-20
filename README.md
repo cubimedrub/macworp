@@ -191,7 +191,7 @@ dev/setup.sh
 ultraman start
 ```
 
-This starts Postgres, the backend (:3001), a remote worker and the web UI (:5001). The worker talks to the backend over HTTP and needs podman or docker plus the `macworp-nextflow:latest` image (`docker build -f docker/engine.dockerfile --target nextflow -t macworp-nextflow:latest docker`; Snakemake: `--target snakemake -t macworp-snakemake:latest`). Create a user, open a project, start a Nextflow workflow and watch the run; stop the worker mid-run and the run is requeued after `worker_lease_seconds` (default 60, lower it in `dev/config.toml` to test faster).
+This starts Postgres, the backend (:3001), a remote worker and the web UI (:5001). The worker talks to the backend over HTTP and needs podman or docker plus the engine images, pulled from `ghcr.io/cubimedrub` on first use (`make engine-images-default` builds them locally under the same names; or build by hand with `docker build -f docker/engine.dockerfile --target nextflow -t macworp-nextflow:25.04.6 docker`; Snakemake: `--target snakemake -t macworp-snakemake:9.11.4`). Create a user, open a project, start a Nextflow workflow and watch the run; stop the worker mid-run and the run is requeued after `worker_lease_seconds` (default 60, lower it in `dev/config.toml` to test faster).
 
 ##### Windows
 ```

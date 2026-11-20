@@ -426,6 +426,10 @@ impl WorkflowIntegrationsController {
             .configuration
             .validate_path_patterns()
             .map_err(Error::InvalidPattern)?;
+        payload
+            .configuration
+            .validate_engine_version()
+            .map_err(Error::InvalidPattern)?;
         // Switching a workflow to a local source is creating a local workflow
         let becomes_local = matches!(payload.configuration.source(), Source::Local(_))
             && !matches!(

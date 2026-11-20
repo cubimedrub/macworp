@@ -6,24 +6,41 @@ use tokio::sync::{mpsc, watch};
 use super::containerized_execution::path_arg;
 use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
-    run_process, run_spec, worker_user, worker_user_args,
+    default_engine_image, engine_image, run_process, run_spec, worker_user, worker_user_args,
 };
 use crate::container_runtime::BoxFuture;
 
-/// Engine image used unless configured otherwise, see the engine-in-container ADR.
-pub const DEFAULT_IMAGE: &str = "macworp-nextflow:latest";
-
-/// Environment variable that replaces [`DEFAULT_IMAGE`], for example to run an older Nextflow
+/// Environment variable that replaces the default engine image as a whole, for example to run an older Nextflow
 /// version (an image built from `docker/engine.dockerfile` with another version argument).
 pub const IMAGE_VARIABLE: &str = "MACWORP_NEXTFLOW_IMAGE";
 
-/// The engine image to run: the value of [`IMAGE_VARIABLE`] if set and not empty, else
-/// [`DEFAULT_IMAGE`].
+/// The engine image to run unless the workflow pins a version, see [`default_engine_image`]:
+/// the value of [`IMAGE_VARIABLE`] if set and not empty, else the default of the engine catalog
+/// on the configured registry.
 pub fn image() -> String {
-    std::env::var(IMAGE_VARIABLE)
-        .ok()
-        .filter(|image| !image.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_IMAGE.to_string())
+    default_engine_image(&Engine::Nextflow, IMAGE_VARIABLE)
+}
+
+/// Name of the generated configuration file that switches the weblog plugin on (Nextflow 26+).
+const WEBLOG_CONFIG: &str = "weblog.config";
+
+/// Whether a job's Nextflow reports progress through the `nf-weblog` plugin instead of
+/// `-with-weblog`, which Nextflow 26 removed. The plugin comes with the engine image and is
+/// switched on by a generated configuration file. Decided by the version pinned in the workflow,
+/// else the catalog default (also when `MACWORP_NEXTFLOW_IMAGE` replaces the image, the executor
+/// cannot see what is in it). A version it cannot read is treated as the newest.
+///
+/// # Arguments
+/// * `pinned` - the engine version pinned in the workflow configuration, if any
+pub fn uses_weblog_plugin(pinned: Option<&str>) -> bool {
+    let default = Engine::Nextflow
+        .catalog()
+        .map(|catalog| catalog.default.as_str());
+    pinned
+        .or(default)
+        .and_then(|version| version.split('.').next())
+        .and_then(|major| major.parse::<u32>().ok())
+        .is_none_or(|major| major >= 26)
 }
 
 /// Runs Nextflow inside an engine image through the container runtime.
@@ -83,23 +100,37 @@ impl NextflowExecutor {
                 return Err(ExecutorError::UnsupportedSource("image".into()));
             }
         }
+        let plugin = uses_weblog_plugin(config.engine_version());
+        let mut extra_files = Vec::new();
         if let Some(progress) = &job.progress {
-            command.extend([
-                "-with-weblog".into(),
-                format!("{}/nextflow", progress.base_url),
-            ]);
+            let address = format!("{}/nextflow", progress.base_url);
+            if plugin {
+                extra_files.push((
+                    WEBLOG_CONFIG,
+                    format!(
+                        "plugins {{\n  id 'nf-weblog'\n}}\nweblog {{\n  enabled = true\n  url = '{address}'\n}}\n"
+                    ),
+                ));
+            } else {
+                command.extend(["-with-weblog".into(), address]);
+            }
         }
         command.extend(render_args(config, job.reference_dir.as_deref())?);
         // Last step that can fail, so no scratch directory is left behind by an error
-        let parameters = ParameterFile::write(job)?;
+        let parameters = ParameterFile::write_with(job, &extra_files)?;
         if let Some(parameters) = &parameters {
-            command.extend(["-params-file".into(), path_arg(parameters.file())]);
+            if let Some(weblog) = parameters.extra_file(WEBLOG_CONFIG) {
+                command.extend(["-c".into(), path_arg(weblog)]);
+            }
+            if parameters.has_values() {
+                command.extend(["-params-file".into(), path_arg(parameters.file())]);
+            }
             read_only.push(parameters.directory());
         }
 
         let mut spec = containerized_spec(
             &self.runtime_binary,
-            &self.image,
+            &engine_image(&self.image, job.configuration.engine_version())?,
             job,
             &read_only,
             &self.run_args(),
@@ -129,6 +160,9 @@ impl NextflowExecutor {
     /// # Arguments
     /// * `job` - the job whose project directory is cleaned
     pub fn cleanup_spec(&self, job: &Job) -> LaunchSpec {
+        // The run itself already failed for an invalid version, so this is the pinned image
+        let image = engine_image(&self.image, job.configuration.engine_version())
+            .unwrap_or_else(|_| self.image.clone());
         let read_only: Vec<&std::path::Path> = Vec::new();
         let mut run_args = vec!["--user".to_string(), "0".to_string()];
         run_args.extend(self.engine_access.iter().cloned());
@@ -141,7 +175,7 @@ impl NextflowExecutor {
         script.push_str(" exit $status");
         containerized_spec(
             &self.runtime_binary,
-            &self.image,
+            &image,
             job,
             &read_only,
             &run_args,
@@ -214,12 +248,55 @@ mod tests {
         NextflowExecutor::new("podman", "img:1")
     }
 
+    /// The dialect follows the major version: the plugin from 26 on, the option before.
+    #[test]
+    fn weblog_plugin_from_version_26() {
+        assert!(uses_weblog_plugin(Some("26.10.6")));
+        assert!(uses_weblog_plugin(Some("27.04.0")));
+        assert!(!uses_weblog_plugin(Some("25.10.9")));
+        assert!(!uses_weblog_plugin(Some("24.10.9")));
+        let default = Engine::Nextflow.catalog().unwrap().default.clone();
+        assert_eq!(uses_weblog_plugin(None), uses_weblog_plugin(Some(&default)));
+    }
+
+    /// Nextflow 26 has no `-with-weblog`: a generated config file in the scratch directory
+    /// enables the `nf-weblog` plugin and is passed with `-c`, without parameters too.
+    #[test]
+    fn version_26_reports_progress_through_the_plugin() {
+        let mut job = job(Source::Local(LocalSource::new(
+            "/w".into(),
+            "main.nf".into(),
+        )));
+        *job.configuration.engine_version_mut() = Some("26.10.6".into());
+        job.progress = Some(ProgressEndpoint {
+            base_url: "http://host:4000/tok".into(),
+            run_args: vec![],
+        });
+        let spec = executor().launch_spec(&job).unwrap();
+        assert!(!spec.args.contains(&"-with-weblog".to_string()));
+        assert!(!spec.args.contains(&"-params-file".to_string()));
+        let position = spec.args.iter().position(|a| a == "-c").unwrap();
+        let directory = spec.scratch_directory.clone().unwrap();
+        let file = PathBuf::from(&spec.args[position + 1]);
+        assert_eq!(file, directory.join("weblog.config"));
+        let config = std::fs::read_to_string(&file).unwrap();
+        assert!(config.contains("id 'nf-weblog'"));
+        assert!(config.contains("url = 'http://host:4000/tok/nextflow'"));
+        assert!(
+            spec.args
+                .contains(&format!("{0}:{0}:ro", directory.display()))
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     #[test]
     fn progress_endpoint_adds_weblog_and_host_mapping() {
         let mut job = job(Source::Local(LocalSource::new(
             "/w".into(),
             "main.nf".into(),
         )));
+        // `-with-weblog` is the option of Nextflow 25 and older
+        *job.configuration.engine_version_mut() = Some("25.10.9".into());
         job.progress = Some(ProgressEndpoint {
             base_url: "http://host.docker.internal:4000/tok".into(),
             run_args: vec![
@@ -229,7 +306,7 @@ mod tests {
         });
         let args = executor().launch_spec(&job).unwrap().args;
         // run option before the image, engine option after the script
-        let image = args.iter().position(|a| a == "img:1").unwrap();
+        let image = args.iter().position(|a| a == "img:25.10.9").unwrap();
         let add_host = args.iter().position(|a| a == "--add-host").unwrap();
         assert!(add_host < image);
         assert_eq!(args[add_host + 1], "host.docker.internal:host-gateway");
@@ -405,6 +482,24 @@ mod tests {
             })
         );
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    /// A pinned engine version selects that tag of the engine image, a bad one fails the job.
+    #[test]
+    fn pinned_engine_version_selects_the_image_tag() {
+        let mut job = job(Source::Local(LocalSource::new(
+            "/w".into(),
+            "main.nf".into(),
+        )));
+        *job.configuration.engine_version_mut() = Some("24.10.0".into());
+        let spec = executor().launch_spec(&job).unwrap();
+        assert!(spec.args.contains(&"img:24.10.0".to_string()));
+        assert!(!spec.args.contains(&"img:1".to_string()));
+        *job.configuration.engine_version_mut() = Some("--privileged".into());
+        assert!(matches!(
+            executor().launch_spec(&job),
+            Err(ExecutorError::InvalidEngineVersion(_))
+        ));
     }
 
     #[test]

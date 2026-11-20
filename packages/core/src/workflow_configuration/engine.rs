@@ -26,7 +26,47 @@ pub enum Engine {
     Container,
 }
 
+/// Versions of one engine that have a prebuilt engine image, see `docker/engine-versions.yml`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct EngineCatalog {
+    /// Name of the build target in `docker/engine.dockerfile`
+    pub target: String,
+    /// Build argument of the dockerfile that selects the version
+    pub build_arg: String,
+    /// Version of the image workflows run on when they pin nothing
+    pub default: String,
+    /// All versions with an image, a workflow can pin any of them
+    pub versions: Vec<String>,
+}
+
+/// The catalog file, shared with the CI job that builds the images.
+const CATALOG: &str = include_str!("../../../../docker/engine-versions.yml");
+
 impl Engine {
+    /// The versions with a prebuilt image, `None` for engines without images of their own
+    /// (`Container` runs the workflow's image).
+    pub fn catalog(&self) -> Option<&'static EngineCatalog> {
+        use std::{collections::HashMap, sync::OnceLock};
+        static CATALOGS: OnceLock<HashMap<String, EngineCatalog>> = OnceLock::new();
+        let catalogs = CATALOGS.get_or_init(|| {
+            serde_norway::from_str(CATALOG).expect("docker/engine-versions.yml is valid")
+        });
+        let key = match self {
+            Engine::Nextflow => "nextflow",
+            Engine::Snakemake => "snakemake",
+            Engine::Cwl => "cwl",
+            Engine::Container => return None,
+        };
+        catalogs.get(key)
+    }
+
+    /// Name of the engine image without registry and tag (`macworp-nextflow`), `None` for
+    /// engines without images of their own.
+    pub fn image_repository(&self) -> Option<String> {
+        self.catalog()
+            .map(|catalog| format!("macworp-{}", catalog.target))
+    }
+
     /// Every engine, in declaration order.
     pub fn all() -> Vec<Engine> {
         use strum::IntoEnumIterator;
@@ -135,5 +175,38 @@ impl EngineParameter {
 
     pub fn value(&self) -> &str {
         &self.value
+    }
+}
+
+#[cfg(test)]
+/// Tests of the engine catalog.
+mod catalog_tests {
+    use super::*;
+
+    /// Every engine with images lists its default among its versions, `Container` has none.
+    #[test]
+    fn catalog_is_consistent() {
+        for engine in Engine::all() {
+            match engine.catalog() {
+                Some(catalog) => {
+                    assert!(catalog.versions.contains(&catalog.default), "{engine}");
+                    for version in &catalog.versions {
+                        assert!(
+                            crate::workflow_configuration::validate_engine_version(version).is_ok()
+                        );
+                    }
+                }
+                None => assert_eq!(engine, Engine::Container),
+            }
+        }
+        // The newest version is listed first and is the default
+        for engine in [Engine::Nextflow, Engine::Snakemake, Engine::Cwl] {
+            let catalog = engine.catalog().unwrap();
+            assert_eq!(catalog.versions.first(), Some(&catalog.default), "{engine}");
+        }
+        assert_eq!(
+            Engine::Nextflow.image_repository().as_deref(),
+            Some("macworp-nextflow")
+        );
     }
 }

@@ -4,7 +4,7 @@ mod db_job_source;
 /// Full stack test with a real Nextflow engine container, test only.
 ///
 /// Not run by a plain `cargo test` (it is `#[ignore]`d, needs podman/docker and the
-/// `macworp-nextflow:latest` image). Run it with
+/// Nextflow engine image). Run it with
 /// `cargo test -p macworp_desktop end_to_end_test -- --ignored --nocapture`.
 #[cfg(test)]
 mod end_to_end_test;

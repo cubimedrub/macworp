@@ -12,8 +12,12 @@ use super::{ExecutorError, Job};
 pub struct ParameterFile {
     /// Scratch directory holding the file, created for this run only
     directory: PathBuf,
-    /// The JSON file inside `directory`
+    /// The JSON file inside `directory`, only written when `has_values`
     file: PathBuf,
+    /// Whether any parameter had a value, so `file` exists
+    has_values: bool,
+    /// Further files written next to it by [`Self::write_with`], in the order given
+    extra_files: Vec<PathBuf>,
 }
 
 impl ParameterFile {
@@ -24,14 +28,29 @@ impl ParameterFile {
     /// # Arguments
     /// * `job` - the job whose parameters are written
     pub fn write(job: &Job) -> Result<Option<Self>, ExecutorError> {
-        let Some(values) = render_parameter_file(
+        Self::write_with(job, &[])
+    }
+
+    /// Like [`Self::write`], with further small files in the same scratch directory (for
+    /// example an engine configuration the worker generates). The directory is created when
+    /// there are parameter values or extra files, so [`Self::has_values`] says whether
+    /// [`Self::file`] exists.
+    ///
+    /// # Arguments
+    /// * `job` - the job whose parameters are written
+    /// * `extra_files` - `(file name, content)` pairs, the names are plain file names
+    pub fn write_with(
+        job: &Job,
+        extra_files: &[(&str, String)],
+    ) -> Result<Option<Self>, ExecutorError> {
+        let values = render_parameter_file(
             &job.configuration,
             job.reference_dir.as_deref(),
             Some(&job.project_dir),
-        )?
-        else {
+        )?;
+        if values.is_none() && extra_files.is_empty() {
             return Ok(None);
-        };
+        }
         let io = |error| ExecutorError::Io("the workflow parameters", error);
         let directory = tempfile::Builder::new()
             .prefix(&format!("macworp-run-{}-", job.run_id))
@@ -45,11 +64,20 @@ impl ParameterFile {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755))?;
             }
-            std::fs::write(&file, values.to_string())?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644))?;
+            let mut paths = Vec::new();
+            if let Some(values) = &values {
+                paths.push((file.clone(), values.to_string()));
+            }
+            for (name, content) in extra_files {
+                paths.push((directory.join(name), content.clone()));
+            }
+            for (path, content) in paths {
+                std::fs::write(&path, content)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))?;
+                }
             }
             Ok(())
         })();
@@ -57,7 +85,16 @@ impl ParameterFile {
             let _ = std::fs::remove_dir_all(&directory);
             return Err(io(error));
         }
-        Ok(Some(Self { directory, file }))
+        let extra_files = extra_files
+            .iter()
+            .map(|(name, _)| directory.join(name))
+            .collect();
+        Ok(Some(Self {
+            has_values: values.is_some(),
+            directory,
+            file,
+            extra_files,
+        }))
     }
 
     /// The scratch directory, to mount read-only and to remove after the run.
@@ -65,9 +102,25 @@ impl ParameterFile {
         &self.directory
     }
 
-    /// The JSON file with the parameters.
+    /// The JSON file with the parameters, it only exists when [`Self::has_values`].
     pub fn file(&self) -> &Path {
         &self.file
+    }
+
+    /// Whether any parameter had a value and [`Self::file`] was written.
+    pub fn has_values(&self) -> bool {
+        self.has_values
+    }
+
+    /// Path of the extra file `name` given to [`Self::write_with`], `None` if there was none.
+    ///
+    /// # Arguments
+    /// * `name` - the file name given to [`Self::write_with`]
+    pub fn extra_file(&self, name: &str) -> Option<&Path> {
+        self.extra_files
+            .iter()
+            .find(|path| path.file_name().is_some_and(|file| file == name))
+            .map(PathBuf::as_path)
     }
 
     /// Removes the scratch directory, for a launch that failed after [`Self::write`].

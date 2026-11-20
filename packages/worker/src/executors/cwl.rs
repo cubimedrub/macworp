@@ -6,14 +6,11 @@ use tokio::sync::{mpsc, watch};
 use super::containerized_execution::path_arg;
 use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
-    run_spec, worker_user_args,
+    default_engine_image, engine_image, run_spec, worker_user_args,
 };
 use crate::container_runtime::BoxFuture;
 
-/// Engine image used unless configured otherwise, see the engine-in-container ADR.
-pub const DEFAULT_IMAGE: &str = "macworp-cwl:latest";
-
-/// Environment variable that replaces [`DEFAULT_IMAGE`], for example to run another Toil version
+/// Environment variable that replaces the default engine image as a whole, for example to run another Toil version
 /// (an image built from `docker/engine.dockerfile` with another version argument).
 pub const IMAGE_VARIABLE: &str = "MACWORP_CWL_IMAGE";
 
@@ -41,13 +38,11 @@ const CACHE_PARAMETERS: &[&str] = &["cachedir"];
 /// reservation, not a limit, and tools that need more declare `ramMin` themselves.
 const DEFAULT_MEMORY: &str = "512M";
 
-/// The engine image to run: the value of [`IMAGE_VARIABLE`] if set and not empty, else
-/// [`DEFAULT_IMAGE`].
+/// The engine image to run unless the workflow pins a version, see [`default_engine_image`]:
+/// the value of [`IMAGE_VARIABLE`] if set and not empty, else the default of the engine catalog
+/// on the configured registry.
 pub fn image() -> String {
-    std::env::var(IMAGE_VARIABLE)
-        .ok()
-        .filter(|image| !image.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_IMAGE.to_string())
+    default_engine_image(&Engine::Cwl, IMAGE_VARIABLE)
 }
 
 /// Runs CWL workflows with Toil (`toil-cwl-runner`) inside an engine image through the container
@@ -161,7 +156,7 @@ impl CwlExecutor {
         }
         let mut spec = containerized_spec(
             &self.runtime_binary,
-            &self.image,
+            &engine_image(&self.image, job.configuration.engine_version())?,
             job,
             &read_only,
             &self.run_args(job),
@@ -210,12 +205,34 @@ impl CwlExecutor {
             .any(|p| LOCATION_PARAMETERS.contains(&p.name()))
     }
 
+    /// Whether the Toil version a job runs on has the step cache option (`--cachedir`): from
+    /// Toil 8 on. Toil 7 rejects it (the value would be read as the workflow), so a resumed run
+    /// there recomputes every step. The version is the one pinned in the workflow, else the
+    /// catalog default (also when `MACWORP_CWL_IMAGE` replaces the image).
+    ///
+    /// # Arguments
+    /// * `pinned` - the engine version pinned in the workflow configuration, if any
+    pub fn supports_step_cache(pinned: Option<&str>) -> bool {
+        let default = Engine::Cwl
+            .catalog()
+            .map(|catalog| catalog.default.as_str());
+        pinned
+            .or(default)
+            .and_then(|version| version.split('.').next())
+            .and_then(|major| major.parse::<u32>().ok())
+            .is_none_or(|major| major >= 8)
+    }
+
     /// The shared step cache to use for `job`: the one of the job unless the author's engine
-    /// parameters choose a cache themselves, `None` then (and where the job has none).
+    /// parameters choose a cache themselves or the Toil version has none
+    /// ([`Self::supports_step_cache`]), `None` then (and where the job has none).
     ///
     /// # Arguments
     /// * `job` - the run about to start
     fn cache_directory(job: &Job) -> Option<&std::path::Path> {
+        if !Self::supports_step_cache(job.configuration.engine_version()) {
+            return None;
+        }
         let own = job
             .configuration
             .engine_parameters()
@@ -338,6 +355,32 @@ mod tests {
     /// Executor on podman with image `img:1`.
     fn executor() -> CwlExecutor {
         CwlExecutor::new("podman", "img:1")
+    }
+
+    /// The step cache is passed from Toil 8 on, Toil 7 does not know `--cachedir`.
+    #[test]
+    fn step_cache_needs_toil_8() {
+        for (version, cached) in [("9.6.0", true), ("8.2.0", true), ("7.0.0", false)] {
+            let mut job = job(local());
+            job.cwl_cache = Some("/cache/cwl".into());
+            *job.configuration.engine_version_mut() = Some(version.into());
+            let args = executor().launch_spec(&job).unwrap().args;
+            assert_eq!(
+                args.contains(&"--cachedir".to_string()),
+                cached,
+                "{version}"
+            );
+            assert_eq!(
+                args.contains(&"/cache/cwl:/cache/cwl".to_string()),
+                cached,
+                "{version}"
+            );
+            assert_eq!(
+                args.contains(&"--tmp-outdir-prefix".to_string()),
+                cached,
+                "{version}"
+            );
+        }
     }
 
     /// The engine runs as the worker's user, so what it writes belongs to the storage user

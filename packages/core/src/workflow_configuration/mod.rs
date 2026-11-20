@@ -28,12 +28,70 @@ pub struct WorkflowConfiguration {
     /// stored before this field existed, which means `false`.
     #[serde(default)]
     cleanup_on_success: bool,
+    /// Version of the workflow engine to run, the tag of its engine image (for example
+    /// `25.04.6` for `macworp-nextflow:25.04.6`). `None` runs the worker's default image.
+    /// Absent in configurations stored before this field existed. Ignored by `Container`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    engine_version: Option<String>,
+}
+
+/// Longest accepted engine version (container image tags are limited to 128 characters).
+pub const ENGINE_VERSION_MAX_LENGTH: usize = 128;
+
+/// Checks that `version` is usable as an image tag: 1 to [`ENGINE_VERSION_MAX_LENGTH`] ASCII
+/// letters, digits, `_`, `.` or `-`, not starting with `.` or `-` (it must not look like an
+/// option or a path when handed to the container runtime).
+///
+/// # Arguments
+/// * `version` - the engine version as entered by the workflow author
+pub fn validate_engine_version(version: &str) -> Result<(), String> {
+    let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-');
+    if version.is_empty() || version.len() > ENGINE_VERSION_MAX_LENGTH {
+        return Err(format!(
+            "Engine version must have 1 to {ENGINE_VERSION_MAX_LENGTH} characters"
+        ));
+    }
+    if version.starts_with(['.', '-']) || !version.chars().all(allowed) {
+        return Err(
+            "Engine version may only contain letters, digits, `_`, `.` and `-` and must not start with `.` or `-`"
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 impl WorkflowConfiguration {
     /// Whether the engine's work files are deleted after a successful run.
     pub fn cleanup_on_success(&self) -> bool {
         self.cleanup_on_success
+    }
+
+    /// The pinned engine version, `None` for the worker's default, see [`validate_engine_version`].
+    pub fn engine_version(&self) -> Option<&str> {
+        self.engine_version.as_deref()
+    }
+
+    /// Mutable access to the pinned engine version, see [`Self::engine_version`].
+    pub fn engine_version_mut(&mut self) -> &mut Option<String> {
+        &mut self.engine_version
+    }
+
+    /// Checks the pinned engine version, if any: it must be a valid tag
+    /// ([`validate_engine_version`]) and one of the versions with a prebuilt image
+    /// ([`engine::Engine::catalog`]). `Container` workflows cannot pin a version.
+    pub fn validate_engine_version(&self) -> Result<(), String> {
+        let Some(version) = self.engine_version.as_deref() else {
+            return Ok(());
+        };
+        validate_engine_version(version)?;
+        match self.engine.catalog() {
+            Some(catalog) if catalog.versions.iter().any(|known| known == version) => Ok(()),
+            Some(catalog) => Err(format!(
+                "Engine version `{version}` is not available, choose one of: {}",
+                catalog.versions.join(", ")
+            )),
+            None => Err(format!("The {} engine has no versions to pin", self.engine)),
+        }
     }
 
     /// Mutable access to the cleanup switch, see [`Self::cleanup_on_success`].
@@ -122,6 +180,7 @@ impl Default for WorkflowConfiguration {
             dynamic_parameters: Vec::new(),
             fixed_parameters: Vec::new(),
             cleanup_on_success: false,
+            engine_version: None,
         }
     }
 }
@@ -186,5 +245,51 @@ mod resume_tests {
         configuration.enable_resume();
         assert_eq!(configuration.engine_parameters().len(), 1);
         assert_eq!(configuration.engine_parameters()[0].value(), "abc");
+    }
+}
+
+#[cfg(test)]
+/// Tests of the pinned engine version.
+mod engine_version_tests {
+    use super::*;
+
+    /// Plain version strings are valid tags.
+    #[test]
+    fn accepts_image_tags() {
+        for version in ["25.04.6", "9.11.4", "latest", "v1_2-rc.1"] {
+            assert!(validate_engine_version(version).is_ok(), "{version}");
+        }
+    }
+
+    /// Options, paths, separators and over-long values are not.
+    #[test]
+    fn rejects_anything_else() {
+        for version in ["", "-v", ".x", "a b", "a:b", "a/b", "--privileged", "é"] {
+            assert!(validate_engine_version(version).is_err(), "{version}");
+        }
+        assert!(validate_engine_version(&"a".repeat(ENGINE_VERSION_MAX_LENGTH + 1)).is_err());
+    }
+
+    /// Only versions with an image can be pinned, and not on engines without images.
+    #[test]
+    fn pinned_version_must_be_in_the_catalog() {
+        let mut configuration = WorkflowConfiguration::default();
+        let known = configuration.engine().catalog().unwrap().default.clone();
+        *configuration.engine_version_mut() = Some(known);
+        assert!(configuration.validate_engine_version().is_ok());
+        *configuration.engine_version_mut() = Some("0.0.1".into());
+        assert!(configuration.validate_engine_version().is_err());
+        *configuration.engine_mut() = engine::Engine::Container;
+        *configuration.engine_version_mut() = Some("25.04.6".into());
+        assert!(configuration.validate_engine_version().is_err());
+    }
+
+    /// Configurations stored before the field existed still load, unpinned.
+    #[test]
+    fn missing_version_means_default() {
+        let value = serde_json::to_value(WorkflowConfiguration::default()).unwrap();
+        assert!(value.get("engine_version").is_none());
+        let configuration: WorkflowConfiguration = serde_json::from_value(value).unwrap();
+        assert_eq!(configuration.engine_version(), None);
     }
 }

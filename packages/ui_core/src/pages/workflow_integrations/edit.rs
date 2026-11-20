@@ -28,7 +28,7 @@ use crate::{
     local_workflow::LocalFolderPicker,
     parameter_arrangement::{self, ParameterMove},
     router::IsRouter,
-    runtime_status::engine_hint,
+    runtime_status::{engine_hint, ExecutionEnvironmentNote},
     sharing::SharingEnabled,
     storage::IsStorage,
     timer::sleep,
@@ -85,6 +85,11 @@ impl DisassambledWorkflowIntegration {
 
     pub fn engine_parameters(&self) -> &[Signal<EngineParameter>] {
         &self.engine_parameters
+    }
+
+    /// Mutable access to the engine parameter rows, see [`Self::engine_parameters`].
+    pub fn engine_parameters_mut(&mut self) -> &mut Vec<Signal<EngineParameter>> {
+        &mut self.engine_parameters
     }
 
     pub fn dynamic_parameters(&self) -> &[Signal<Parameter>] {
@@ -745,6 +750,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                             if let Ok(engine) = engine.parse::<Engine>() {
                                 let mut workflow_integration = workflow_integration.write();
                                 let configuration = &mut workflow_integration.inner_mut().configuration;
+                                let previous_engine = configuration.engine().clone();
                                 // Sources are engine specific: fall back to the engine's first source if the current one is unsupported
                                 if !configuration.source().is_supported_by(&engine) {
                                     let first_allowed = engine
@@ -775,8 +781,11 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                     }
                                 }
                                 *configuration.engine_mut() = engine;
-                                // Versions belong to one engine
+                                // Versions and engine parameters belong to one engine
                                 *configuration.engine_version_mut() = None;
+                                if *configuration.engine() != previous_engine {
+                                    workflow_integration.engine_parameters_mut().clear();
+                                }
                             }
                         },
                         for engine in Engine::iter() {
@@ -802,6 +811,9 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         class: "alert alert-warning",
                         "{hint}. Runs of this workflow are rejected."
                     }
+                }
+                ExecutionEnvironmentNote {
+                    engine: workflow_integration.read().inner().configuration.engine().clone(),
                 }
                 // Only Nextflow and CWL leave work files that can be deleted
                 if matches!(
@@ -876,6 +888,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                         }
                     }
                 }
+
+                EngineParameterEditor { workflow_integration }
 
                 Separator{
                     label: "Source"
@@ -1253,6 +1267,121 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
             None => rsx!(
                 Spinner {}
             )
+        }
+    }
+}
+
+/// Editor of the engine parameters of a workflow: one row per parameter with the allowed names of
+/// the engine to pick from, a value field (hidden for switches) and a remove button. Names and
+/// values are checked by the server when saving (`Engine::check_parameter`); the row only hints
+/// at what the engine accepts. Nothing is shown for engines without parameters (`Container`).
+///
+/// # Arguments
+/// * `workflow_integration` - The workflow being edited
+#[component]
+fn EngineParameterEditor(workflow_integration: Signal<DisassambledWorkflowIntegration>) -> Element {
+    let engine = workflow_integration
+        .read()
+        .inner()
+        .configuration
+        .engine()
+        .clone();
+    let specs = engine.parameter_specs();
+    if specs.is_empty() {
+        return rsx! {};
+    }
+    let rows = workflow_integration.read().engine_parameters().to_vec();
+    rsx! {
+        div {
+            class: "mb-3",
+            div {
+                class: "d-flex justify-content-between align-items-center mb-1",
+                label {
+                    class: "form-label mb-0",
+                    "Engine parameters"
+                }
+                button {
+                    class: "btn btn-sm btn-outline-secondary",
+                    r#type: "button",
+                    onclick: move |_| {
+                        let first = engine.parameter_specs()[0].name;
+                        workflow_integration
+                            .write()
+                            .engine_parameters_mut()
+                            .push(Signal::new(EngineParameter::new(first.into(), String::new())));
+                    },
+                    "Add parameter"
+                }
+            }
+            for (index, mut row) in rows.into_iter().enumerate() {
+                {
+                    let current = row.read().clone();
+                    let spec = specs.iter().find(|spec| spec.name == current.name());
+                    let is_flag = spec.is_some_and(|spec| spec.is_flag());
+                    let description = spec.map(|spec| spec.description).unwrap_or("Not allowed for this engine");
+                    rsx! {
+                        div {
+                            key: "{index}",
+                            class: "input-group mb-1",
+                            select {
+                                class: "form-select",
+                                style: "max-width: 16rem",
+                                aria_label: "Engine parameter",
+                                title: description,
+                                onchange: move |event| {
+                                    // The value of another parameter rarely fits, start empty
+                                    row.set(EngineParameter::new(event.value(), String::new()));
+                                },
+                                for spec in specs.iter() {
+                                    option {
+                                        value: spec.name,
+                                        selected: spec.name == current.name(),
+                                        title: spec.description,
+                                        "{spec.name}"
+                                    }
+                                }
+                                // A stored name the allowlist does not know stays visible so it can be removed
+                                if spec.is_none() {
+                                    option {
+                                        value: "{current.name()}",
+                                        selected: true,
+                                        "{current.name()} (not allowed)"
+                                    }
+                                }
+                            }
+                            if !is_flag {
+                                input {
+                                    class: "form-control",
+                                    aria_label: "Engine parameter value",
+                                    value: "{current.value()}",
+                                    oninput: move |event| {
+                                        let name = row.read().name().to_string();
+                                        row.set(EngineParameter::new(name, event.value()));
+                                    },
+                                }
+                            } else {
+                                span {
+                                    class: "input-group-text text-muted",
+                                    "{description}"
+                                }
+                            }
+                            button {
+                                class: "btn btn-outline-danger",
+                                r#type: "button",
+                                aria_label: "Remove engine parameter",
+                                onclick: move |_| {
+                                    workflow_integration.write().engine_parameters_mut().remove(index);
+                                },
+                                "Remove"
+                            }
+                        }
+                    }
+                }
+            }
+            div {
+                class: "form-text",
+                "Options passed to the engine. A retried run adds the engine's resume option by itself."
+            }
         }
     }
 }

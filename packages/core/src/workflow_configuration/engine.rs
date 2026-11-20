@@ -26,6 +26,15 @@ pub enum Engine {
     Container,
 }
 
+/// Where runs happen, for texts that differ between the desktop app and a server.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecutionHost {
+    /// The desktop app: runs on the user's own computer
+    Desktop,
+    /// A standalone backend with workers set up by an administrator
+    Server,
+}
+
 /// Versions of one engine that have a prebuilt engine image, see `docker/engine-versions.yml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct EngineCatalog {
@@ -89,6 +98,48 @@ impl Engine {
         }
     }
 
+    /// What a workflow of this engine must expect from MAcWorP's execution environment, for the
+    /// workflow editor and the start dialog. The executor and the way software is provided are
+    /// chosen by MAcWorP (the worker), not by the workflow, so a workflow has to match them.
+    ///
+    /// # Arguments
+    /// * `host` - where the runs happen, the wording differs: the desktop app runs on the
+    ///   user's own computer with the container runtime installed there, a server on workers
+    ///   whose runtime the administrator set up
+    pub fn execution_environment(&self, host: ExecutionHost) -> String {
+        let (place, runtime) = match host {
+            ExecutionHost::Desktop => ("this computer", "Docker or Podman installed here"),
+            ExecutionHost::Server => (
+                "the server's workers",
+                "Docker or Podman, as set up by the administrator",
+            ),
+        };
+        match self {
+            Engine::Nextflow => format!(
+                "Runs on {place} with the local executor; tools run as containers ({runtime}). \
+                 MAcWorP overrides any executor or software deployment set in the workflow's \
+                 configuration or profiles, so the workflow must work with that: every tool \
+                 needs a `container` image. Conda, Singularity and cluster executors such as \
+                 SLURM are not available."
+            ),
+            Engine::Snakemake => format!(
+                "Runs on {place} inside a container ({runtime}), with Apptainer as the only \
+                 software deployment method. The workflow must work with that: every rule needs \
+                 a `container:` image. Conda environments and cluster executors are not \
+                 available."
+            ),
+            Engine::Cwl => format!(
+                "Runs on {place} with Toil. Tools with a `DockerRequirement` run as containers \
+                 ({runtime}), so the workflow must work with that: every tool needs a container \
+                 image. Cluster batch systems are not available."
+            ),
+            Engine::Container => format!(
+                "Runs the image as it is on {place} ({runtime}). The image must contain \
+                 everything it needs."
+            ),
+        }
+    }
+
     /// Conventional main script file name of this engine, `None` if it has none (CWL files and
     /// container images are named freely).
     pub fn default_script(&self) -> Option<&'static str> {
@@ -148,6 +199,29 @@ mod tests {
             assert_eq!(engine.to_string().parse::<Engine>().unwrap(), engine);
         }
         assert_eq!("CWL".parse::<Engine>().unwrap(), Engine::Cwl);
+    }
+
+    /// Every engine tells workflow authors what the execution environment is, and the engines
+    /// that run tools in containers say that the workflow has to match it.
+    #[test]
+    fn every_engine_states_its_execution_environment() {
+        for host in [ExecutionHost::Desktop, ExecutionHost::Server] {
+            for engine in Engine::iter() {
+                assert!(!engine.execution_environment(host).is_empty(), "{engine}");
+            }
+            for engine in [Engine::Nextflow, Engine::Snakemake, Engine::Cwl] {
+                assert!(
+                    engine
+                        .execution_environment(host)
+                        .contains("must work with that"),
+                    "{engine}"
+                );
+            }
+        }
+        let desktop = Engine::Nextflow.execution_environment(ExecutionHost::Desktop);
+        let server = Engine::Nextflow.execution_environment(ExecutionHost::Server);
+        assert!(desktop.contains("this computer") && !desktop.contains("server"));
+        assert!(server.contains("the server's workers") && !server.contains("this computer"));
     }
 
     #[test]

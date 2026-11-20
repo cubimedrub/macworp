@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 /// Enum for workflow engines, e.g. Nextflow, Snakemake, CWL, Container
 pub mod engine;
+/// Allowlist of the engine parameters a workflow may set, with value rules
+pub mod engine_parameters;
 /// Workflow parameters types
 pub mod parameters;
 /// Rendering of a configuration into engine command line arguments
@@ -92,6 +94,23 @@ impl WorkflowConfiguration {
             )),
             None => Err(format!("The {} engine has no versions to pin", self.engine)),
         }
+    }
+
+    /// Checks every engine parameter against the engine's allowlist
+    /// ([`engine::Engine::check_parameter`]) and rejects duplicates. Run on the stored
+    /// configuration, before the backend adds the engine's resume parameter for a retry.
+    pub fn validate_engine_parameters(&self) -> Result<(), engine_parameters::Error> {
+        let mut seen = std::collections::HashSet::new();
+        for parameter in &self.engine_parameters {
+            self.engine
+                .check_parameter(parameter.name(), parameter.value())?;
+            if !seen.insert(parameter.name()) {
+                return Err(engine_parameters::Error::Duplicate(
+                    parameter.name().to_string(),
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Mutable access to the cleanup switch, see [`Self::cleanup_on_success`].

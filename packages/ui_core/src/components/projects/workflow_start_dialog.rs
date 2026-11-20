@@ -22,7 +22,7 @@ use crate::{
     configuration::Configuration,
     pages::workflow_integrations::edit::DisassambledWorkflowIntegration,
     parameter_arrangement,
-    runtime_status::engine_hint,
+    runtime_status::{engine_hint, ExecutionEnvironmentNote},
     storage::IsStorage,
 };
 
@@ -273,6 +273,9 @@ pub fn WorkflowStartDialog<S: IsStorage + 'static>(props: WorkflowStartDialogPro
                                 }
                             },
                             Some(integration) => rsx! {
+                                ExecutionEnvironmentNote {
+                                    engine: integration.inner().configuration.engine().clone(),
+                                }
                                 // p {
                                 //     class: "text-muted",
                                 //     "{integration.inner().description()}"

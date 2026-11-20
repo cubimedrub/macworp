@@ -24,6 +24,37 @@ pub fn image() -> String {
 /// Name of the generated configuration file that switches the weblog plugin on (Nextflow 26+).
 const WEBLOG_CONFIG: &str = "weblog.config";
 
+/// File name of the generated configuration that fixes how tasks are run, in the scratch
+/// directory next to [`WEBLOG_CONFIG`].
+const DEPLOYMENT_CONFIG: &str = "deployment.config";
+
+/// Configuration passed with `-c` to every Nextflow run, overriding the workflow's own
+/// configuration and its `-profile`s (a `-c` file takes precedence over profiles, checked on
+/// Nextflow 24.10, 25.10 and 26.10). Tasks run in the engine container itself (`local`
+/// executor) and, if they name an image, as sibling containers through the runtime socket. The
+/// engine image only has the `docker` client, which speaks to Docker and to Podman's
+/// Docker-compatible socket alike, so `docker` is the container engine on every runtime and
+/// all other software deployments are switched off. The catch-all `withName: '.*'` selector
+/// also beats executors that the workflow sets per process (`withName:` / `withLabel:` blocks,
+/// profiles, or an `executor` directive in the script): checked on Nextflow 24.10, 25.10 and
+/// 26.10, where `process.executor` alone left those on `slurm`. Other options a profile sets
+/// (`process.container`, `docker.runOptions`) are left alone.
+const DEPLOYMENT_CONFIG_CONTENT: &str = "\
+process.executor = 'local'
+process {
+  withName: '.*' { executor = 'local' }
+}
+docker.enabled = true
+podman.enabled = false
+singularity.enabled = false
+apptainer.enabled = false
+charliecloud.enabled = false
+shifter.enabled = false
+conda.enabled = false
+mamba.enabled = false
+spack.enabled = false
+";
+
 /// Whether a job's Nextflow reports progress through the `nf-weblog` plugin instead of
 /// `-with-weblog`, which Nextflow 26 removed. The plugin comes with the engine image and is
 /// switched on by a generated configuration file. Decided by the version pinned in the workflow,
@@ -101,7 +132,7 @@ impl NextflowExecutor {
             }
         }
         let plugin = uses_weblog_plugin(config.engine_version());
-        let mut extra_files = Vec::new();
+        let mut extra_files = vec![(DEPLOYMENT_CONFIG, DEPLOYMENT_CONFIG_CONTENT.to_string())];
         if let Some(progress) = &job.progress {
             let address = format!("{}/nextflow", progress.base_url);
             if plugin {
@@ -119,8 +150,10 @@ impl NextflowExecutor {
         // Last step that can fail, so no scratch directory is left behind by an error
         let parameters = ParameterFile::write_with(job, &extra_files)?;
         if let Some(parameters) = &parameters {
-            if let Some(weblog) = parameters.extra_file(WEBLOG_CONFIG) {
-                command.extend(["-c".into(), path_arg(weblog)]);
+            for name in [WEBLOG_CONFIG, DEPLOYMENT_CONFIG] {
+                if let Some(file) = parameters.extra_file(name) {
+                    command.extend(["-c".into(), path_arg(file)]);
+                }
             }
             if parameters.has_values() {
                 command.extend(["-params-file".into(), path_arg(parameters.file())]);
@@ -374,14 +407,74 @@ mod tests {
         assert!(!args.iter().any(|a| a.ends_with(":ro")));
     }
 
+    /// Removes what every launch adds for [`DEPLOYMENT_CONFIG`] (the read-only mount of the
+    /// scratch directory and `-c <file>`) and deletes the directory, so tests of other
+    /// arguments stay readable. Checks that the file is there first.
+    ///
+    /// # Arguments
+    /// * `spec` - the launch specification to strip
+    fn without_deployment_config(mut spec: LaunchSpec) -> LaunchSpec {
+        let directory = spec.scratch_directory.take().unwrap();
+        let file = directory.join(DEPLOYMENT_CONFIG);
+        assert!(file.is_file());
+        let mount = format!("{0}:{0}:ro", directory.display());
+        let at = spec.args.iter().position(|a| *a == mount).unwrap();
+        spec.args.drain(at - 1..=at);
+        let at = spec
+            .args
+            .iter()
+            .position(|a| *a == file.display().to_string())
+            .unwrap();
+        spec.args.drain(at - 1..=at);
+        std::fs::remove_dir_all(directory).unwrap();
+        spec
+    }
+
+    /// Every launch passes the generated deployment configuration with `-c`, after the weblog
+    /// one, whatever the runtime and version: local executor, `docker` as the only container
+    /// engine and no other software deployment.
     #[test]
-    fn local_source() {
-        let spec = executor()
-            .launch_spec(&job(Source::Local(LocalSource::new(
+    fn deployment_is_fixed_by_a_generated_configuration() {
+        for version in ["24.10.9", "26.10.6"] {
+            let mut job = job(Source::Local(LocalSource::new(
                 "/w".into(),
                 "main.nf".into(),
-            ))))
-            .unwrap();
+            )));
+            *job.configuration.engine_version_mut() = Some(version.into());
+            let spec = executor().launch_spec(&job).unwrap();
+            let directory = spec.scratch_directory.clone().unwrap();
+            let file = directory.join(DEPLOYMENT_CONFIG);
+            let position = spec
+                .args
+                .iter()
+                .position(|a| *a == file.display().to_string())
+                .unwrap();
+            assert_eq!(spec.args[position - 1], "-c");
+            let config = std::fs::read_to_string(&file).unwrap();
+            for line in [
+                "process.executor = 'local'",
+                "withName: '.*' { executor = 'local' }",
+                "docker.enabled = true",
+                "podman.enabled = false",
+                "singularity.enabled = false",
+                "conda.enabled = false",
+            ] {
+                assert!(config.lines().any(|l| l.trim() == line), "{line}");
+            }
+            std::fs::remove_dir_all(directory).unwrap();
+        }
+    }
+
+    #[test]
+    fn local_source() {
+        let spec = without_deployment_config(
+            executor()
+                .launch_spec(&job(Source::Local(LocalSource::new(
+                    "/w".into(),
+                    "main.nf".into(),
+                ))))
+                .unwrap(),
+        );
         assert_eq!(spec.program, PathBuf::from("podman"));
         let name = spec.container_name.clone().unwrap();
         assert!(name.starts_with("macworp-run-7-"), "{name}");
@@ -408,13 +501,15 @@ mod tests {
 
     #[test]
     fn remote_source_with_version() {
-        let spec = executor()
-            .launch_spec(&job(Source::Remote(RemoteSource::new(
-                "https://example.org/x.git".into(),
-                Some("v1".into()),
-                None,
-            ))))
-            .unwrap();
+        let spec = without_deployment_config(
+            executor()
+                .launch_spec(&job(Source::Remote(RemoteSource::new(
+                    "https://example.org/x.git".into(),
+                    Some("v1".into()),
+                    None,
+                ))))
+                .unwrap(),
+        );
         assert!(spec.args.ends_with(&[
             "img:1".into(),
             "nextflow".into(),
@@ -428,9 +523,11 @@ mod tests {
     #[test]
     fn nf_core_prefix_not_doubled() {
         for name in ["rnaseq", "nf-core/rnaseq"] {
-            let spec = executor()
-                .launch_spec(&job(Source::NfCore(NfCoreSource::new(name.into(), None))))
-                .unwrap();
+            let spec = without_deployment_config(
+                executor()
+                    .launch_spec(&job(Source::NfCore(NfCoreSource::new(name.into(), None))))
+                    .unwrap(),
+            );
             assert_eq!(spec.args.last().unwrap(), "nf-core/rnaseq");
         }
     }

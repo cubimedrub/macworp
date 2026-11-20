@@ -41,6 +41,9 @@ pub enum Error {
     /// The engine takes no engine parameters (Container)
     #[error("Engine `{0}` does not support engine parameters")]
     EngineParametersUnsupported(String),
+    /// An engine parameter is not on the engine's allowlist or has a bad value
+    #[error(transparent)]
+    EngineParameter(#[from] super::engine_parameters::Error),
     /// A `Path` value points into the global reference data but the executor has no reference
     /// directory (parameter name)
     #[error("Parameter `{0}` uses the global reference data, which is not available here")]

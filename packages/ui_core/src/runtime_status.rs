@@ -1,5 +1,8 @@
 use dioxus::prelude::*;
-use macworp_core::{responses::EnginesResponse, workflow_configuration::engine::Engine};
+use macworp_core::{
+    responses::EnginesResponse,
+    workflow_configuration::engine::{Engine, ExecutionHost},
+};
 
 /// Outcome of a single container runtime check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -344,5 +347,33 @@ mod tests {
             Some("No online worker can run Snakemake workflows")
         );
         assert_eq!(worker_engine_hint(&some, &Engine::Nextflow), None);
+    }
+}
+
+/// Which kind of host the UI talks to: the desktop app provides the [`RuntimeStatusHandle`]
+/// (runs happen on the user's own computer), the web frontend does not (a server with workers).
+pub fn execution_host() -> ExecutionHost {
+    if try_consume_context::<RuntimeStatusHandle>().is_some() {
+        ExecutionHost::Desktop
+    } else {
+        ExecutionHost::Server
+    }
+}
+
+/// Info box saying what a workflow of `engine` has to expect from the execution environment
+/// (executor and software deployment are fixed by MAcWorP), worded for the desktop app or a
+/// server, see [`Engine::execution_environment`].
+///
+/// # Arguments
+/// * `engine` - engine of the workflow
+#[component]
+pub fn ExecutionEnvironmentNote(engine: Engine) -> Element {
+    let text = engine.execution_environment(execution_host());
+    rsx! {
+        div {
+            class: "alert alert-info",
+            role: "note",
+            "{text}"
+        }
     }
 }

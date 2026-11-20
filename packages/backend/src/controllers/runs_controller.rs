@@ -299,6 +299,10 @@ impl RunsController {
         state.confine_local_source(workflow.id, &mut configuration);
         // Uploaded files are pinned like remote checkouts: later uploads do not change this run
         state.pin_local_source(&mut configuration);
+        // Before the resume parameter is added: that one is managed, not allowed by hand
+        configuration
+            .validate_engine_parameters()
+            .map_err(macworp_core::workflow_configuration::render::Error::from)?;
         apply_values(&mut configuration, &payload.parameters)?;
         if resumed.is_some() {
             configuration.enable_resume();

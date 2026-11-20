@@ -52,3 +52,7 @@ mod workflow_schemas_http_tests;
 /// HTTP-level tests of the nf-core index endpoints
 #[cfg(all(test, feature = "integration"))]
 mod nf_core_http_tests;
+
+/// HTTP-level tests of the engine parameter allowlist
+#[cfg(all(test, feature = "integration"))]
+mod engine_parameters_http_tests;

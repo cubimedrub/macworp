@@ -30,7 +30,7 @@ ARG NXF_VER=26.10.6
 ARG NF_WEBLOG_VER=1.2.0
 ENV NXF_VER=${NXF_VER} NXF_HOME=/opt/nextflow NXF_ANSI_LOG=false NXF_OPTS="-Xmx1g"
 
-COPY --from=eclipse-temurin:21-jre /opt/java/openjdk /opt/java/openjdk
+COPY --from=docker.io/library/eclipse-temurin:21-jre /opt/java/openjdk /opt/java/openjdk
 ENV JAVA_HOME=/opt/java/openjdk PATH=/opt/java/openjdk/bin:$PATH
 
 RUN curl -fsSL https://get.nextflow.io | bash \

@@ -49,6 +49,16 @@ impl Engine {
         }
     }
 
+    /// Conventional main script file name of this engine, `None` if it has none (CWL files and
+    /// container images are named freely).
+    pub fn default_script(&self) -> Option<&'static str> {
+        match self {
+            Engine::Nextflow => Some("main.nf"),
+            Engine::Snakemake => Some("Snakefile"),
+            Engine::Cwl | Engine::Container => None,
+        }
+    }
+
     /// Source kinds this engine can run, each with default payload.
     pub fn supported_sources(&self) -> Vec<Source> {
         let local = Source::Local(LocalSource::default());

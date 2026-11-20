@@ -753,6 +753,25 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                                         *configuration.source_mut() = source;
                                     }
                                 }
+                                // A main script that is still the previous engine's default follows the new engine
+                                if let Some(new_default) = engine.default_script() {
+                                    let previous_default = configuration.engine().default_script();
+                                    match configuration.source_mut() {
+                                        Source::Local(local) => {
+                                            if previous_default.is_some_and(|d| local.script().as_path() == std::path::Path::new(d)) {
+                                                *local.script_mut() = new_default.into();
+                                            }
+                                        }
+                                        Source::Remote(remote) => {
+                                            if let (Some(previous), Some(script)) = (previous_default, remote.script_mut()) {
+                                                if script.as_path() == std::path::Path::new(previous) {
+                                                    *script = new_default.into();
+                                                }
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
                                 *configuration.engine_mut() = engine;
                             }
                         },

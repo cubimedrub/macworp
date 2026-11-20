@@ -45,16 +45,30 @@ impl RuntimeKind {
     /// containers through the runtime socket. Snakemake runs its tool containers with Apptainer
     /// inside the engine container, which needs user namespaces and `/proc` mounts: verified on
     /// Docker (macOS) and on rootless Podman on Linux, but Podman on a macOS machine VM fails
-    /// mounting `/proc`, so Podman only counts as Snakemake-capable on Linux hosts (see
+    /// mounting `/proc`, so Podman only counts as Snakemake-capable on Linux hosts, and not on
+    /// those enforcing SELinux (see [`Self::podman_runs_snakemake`] and
     /// `docs/container-runtimes.md`). `wslc` offers no sibling-container access, so it only runs
     /// plain `Container` workflows.
     pub fn supports_engine(self, engine: &Engine) -> bool {
         match self {
             Self::Docker => true,
-            Self::Podman => !matches!(engine, Engine::Snakemake) || cfg!(target_os = "linux"),
+            Self::Podman => !matches!(engine, Engine::Snakemake) || Self::podman_runs_snakemake(),
             #[cfg(windows)]
             Self::Wslc => matches!(engine, Engine::Container),
         }
+    }
+}
+
+impl RuntimeKind {
+    /// Whether rootless Podman can run Snakemake on this host. Apptainer inside the engine
+    /// container needs user namespaces and `/proc` mounts: that works on Linux hosts, not in the
+    /// VM of a macOS Podman machine (`/proc` cannot be mounted), and not where SELinux enforces:
+    /// the images Apptainer builds carry `security.selinux` attributes that it cannot write back
+    /// as an unprivileged user when it unpacks them (`write_xattr: could not write xattr
+    /// security.selinux`, checked on Fedora 45 with Podman 6.2, 2026-11-20). Docker on such a
+    /// host works.
+    pub fn podman_runs_snakemake() -> bool {
+        cfg!(target_os = "linux") && !crate::executors::selinux_enforcing()
     }
 }
 
@@ -496,7 +510,7 @@ mod tests {
             assert!(RuntimeKind::Docker.supports_engine(&engine));
             assert_eq!(
                 RuntimeKind::Podman.supports_engine(&engine),
-                engine != Engine::Snakemake || cfg!(target_os = "linux")
+                engine != Engine::Snakemake || RuntimeKind::podman_runs_snakemake()
             );
         }
     }

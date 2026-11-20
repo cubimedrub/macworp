@@ -153,7 +153,7 @@ mod tests {
     /// to docker unless podman supports it too (Linux hosts), the rest stays on podman.
     #[tokio::test]
     async fn engines_use_the_first_runtime_that_supports_them() {
-        let snakemake_runtime = if cfg!(target_os = "linux") {
+        let snakemake_runtime = if RuntimeKind::podman_runs_snakemake() {
             RuntimeKind::Podman
         } else {
             RuntimeKind::Docker
@@ -173,7 +173,7 @@ mod tests {
     #[tokio::test]
     async fn single_runtimes() {
         let podman = assignment(&[RuntimeKind::Podman]).await;
-        if cfg!(target_os = "linux") {
+        if RuntimeKind::podman_runs_snakemake() {
             assert_eq!(podman.len(), 4);
         } else {
             assert_eq!(podman.len(), 3);

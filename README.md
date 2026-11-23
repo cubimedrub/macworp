@@ -150,6 +150,15 @@ Workflows with a local source are uploaded as a zip archive in the workflow edit
 * Versions that are neither the newest nor used by a queued or running run are deleted after an upload, when the workflow is deleted and by an hourly cleanup.
 * The desktop app reads the files from a folder you choose instead and does not copy them: changing that folder affects runs that are queued or running.
 
+### Container images built from the workflow
+A local workflow can ship `Dockerfile`s (`Dockerfile`, `Containerfile`, `Dockerfile.*`, `*.dockerfile`) for tool images that are not on a public registry. In the workflow editor, enter for each file the exact image name the workflow uses, like `myteam/tool:1.0`. Names need a prefix and a version; `latest`, registry hosts (`ghcr.io/...`) and `library/` names are refused, so a name cannot shadow a public image. The build context is the folder of the file. Only local workflows can build images; remote and nf-core workflows use public images.
+
+* The worker builds the images when a run starts, before the engine, and the build output appears in the run log. An unchanged context (same content hash) is not built again on that worker. The first run is slower; a broken `Dockerfile` fails the run at its start.
+* Two runs that need the same name with different content do not overlap: the second waits until the first ended.
+* Nextflow, Container and CWL use the image under that name. For Snakemake the rule must name it as `docker://<name>` (for example `container: "docker://myteam/tool:1.0"`); the worker converts the image into the shared Apptainer image cache.
+* Built images are not removed automatically yet.
+* A `Dockerfile` is code of the workflow's author, built with network access. Use a rootless runtime on servers where users may upload workflows; the worker check (`macworp_worker doctor`) warns about a rootful one.
+
 ## Contribution
 If you want to contribute to MAcWorP please check our [contribution document](CONTRIBUTING.md) first.
 

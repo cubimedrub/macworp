@@ -147,6 +147,31 @@ impl DoctorReport {
         })
     }
 
+    /// Warns when a usable runtime runs as root. The worker builds the images of uploaded
+    /// workflows from their `Dockerfile` (ADR 0007), which is code of the workflow's author with
+    /// network access; on a rootful daemon a build escape or a privileged `RUN` is root on the
+    /// host, rootless runtimes confine it to the worker's user. `None` when every runtime is
+    /// rootless or does not report it.
+    pub fn build_check(&self) -> Option<Check> {
+        let rootful: Vec<String> = self
+            .runtimes
+            .iter()
+            .filter(|usable| usable.info.rootless == Some(false))
+            .map(|usable| usable.info.kind.to_string())
+            .collect();
+        if rootful.is_empty() {
+            return None;
+        }
+        Some(Check {
+            name: "image-builds".to_string(),
+            status: CheckStatus::Warn,
+            message: format!(
+                "{} runs as root and builds the Dockerfiles of uploaded workflows: their build steps then run with root-level access to the host. Use a rootless runtime on servers where users upload workflows",
+                rootful.join(" and ")
+            ),
+        })
+    }
+
     /// At least one runtime is usable. Warnings do not fail.
     pub fn is_ok(&self) -> bool {
         !self.runtimes.is_empty()
@@ -302,9 +327,10 @@ pub async fn doctor_with(candidates: Vec<Arc<dyn ContainerRuntime>>) -> DoctorRe
         )
         .await;
     let selinux = report.selinux_check(crate::executors::selinux_enforcing());
+    let builds = report.build_check();
     report
         .checks
-        .extend([engines, apparmor, selinux].into_iter().flatten());
+        .extend([engines, apparmor, selinux, builds].into_iter().flatten());
     report
 }
 
@@ -625,6 +651,24 @@ mod tests {
         let report = doctor_with(vec![Mock::ok(RuntimeKind::Docker, "27.1.1", false)]).await;
         assert!(report.is_ok());
         assert!(report.checks.iter().any(|c| c.status == CheckStatus::Warn));
+    }
+
+    /// Builds of uploaded workflows warn on a rootful runtime only, and name it.
+    #[tokio::test]
+    async fn rootful_runtime_gets_an_image_build_warning() {
+        let rootless = doctor_with(vec![Mock::ok(RuntimeKind::Podman, "5.0.0", true)]).await;
+        assert!(rootless.build_check().is_none());
+        let rootful = doctor_with(vec![
+            Mock::ok(RuntimeKind::Podman, "5.0.0", true),
+            Mock::ok(RuntimeKind::Docker, "27.1.1", false),
+        ])
+        .await;
+        let check = rootful.build_check().unwrap();
+        assert_eq!(check.status, CheckStatus::Warn);
+        assert!(check.message.starts_with("docker runs as root"));
+        // The doctor report carries it
+        assert!(rootful.checks.iter().any(|c| c.name == "image-builds"));
+        assert!(doctor_with(vec![]).await.build_check().is_none());
     }
 
     #[tokio::test]

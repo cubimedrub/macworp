@@ -18,9 +18,9 @@ use macworp_core::{
     },
     responses::{
         EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse,
-        NfCorePipelinesResponse, NfCoreReleasesResponse, PrefetchResponse, ProjectResponse,
-        ProjectTextResponse, RunLogsResponse, RunResponse, ShareResponse, UserResponse,
-        UserSummaryResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse,
+        NfCorePipelinesResponse, NfCoreReleasesResponse, OneTimeTokenResponse, PrefetchResponse,
+        ProjectResponse, ProjectTextResponse, RunLogsResponse, RunResponse, ShareResponse,
+        UserResponse, UserSummaryResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse,
     },
     routing::*,
     workflow_configuration::WorkflowConfiguration,
@@ -302,6 +302,25 @@ impl<'a> UsersClient<'a> {
             UsersRouting::controller_path(),
             path
         )
+    }
+
+    /// Obtains a token that authenticates exactly one request for a few seconds, for links the
+    /// browser follows itself and so cannot send the `Authorization` header with (downloads, see
+    /// [`ProjectsClient::download_url`]).
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    pub async fn one_time_token(&self, jwt: &str) -> Result<String, Error> {
+        let request =
+            reqwest::Client::new().post(self.url(UsersRouting::ONE_TIME_TOKEN_PATH, None));
+        let response: OneTimeTokenResponse = self
+            .base_client
+            .send_authenticated(request, jwt, "get one-time token")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)?;
+        Ok(response.token)
     }
 
     /// Lists all users (administrators only), optionally restricted to usernames matching `query`

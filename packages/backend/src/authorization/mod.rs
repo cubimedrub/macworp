@@ -178,6 +178,76 @@ where
     })
 }
 
+/// Query part that carries a one-time token
+#[derive(serde::Deserialize)]
+struct OneTimeTokenQuery {
+    /// The token, if the request has one
+    #[serde(rename = "one-time-token")]
+    token: Option<String>,
+}
+
+/// Like [`Authorized`], but the user may also authenticate with a one-time token in the query
+/// (`ONE_TIME_TOKEN_PARAM`) instead of the `Authorization` header. For requests the browser makes
+/// itself, such as downloads. A token that is unknown, used or expired is rejected with 401 even if
+/// a valid header is present, so a stale link never silently falls back.
+///
+/// Use only on endpoints that must be reachable by link: URLs end up in logs and history.
+pub struct OneTimeTokenAuthorized<R: Resource, M>(pub Authorized<R, M>);
+
+impl<R, M, S> FromRequestParts<S> for OneTimeTokenAuthorized<R, M>
+where
+    R: Resource,
+    <R::Entity as EntityTrait>::Model: Send,
+    M: MinRole,
+    S: Send + Sync,
+{
+    type Rejection = Error;
+
+    /// Redeems the token of the query and authorizes its user on the resource of the path; without
+    /// a token it behaves exactly like [`Authorized`].
+    ///
+    /// # Arguments
+    /// * `parts` - The request parts to read query, path and headers from
+    /// * `state` - The router state, passed on to [`Authorized`]
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let token = axum::extract::Query::<OneTimeTokenQuery>::from_request_parts(parts, state)
+            .await
+            .map_err(crate::authentication::error::Error::InvalidQuery)?
+            .0
+            .token;
+        let Some(token) = token else {
+            return Authorized::from_request_parts(parts, state)
+                .await
+                .map(OneTimeTokenAuthorized);
+        };
+
+        let Extension(app_state) = parts
+            .extract::<Extension<Arc<State>>>()
+            .await
+            .map_err(crate::authentication::error::Error::StateMissing)?;
+        let Path(id) = parts
+            .extract::<Path<i64>>()
+            .await
+            .map_err(|_| Error::InvalidPath)?;
+
+        let unauthorized = crate::authentication::error::Error::Unauthorized;
+        let user_id = app_state
+            .one_time_tokens()
+            .redeem(&token)
+            .ok_or(unauthorized)?;
+        let user = crate::models::UserTable::find_by_id(user_id)
+            .one(app_state.db())
+            .await?
+            .ok_or(crate::authentication::error::Error::Unauthorized)?;
+        if user.disabled {
+            return Err(crate::authentication::error::Error::AccountDisabled.into());
+        }
+        authorize::<R, M>(&app_state, user, id)
+            .await
+            .map(OneTimeTokenAuthorized)
+    }
+}
+
 /// Tests of [`authorize`] against a SQLite database.
 #[cfg(all(test, feature = "integration"))]
 mod tests {

@@ -22,6 +22,10 @@ impl IsRouting for UtilitiesRouting {
     const CONTROLLER_PATH: &str = "/utilities";
 }
 
+/// Query parameter that carries a one-time token instead of the `Authorization` header, for
+/// requests the browser makes itself (downloads) and so cannot add the header to.
+pub const ONE_TIME_TOKEN_PARAM: &str = "one-time-token";
+
 pub struct UsersRouting;
 impl UsersRouting {
     /// GET: the authenticated user
@@ -42,6 +46,9 @@ impl UsersRouting {
     pub const ENABLE_PATH: &str = "/enable/{id}";
     /// POST (admin, or the user themselves): delete a user; resources they owned are handed over, left ownerless or deleted
     pub const DELETE_PATH: &str = "/delete/{id}";
+    /// POST: issue a one-time token (`OneTimeTokenResponse`) for the authenticated user, see
+    /// [`ONE_TIME_TOKEN_PARAM`]
+    pub const ONE_TIME_TOKEN_PATH: &str = "/one-time-token";
 }
 
 impl IsRouting for UsersRouting {

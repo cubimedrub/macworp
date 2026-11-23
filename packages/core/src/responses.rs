@@ -394,3 +394,11 @@ pub struct ProjectTextResponse {
     /// File content (UTF-8)
     pub content: String,
 }
+
+/// Answer of `POST /user/one-time-token`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OneTimeTokenResponse {
+    /// Token that authenticates exactly one request, for a few seconds, as the query parameter
+    /// `ONE_TIME_TOKEN_PARAM`
+    pub token: String,
+}

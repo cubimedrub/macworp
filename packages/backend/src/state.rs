@@ -8,6 +8,7 @@ use macworp_core::responses::PrefetchResponse;
 use macworp_core::workflow_configuration::{WorkflowConfiguration, engine::Engine};
 
 use crate::{
+    authentication::one_time_token::OneTimeTokens,
     configuration::{Configuration, WORKFLOWS_DIRECTORY_NAME},
     error::Error,
     nf_core_index::NfCoreIndex,
@@ -33,6 +34,8 @@ pub struct State {
     /// Latest background download per workflow, with a sequence number so a slow older
     /// download cannot overwrite the result of a newer one
     prefetches: Mutex<HashMap<i64, (u64, PrefetchResponse)>>,
+    /// Tokens that authenticate one request made by the browser itself (downloads)
+    one_time_tokens: OneTimeTokens,
 }
 
 impl State {
@@ -62,11 +65,17 @@ impl State {
             workflow_repository_cache,
             nf_core_index,
             prefetches: Mutex::default(),
+            one_time_tokens: OneTimeTokens::default(),
         })
     }
 
     pub fn config(&self) -> &Configuration {
         &self.config
+    }
+
+    /// The store of one-time tokens, see [`OneTimeTokens`].
+    pub fn one_time_tokens(&self) -> &OneTimeTokens {
+        &self.one_time_tokens
     }
 
     pub fn db(&self) -> &DatabaseConnection {

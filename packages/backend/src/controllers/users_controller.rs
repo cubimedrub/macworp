@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use macworp_core::{
     requests::{NewUserRequest, ResetPasswordRequest, UpdateUserRequest},
-    responses::{UserResponse, UserSummaryResponse},
+    responses::{OneTimeTokenResponse, UserResponse, UserSummaryResponse},
     routing::UsersRouting,
 };
 
@@ -91,6 +91,10 @@ impl UsersController {
             .route(UsersRouting::DISABLE_PATH, post(Self::disable))
             .route(UsersRouting::ENABLE_PATH, post(Self::enable))
             .route(UsersRouting::DELETE_PATH, post(Self::delete::<F>))
+            .route(
+                UsersRouting::ONE_TIME_TOKEN_PATH,
+                post(Self::one_time_token),
+            )
             .layer(Extension(state.clone()))
             .with_state(state)
     }
@@ -104,6 +108,17 @@ impl UsersController {
         let mut response = Self::response(user);
         response.can_create_local_workflows = Some(can_create_local_workflows);
         Ok(Json(response))
+    }
+
+    /// Issues a token that authenticates one request of the user for a few seconds, passed as the
+    /// query parameter `ONE_TIME_TOKEN_PARAM`. Only endpoints that accept it (downloads) honour it.
+    async fn one_time_token(
+        State(state): State<Arc<AppState>>,
+        RequireUser(user): RequireUser,
+    ) -> Json<OneTimeTokenResponse> {
+        Json(OneTimeTokenResponse {
+            token: state.one_time_tokens().issue(user.id),
+        })
     }
 
     /// The API representation of a user, without the password hash.

@@ -142,15 +142,15 @@ async fn run_remote(
         engines,
         stopped.clone(),
     ));
+    // One set for all slots: they share the image store, so they share the name locks
+    let builders: Vec<ImageBuilder> = runtimes
+        .iter()
+        .map(|runtime| ImageBuilder::for_runtime(runtime.as_ref()))
+        .collect();
     let mut slots = Vec::new();
     for _ in 0..remote.capacity {
         let mut worker = Worker::new(source.clone(), executors.clone(), WorkerOptions::default())
-            .with_image_builders(
-                runtimes
-                    .iter()
-                    .map(|runtime| ImageBuilder::for_runtime(runtime.as_ref()))
-                    .collect(),
-            );
+            .with_image_builders(builders.clone());
         if let Some(progress) = &progress {
             worker = worker.with_progress_receiver(progress.clone());
         }

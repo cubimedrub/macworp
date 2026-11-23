@@ -12,7 +12,7 @@ use tokio::{
 use crate::{
     container_runtime::RuntimeKind,
     executors::{Executor, Job, LogLine, Outcome},
-    image_builder::ImageBuilder,
+    image_builder::{ImageBuilder, ImageHold},
     job_source::{Error as SourceError, JobSource},
     log_proxy::{HostAccess, ProgressReceiver},
     progress::ProgressUpdate,
@@ -189,8 +189,16 @@ impl Worker {
         ));
 
         // Images the workflow brings are built before the engine starts
+        // Kept until the run ended: the names stay reserved while the engine uses the images
+        let mut image_hold = None;
         let built = self
-            .build_images(&job, executor.runtime_kind(), &log_tx, &cancel_rx)
+            .build_images(
+                &job,
+                executor.runtime_kind(),
+                &log_tx,
+                &cancel_rx,
+                &mut image_hold,
+            )
             .await;
 
         // Own task, so a panic in the executor fails this run instead of ending the worker loop
@@ -216,6 +224,7 @@ impl Worker {
             },
         };
 
+        drop(image_hold);
         cancel_poll.abort();
         // The sender is gone once the executor returned, this flushes the rest
         let _ = logs.await;
@@ -236,6 +245,7 @@ impl Worker {
     /// * `kind` - runtime of the job's executor, its builder is used (the first one if unknown)
     /// * `logs` - run log
     /// * `cancel` - turns `true` when a user stops the run
+    /// * `held` - receives the reservation of the image names, to keep until the run ended
     ///
     /// # Returns
     /// `None` when the engine can start (nothing to build, or all built), otherwise how the run
@@ -246,6 +256,7 @@ impl Worker {
         kind: Option<RuntimeKind>,
         logs: &mpsc::Sender<LogLine>,
         cancel: &watch::Receiver<bool>,
+        held: &mut Option<ImageHold>,
     ) -> Option<Outcome> {
         if job.configuration.images().is_empty() {
             return None;
@@ -263,8 +274,11 @@ impl Worker {
             });
         };
         match builder.build_all(job, logs, cancel.clone()).await {
-            Outcome::Succeeded => None,
-            other => Some(other),
+            Ok(hold) => {
+                *held = Some(hold);
+                None
+            }
+            Err(outcome) => Some(outcome),
         }
     }
 }

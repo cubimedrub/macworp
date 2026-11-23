@@ -61,6 +61,135 @@ pub struct ImageBuilder {
     program: PathBuf,
     /// Which runtime it is, to choose the builder matching an executor's runtime
     kind: RuntimeKind,
+    /// Image names in use by active runs, shared by all clones (the slots of one worker use one
+    /// runtime and therefore one image store)
+    locks: std::sync::Arc<ImageLocks>,
+}
+
+/// A build prepared for [`ImageBuilder::build_one`]: checked paths and the content hash.
+#[derive(Debug)]
+struct PreparedImage {
+    /// Name the workflow uses
+    name: String,
+    /// Build file as the maintainer entered it, for the log
+    dockerfile: String,
+    /// Build file inside the workflow directory
+    file: PathBuf,
+    /// Build context directory
+    context: PathBuf,
+    /// Content hash of the context
+    hash: String,
+    /// `<repository>:<hash>`, the second tag of the image
+    hash_tag: String,
+}
+
+/// Which image names are in use by active runs of a worker, and with which content.
+///
+/// The engine finds an image by the literal name, so two runs must not give one name different
+/// content: the second waits until the first ended. Runs with identical content share the name.
+#[derive(Debug, Default)]
+pub struct ImageLocks {
+    /// Name to the content hash in use and the number of runs using it
+    in_use: std::sync::Mutex<std::collections::HashMap<String, (String, usize)>>,
+    /// Woken whenever a name is released
+    released: tokio::sync::Notify,
+}
+
+impl ImageLocks {
+    /// Reserves `images` for one run, waiting while any name is used with other content.
+    /// Nothing is held while waiting, so a waiting run never blocks another. Names should be
+    /// given in a fixed order by every caller anyway.
+    ///
+    /// # Arguments
+    /// * `images` - `(name, content hash)` pairs of the run
+    /// * `logs` - run log, told once when the run has to wait
+    /// * `cancel` - turns `true` when a user stops the run
+    ///
+    /// # Returns
+    /// The reservation, or [`Outcome::Cancelled`] when the run was stopped while waiting.
+    pub async fn acquire(
+        self: &std::sync::Arc<Self>,
+        images: Vec<(String, String)>,
+        logs: &mpsc::Sender<LogLine>,
+        mut cancel: watch::Receiver<bool>,
+    ) -> Result<ImageHold, Outcome> {
+        let mut told = false;
+        loop {
+            let notified = self.released.notified();
+            tokio::pin!(notified);
+            // Registers before the check: a release in between is not lost
+            notified.as_mut().enable();
+            let blocked = {
+                let mut in_use = self.in_use.lock().unwrap();
+                let blocked = images.iter().find(|(name, hash)| {
+                    in_use
+                        .get(name)
+                        .is_some_and(|(used_hash, _)| used_hash != hash)
+                });
+                match blocked {
+                    Some((name, _)) => Some(name.clone()),
+                    None => {
+                        for (name, hash) in &images {
+                            in_use.entry(name.clone()).or_insert((hash.clone(), 0)).1 += 1;
+                        }
+                        None
+                    }
+                }
+            };
+            let Some(name) = blocked else {
+                return Ok(ImageHold {
+                    locks: self.clone(),
+                    names: images.into_iter().map(|(name, _)| name).collect(),
+                });
+            };
+            if !told {
+                told = true;
+                let _ = logs
+                    .send(LogLine {
+                        stream: LogStream::Engine,
+                        line: format!(
+                            "Waiting: image name {name} is used by another run with different content"
+                        ),
+                    })
+                    .await;
+            }
+            tokio::select! {
+                _ = &mut notified => {}
+                stopped = async { cancel.wait_for(|cancelled| *cancelled).await.is_ok() } => {
+                    if stopped {
+                        return Err(Outcome::Cancelled);
+                    }
+                    // Nobody can cancel anymore: keep waiting for the release
+                    notified.await;
+                }
+            }
+        }
+    }
+}
+
+/// The image names a run has reserved, released when dropped (when the run ended).
+#[derive(Debug)]
+pub struct ImageHold {
+    /// Where the names are registered
+    locks: std::sync::Arc<ImageLocks>,
+    /// The reserved names
+    names: Vec<String>,
+}
+
+impl Drop for ImageHold {
+    fn drop(&mut self) {
+        let mut in_use = self.locks.in_use.lock().unwrap();
+        for name in &self.names {
+            if let Some(entry) = in_use.get_mut(name) {
+                entry.1 -= 1;
+                if entry.1 == 0 {
+                    in_use.remove(name);
+                }
+            }
+        }
+        drop(in_use);
+        self.locks.released.notify_waiters();
+    }
 }
 
 impl ImageBuilder {
@@ -78,7 +207,11 @@ impl ImageBuilder {
     /// * `program` - runtime binary
     /// * `kind` - the runtime it is
     pub fn new(program: PathBuf, kind: RuntimeKind) -> Self {
-        Self { program, kind }
+        Self {
+            program,
+            kind,
+            locks: Default::default(),
+        }
     }
 
     /// The runtime this builder uses.
@@ -86,9 +219,11 @@ impl ImageBuilder {
         self.kind
     }
 
-    /// Builds every image of the job's configuration, logging to the run as `Engine` lines
-    /// plus the build output. Stops at the first failure or when `cancel` turns `true`.
-    /// Counts against the build timeout [`BUILD_TIMEOUT`].
+    /// Makes every image of the job's configuration available under its name, logging to the
+    /// run as `Engine` lines plus the build output. First the build contexts are hashed, then
+    /// the names are reserved (see [`ImageLocks`]): a run whose name is in use by an active run
+    /// with different content waits here, which needs no time limit. Only the builds count
+    /// against [`BUILD_TIMEOUT`]. Stops at the first failure or when `cancel` turns `true`.
     ///
     /// # Arguments
     /// * `job` - claimed run with a local source (its location resolved on this machine)
@@ -96,65 +231,62 @@ impl ImageBuilder {
     /// * `cancel` - turns `true` when a user stops the run
     ///
     /// # Returns
-    /// [`Outcome::Succeeded`] when all images are available; otherwise the failure
-    /// ([`FailureReason::StartFailed`]) or [`Outcome::Cancelled`].
+    /// The reservation of the names, to keep until the run ended; otherwise how the run ends
+    /// instead: the failure ([`FailureReason::StartFailed`]) or [`Outcome::Cancelled`].
     pub async fn build_all(
         &self,
         job: &Job,
         logs: &mpsc::Sender<LogLine>,
         cancel: watch::Receiver<bool>,
-    ) -> Outcome {
-        let work = self.build_each(job, logs, cancel);
-        match tokio::time::timeout(BUILD_TIMEOUT, work).await {
+    ) -> Result<ImageHold, Outcome> {
+        let Source::Local(local) = job.configuration.source() else {
+            return Err(failed(Error::NotLocal.to_string()));
+        };
+        let mut prepared = Vec::new();
+        for image in job.configuration.images() {
+            prepared.push(Self::prepare(local.location(), image).await?);
+        }
+        // Always in name order, so two runs needing the same names cannot wait for each other
+        prepared.sort_by(|a, b| a.name.cmp(&b.name));
+        let hold = self
+            .locks
+            .acquire(
+                prepared
+                    .iter()
+                    .map(|image| (image.name.clone(), image.hash.clone()))
+                    .collect(),
+                logs,
+                cancel.clone(),
+            )
+            .await?;
+        let work = async {
+            for image in &prepared {
+                match self.build_one(image, logs, cancel.clone()).await {
+                    Outcome::Succeeded => {}
+                    other => return other,
+                }
+            }
+            Outcome::Succeeded
+        };
+        let outcome = match tokio::time::timeout(BUILD_TIMEOUT, work).await {
             Ok(outcome) => outcome,
             Err(_) => failed(format!(
                 "Building the images took longer than {} minutes",
                 BUILD_TIMEOUT.as_secs() / 60
             )),
-        }
-    }
-
-    /// The loop of [`Self::build_all`].
-    ///
-    /// # Arguments
-    /// * `job` - claimed run
-    /// * `logs` - run log
-    /// * `cancel` - turns `true` when a user stops the run
-    async fn build_each(
-        &self,
-        job: &Job,
-        logs: &mpsc::Sender<LogLine>,
-        cancel: watch::Receiver<bool>,
-    ) -> Outcome {
-        let Source::Local(local) = job.configuration.source() else {
-            return failed(Error::NotLocal.to_string());
         };
-        for image in job.configuration.images() {
-            match self
-                .build_one(local.location(), image, logs, cancel.clone())
-                .await
-            {
-                Outcome::Succeeded => {}
-                other => return other,
-            }
+        match outcome {
+            Outcome::Succeeded => Ok(hold),
+            other => Err(other),
         }
-        Outcome::Succeeded
     }
 
-    /// Makes one image available under its name.
+    /// Checks the build file of `image` and hashes its context (off the async threads).
     ///
     /// # Arguments
     /// * `workflow` - the workflow directory
     /// * `image` - build file and name
-    /// * `logs` - run log
-    /// * `cancel` - turns `true` when a user stops the run
-    async fn build_one(
-        &self,
-        workflow: &Path,
-        image: &ImageBuild,
-        logs: &mpsc::Sender<LogLine>,
-        cancel: watch::Receiver<bool>,
-    ) -> Outcome {
+    async fn prepare(workflow: &Path, image: &ImageBuild) -> Result<PreparedImage, Outcome> {
         let (workflow_directory, dockerfile) =
             (workflow.to_path_buf(), image.dockerfile().to_string());
         let prepared =
@@ -162,10 +294,34 @@ impl ImageBuilder {
                 .await;
         let (context, file, hash) = match prepared {
             Ok(Ok(prepared)) => prepared,
-            Ok(Err(error)) => return failed(error.to_string()),
-            Err(error) => return failed(format!("Hashing the build context failed: {error}")),
+            Ok(Err(error)) => return Err(failed(error.to_string())),
+            Err(error) => {
+                return Err(failed(format!("Hashing the build context failed: {error}")));
+            }
         };
-        let hash_tag = format!("{}:{hash}", repository(image.name()));
+        Ok(PreparedImage {
+            name: image.name().to_string(),
+            dockerfile: image.dockerfile().to_string(),
+            hash_tag: format!("{}:{hash}", repository(image.name())),
+            file,
+            context,
+            hash,
+        })
+    }
+
+    /// Makes one image available under its name.
+    ///
+    /// # Arguments
+    /// * `image` - the prepared build
+    /// * `logs` - run log
+    /// * `cancel` - turns `true` when a user stops the run
+    async fn build_one(
+        &self,
+        image: &PreparedImage,
+        logs: &mpsc::Sender<LogLine>,
+        cancel: watch::Receiver<bool>,
+    ) -> Outcome {
+        let hash_tag = image.hash_tag.clone();
         let say = |text: String| async {
             let _ = logs
                 .send(LogLine {
@@ -178,16 +334,15 @@ impl ImageBuilder {
         if self.has_image(&hash_tag).await {
             say(format!(
                 "Image {} is up to date ({hash_tag}), not building again",
-                image.name()
+                image.name
             ))
             .await;
-            let mut args = vec!["tag".to_string(), hash_tag, image.name().to_string()];
+            let mut args = vec!["tag".to_string(), hash_tag, image.name.clone()];
             return self.run(&mut args, logs, cancel).await;
         }
         say(format!(
             "Building image {} from {}",
-            image.name(),
-            image.dockerfile()
+            image.name, image.dockerfile
         ))
         .await;
         let mut args = vec!["build".to_string()];
@@ -197,12 +352,12 @@ impl ImageBuilder {
         }
         args.extend([
             "--file".into(),
-            file.display().to_string(),
+            image.file.display().to_string(),
             "--tag".into(),
-            image.name().to_string(),
+            image.name.clone(),
             "--tag".into(),
             hash_tag,
-            context.display().to_string(),
+            image.context.display().to_string(),
         ]);
         self.run(&mut args, logs, cancel).await
     }
@@ -437,7 +592,10 @@ mod tests {
         cancel: watch::Receiver<bool>,
     ) -> (Outcome, Vec<LogLine>) {
         let (tx, mut rx) = mpsc::channel(256);
-        let outcome = builder.build_all(job, &tx, cancel).await;
+        let outcome = match builder.build_all(job, &tx, cancel).await {
+            Ok(_hold) => Outcome::Succeeded,
+            Err(outcome) => outcome,
+        };
         drop(tx);
         let mut lines = Vec::new();
         while let Some(line) = rx.recv().await {
@@ -532,6 +690,114 @@ mod tests {
             .await;
             assert!(matches!(outcome, Outcome::Failed { .. }), "{file}");
         }
+    }
+
+    /// Two runs with the same name and different content do not overlap: the second waits
+    /// until the first released the name. Equal content is shared, other names do not wait.
+    #[tokio::test]
+    async fn same_name_different_content_waits() {
+        let locks = std::sync::Arc::new(ImageLocks::default());
+        let (logs, mut log_rx) = mpsc::channel(16);
+        let (_keep, cancel) = watch::channel(false);
+        let image = |name: &str, hash: &str| vec![(name.to_string(), hash.to_string())];
+
+        let first = locks
+            .acquire(image("a/b:1", "h1"), &logs, cancel.clone())
+            .await
+            .unwrap();
+        // Same content and another name go through at once
+        let shared = locks
+            .acquire(image("a/b:1", "h1"), &logs, cancel.clone())
+            .await
+            .unwrap();
+        let other = locks
+            .acquire(image("a/c:1", "h2"), &logs, cancel.clone())
+            .await
+            .unwrap();
+
+        // Different content waits, and tells the run log once
+        let waiter = tokio::spawn({
+            let (locks, logs, cancel) = (locks.clone(), logs.clone(), cancel.clone());
+            async move {
+                locks
+                    .acquire(image("a/b:1", "h3"), &logs, cancel)
+                    .await
+                    .map(drop)
+            }
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!waiter.is_finished());
+        assert!(log_rx.recv().await.unwrap().line.starts_with("Waiting"));
+
+        // Still blocked while one of the two sharing runs is active
+        drop(first);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!waiter.is_finished());
+        drop(shared);
+        tokio::time::timeout(Duration::from_secs(5), waiter)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        drop(other);
+        assert!(locks.in_use.lock().unwrap().is_empty());
+    }
+
+    /// A run that waits for a name can be cancelled and then holds nothing.
+    #[tokio::test]
+    async fn waiting_run_can_be_cancelled() {
+        let locks = std::sync::Arc::new(ImageLocks::default());
+        let (logs, _log_rx) = mpsc::channel(16);
+        let (tx, cancel) = watch::channel(false);
+        let image = |hash: &str| vec![("a/b:1".to_string(), hash.to_string())];
+        let _first = locks
+            .acquire(image("h1"), &logs, cancel.clone())
+            .await
+            .unwrap();
+        let waiter = tokio::spawn({
+            let (locks, logs) = (locks.clone(), logs.clone());
+            async move { locks.acquire(image("h2"), &logs, cancel).await.map(drop) }
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        tx.send(true).unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(5), waiter)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(result, Err(Outcome::Cancelled)));
+        assert_eq!(locks.in_use.lock().unwrap().get("a/b:1").unwrap().1, 1);
+    }
+
+    /// Through the builder: a second run of another content waits for the first run's hold.
+    #[tokio::test]
+    async fn builder_holds_names_until_the_hold_is_dropped() {
+        let directory = tempfile::tempdir().unwrap();
+        let (builder, _) = fake_runtime(directory.path());
+        let make = |content: &str| {
+            let workflow = directory.path().join(format!("wf-{content}"));
+            std::fs::create_dir_all(&workflow).unwrap();
+            std::fs::write(workflow.join("Dockerfile"), content).unwrap();
+            job(&workflow, &[("Dockerfile", "team/tool:1.0")])
+        };
+        let (tx, _rx) = mpsc::channel(256);
+        let (_keep, cancel) = watch::channel(false);
+        let first = builder
+            .build_all(&make("one"), &tx, cancel.clone())
+            .await
+            .unwrap();
+        let second = tokio::spawn({
+            let (builder, tx, cancel, job) =
+                (builder.clone(), tx.clone(), cancel.clone(), make("two"));
+            async move { builder.build_all(&job, &tx, cancel).await.map(drop) }
+        });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!second.is_finished());
+        drop(first);
+        tokio::time::timeout(Duration::from_secs(5), second)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
     }
 
     /// A cancel during the build stops it.

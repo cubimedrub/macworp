@@ -7,6 +7,7 @@ use macworp_worker::{
     container_runtime::{self, ContainerRuntime},
     executors::standard_executors,
     http_job_source::HttpJobSource,
+    image_builder::ImageBuilder,
     log_proxy::{HostAccess, ProgressReceiver},
     worker::{Worker, WorkerOptions},
 };
@@ -143,7 +144,13 @@ async fn run_remote(
     ));
     let mut slots = Vec::new();
     for _ in 0..remote.capacity {
-        let mut worker = Worker::new(source.clone(), executors.clone(), WorkerOptions::default());
+        let mut worker = Worker::new(source.clone(), executors.clone(), WorkerOptions::default())
+            .with_image_builders(
+                runtimes
+                    .iter()
+                    .map(|runtime| ImageBuilder::for_runtime(runtime.as_ref()))
+                    .collect(),
+            );
         if let Some(progress) = &progress {
             worker = worker.with_progress_receiver(progress.clone());
         }

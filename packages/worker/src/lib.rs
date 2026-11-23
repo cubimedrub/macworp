@@ -6,6 +6,8 @@ pub mod container_runtime;
 pub mod executors;
 /// Job source of remote workers: claims and reports over HTTP
 pub mod http_job_source;
+/// Builds the container images a workflow brings along before its engine starts
+pub mod image_builder;
 /// Where a worker gets jobs from and reports to
 pub mod job_source;
 /// HTTP receiver for the monitoring events of the engines (weblog / Snakemake panoptes logger)

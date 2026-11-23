@@ -10,7 +10,9 @@ use tokio::{
 };
 
 use crate::{
+    container_runtime::RuntimeKind,
     executors::{Executor, Job, LogLine, Outcome},
+    image_builder::ImageBuilder,
     job_source::{Error as SourceError, JobSource},
     log_proxy::{HostAccess, ProgressReceiver},
     progress::ProgressUpdate,
@@ -56,6 +58,8 @@ pub struct Worker {
     executors: HashMap<Engine, Arc<dyn Executor>>,
     options: WorkerOptions,
     progress: Option<Arc<ProgressReceiver>>,
+    /// Builders of the images of workflows, one per usable container runtime
+    image_builders: Vec<ImageBuilder>,
 }
 
 impl Worker {
@@ -69,7 +73,18 @@ impl Worker {
             executors: executors.into_iter().map(|e| (e.engine(), e)).collect(),
             options,
             progress: None,
+            image_builders: Vec::new(),
         }
+    }
+
+    /// Lets the worker build the images of workflows that bring a build file, with the builder
+    /// of the runtime the job's executor uses. Without one such runs fail to start.
+    ///
+    /// # Arguments
+    /// * `builders` - one per container runtime of this worker
+    pub fn with_image_builders(mut self, builders: Vec<ImageBuilder>) -> Self {
+        self.image_builders = builders;
+        self
     }
 
     /// Engines that support it report their progress to the receiver
@@ -173,19 +188,31 @@ impl Worker {
             self.options.cancel_poll_interval,
         ));
 
+        // Images the workflow brings are built before the engine starts
+        let built = self
+            .build_images(&job, executor.runtime_kind(), &log_tx, &cancel_rx)
+            .await;
+
         // Own task, so a panic in the executor fails this run instead of ending the worker loop
         let executor = executor.clone();
-        let outcome = match tokio::spawn({
-            let job = job.clone();
-            async move { executor.run(&job, log_tx, cancel_rx).await }
-        })
-        .await
-        {
-            Ok(outcome) => outcome,
-            Err(e) => Outcome::Failed {
-                exit_code: None,
-                error: Some(format!("The executor crashed: {e}")),
-                reason: Some(FailureReason::StartFailed),
+        let outcome = match built {
+            Some(outcome) => {
+                // Closes the log channel, the forwarding task ends once the rest is flushed
+                drop(log_tx);
+                outcome
+            }
+            None => match tokio::spawn({
+                let job = job.clone();
+                async move { executor.run(&job, log_tx, cancel_rx).await }
+            })
+            .await
+            {
+                Ok(outcome) => outcome,
+                Err(e) => Outcome::Failed {
+                    exit_code: None,
+                    error: Some(format!("The executor crashed: {e}")),
+                    reason: Some(FailureReason::StartFailed),
+                },
             },
         };
 
@@ -198,6 +225,47 @@ impl Worker {
             let _ = task.await;
         }
         outcome
+    }
+}
+
+impl Worker {
+    /// Builds the images of the job's workflow, if it has any.
+    ///
+    /// # Arguments
+    /// * `job` - the claimed run
+    /// * `kind` - runtime of the job's executor, its builder is used (the first one if unknown)
+    /// * `logs` - run log
+    /// * `cancel` - turns `true` when a user stops the run
+    ///
+    /// # Returns
+    /// `None` when the engine can start (nothing to build, or all built), otherwise how the run
+    /// ends instead.
+    async fn build_images(
+        &self,
+        job: &Job,
+        kind: Option<RuntimeKind>,
+        logs: &mpsc::Sender<LogLine>,
+        cancel: &watch::Receiver<bool>,
+    ) -> Option<Outcome> {
+        if job.configuration.images().is_empty() {
+            return None;
+        }
+        let builder = self
+            .image_builders
+            .iter()
+            .find(|builder| Some(builder.kind()) == kind)
+            .or(self.image_builders.first());
+        let Some(builder) = builder else {
+            return Some(Outcome::Failed {
+                exit_code: None,
+                error: Some("This worker cannot build container images".into()),
+                reason: Some(FailureReason::StartFailed),
+            });
+        };
+        match builder.build_all(job, logs, cancel.clone()).await {
+            Outcome::Succeeded => None,
+            other => Some(other),
+        }
     }
 }
 
@@ -529,6 +597,71 @@ mod tests {
         assert_eq!(last.0, 1);
         assert_eq!((last.1.total, last.1.done), (2, 1));
         assert_eq!(*source.finished.lock().unwrap(), [(1, Outcome::Succeeded)]);
+    }
+
+    /// A job whose workflow brings one image build.
+    fn job_with_image() -> Job {
+        use macworp_core::workflow_configuration::images::ImageBuild;
+        let mut job = job("Nextflow");
+        job.configuration
+            .images_mut()
+            .push(ImageBuild::new("Dockerfile".into(), "team/tool:1".into()));
+        job
+    }
+
+    /// Without an image builder a run with images fails to start, the engine does not run.
+    #[tokio::test]
+    async fn images_without_a_builder_fail_the_start() {
+        let source = Arc::new(FakeSource::default());
+        source.jobs.lock().unwrap().push(job_with_image());
+        worker(&source, false).run_next().await.unwrap();
+        let finished = source.finished.lock().unwrap();
+        assert!(matches!(
+            &finished[0].1,
+            Outcome::Failed { exit_code: None, error: Some(e), reason: Some(FailureReason::StartFailed) }
+                if e.contains("cannot build")
+        ));
+        // The fake executor would have logged lines
+        assert!(source.logs.lock().unwrap().is_empty());
+    }
+
+    /// A builder whose build fails ends the run before the engine starts; a job without images
+    /// never touches the builder.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn failed_build_skips_the_engine() {
+        use crate::container_runtime::RuntimeKind;
+        let source = Arc::new(FakeSource::default());
+        source.jobs.lock().unwrap().push(job_with_image());
+        let builder = ImageBuilder::new("false".into(), RuntimeKind::Podman);
+        worker(&source, false)
+            .with_image_builders(vec![builder.clone()])
+            .run_next()
+            .await
+            .unwrap();
+        assert!(matches!(
+            &source.finished.lock().unwrap()[0].1,
+            Outcome::Failed {
+                reason: Some(FailureReason::StartFailed),
+                ..
+            }
+        ));
+
+        // No images: the engine runs although the builder would fail
+        source.finished.lock().unwrap().clear();
+        source.jobs.lock().unwrap().push(job("Nextflow"));
+        worker(&source, false)
+            .with_image_builders(vec![builder])
+            .run_next()
+            .await
+            .unwrap();
+        assert!(matches!(
+            &source.finished.lock().unwrap()[0].1,
+            Outcome::Failed {
+                reason: Some(FailureReason::ExitCode),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]

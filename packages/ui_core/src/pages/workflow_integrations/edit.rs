@@ -3,9 +3,10 @@ use std::{path::PathBuf, str::FromStr, time::Duration};
 use dioxus::prelude::*;
 use macworp_core::{
     entities::Role,
-    responses::{PrefetchResponse, WorkflowIntegrationResponse},
+    responses::{PrefetchResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse},
     workflow_configuration::{
         engine::{Engine, EngineParameter},
+        images::{validate_image_name, ImageBuild},
         parameters::Parameter,
         schema_import::{
             parameters_from_cwl, parameters_from_nextflow_schema, parameters_from_snakemake_schema,
@@ -320,6 +321,24 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
     let mut prefetch = use_signal(|| PrefetchResponse::Idle);
     // Why the last reorder/move between parameter lists was refused
     let mut move_error = use_signal(|| None::<String>);
+    // Container build files of the saved local workflow, for the image section; `build_rescans`
+    // is bumped to read them again (after an upload or on request)
+    let mut build_rescans = use_signal(|| 0u32);
+    let build_files = use_resource(move || async move {
+        build_rescans.read();
+        let jwt = storage
+            .read()
+            .jwt()
+            .ok()
+            .flatten()
+            .ok_or_else(|| "Not logged in".to_string())?;
+        let config = config.read().clone();
+        Client::new(config.base_url().to_string(), config.timeout())
+            .workflow_integrations()
+            .schemas(&jwt, props.id)
+            .await
+            .map_err(|error| error.to_string())
+    });
     // Identifies the newest polling loop, older ones stop when it changes
     let mut prefetch_generation = use_signal(|| 0u32);
     // Follows the download started by a save of a workflow with the given source until it ends.
@@ -575,6 +594,8 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
             .inner_mut()
             .configuration_mut()
             .source_mut() = source.clone();
+        // The new version may bring other container build files
+        build_rescans += 1;
         watch_prefetch(source);
         Ok(())
     });
@@ -890,6 +911,7 @@ pub fn Edit<S: IsStorage + 'static, R: IsRouter + 'static>(props: EditProps) -> 
                 }
 
                 EngineParameterEditor { workflow_integration }
+                ImageBuildEditor { workflow_integration, files: build_files, rescans: build_rescans }
 
                 Separator{
                     label: "Source"
@@ -1381,6 +1403,169 @@ fn EngineParameterEditor(workflow_integration: Signal<DisassambledWorkflowIntegr
             div {
                 class: "form-text",
                 "Options passed to the engine. A retried run adds the engine's resume option by itself. When starting a run, users can only turn on or off trace, report, timeline, task graph and printed commands; everything else is set here."
+            }
+        }
+    }
+}
+
+/// Tooltip of a build file row, how the name is used.
+const IMAGE_ROW_HINT: &str = "Use exactly this name for the container in the workflow, e.g. `process.container` in the Nextflow configuration. Empty: the file is not built.";
+
+/// "Container images" section of the editor: one row per container build file found in the
+/// saved local workflow (`Dockerfile`, `Containerfile`, `Dockerfile.*`, `*.dockerfile`) with an
+/// input for the image name the workflow uses. Rows with a name become the configuration's
+/// `images`, which the worker builds before the engine starts. Hidden for the `Container`
+/// engine (it runs one image) and for sources other than local (builds are local only). The
+/// files come from the schemas endpoint, so they reflect the last saved upload.
+///
+/// # Arguments
+/// * `workflow_integration` - The workflow being edited, its `images` are changed in place
+/// * `files` - The saved workflow's schemas (its `dockerfiles` are the rows), read by the page
+/// * `rescans` - Counter the page's `files` resource depends on, bumped to read the files again
+#[component]
+fn ImageBuildEditor(
+    workflow_integration: Signal<DisassambledWorkflowIntegration>,
+    files: Resource<Result<WorkflowSchemasResponse, String>>,
+    mut rescans: Signal<u32>,
+) -> Element {
+    let (engine, is_local) = {
+        let workflow = workflow_integration.read();
+        let configuration = &workflow.inner().configuration;
+        (
+            configuration.engine().clone(),
+            configuration.source().is_local(),
+        )
+    };
+    if engine == Engine::Container || !is_local {
+        return rsx! {};
+    }
+
+    let configured: Vec<ImageBuild> = workflow_integration
+        .read()
+        .inner()
+        .configuration
+        .images()
+        .to_vec();
+    let (found, cwl_text, error) = match &*files.read() {
+        Some(Ok(schemas)) => (
+            schemas.dockerfiles.clone(),
+            schemas
+                .cwl_files
+                .iter()
+                .map(|file| file.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            None,
+        ),
+        Some(Err(error)) => (Vec::new(), String::new(), Some(error.clone())),
+        None => (Vec::new(), String::new(), None),
+    };
+    // Configured files that are no longer in the workflow stay visible so they can be removed
+    let mut rows: Vec<(String, bool)> = found.iter().map(|file| (file.clone(), true)).collect();
+    for image in &configured {
+        if !found.iter().any(|file| file == image.dockerfile()) {
+            rows.push((image.dockerfile().to_string(), false));
+        }
+    }
+
+    rsx! {
+        div {
+            class: "mb-3",
+            div {
+                class: "d-flex justify-content-between align-items-center mb-1",
+                label { class: "form-label mb-0", "Container images" }
+                button {
+                    class: "btn btn-sm btn-outline-secondary",
+                    r#type: "button",
+                    onclick: move |_| rescans += 1,
+                    "Rescan files"
+                }
+            }
+            if let Some(error) = error {
+                div { class: "alert alert-warning", "Could not list the workflow files: {error}" }
+            }
+            if rows.is_empty() && files.read().is_some() {
+                div { class: "form-text", "No container build file (Dockerfile, Containerfile, Dockerfile.*, *.dockerfile) in the uploaded workflow." }
+            }
+            for (file, present) in rows {
+                {
+                    let name = configured
+                        .iter()
+                        .find(|image| image.dockerfile() == file)
+                        .map(|image| image.name().to_string())
+                        .unwrap_or_default();
+                    let duplicate = !name.is_empty()
+                        && configured.iter().filter(|image| image.name() == name).count() > 1;
+                    let problem = if name.is_empty() {
+                        None
+                    } else if duplicate {
+                        Some("This name is used by another file".to_string())
+                    } else if let Err(error) = validate_image_name(&name) {
+                        Some(error.to_string())
+                    } else if engine == Engine::Cwl
+                        && !cwl_text.is_empty()
+                        && !cwl_text.contains(&name)
+                    {
+                        Some("The name does not appear in the CWL document".to_string())
+                    } else {
+                        None
+                    };
+                    let is_error = duplicate || (!name.is_empty() && validate_image_name(&name).is_err());
+                    let file_for_input = file.clone();
+                    rsx! {
+                        div {
+                            key: "{file}",
+                            class: "mb-2",
+                            div {
+                                class: "input-group",
+                                span {
+                                    class: "input-group-text text-break",
+                                    title: IMAGE_ROW_HINT,
+                                    "{file}"
+                                }
+                                input {
+                                    class: if is_error { "form-control is-invalid" } else { "form-control" },
+                                    placeholder: "image name, e.g. myteam/tool:1.0",
+                                    aria_label: "Image name for {file}",
+                                    value: "{name}",
+                                    oninput: move |event| {
+                                        let value = event.value().trim().to_string();
+                                        let mut workflow = workflow_integration.write();
+                                        let images = workflow.inner_mut().configuration_mut().images_mut();
+                                        let position = images
+                                            .iter()
+                                            .position(|image| image.dockerfile() == file_for_input);
+                                        match (position, value.is_empty()) {
+                                            (Some(position), true) => {
+                                                images.remove(position);
+                                            }
+                                            (Some(position), false) => {
+                                                images[position] = ImageBuild::new(file_for_input.clone(), value);
+                                            }
+                                            (None, false) => {
+                                                images.push(ImageBuild::new(file_for_input.clone(), value));
+                                            }
+                                            (None, true) => {}
+                                        }
+                                    },
+                                }
+                            }
+                            if !present {
+                                div { class: "form-text text-warning", "This file is not in the uploaded workflow (anymore). Clear the name to remove it." }
+                            }
+                            if let Some(problem) = problem {
+                                div {
+                                    class: if is_error { "form-text text-danger" } else { "form-text text-warning" },
+                                    "{problem}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            div {
+                class: "form-text",
+                "Images are built on the worker from the uploaded files before the engine starts and used under the name entered here. Names need a prefix and a version, like `myteam/tool:1.0` (no `latest`, no registry host, no `library/`). Upload and save the workflow first, then rescan. Build files not named here are ignored."
             }
         }
     }

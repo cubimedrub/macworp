@@ -34,6 +34,7 @@ use macworp_worker::{
     configuration::WorkerConfiguration,
     container_runtime::ContainerRuntime,
     executors::standard_executors,
+    image_builder::ImageBuilder,
     log_proxy::{HostAccess, ProgressReceiver},
     worker::{Worker, WorkerOptions},
 };
@@ -357,6 +358,12 @@ async fn start_worker(
         )),
         executors,
         WorkerOptions::default(),
+    )
+    .with_image_builders(
+        runtimes
+            .iter()
+            .map(|runtime| ImageBuilder::for_runtime(runtime.as_ref()))
+            .collect(),
     );
     if let Some(access) = runtimes
         .iter()

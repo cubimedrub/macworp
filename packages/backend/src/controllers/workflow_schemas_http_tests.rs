@@ -390,3 +390,81 @@ async fn sources_without_schemas_and_unreachable_remotes() {
     let (status, _) = schemas(&app, &alice, workflow.id).await;
     assert_eq!(status, StatusCode::BAD_GATEWAY);
 }
+
+/// An uploaded workflow lists its container build files (sorted, nested ones included); other
+/// files, hidden folders and a remote source give none.
+#[tokio::test]
+async fn local_workflow_lists_build_files() {
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let workflow = app.workflow(&alice, "w").await;
+
+    let (_, body) = schemas(&app, &alice, workflow.id).await;
+    assert_eq!(body["dockerfiles"], json!([]));
+
+    upload(
+        &app,
+        &alice,
+        workflow.id,
+        &[
+            ("main.nf", "x"),
+            ("Dockerfile", "FROM scratch"),
+            ("docker/Dockerfile.tool", "FROM scratch"),
+            ("docker/tool.dockerfile", "FROM scratch"),
+            ("docker/Containerfile", "FROM scratch"),
+            ("docker/dockerfile.txt", "no"),
+            ("docker/.dockerfile", "no"),
+            ("docker/notes.md", "no"),
+            (".hidden/Dockerfile", "no"),
+        ],
+    )
+    .await;
+    let (status, body) = schemas(&app, &alice, workflow.id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["dockerfiles"],
+        json!([
+            "Dockerfile",
+            "docker/Containerfile",
+            "docker/Dockerfile.tool",
+            "docker/tool.dockerfile"
+        ])
+    );
+}
+
+/// The scan skips symlinks, stops at the depth and result limits and ignores unreadable input.
+#[test]
+fn build_file_scan_is_bounded() {
+    use crate::workflow_repository_cache::{
+        BUILD_FILE_DEPTH, BUILD_FILE_LIMIT, WorkflowRepositoryCache,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    std::fs::write(root.join("Dockerfile"), "").unwrap();
+    // Symlinked file and folder are not followed
+    #[cfg(unix)]
+    {
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("Dockerfile"), "").unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.join("linked")).unwrap();
+        std::os::unix::fs::symlink(root.join("Dockerfile"), root.join("Dockerfile.link")).unwrap();
+    }
+    // Too deep
+    let mut deep = root.to_path_buf();
+    for level in 0..=BUILD_FILE_DEPTH + 1 {
+        deep.push(format!("d{level}"));
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    std::fs::write(deep.join("Dockerfile"), "").unwrap();
+    assert_eq!(WorkflowRepositoryCache::dockerfiles(root), ["Dockerfile"]);
+    assert!(WorkflowRepositoryCache::dockerfiles(&root.join("missing")).is_empty());
+
+    // Result limit
+    for index in 0..BUILD_FILE_LIMIT + 20 {
+        std::fs::write(root.join(format!("f{index:04}.dockerfile")), "").unwrap();
+    }
+    assert_eq!(
+        WorkflowRepositoryCache::dockerfiles(root).len(),
+        BUILD_FILE_LIMIT
+    );
+}

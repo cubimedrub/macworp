@@ -246,6 +246,8 @@ impl WorkflowIntegrationsController {
         state.confine_local_source(workflow_integration.id, &mut configuration);
         state.pin_local_source(&mut configuration);
         let storage = state.config().storage_directory();
+        // Builds are local only: a remote source (localized to a checkout below) lists none
+        let is_local = configuration.source().is_local();
         let response = tokio::task::spawn_blocking(move || {
             let provenance = cache.localize(&mut configuration)?;
             let Source::Local(local) = configuration.source() else {
@@ -259,6 +261,12 @@ impl WorkflowIntegrationsController {
                 cwl_script.as_deref(),
             );
             schemas.commit = provenance.map(|p| p.commit);
+            if is_local {
+                schemas.dockerfiles =
+                    crate::workflow_repository_cache::WorkflowRepositoryCache::dockerfiles(
+                        &directory,
+                    );
+            }
             Ok::<_, crate::workflow_repository_cache::Error>(schemas)
         })
         .await

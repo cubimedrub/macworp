@@ -38,6 +38,12 @@ pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 /// Largest main CWL document returned by [`WorkflowRepositoryCache::schemas`].
 pub const CWL_DOCUMENT_LIMIT: usize = 1024 * 1024;
 
+/// Folder levels below the workflow directory searched for container build files.
+pub const BUILD_FILE_DEPTH: usize = 6;
+
+/// Most container build files reported for one workflow.
+pub const BUILD_FILE_LIMIT: usize = 100;
+
 const FETCHED_MARKER: &str = "macworp-fetched";
 /// Name of the file in a checkout whose mtime records the last use (for GC).
 const USED_MARKER: &str = ".macworp-last-used";
@@ -564,6 +570,72 @@ impl WorkflowRepositoryCache {
             input_schema,
             snakemake_schemas,
             cwl_files,
+            dockerfiles: Vec::new(),
+        }
+    }
+
+    /// Whether `name` is a container build file name: `Dockerfile`, `Containerfile`,
+    /// `Dockerfile.*` or `*.dockerfile` (case-sensitive, as the runtimes expect them).
+    ///
+    /// # Arguments
+    /// * `name` - File name without folders
+    pub fn is_build_file_name(name: &str) -> bool {
+        name == "Dockerfile"
+            || name == "Containerfile"
+            || name.starts_with("Dockerfile.")
+            || name
+                .strip_suffix(".dockerfile")
+                .is_some_and(|stem| !stem.is_empty())
+    }
+
+    /// Finds the container build files below `directory`, relative to it and sorted. Symlinks
+    /// (files and folders) and hidden folders (`.git`, `.nextflow`) are skipped, the walk stops
+    /// at [`BUILD_FILE_DEPTH`] folder levels and [`BUILD_FILE_LIMIT`] results, workflow content
+    /// is untrusted.
+    ///
+    /// # Arguments
+    /// * `directory` - Local workflow directory
+    pub fn dockerfiles(directory: &Path) -> Vec<String> {
+        let mut found = Vec::new();
+        Self::collect_build_files(directory, Path::new(""), 0, &mut found);
+        found.sort();
+        found
+    }
+
+    /// One level of [`Self::dockerfiles`].
+    ///
+    /// # Arguments
+    /// * `root` - The workflow directory
+    /// * `relative` - Folder to read, relative to `root`
+    /// * `depth` - Number of folders between `root` and `relative`
+    /// * `found` - Receives the relative paths with `/` separators
+    fn collect_build_files(root: &Path, relative: &Path, depth: usize, found: &mut Vec<String>) {
+        let Ok(entries) = fs::read_dir(root.join(relative)) else {
+            return;
+        };
+        let mut entries: Vec<_> = entries.flatten().collect();
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            if found.len() >= BUILD_FILE_LIMIT {
+                return;
+            }
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let path = relative.join(&name);
+            if file_type.is_dir() {
+                if depth < BUILD_FILE_DEPTH && !name.starts_with('.') {
+                    Self::collect_build_files(root, &path, depth + 1, found);
+                }
+            } else if file_type.is_file() && Self::is_build_file_name(&name) {
+                found.push(
+                    path.components()
+                        .map(|c| c.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/"),
+                );
+            }
         }
     }
 

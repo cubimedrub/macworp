@@ -109,6 +109,11 @@ pub struct WorkflowSchemasResponse {
     /// generate the parameter form. Empty for other engines or when the script is unreadable.
     #[serde(default)]
     pub cwl_files: Vec<SchemaFile>,
+    /// Container build files (`Dockerfile`, `Dockerfile.*`, `*.dockerfile`, `Containerfile`) of a
+    /// local workflow, relative to the workflow directory and sorted, the candidates for the
+    /// image builds of the configuration. Empty for remote sources, builds are local only.
+    #[serde(default)]
+    pub dockerfiles: Vec<String>,
 }
 
 /// State of the background download of a workflow's remote repository into the cache, started

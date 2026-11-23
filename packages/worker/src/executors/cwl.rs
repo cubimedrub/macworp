@@ -165,6 +165,16 @@ impl CwlExecutor {
                 format!("{temporary}/"),
             ]);
         }
+        // Images the worker built are only in the runtime's local store: Toil's pre-pull
+        // (`docker pull` of every image of the document) would fail on them and abort the run
+        if !configuration.images().is_empty()
+            && !configuration
+                .engine_parameters()
+                .iter()
+                .any(|p| p.name() == "no-prepull")
+        {
+            command.push("--no-prepull".into());
+        }
         command.extend(render_args(configuration, job.reference_dir.as_deref())?);
         command.push(path_arg(&local.location().join(local.script())));
         // Last step that can fail, so no scratch directory is left behind by an error
@@ -387,6 +397,21 @@ mod tests {
             .unwrap()
             .args;
         assert!(podman.contains(&"--podman".to_string()));
+    }
+
+    /// A workflow with built images runs Toil without its pre-pull, others keep it.
+    #[test]
+    fn built_images_disable_the_prepull() {
+        use macworp_core::workflow_configuration::images::ImageBuild;
+        let plain = executor().launch_spec(&job(local())).unwrap().args;
+        assert!(!plain.contains(&"--no-prepull".to_string()));
+        let mut with_images = job(local());
+        with_images
+            .configuration
+            .images_mut()
+            .push(ImageBuild::new("Dockerfile".into(), "team/tool:1".into()));
+        let args = executor().launch_spec(&with_images).unwrap().args;
+        assert_eq!(args.iter().filter(|a| *a == "--no-prepull").count(), 1);
     }
 
     /// The step cache is passed from Toil 8 on, Toil 7 does not know `--cachedir`.

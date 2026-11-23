@@ -867,6 +867,66 @@ async fn runs_cwl_workflow() {
     run_cwl(None).await;
 }
 
+/// Runs a CWL tool in an image that exists only because the worker built it from the
+/// workflow's `Dockerfile` (Toil must not try to pull it, which is why the executor passes
+/// `--no-prepull`). A second run with the same content finds the image and does not build again.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a container runtime, the macworp-cwl image and network access to pull debian"]
+async fn runs_cwl_workflow_with_a_built_image() {
+    let engine = Engine::Cwl;
+    let Some((runtime, unavailable_engines)) = require_runtime(&engine).await else {
+        return;
+    };
+    if !prepare_image_version(runtime.as_ref(), &engine, None).await {
+        return;
+    }
+    let app = TestApp::start(runtime, unavailable_engines).await;
+    for file in ["tool.cwl", "Dockerfile"] {
+        fs::copy(
+            format!(
+                "{}/tests/fixtures/end_to_end/cwl_image/{file}",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+            app.workflow_dir.join(file),
+        )
+        .unwrap();
+    }
+    let configuration: WorkflowConfiguration = serde_json::from_value(json!({
+        "engine": "Cwl",
+        "engine_parameters": [],
+        "source": {"Local": {"location": app.workflow_dir, "script": "tool.cwl"}},
+        "fixed_parameters": [text("message", false, "hello image")],
+        "dynamic_parameters": [],
+        "images": [{"dockerfile": "Dockerfile", "name": "macworp-e2e/cwl-built:1"}],
+    }))
+    .unwrap();
+    let mut logs = Vec::new();
+    for attempt in 0..2 {
+        let run = app
+            .start_run(configuration.clone(), Vec::new())
+            .await
+            .unwrap();
+        let (run, log_text) = app.finished_run(run.id).await;
+        assert_eq!(
+            run.status,
+            RunStatus::Succeeded,
+            "attempt {attempt}: {run:?}\n--- log ---\n{log_text}"
+        );
+        assert_eq!(
+            read(&app.project_dir, "cwl_built.txt"),
+            "hello image\nbuilt by macworp\n"
+        );
+        logs.push(log_text);
+    }
+    let _temp = app.stop().await;
+    // The second run found the content hash of the first
+    assert!(
+        logs[1].contains("not building again"),
+        "second run built again:\n{}",
+        logs[1]
+    );
+}
+
 /// [`runs_cwl_workflow`] on a pinned Toil version.
 ///
 /// # Arguments

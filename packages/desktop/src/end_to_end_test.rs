@@ -441,6 +441,7 @@ impl TestApp {
             worker_reference.clone(),
             macworp_backend::reference_directory::ReferenceDirectory::new(apptainer_cache.clone()),
             cwl_cache.clone(),
+            &std::env::temp_dir(),
         )
         .await
         .unwrap();

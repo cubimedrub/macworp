@@ -65,7 +65,7 @@ async fn main() -> std::process::ExitCode {
             }
         }
         Command::Run => match report.into_runtimes() {
-            Ok(runtimes) => match run_remote(&cli.remote, runtimes).await {
+            Ok(runtimes) => match run_remote(&cli.configuration, &cli.remote, runtimes).await {
                 Ok(()) => std::process::ExitCode::SUCCESS,
                 Err(error) => {
                     eprintln!("{error}");
@@ -83,10 +83,12 @@ async fn main() -> std::process::ExitCode {
 /// Runs `capacity` job slots against the backend until Ctrl-C; running jobs finish first.
 ///
 /// # Arguments
+/// * `configuration` - worker settings (image removal limits)
 /// * `remote` - backend connection and worker settings
 /// * `runtimes` - usable container runtimes, most preferred first; each engine runs on the
 ///   first one that supports it
 async fn run_remote(
+    configuration: &WorkerConfiguration,
     remote: &RemoteWorkerConfiguration,
     runtimes: Vec<Arc<dyn ContainerRuntime>>,
 ) -> Result<(), String> {
@@ -147,10 +149,14 @@ async fn run_remote(
         .iter()
         .map(|runtime| ImageBuilder::for_runtime(runtime.as_ref()))
         .collect();
+    let image_stores = configuration.image_stores(&runtimes);
+    let apptainer_cache_store = configuration.apptainer_cache_store();
     let mut slots = Vec::new();
     for _ in 0..remote.capacity {
         let mut worker = Worker::new(source.clone(), executors.clone(), WorkerOptions::default())
-            .with_image_builders(builders.clone());
+            .with_image_builders(builders.clone())
+            .with_image_stores(image_stores.clone())
+            .with_apptainer_cache_store(apptainer_cache_store.clone());
         if let Some(progress) = &progress {
             worker = worker.with_progress_receiver(progress.clone());
         }

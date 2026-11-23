@@ -14,9 +14,13 @@ use serde_json::Value;
 use thiserror::Error;
 use tokio::process::Command;
 
+use super::images::ImageInfo;
+
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Starting a container takes longer than querying the runtime
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Listing or removing images and reading events may take a while on a big store
+pub(super) const LIST_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -183,6 +187,9 @@ pub enum Error {
         binary: String,
         source: serde_json::Error,
     },
+    /// The runtime has no command for the requested operation
+    #[error("`{0}` is not supported by this container runtime")]
+    Unsupported(&'static str),
 }
 
 /// A container runtime the worker can start engine containers with.
@@ -204,6 +211,32 @@ pub trait ContainerRuntime: fmt::Debug + Send + Sync {
     /// * `args` - everything after `run --rm`: options, image, command
     fn probe_container(&self, _args: Vec<String>) -> BoxFuture<'_, Result<(), Error>> {
         Box::pin(async { Ok(()) })
+    }
+    /// Lists the images in the runtime's store. The default reports `Unsupported`.
+    fn list_images(&self) -> BoxFuture<'_, Result<Vec<ImageInfo>, Error>> {
+        Box::pin(async { Err(Error::Unsupported("listing images")) })
+    }
+    /// Removes an image by untagging all its names (the image goes with the last one) and never
+    /// forces: an image a container uses stays and the call fails. The default reports
+    /// `Unsupported`.
+    ///
+    /// # Arguments
+    /// * `image` - the image to remove
+    fn remove_image(&self, _image: &ImageInfo) -> BoxFuture<'_, Result<(), Error>> {
+        Box::pin(async { Err(Error::Unsupported("removing images")) })
+    }
+    /// Names of the images containers were created from in the time window, read from the
+    /// runtime's event log. The default reports `Unsupported`.
+    ///
+    /// # Arguments
+    /// * `since` - window start, seconds since the Unix epoch
+    /// * `until` - window end, seconds since the Unix epoch
+    fn images_used_between(
+        &self,
+        _since: u64,
+        _until: u64,
+    ) -> BoxFuture<'_, Result<Vec<String>, Error>> {
+        Box::pin(async { Err(Error::Unsupported("reading container events")) })
     }
 }
 
@@ -234,12 +267,12 @@ impl CliRuntime {
         self
     }
 
-    fn binary_display(&self) -> String {
+    pub(super) fn binary_display(&self) -> String {
         self.binary.display().to_string()
     }
 
     /// Runs the binary with `args` and returns its output if it exits successfully.
-    async fn run_checked<S: AsRef<std::ffi::OsStr>>(
+    pub(super) async fn run_checked<S: AsRef<std::ffi::OsStr>>(
         &self,
         args: &[S],
         timeout: Duration,
@@ -319,6 +352,22 @@ impl ContainerRuntime for CliRuntime {
             full.extend(args);
             self.run_checked(&full, PROBE_TIMEOUT).await.map(drop)
         })
+    }
+
+    fn list_images(&self) -> BoxFuture<'_, Result<Vec<ImageInfo>, Error>> {
+        Box::pin(self.list_images_cli())
+    }
+
+    fn remove_image(&self, image: &ImageInfo) -> BoxFuture<'_, Result<(), Error>> {
+        Box::pin(self.remove_image_cli(image.clone()))
+    }
+
+    fn images_used_between(
+        &self,
+        since: u64,
+        until: u64,
+    ) -> BoxFuture<'_, Result<Vec<String>, Error>> {
+        Box::pin(self.images_used_between_cli(since, until))
     }
 }
 

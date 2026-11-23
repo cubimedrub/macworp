@@ -1,6 +1,10 @@
 use clap::Args;
 
-use crate::container_runtime::RuntimePreference;
+use crate::{
+    apptainer_cache_store::ApptainerCacheStore,
+    container_runtime::{ContainerRuntime, RuntimePreference},
+    image_store::{ImagePolicy, ImageStore},
+};
 
 /// Worker configuration, usable as clap arguments (worker binary) or built directly (embedded worker)
 #[derive(Debug, Clone, Default, Args)]
@@ -13,6 +17,69 @@ pub struct WorkerConfiguration {
         default_value_t = RuntimePreference::Auto
     )]
     pub container_runtime: RuntimePreference,
+    /// Most images the worker keeps that runs used; the least recently used ones beyond it are
+    /// removed after a run (0 = keep all). Images no run used are never touched.
+    #[arg(long, env = "MACWORP_MAX_IMAGES", default_value_t = 0)]
+    pub max_images: usize,
+    /// Most bytes those images may take together, as the runtime reports sizes (0 = no limit)
+    #[arg(long, env = "MACWORP_MAX_IMAGE_BYTES", default_value_t = 0)]
+    pub max_image_bytes: u64,
+    /// Most bytes the Apptainer image cache of Snakemake may take; the least recently used
+    /// image files beyond it are removed after a run (0 = keep all)
+    #[arg(long, env = "MACWORP_MAX_APPTAINER_CACHE_BYTES", default_value_t = 0)]
+    pub max_apptainer_cache_bytes: u64,
+    /// Image names never removed, in addition to the engine images (`macworp-*`): an exact
+    /// name, a repository for all its tags, or a prefix ending in `*`. Comma separated or
+    /// repeated.
+    #[arg(long = "pin-image", env = "MACWORP_PIN_IMAGES", value_delimiter = ',')]
+    pub pinned_images: Vec<String>,
+    /// Directory for the worker's own state (which images runs used), default
+    /// `$XDG_STATE_HOME/macworp` or `~/.local/state/macworp`
+    #[arg(long, env = "MACWORP_STATE_DIRECTORY")]
+    pub state_directory: Option<std::path::PathBuf>,
+}
+
+impl WorkerConfiguration {
+    /// The image removal rules these settings describe; 0 turns a limit off.
+    pub fn image_policy(&self) -> ImagePolicy {
+        ImagePolicy {
+            max_images: (self.max_images > 0).then_some(self.max_images),
+            max_bytes: (self.max_image_bytes > 0).then_some(self.max_image_bytes),
+            pinned: self.pinned_images.clone(),
+        }
+    }
+
+    /// The tracking and trimming of the Apptainer cache these settings describe.
+    pub fn apptainer_cache_store(&self) -> std::sync::Arc<ApptainerCacheStore> {
+        std::sync::Arc::new(ApptainerCacheStore::new(
+            (self.max_apptainer_cache_bytes > 0).then_some(self.max_apptainer_cache_bytes),
+            ApptainerCacheStore::state_file_in(self.state_directory.as_deref()),
+        ))
+    }
+
+    /// One image store per runtime, so usage and removal follow each runtime's own image store.
+    ///
+    /// # Arguments
+    /// * `runtimes` - usable container runtimes of the worker
+    pub fn image_stores(
+        &self,
+        runtimes: &[std::sync::Arc<dyn ContainerRuntime>],
+    ) -> Vec<std::sync::Arc<ImageStore>> {
+        runtimes
+            .iter()
+            .map(|runtime| {
+                let state_file = ImageStore::state_file_in(
+                    self.state_directory.as_deref(),
+                    &runtime.kind().to_string(),
+                );
+                std::sync::Arc::new(ImageStore::new(
+                    runtime.clone(),
+                    self.image_policy(),
+                    state_file,
+                ))
+            })
+            .collect()
+    }
 }
 
 /// How a remote worker reaches and identifies itself to the backend, usable as clap arguments.

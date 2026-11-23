@@ -10,9 +10,11 @@ use tokio::{
 };
 
 use crate::{
+    apptainer_cache_store::ApptainerCacheStore,
     container_runtime::RuntimeKind,
     executors::{Executor, Job, LogLine, Outcome},
     image_builder::{ImageBuilder, ImageHold},
+    image_store::ImageStore,
     job_source::{Error as SourceError, JobSource},
     log_proxy::{HostAccess, ProgressReceiver},
     progress::ProgressUpdate,
@@ -60,6 +62,10 @@ pub struct Worker {
     progress: Option<Arc<ProgressReceiver>>,
     /// Builders of the images of workflows, one per usable container runtime
     image_builders: Vec<ImageBuilder>,
+    /// Image usage tracking and collection, one per container runtime
+    image_stores: Vec<Arc<ImageStore>>,
+    /// Trims the Apptainer image cache of Snakemake after runs
+    apptainer_cache_store: Option<Arc<ApptainerCacheStore>>,
 }
 
 impl Worker {
@@ -74,6 +80,8 @@ impl Worker {
             options,
             progress: None,
             image_builders: Vec::new(),
+            image_stores: Vec::new(),
+            apptainer_cache_store: None,
         }
     }
 
@@ -84,6 +92,25 @@ impl Worker {
     /// * `builders` - one per container runtime of this worker
     pub fn with_image_builders(mut self, builders: Vec<ImageBuilder>) -> Self {
         self.image_builders = builders;
+        self
+    }
+
+    /// Lets the worker record which images its runs used and remove the least recently used
+    /// ones when the stores' limits are exceeded.
+    ///
+    /// # Arguments
+    /// * `stores` - one per container runtime of this worker, shared by all slots
+    pub fn with_image_stores(mut self, stores: Vec<Arc<ImageStore>>) -> Self {
+        self.image_stores = stores;
+        self
+    }
+
+    /// Lets the worker trim the Apptainer image cache of the runs it executes.
+    ///
+    /// # Arguments
+    /// * `store` - shared by all slots
+    pub fn with_apptainer_cache_store(mut self, store: Arc<ApptainerCacheStore>) -> Self {
+        self.apptainer_cache_store = Some(store);
         self
     }
 
@@ -172,6 +199,16 @@ impl Worker {
             });
         }
 
+        // Tracked from before the first container of the run, so the image events cover it
+        let image_store = self.image_store_for(executor.runtime_kind());
+        let image_tracking = image_store.as_ref().map(|store| store.begin_run());
+
+        let cache_tracking = self
+            .apptainer_cache_store
+            .as_ref()
+            .zip(job.apptainer_cache.clone())
+            .map(|(store, directory)| (store.clone(), directory, store.begin_run()));
+
         let (cancel_tx, cancel_rx) = watch::channel(false);
         let (log_tx, log_rx) = mpsc::channel(256);
 
@@ -225,6 +262,12 @@ impl Worker {
         };
 
         drop(image_hold);
+        if let (Some(store), Some(tracking)) = (image_store, image_tracking) {
+            store.end_run(tracking).await;
+        }
+        if let Some((store, directory, started)) = cache_tracking {
+            store.end_run(&directory, started).await;
+        }
         cancel_poll.abort();
         // The sender is gone once the executor returned, this flushes the rest
         let _ = logs.await;
@@ -238,6 +281,20 @@ impl Worker {
 }
 
 impl Worker {
+    /// The image store of the runtime `kind` (the first one if unknown or none matches).
+    ///
+    /// # Arguments
+    /// * `kind` - runtime of the job's executor
+    fn image_store_for(&self, kind: Option<RuntimeKind>) -> Option<Arc<ImageStore>> {
+        kind.and_then(|kind| {
+            self.image_stores
+                .iter()
+                .find(|store| store.runtime().kind() == kind)
+        })
+        .or_else(|| self.image_stores.first())
+        .cloned()
+    }
+
     /// Builds the images of the job's workflow, if it has any.
     ///
     /// # Arguments

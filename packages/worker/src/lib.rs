@@ -1,3 +1,5 @@
+/// Trimming of the Apptainer image cache Snakemake fills
+pub mod apptainer_cache_store;
 /// Worker configuration
 pub mod configuration;
 /// Detection and access to the container runtime (podman/docker) the engines run in
@@ -8,6 +10,8 @@ pub mod executors;
 pub mod http_job_source;
 /// Builds the container images a workflow brings along before its engine starts
 pub mod image_builder;
+/// Usage tracking and garbage collection of the container images a worker accumulates
+pub mod image_store;
 /// Where a worker gets jobs from and reports to
 pub mod job_source;
 /// HTTP receiver for the monitoring events of the engines (weblog / Snakemake panoptes logger)

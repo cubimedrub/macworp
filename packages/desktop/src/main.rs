@@ -31,10 +31,12 @@ use macworp_ui_core::{
 };
 
 use macworp_worker::{
+    apptainer_cache_store::{ApptainerCacheStore, DESKTOP_MAX_BYTES},
     configuration::WorkerConfiguration,
     container_runtime::ContainerRuntime,
     executors::standard_executors,
     image_builder::ImageBuilder,
+    image_store::{ImagePolicy, ImageStore},
     log_proxy::{HostAccess, ProgressReceiver},
     worker::{Worker, WorkerOptions},
 };
@@ -276,6 +278,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
                 settings.reference_directory(),
                 settings.apptainer_cache(),
                 settings.cwl_cache(),
+                app_data_directory,
             )
             .await?,
         ),
@@ -337,6 +340,7 @@ async fn start_worker(
     reference_directory: macworp_backend::reference_directory::ReferenceDirectory,
     apptainer_cache: macworp_backend::reference_directory::ReferenceDirectory,
     cwl_cache: std::path::PathBuf,
+    state_directory: &std::path::Path,
 ) -> Result<(watch::Sender<bool>, tokio::task::JoinHandle<()>), Error> {
     let db = sea_orm::Database::connect(database_url)
         .await
@@ -364,7 +368,25 @@ async fn start_worker(
             .iter()
             .map(|runtime| ImageBuilder::for_runtime(runtime.as_ref()))
             .collect(),
-    );
+    )
+    // Desktop users are not expected to manage container images: the worker removes the ones
+    // that were not used for the longest time once the limits are exceeded
+    .with_image_stores(
+        runtimes
+            .iter()
+            .map(|runtime| {
+                Arc::new(ImageStore::new(
+                    runtime.clone(),
+                    ImagePolicy::desktop_default(),
+                    ImageStore::state_file_in(Some(state_directory), &runtime.kind().to_string()),
+                ))
+            })
+            .collect(),
+    )
+    .with_apptainer_cache_store(Arc::new(ApptainerCacheStore::new(
+        Some(DESKTOP_MAX_BYTES),
+        ApptainerCacheStore::state_file_in(Some(state_directory)),
+    )));
     if let Some(access) = runtimes
         .iter()
         .find_map(|runtime| HostAccess::for_runtime(runtime.kind()))

@@ -807,6 +807,58 @@ async fn snakemake_is_rejected_when_runtime_cannot_run_it() {
     );
 }
 
+/// Engine parameter `profile` selects a profile of the workflow's `nextflow.config`: the profile's
+/// parameter value reaches the workflow, while its `process.executor = 'slurm'` is overridden by the
+/// executor MAcWorP fixes (otherwise the run would never finish).
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a container runtime and the macworp-nextflow image"]
+async fn runs_nextflow_workflow_with_engine_profile() {
+    let engine = Engine::Nextflow;
+    let Some((runtime, unavailable_engines)) = require_runtime(&engine).await else {
+        return;
+    };
+    if !prepare_image(runtime.as_ref(), &engine).await {
+        return;
+    }
+    let app = TestApp::start(runtime, unavailable_engines).await;
+    fs::create_dir_all(&app.project_dir).unwrap();
+    for name in ["profile.nf", "nextflow.config"] {
+        fs::copy(
+            format!(
+                "{}/tests/fixtures/end_to_end/profile/{name}",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+            app.workflow_dir.join(name),
+        )
+        .unwrap();
+    }
+    let configuration: WorkflowConfiguration = serde_json::from_value(json!({
+        "engine": "Nextflow",
+        "engine_parameters": [
+            {"name": "ansi-log", "value": "false"},
+            {"name": "profile", "value": "ci"},
+        ],
+        "source": {"Local": {"location": app.workflow_dir, "script": "profile.nf"}},
+        "fixed_parameters": [],
+        "dynamic_parameters": [],
+    }))
+    .unwrap();
+    let run = app.start_run(configuration, Vec::new()).await.unwrap();
+    let (run, log_text) = app.finished_run(run.id).await;
+    let project_dir = app.project_dir.clone();
+    let _temp = app.stop().await;
+
+    assert_eq!(
+        run.status,
+        RunStatus::Succeeded,
+        "{run:?}\n--- log ---\n{log_text}"
+    );
+    assert_eq!(
+        read(&project_dir, "results/profile.txt").trim(),
+        "from profile ci"
+    );
+}
+
 /// Runs a CWL tool through Toil: text, number and a file (a project-relative path the engine gets
 /// as a `File`) end up in the output the engine collects into the project directory.
 #[tokio::test(flavor = "multi_thread")]

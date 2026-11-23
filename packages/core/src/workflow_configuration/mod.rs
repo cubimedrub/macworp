@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub mod engine;
 /// Allowlist of the engine parameters a workflow may set, with value rules
 pub mod engine_parameters;
+/// Images built from the workflow's own build files
+pub mod images;
 /// Workflow parameters types
 pub mod parameters;
 /// Rendering of a configuration into engine command line arguments
@@ -35,6 +37,10 @@ pub struct WorkflowConfiguration {
     /// Absent in configurations stored before this field existed. Ignored by `Container`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     engine_version: Option<String>,
+    /// Images built from build files of the workflow before the engine starts, see
+    /// [`images`]. Absent in configurations stored before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    images: Vec<images::ImageBuild>,
 }
 
 /// Longest accepted engine version (container image tags are limited to 128 characters).
@@ -143,6 +149,27 @@ impl WorkflowConfiguration {
         Ok(())
     }
 
+    /// The images to build from the workflow's build files.
+    pub fn images(&self) -> &[images::ImageBuild] {
+        &self.images
+    }
+
+    /// Mutable access to the image builds, see [`Self::images`].
+    pub fn images_mut(&mut self) -> &mut Vec<images::ImageBuild> {
+        &mut self.images
+    }
+
+    /// Checks the image builds: names ([`images::validate_image_name`]), build file paths and
+    /// duplicates. Builds run the workflow author's `Dockerfile` on the worker, so they are
+    /// only accepted for local workflows (uploaded or picked by a user allowed to create them);
+    /// any other source with builds is rejected ([`images::Error::LocalOnly`]).
+    pub fn validate_images(&self) -> Result<(), images::Error> {
+        if !self.images.is_empty() && !self.source.is_local() {
+            return Err(images::Error::LocalOnly);
+        }
+        images::validate_images(&self.images)
+    }
+
     /// Mutable access to the cleanup switch, see [`Self::cleanup_on_success`].
     pub fn cleanup_on_success_mut(&mut self) -> &mut bool {
         &mut self.cleanup_on_success
@@ -230,7 +257,31 @@ impl Default for WorkflowConfiguration {
             fixed_parameters: Vec::new(),
             cleanup_on_success: false,
             engine_version: None,
+            images: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+/// Tests of the image builds on the configuration.
+mod image_tests {
+    use super::*;
+
+    /// Builds are accepted for a local source and rejected for any other source.
+    #[test]
+    fn builds_need_a_local_source() {
+        let mut configuration = WorkflowConfiguration::default();
+        configuration
+            .images_mut()
+            .push(images::ImageBuild::new("Dockerfile".into(), "a/b:1".into()));
+        assert_eq!(configuration.validate_images(), Ok(()));
+        *configuration.source_mut() = source::Source::NfCore(source::NfCoreSource::default());
+        assert_eq!(
+            configuration.validate_images(),
+            Err(images::Error::LocalOnly)
+        );
+        configuration.images_mut().clear();
+        assert_eq!(configuration.validate_images(), Ok(()));
     }
 }
 

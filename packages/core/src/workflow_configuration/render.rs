@@ -44,6 +44,9 @@ pub enum Error {
     /// An engine parameter is not on the engine's allowlist or has a bad value
     #[error(transparent)]
     EngineParameter(#[from] super::engine_parameters::Error),
+    /// The image builds of the workflow are invalid
+    #[error(transparent)]
+    Images(#[from] super::images::Error),
     /// A `Path` value points into the global reference data but the executor has no reference
     /// directory (parameter name)
     #[error("Parameter `{0}` uses the global reference data, which is not available here")]

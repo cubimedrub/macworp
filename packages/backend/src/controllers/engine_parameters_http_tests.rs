@@ -103,3 +103,44 @@ async fn starting_applies_only_observability_switches() {
     assert_ne!(start("with-dag", true).await, StatusCode::BAD_REQUEST);
     assert_ne!(start("with-trace", false).await, StatusCode::BAD_REQUEST);
 }
+
+/// Saving a workflow checks its image builds: a good mapping is stored, names that look like
+/// official or registry images, escaping build files and duplicates are rejected with 400.
+#[tokio::test]
+async fn saving_checks_image_builds() {
+    use macworp_core::workflow_configuration::images::ImageBuild;
+    let app = TestApp::new().await;
+    let alice = app.user("alice").await;
+    let workflow = app.workflow(&alice, "w").await;
+    let uri = format!("/workflow-integrations/update/{}", workflow.id);
+    let save = |images: &[(&str, &str)]| {
+        let mut configuration = WorkflowConfiguration::default();
+        *configuration.images_mut() = images
+            .iter()
+            .map(|(file, name)| ImageBuild::new((*file).into(), (*name).into()))
+            .collect();
+        let body = json!({"name": "w", "description": "", "configuration": configuration});
+        let (app, alice, uri) = (&app, &alice, &uri);
+        async move { app.post(alice, uri, Some(body)).await.0 }
+    };
+
+    assert_eq!(
+        save(&[("docker/Dockerfile", "myteam/tool:1.0")]).await,
+        StatusCode::OK
+    );
+    for rejected in [
+        &[("Dockerfile", "debian:12-slim")][..],
+        &[("Dockerfile", "library/debian:12")],
+        &[("Dockerfile", "ghcr.io/o/t:1")],
+        &[("Dockerfile", "a/b:latest")],
+        &[("../Dockerfile", "a/b:1")],
+        &[("/etc/Dockerfile", "a/b:1")],
+        &[("a/Dockerfile", "a/b:1"), ("b/Dockerfile", "a/b:1")],
+    ] {
+        assert_eq!(
+            save(rejected).await,
+            StatusCode::BAD_REQUEST,
+            "{rejected:?}"
+        );
+    }
+}

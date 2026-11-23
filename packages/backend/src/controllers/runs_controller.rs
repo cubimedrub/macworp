@@ -303,6 +303,9 @@ impl RunsController {
         configuration
             .validate_engine_parameters()
             .map_err(macworp_core::workflow_configuration::render::Error::from)?;
+        configuration
+            .validate_images()
+            .map_err(macworp_core::workflow_configuration::render::Error::from)?;
         let switches: Vec<(String, bool)> = payload
             .engine_switches
             .iter()

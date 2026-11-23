@@ -1,3 +1,5 @@
+/// Puts the images a workflow built into Snakemake's Apptainer image cache
+pub mod apptainer_seed;
 /// Executor for `Container` workflows: runs the workflow's image directly
 pub mod container;
 /// Builds and runs the `<runtime> run ...` command shared by all executors

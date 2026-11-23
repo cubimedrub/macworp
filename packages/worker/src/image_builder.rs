@@ -530,7 +530,10 @@ fn repository(name: &str) -> &str {
 }
 
 /// A start failure with `message`.
-fn failed(message: String) -> Outcome {
+///
+/// # Arguments
+/// * `message` - what went wrong, shown as the run's error
+pub(crate) fn failed(message: String) -> Outcome {
     Outcome::Failed {
         exit_code: None,
         error: Some(message),

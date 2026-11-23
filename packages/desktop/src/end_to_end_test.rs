@@ -927,6 +927,94 @@ async fn runs_cwl_workflow_with_a_built_image() {
     );
 }
 
+/// Runs a Snakemake rule in an image that exists only because the worker built it from the
+/// workflow's `Dockerfile` and converted it into the Apptainer image cache (Snakemake would look
+/// the name up on Docker Hub otherwise). A second run with the same content converts nothing.
+///
+/// # Arguments
+/// * `version` - the engine version the workflow pins, `None` for the default
+async fn run_snakemake_with_built_image(version: Option<&str>) {
+    let engine = Engine::Snakemake;
+    let Some((runtime, unavailable_engines)) = require_runtime(&engine).await else {
+        return;
+    };
+    if !prepare_image_version(runtime.as_ref(), &engine, version).await {
+        return;
+    }
+    let app = TestApp::start(runtime, unavailable_engines).await;
+    // Created by the test: a missing mount source would be created root-owned by Docker
+    fs::create_dir_all(&app.project_dir).unwrap();
+    for file in ["Snakefile", "Dockerfile"] {
+        fs::copy(
+            format!(
+                "{}/tests/fixtures/end_to_end/snakemake_image/{file}",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+            app.workflow_dir.join(file),
+        )
+        .unwrap();
+    }
+    let mut configuration: WorkflowConfiguration = serde_json::from_value(json!({
+        "engine": "Snakemake",
+        "engine_parameters": [],
+        "source": {"Local": {"location": app.workflow_dir, "script": "Snakefile"}},
+        "fixed_parameters": [],
+        "dynamic_parameters": [],
+        "images": [{"dockerfile": "Dockerfile", "name": "macworp-e2e/snakemake-built:1"}],
+    }))
+    .unwrap();
+    *configuration.engine_version_mut() = version.map(String::from);
+    let mut logs = Vec::new();
+    for attempt in 0..2 {
+        let run = app
+            .start_run(configuration.clone(), Vec::new())
+            .await
+            .unwrap();
+        let (run, log_text) = app.finished_run(run.id).await;
+        assert_eq!(
+            run.status,
+            RunStatus::Succeeded,
+            "attempt {attempt}: {run:?}\n--- log ---\n{log_text}"
+        );
+        assert_eq!(
+            read(&app.project_dir, "results/built.txt"),
+            "built by macworp\n"
+        );
+        // Snakemake reruns nothing, the output exists: remove it so the rule runs again
+        std::fs::remove_file(app.project_dir.join("results/built.txt")).unwrap();
+        logs.push(log_text);
+    }
+    let _temp = app.stop().await;
+    assert!(
+        logs[0].contains("Converting image"),
+        "first run did not convert:\n{}",
+        logs[0]
+    );
+    assert!(
+        logs[1].contains("not converting again"),
+        "second run converted again:\n{}",
+        logs[1]
+    );
+}
+
+/// [`run_snakemake_with_built_image`] on the default Snakemake version.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs docker, the macworp-snakemake image and network access to pull debian"]
+async fn runs_snakemake_workflow_with_a_built_image() {
+    run_snakemake_with_built_image(None).await;
+}
+
+/// [`run_snakemake_with_built_image`] on every Snakemake version of the catalog, which checks
+/// that all of them name their cached images the way the worker expects.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs docker, the macworp-snakemake images of all versions and network access to pull debian"]
+async fn runs_snakemake_workflow_with_a_built_image_on_all_versions() {
+    for version in Engine::Snakemake.catalog().unwrap().versions.clone() {
+        eprintln!("--- Snakemake {version}");
+        run_snakemake_with_built_image(Some(&version)).await;
+    }
+}
+
 /// [`runs_cwl_workflow`] on a pinned Toil version.
 ///
 /// # Arguments

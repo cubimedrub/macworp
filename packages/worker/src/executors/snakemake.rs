@@ -337,6 +337,50 @@ impl SnakemakeExecutor {
     }
 }
 
+impl SnakemakeExecutor {
+    /// Converts the built images of the job into the shared Apptainer image cache, see
+    /// [`super::apptainer_seed`]. Without a usable shared cache (the worker has none, or an
+    /// engine parameter makes Snakemake manage images itself) nothing is converted and the
+    /// run log says so: the rules then look their images up in a registry.
+    ///
+    /// # Arguments
+    /// * `job` - the claimed run with images
+    /// * `logs` - run log
+    /// * `cancel` - turns `true` when a user stops the run
+    async fn seed_images(
+        &self,
+        job: &Job,
+        logs: &mpsc::Sender<LogLine>,
+        cancel: watch::Receiver<bool>,
+    ) -> Outcome {
+        let Some(cache) = self.cache_directory(job) else {
+            let _ = logs
+                .send(LogLine {
+                    stream: macworp_core::entities::LogStream::Engine,
+                    line: "No shared Apptainer image cache is used, the images built for this \
+                           workflow are not available to Snakemake"
+                        .into(),
+                })
+                .await;
+            return Outcome::Succeeded;
+        };
+        let image = match engine_image(&self.image, job.configuration.engine_version()) {
+            Ok(image) => image,
+            Err(error) => return crate::image_builder::failed(error.to_string()),
+        };
+        super::apptainer_seed::seed(
+            &self.runtime_binary,
+            &image,
+            &self.run_args(job),
+            job,
+            cache,
+            logs,
+            cancel,
+        )
+        .await
+    }
+}
+
 impl Executor for SnakemakeExecutor {
     fn engine(&self) -> Engine {
         Engine::Snakemake
@@ -348,7 +392,16 @@ impl Executor for SnakemakeExecutor {
         logs: mpsc::Sender<LogLine>,
         cancel: watch::Receiver<bool>,
     ) -> BoxFuture<'a, Outcome> {
-        Box::pin(run_spec(self.launch_spec(job), logs, cancel))
+        Box::pin(async move {
+            // Images the worker built for the workflow must be in the Apptainer image cache
+            if !job.configuration.images().is_empty() {
+                match self.seed_images(job, &logs, cancel.clone()).await {
+                    Outcome::Succeeded => {}
+                    other => return other,
+                }
+            }
+            run_spec(self.launch_spec(job), logs, cancel).await
+        })
     }
 }
 

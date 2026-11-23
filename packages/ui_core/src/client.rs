@@ -1,0 +1,1771 @@
+use std::{
+    fmt::{Debug, Display},
+    future::Future,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
+
+use dioxus::signals::Signal;
+use macworp_core::{
+    authentication::TokenType,
+    entities::Role,
+    requests::{
+        GrantShareRequest, GroupMemberRequest, NewGroupRequest, NewProjectRequest, NewUserRequest,
+        NewWorkflowIntegrationRequest, PasswordLoginRequest, PrincipalRequest,
+        ProjectCreateFolderRequest, ProjectPathDeletionRequest, ProjectWriteTextRequest,
+        ResetPasswordRequest, RevokeShareRequest, UpdateGroupRequest, UpdateUserRequest,
+        UpdateWorkflowIntegrationRequest, WorkflowStartRequest,
+    },
+    responses::{
+        EnginesResponse, GroupResponse, LastRunResponse, LoginProviderResponse,
+        NfCorePipelinesResponse, NfCoreReleasesResponse, OneTimeTokenResponse, PrefetchResponse,
+        ProjectResponse, ProjectTextResponse, RunLogsResponse, RunResponse, ShareResponse,
+        UserResponse, UserSummaryResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse,
+    },
+    routing::*,
+    workflow_configuration::WorkflowConfiguration,
+};
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Failed to send request: {0}")]
+    Request(#[from] reqwest::Error),
+    #[error("Something went wrong querying backend: {0}")]
+    Backend(String),
+    #[error("Project file upload failed: {0}")]
+    ProjectFileUpload(String),
+    /// The backend answered 401: the token is expired, revoked or invalid, or the account is
+    /// gone or disabled. The user has to log in again.
+    #[error("{0}")]
+    Unauthorized(String),
+    /// A URL could not be built from the configured base URL
+    #[error("Invalid URL: {0}")]
+    InvalidUrl(String),
+}
+
+impl Error {
+    /// The error for a failed backend response: [`Error::Unauthorized`] for HTTP 401, otherwise
+    /// [`Error::Backend`], both carrying `message`.
+    pub fn from_status(status: http::StatusCode, message: String) -> Self {
+        if status == http::StatusCode::UNAUTHORIZED {
+            Self::Unauthorized(message)
+        } else {
+            Self::Backend(message)
+        }
+    }
+
+    /// Whether the user has to log in again.
+    pub fn is_unauthorized(&self) -> bool {
+        matches!(self, Self::Unauthorized(_))
+    }
+}
+
+/// Client to communicate with MAcWorP's backend.
+///
+pub struct Client {
+    base_url: String,
+    timeout: u64,
+}
+
+impl Client {
+    /// Creates a new client
+    ///
+    /// # Arguments
+    /// * `base_url` - The base URL of the backend, e.g. "http://localhost:8080"
+    /// * `timeout` - The timeout for requests in seconds
+    pub fn new(base_url: String, timeout: u64) -> Self {
+        Self { base_url, timeout }
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    pub fn timeout(&self) -> u64 {
+        self.timeout
+    }
+
+    /// Returns a sub client to access the utilities
+    ///
+    pub fn utilities<'a>(&'a self) -> UtilitiesClient<'a> {
+        UtilitiesClient::new(self)
+    }
+
+    pub fn login<'a>(&'a self) -> LoginClient<'a> {
+        LoginClient::new(self)
+    }
+
+    pub fn projects<'a>(&'a self) -> ProjectsClient<'a> {
+        ProjectsClient::new(self)
+    }
+
+    /// File access to the global reference data, see [`ProjectsClient::for_reference`]
+    pub fn reference_files<'a>(&'a self) -> ProjectsClient<'a> {
+        ProjectsClient::for_reference(self)
+    }
+
+    pub fn workflow_integrations<'a>(&'a self) -> WorkflowIntegrationClient<'a> {
+        WorkflowIntegrationClient::new(self)
+    }
+
+    /// Returns a sub client to access runs
+    pub fn runs<'a>(&'a self) -> RunsClient<'a> {
+        RunsClient::new(self)
+    }
+
+    /// Returns a sub client to access users
+    pub fn users<'a>(&'a self) -> UsersClient<'a> {
+        UsersClient::new(self)
+    }
+
+    /// Returns a sub client to manage groups
+    pub fn groups<'a>(&'a self) -> GroupsClient<'a> {
+        GroupsClient::new(self)
+    }
+
+    /// Returns a sub client to manage the shares of projects and workflows
+    pub fn shares<'a>(&'a self) -> SharesClient<'a> {
+        SharesClient::new(self)
+    }
+
+    /// Sends an authenticated request and returns the successful response; any other status
+    /// becomes [`Error::Backend`] carrying the response text. `what` names the action for the
+    /// error message, e.g. "add group member".
+    async fn send_authenticated(
+        &self,
+        request: reqwest::RequestBuilder,
+        jwt: &str,
+        what: &str,
+    ) -> Result<reqwest::Response, Error> {
+        let response = request
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.timeout))
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!("Failed to {what}: HTTP {status}, response text: {text}");
+            return Err(Error::from_status(
+                status,
+                format!("Failed to {what}: HTTP {status}, response text: {text}"),
+            ));
+        }
+        Ok(response)
+    }
+}
+
+/// Utilities subclient
+///
+pub struct UtilitiesClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> UtilitiesClient<'a> {
+    /// Creates a new client
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Returns the backend version
+    ///
+    pub async fn version(&self) -> Result<String, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::VERSION_PATH
+        );
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+        response.text().await.map_err(Error::Request)
+    }
+
+    /// Engines no worker can run and the number of workers online
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    pub async fn engines(&self, jwt: &str) -> Result<EnginesResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::ENGINES_PATH
+        );
+        let request = reqwest::Client::new().get(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "fetch engine availability")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Pipelines of the public nf-core index, as the backend has them cached
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    pub async fn nf_core_pipelines(&self, jwt: &str) -> Result<NfCorePipelinesResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::NF_CORE_PIPELINES_PATH
+        );
+        let request = reqwest::Client::new().get(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "fetch the nf-core pipelines")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Releases of one nf-core pipeline, newest first
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    /// * `pipeline` - Pipeline name, with or without the `nf-core/` prefix
+    pub async fn nf_core_releases(
+        &self,
+        jwt: &str,
+        pipeline: &str,
+    ) -> Result<NfCoreReleasesResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::NF_CORE_RELEASES_PATH
+                .replace("{name}", &urlencoding::encode(pipeline))
+        );
+        let request = reqwest::Client::new().get(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "fetch the nf-core releases")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Returns true it the backends answers with 200
+    ///
+    pub async fn healthcheck(&self) -> Result<bool, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UtilitiesRouting::controller_path(),
+            UtilitiesRouting::HEALTHCHECK_PATH
+        );
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+        Ok(response.status().is_success())
+    }
+}
+
+/// Users subclient
+///
+pub struct UsersClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> UsersClient<'a> {
+    /// Creates a new client
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Full URL of a users endpoint; `{id}` in `path` is replaced by `id` when given
+    fn url(&self, path: &str, id: Option<i64>) -> String {
+        let path = match id {
+            Some(id) => path.replace("{id}", &id.to_string()),
+            None => path.to_string(),
+        };
+        format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UsersRouting::controller_path(),
+            path
+        )
+    }
+
+    /// Obtains a token that authenticates exactly one request for a few seconds, for links the
+    /// browser follows itself and so cannot send the `Authorization` header with (downloads, see
+    /// [`ProjectsClient::download_url`]).
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    pub async fn one_time_token(&self, jwt: &str) -> Result<String, Error> {
+        let request =
+            reqwest::Client::new().post(self.url(UsersRouting::ONE_TIME_TOKEN_PATH, None));
+        let response: OneTimeTokenResponse = self
+            .base_client
+            .send_authenticated(request, jwt, "get one-time token")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)?;
+        Ok(response.token)
+    }
+
+    /// Lists all users (administrators only), optionally restricted to usernames matching `query`
+    pub async fn index(&self, jwt: &str, query: &str) -> Result<Vec<UserResponse>, Error> {
+        let request = reqwest::Client::new()
+            .get(self.url(UsersRouting::INDEX_PATH, None))
+            .query(&[("q", query)]);
+        self.base_client
+            .send_authenticated(request, jwt, "list users")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a user (administrators only)
+    pub async fn create(&self, jwt: &str, user: &NewUserRequest) -> Result<UserResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(UsersRouting::NEW_PATH, None))
+            .json(user);
+        self.base_client
+            .send_authenticated(request, jwt, "create user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Changes names, email and admin flag of a user (administrators only)
+    pub async fn update(
+        &self,
+        jwt: &str,
+        id: i64,
+        user: &UpdateUserRequest,
+    ) -> Result<UserResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(UsersRouting::UPDATE_PATH, Some(id)))
+            .json(user);
+        self.base_client
+            .send_authenticated(request, jwt, "update user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Sets a new local password for a user (administrators only)
+    pub async fn reset_password(
+        &self,
+        jwt: &str,
+        id: i64,
+        password: &ResetPasswordRequest,
+    ) -> Result<(), Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(UsersRouting::RESET_PASSWORD_PATH, Some(id)))
+            .json(password);
+        self.base_client
+            .send_authenticated(request, jwt, "reset password")
+            .await?;
+        Ok(())
+    }
+
+    /// Blocks a user from logging in (administrators only)
+    pub async fn disable(&self, jwt: &str, id: i64) -> Result<UserResponse, Error> {
+        let request = reqwest::Client::new().post(self.url(UsersRouting::DISABLE_PATH, Some(id)));
+        self.base_client
+            .send_authenticated(request, jwt, "disable user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Lifts the login block of a user (administrators only)
+    pub async fn enable(&self, jwt: &str, id: i64) -> Result<UserResponse, Error> {
+        let request = reqwest::Client::new().post(self.url(UsersRouting::ENABLE_PATH, Some(id)));
+        self.base_client
+            .send_authenticated(request, jwt, "enable user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Returns the authenticated user
+    pub async fn current(&self, jwt: &str) -> Result<UserResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UsersRouting::controller_path(),
+            UsersRouting::CURRENT_PATH
+        );
+        let request = reqwest::Client::new().get(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "fetch current user")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Deletes the user with the given id: any user may delete themselves, administrators any
+    /// user. Deleting the authenticated user also invalidates `jwt` on the server, so the caller
+    /// has to drop it (`IsStorage::set_jwt(None)`) and return to the login page.
+    pub async fn delete(&self, jwt: &str, id: i64) -> Result<(), Error> {
+        let path = UsersRouting::DELETE_PATH.replace("{id}", &id.to_string());
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UsersRouting::controller_path(),
+            path
+        );
+        let request = reqwest::Client::new().post(&url);
+        self.base_client
+            .send_authenticated(request, jwt, "delete user")
+            .await?;
+        Ok(())
+    }
+
+    /// Users whose username starts with `prefix`; the backend returns nothing for very short
+    /// prefixes.
+    pub async fn search(&self, jwt: &str, prefix: &str) -> Result<Vec<UserSummaryResponse>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            UsersRouting::controller_path(),
+            UsersRouting::SEARCH_PATH
+        );
+        let request = reqwest::Client::new().get(&url).query(&[("q", prefix)]);
+        self.base_client
+            .send_authenticated(request, jwt, "search users")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+}
+
+/// Login subclient
+///
+pub struct LoginClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> LoginClient<'a> {
+    /// Creates a new client
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Returns the backend version
+    ///
+    pub async fn local_login(&self, username: String, password: String) -> Result<String, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            LoginRouting::controller_path(),
+            LoginRouting::WITH_LOCAL
+        );
+        let client = reqwest::Client::new();
+        let body = PasswordLoginRequest { username, password };
+        let response = client
+            .post(&url)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .json(&body)
+            .send()
+            .await?;
+        response.text().await.map_err(Error::Request)
+    }
+
+    /// Revokes all tokens of the user, this one included. Errors mean the token was already
+    /// invalid, so callers may ignore them and forget the token anyway.
+    pub async fn logout(&self, jwt: &str) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            LoginRouting::controller_path(),
+            LoginRouting::LOGOUT_PATH
+        );
+        self.base_client
+            .send_authenticated(reqwest::Client::new().post(&url), jwt, "log out")
+            .await
+            .map(|_| ())
+    }
+
+    /// Returns the configured login providers
+    ///
+    pub async fn login_providers(&self) -> Result<Vec<LoginProviderResponse>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            LoginRouting::controller_path(),
+            LoginRouting::LOGIN_PROVIDERS_PATH
+        );
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+        response.json().await.map_err(Error::Request)
+    }
+
+    pub fn open_id_connect_url(&self, provider_name: &str) -> String {
+        format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            LoginRouting::controller_path(),
+            LoginRouting::WITH_OPEN_ID_CONNECT.replace("{name}", provider_name)
+        )
+    }
+}
+
+/// Projects subclient
+///
+pub struct ProjectsClient<'a> {
+    base_client: &'a Client,
+    /// Controller path the file routes (`edit`, `upload-file`, `create-folder`, `delete-path`)
+    /// live under: projects, or the global reference data which has the same file routes
+    controller_path: &'static str,
+}
+
+impl<'a> ProjectsClient<'a> {
+    /// Creates a new client
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self {
+            base_client,
+            controller_path: ProjectsRouting::controller_path(),
+        }
+    }
+
+    /// Client whose file methods (`project`, `upload_file`, `create_folder`, `delete_path`) work on
+    /// the global reference data. Its `id` argument is [`ReferenceRouting::SINGLETON_ID`].
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn for_reference(base_client: &'a Client) -> Self {
+        Self {
+            base_client,
+            controller_path: ReferenceRouting::controller_path(),
+        }
+    }
+
+    /// Lists projects. `all` asks for every project instead of the visible ones, administrators only.
+    pub async fn projects(&self, jwt: &str, all: bool) -> Result<Vec<ProjectResponse>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            ProjectsRouting::controller_path(),
+            ProjectsRouting::INDEX_PATH
+        );
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .query(&all_query(all))
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        response
+            .json::<Vec<ProjectResponse>>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a new project
+    ///
+    pub async fn new_project(
+        &self,
+        jwt: &str,
+        name: String,
+        path: PathBuf,
+    ) -> Result<ProjectResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            ProjectsRouting::controller_path(),
+            ProjectsRouting::NEW_PATH
+        );
+        let client = reqwest::Client::new();
+
+        let body = NewProjectRequest { name, path };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        response
+            .json::<ProjectResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a new project
+    ///
+    pub async fn project(
+        &self,
+        jwt: &str,
+        id: i64,
+        subpath: PathBuf,
+    ) -> Result<ProjectResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::EDIT_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(&url)
+            .query(&[("subpath", subpath)])
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        response
+            .json::<ProjectResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    pub async fn delete(&self, jwt: &str, id: i64) -> Result<bool, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            ProjectsRouting::controller_path(),
+            ProjectsRouting::DELETE_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to delete project: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to delete project: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        Ok(response.status().is_success())
+    }
+
+    /// Uploads a file to the project
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `folder_path` - The path of the folder to upload the file to relative to the project
+    ///
+    pub async fn upload_file<U: IsFileUpload>(
+        &self,
+        jwt: &str,
+        id: i64,
+        file: U::File,
+        buffer_size: usize,
+        progress: Signal<f64>,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::UPLOAD_FILE_PATH.replace("{id}", &id.to_string())
+        );
+
+        U::upload_file(&url, jwt, file, buffer_size, progress)
+            .await
+            .map_err(|err| Error::ProjectFileUpload(err.to_string()))
+    }
+
+    /// Creates empty folder within a project
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `folder_path` - The path of the folder to create relative to the project
+    ///
+    pub async fn create_folder(
+        &self,
+        jwt: &str,
+        id: i64,
+        folder_path: PathBuf,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::CREATE_FOLDER_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let body = ProjectCreateFolderRequest { folder_path };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+
+            tracing::error!(
+                "Failed to create folder: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to create folder: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Reads a small text file of a project (sample sheets), at most
+    /// `macworp_core::requests::TEXT_FILE_LIMIT` bytes.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `path` - File to read, relative to the project
+    ///
+    /// Returns `None` when the file does not exist (HTTP 404).
+    pub async fn read_text(
+        &self,
+        jwt: &str,
+        id: i64,
+        path: PathBuf,
+    ) -> Result<Option<String>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::READ_TEXT_PATH.replace("{id}", &id.to_string())
+        );
+        let response = reqwest::Client::new()
+            .get(&url)
+            .query(&[("path", path.to_string_lossy().as_ref())])
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+        if response.status() == http::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(Error::from_status(
+                status,
+                format!("Failed to read file: HTTP {status}, response text: {text}"),
+            ));
+        }
+        Ok(Some(response.json::<ProjectTextResponse>().await?.content))
+    }
+
+    /// Writes a small text file of a project (sample sheets), replacing an existing one.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `path` - File to write, relative to the project
+    /// * `content` - New content
+    pub async fn write_text(
+        &self,
+        jwt: &str,
+        id: i64,
+        path: PathBuf,
+        content: String,
+    ) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::WRITE_TEXT_PATH.replace("{id}", &id.to_string())
+        );
+        let response = reqwest::Client::new()
+            .put(&url)
+            .query(&[("path", path.to_string_lossy().as_ref())])
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .json(&ProjectWriteTextRequest { content })
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(Error::from_status(
+                status,
+                format!("Failed to write file: HTTP {status}, response text: {text}"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// URL that downloads a file as it is, or a folder as a zip archive, when the browser opens it.
+    /// The token stands in for the `Authorization` header.
+    ///
+    /// # Arguments
+    /// * `id` - The project id
+    /// * `path` - File or folder, relative to the project; empty for all of it
+    /// * `one_time_token` - Token from [`UsersClient::one_time_token`], valid for one request
+    ///
+    /// Fails with [`Error::InvalidUrl`] if the base URL of the client cannot be parsed.
+    pub fn download_url(
+        &self,
+        id: i64,
+        path: &std::path::Path,
+        one_time_token: &str,
+    ) -> Result<String, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::DOWNLOAD_PATH.replace("{id}", &id.to_string())
+        );
+        let mut url = reqwest::Url::parse(&url).map_err(|_| Error::InvalidUrl(url))?;
+        url.query_pairs_mut()
+            .append_pair("path", &path.to_string_lossy())
+            .append_pair(ONE_TIME_TOKEN_PARAM, one_time_token);
+        Ok(url.into())
+    }
+
+    /// Deletes the given path
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - The project id
+    /// * `path` - Path to delete
+    ///
+    pub async fn delete_path(&self, jwt: &str, id: i64, path: PathBuf) -> Result<(), Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::DELETE_PATH_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let body = ProjectPathDeletionRequest { path };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+
+            tracing::error!(
+                "Failed to delete path: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to delete path: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+/// Trait defining an uploadable file.
+pub trait IsUploadableFile: Debug + Display + Deref<Target = Self::Inner> {
+    type Inner;
+    fn into_inner(self) -> Self::Inner;
+    fn parent(&self) -> Option<&Path>;
+}
+
+pub trait IsFileUpload {
+    type Error: std::error::Error + std::fmt::Debug + Send + Sync;
+    /// Uploadable file may be different depending on the platform.
+    /// On WASM for example it is a FileSystemFileEntry which is later converted to JS File
+    type File: IsUploadableFile;
+
+    /// Uploads the given file in chunks of max buffer_size
+    ///
+    /// # Arguments
+    /// * `url` - The URL to upload the file to
+    /// * `jwt` - The JWT for authentication
+    /// * `file` - The file to upload
+    /// * `buffer_size` - Size of the buffer to fill before sending a upload request.
+    /// * `progress` - Signal to report upload progress of the file to the UI
+    ///
+    fn upload_file(
+        url: &str,
+        jwt: &str,
+        file: Self::File,
+        buffer_size: usize,
+        progress: Signal<f64>,
+    ) -> impl Future<Output = Result<(), Self::Error>>;
+}
+
+/// Projects subclient
+///
+pub struct WorkflowIntegrationClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> WorkflowIntegrationClient<'a> {
+    /// Creates a new client
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Lists workflows. `all` asks for every workflow instead of the visible ones, administrators
+    /// only.
+    pub async fn workflow_integrations(
+        &self,
+        jwt: &str,
+        all: bool,
+    ) -> Result<Vec<WorkflowIntegrationResponse>, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::INDEX_PATH
+        );
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .query(&all_query(all))
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        response
+            .json::<Vec<WorkflowIntegrationResponse>>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a new project
+    ///
+    pub async fn new_workflow_integration(
+        &self,
+        jwt: &str,
+        name: String,
+        description: String,
+    ) -> Result<WorkflowIntegrationResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::NEW_PATH
+        );
+        let client = reqwest::Client::new();
+
+        let body = NewWorkflowIntegrationRequest { name, description };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch new workflow integration request: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch new workflow integration request: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        response
+            .json::<WorkflowIntegrationResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a new project
+    ///
+    pub async fn workflow_integration(
+        &self,
+        jwt: &str,
+        id: i64,
+    ) -> Result<WorkflowIntegrationResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::EDIT_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to fetch projects: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to fetch projects: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        response
+            .json::<WorkflowIntegrationResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Updates an existing workflow integration
+    ///
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_workflow_integration(
+        &self,
+        jwt: &str,
+        id: i64,
+        name: String,
+        description: String,
+        configuration: WorkflowConfiguration,
+    ) -> Result<WorkflowIntegrationResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::UPDATE_PATH.replace("{id}", &id.to_string())
+        );
+        let client = reqwest::Client::new();
+
+        let body = UpdateWorkflowIntegrationRequest {
+            name,
+            description,
+            configuration,
+        };
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to update workflow integration: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to update workflow integration: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        response
+            .json::<WorkflowIntegrationResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// State of the background download of a workflow's remote repository, started when the
+    /// workflow is saved.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - Id of the workflow
+    pub async fn prefetch(&self, jwt: &str, id: i64) -> Result<PrefetchResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::PREFETCH_PATH.replace("{id}", &id.to_string())
+        );
+        let response = self
+            .base_client
+            .send_authenticated(
+                reqwest::Client::new().get(&url),
+                jwt,
+                "fetch repository download state",
+            )
+            .await?;
+        response
+            .json::<PrefetchResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Schemas shipped with a workflow (Nextflow parameter schema, sample sheet schema, Snakemake
+    /// schemas), read from the repository cache or the uploaded files. Empty if there are none.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - Id of the workflow
+    pub async fn schemas(&self, jwt: &str, id: i64) -> Result<WorkflowSchemasResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::SCHEMAS_PATH.replace("{id}", &id.to_string())
+        );
+        let response = self
+            .base_client
+            .send_authenticated(
+                reqwest::Client::new().get(&url),
+                jwt,
+                "fetch workflow schemas",
+            )
+            .await?;
+        response
+            .json::<WorkflowSchemasResponse>()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Replaces the files of a local workflow by a zip archive. The workflow must be saved with a
+    /// local source first. Returns the updated workflow.
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `id` - Id of the workflow
+    /// * `archive` - Content of the zip file
+    /// * `script` - Main script inside the archive, the stored one is kept if `None`
+    pub async fn upload(
+        &self,
+        jwt: &str,
+        id: i64,
+        archive: Vec<u8>,
+        script: Option<&str>,
+    ) -> Result<WorkflowIntegrationResponse, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::UPLOAD_PATH.replace("{id}", &id.to_string())
+        );
+        let mut request = reqwest::Client::new()
+            .post(&url)
+            .header(http::header::CONTENT_TYPE, "application/zip")
+            .body(archive);
+        if let Some(script) = script {
+            request = request.query(&[("script", script)]);
+        }
+        // Archives are large, allow much more time than for a normal call
+        let request = request.timeout(std::time::Duration::from_secs(
+            self.base_client.timeout().max(900),
+        ));
+        self.base_client
+            .send_authenticated(request, jwt, "upload workflow")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    pub async fn delete(&self, jwt: &str, id: i64) -> Result<bool, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            WorkflowIntegrationsRouting::controller_path(),
+            WorkflowIntegrationsRouting::DELETE_PATH.replace("{id}", &id.to_string())
+        );
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(&url)
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!(
+                "Failed to delete project: HTTP {}, response text: {}",
+                status,
+                text
+            );
+            return Err(Error::from_status(
+                status,
+                format!(
+                    "Failed to delete project: HTTP {}, response text: {}",
+                    status, text
+                ),
+            ));
+        }
+
+        Ok(response.status().is_success())
+    }
+}
+
+/// Runs subclient
+///
+pub struct RunsClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> RunsClient<'a> {
+    /// Creates a runs client on top of the base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Full URL of a runs endpoint
+    fn url(&self, path: &str) -> String {
+        format!(
+            "{}{}{path}",
+            self.base_client.base_url(),
+            RunsRouting::controller_path()
+        )
+    }
+
+    /// Sends an authenticated request and parses the JSON response.
+    /// `what` names the action for error messages, e.g. "start run".
+    async fn send<T: serde::de::DeserializeOwned>(
+        &self,
+        request: reqwest::RequestBuilder,
+        jwt: &str,
+        what: &str,
+    ) -> Result<T, Error> {
+        let response = request
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .timeout(std::time::Duration::from_secs(self.base_client.timeout()))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!("Failed to {what}: HTTP {status}, response text: {text}");
+            return Err(Error::from_status(
+                status,
+                format!("Failed to {what}: HTTP {status}, response text: {text}"),
+            ));
+        }
+
+        response.json::<T>().await.map_err(Error::Request)
+    }
+
+    /// Queues a run of a workflow on a project
+    ///
+    /// # Arguments
+    /// * `jwt` - The JWT for authentication
+    /// * `project_id` - The project to run on
+    /// * `body` - What to run: workflow, comment, dynamic parameter values, engine switches and
+    ///   the run to continue, if any
+    pub async fn start(
+        &self,
+        jwt: &str,
+        project_id: i64,
+        body: WorkflowStartRequest,
+    ) -> Result<RunResponse, Error> {
+        let url =
+            self.url(&RunsRouting::START_PATH.replace("{project_id}", &project_id.to_string()));
+        self.send(
+            reqwest::Client::new().post(&url).json(&body),
+            jwt,
+            "start run",
+        )
+        .await
+    }
+
+    /// Runs of a project, newest first
+    pub async fn index(&self, jwt: &str, project_id: i64) -> Result<Vec<RunResponse>, Error> {
+        let url =
+            self.url(&RunsRouting::INDEX_PATH.replace("{project_id}", &project_id.to_string()));
+        self.send(reqwest::Client::new().get(&url), jwt, "fetch runs")
+            .await
+    }
+
+    /// A single run
+    pub async fn get(&self, jwt: &str, id: i64) -> Result<RunResponse, Error> {
+        let url = self.url(&RunsRouting::GET_PATH.replace("{id}", &id.to_string()));
+        self.send(reqwest::Client::new().get(&url), jwt, "fetch run")
+            .await
+    }
+
+    /// Log chunks of a run with a `seq` greater than `after` (all if `None`) plus the run's
+    /// current state. Pass the `seq` of the last chunk received to get only new ones.
+    pub async fn logs(
+        &self,
+        jwt: &str,
+        id: i64,
+        after: Option<i64>,
+    ) -> Result<RunLogsResponse, Error> {
+        let url = self.url(&RunsRouting::LOGS_PATH.replace("{id}", &id.to_string()));
+        let mut request = reqwest::Client::new().get(&url);
+        if let Some(after) = after {
+            request = request.query(&[("after", after)]);
+        }
+        self.send(request, jwt, "fetch run logs").await
+    }
+
+    /// Workflow and parameter values of the newest run of the project, optionally only of
+    /// `workflow_id`. Fails with a backend error (404) if there is no such run yet.
+    pub async fn last(
+        &self,
+        jwt: &str,
+        project_id: i64,
+        workflow_id: Option<i64>,
+    ) -> Result<LastRunResponse, Error> {
+        let url =
+            self.url(&RunsRouting::LAST_PATH.replace("{project_id}", &project_id.to_string()));
+        let mut request = reqwest::Client::new().get(&url);
+        if let Some(workflow_id) = workflow_id {
+            request = request.query(&[("workflow_id", workflow_id)]);
+        }
+        self.send(request, jwt, "fetch last run").await
+    }
+
+    /// Cancels a queued run or asks the worker to stop a running one
+    pub async fn cancel(&self, jwt: &str, id: i64) -> Result<RunResponse, Error> {
+        let url = self.url(&RunsRouting::CANCEL_PATH.replace("{id}", &id.to_string()));
+        self.send(reqwest::Client::new().post(&url), jwt, "cancel run")
+            .await
+    }
+}
+
+/// Groups subclient
+///
+pub struct GroupsClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> GroupsClient<'a> {
+    /// Creates a groups client on top of the base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Full URL of a groups endpoint, `{id}` in `path` replaced by `id`
+    fn url(&self, path: &str, id: Option<i64>) -> String {
+        let path = match id {
+            Some(id) => path.replace("{id}", &id.to_string()),
+            None => path.to_string(),
+        };
+        format!(
+            "{}{}{path}",
+            self.base_client.base_url(),
+            GroupsRouting::controller_path()
+        )
+    }
+
+    /// Groups the user owns or belongs to, without members. `all` asks for every group,
+    /// administrators only.
+    pub async fn index(&self, jwt: &str, all: bool) -> Result<Vec<GroupResponse>, Error> {
+        let request = reqwest::Client::new()
+            .get(self.url(GroupsRouting::INDEX_PATH, None))
+            .query(&all_query(all));
+        self.base_client
+            .send_authenticated(request, jwt, "list groups")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// One group with its members
+    pub async fn group(&self, jwt: &str, id: i64) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new().get(self.url(GroupsRouting::EDIT_PATH, Some(id)));
+        self.base_client
+            .send_authenticated(request, jwt, "fetch group")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Creates a group owned by the user
+    pub async fn create(
+        &self,
+        jwt: &str,
+        name: String,
+        description: String,
+    ) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(GroupsRouting::NEW_PATH, None))
+            .json(&NewGroupRequest { name, description });
+        self.base_client
+            .send_authenticated(request, jwt, "create group")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Changes name and description of a group
+    pub async fn update(
+        &self,
+        jwt: &str,
+        id: i64,
+        name: String,
+        description: String,
+    ) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(GroupsRouting::UPDATE_PATH, Some(id)))
+            .json(&UpdateGroupRequest { name, description });
+        self.base_client
+            .send_authenticated(request, jwt, "update group")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Deletes a group and the shares granted to it
+    pub async fn delete(&self, jwt: &str, id: i64) -> Result<(), Error> {
+        let request = reqwest::Client::new().post(self.url(GroupsRouting::DELETE_PATH, Some(id)));
+        self.base_client
+            .send_authenticated(request, jwt, "delete group")
+            .await?;
+        Ok(())
+    }
+
+    /// Adds a member, returns the group with its members
+    pub async fn add_member(
+        &self,
+        jwt: &str,
+        id: i64,
+        user_id: i64,
+    ) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(GroupsRouting::ADD_MEMBER_PATH, Some(id)))
+            .json(&GroupMemberRequest { user_id });
+        self.base_client
+            .send_authenticated(request, jwt, "add group member")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Removes a member, returns the group with its members
+    pub async fn remove_member(
+        &self,
+        jwt: &str,
+        id: i64,
+        user_id: i64,
+    ) -> Result<GroupResponse, Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(GroupsRouting::REMOVE_MEMBER_PATH, Some(id)))
+            .json(&GroupMemberRequest { user_id });
+        self.base_client
+            .send_authenticated(request, jwt, "remove group member")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+}
+
+/// Kind of resource whose shares are managed, as named in the share routes
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShareKind {
+    /// A project
+    Project,
+    /// A workflow integration
+    Workflow,
+    /// The global reference data (id 1), only instance admins manage its shares
+    Reference,
+}
+
+impl ShareKind {
+    /// The `{kind}` route segment
+    fn segment(self) -> &'static str {
+        match self {
+            Self::Project => "projects",
+            Self::Workflow => "workflows",
+            Self::Reference => "reference",
+        }
+    }
+
+    /// Highest role the public may hold on this kind
+    pub fn max_public_role(self) -> Role {
+        match self {
+            Self::Project => Role::Owner,
+            Self::Workflow | Self::Reference => Role::Viewer,
+        }
+    }
+}
+
+/// Shares subclient
+///
+pub struct SharesClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> SharesClient<'a> {
+    /// Creates a shares client on top of the base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// Full URL of a shares endpoint
+    fn url(&self, path: &str, kind: ShareKind, id: i64) -> String {
+        format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            SharesRouting::controller_path(),
+            path.replace("{kind}", kind.segment())
+                .replace("{id}", &id.to_string())
+        )
+    }
+
+    /// All shares of a resource, owners only
+    pub async fn list(
+        &self,
+        jwt: &str,
+        kind: ShareKind,
+        id: i64,
+    ) -> Result<Vec<ShareResponse>, Error> {
+        let request = reqwest::Client::new().get(self.url(SharesRouting::LIST_PATH, kind, id));
+        self.base_client
+            .send_authenticated(request, jwt, "list shares")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Grants `role` to `principal`, replacing its current role
+    pub async fn grant(
+        &self,
+        jwt: &str,
+        kind: ShareKind,
+        id: i64,
+        principal: PrincipalRequest,
+        role: Role,
+    ) -> Result<(), Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(SharesRouting::GRANT_PATH, kind, id))
+            .json(&GrantShareRequest { principal, role });
+        self.base_client
+            .send_authenticated(request, jwt, "grant share")
+            .await?;
+        Ok(())
+    }
+
+    /// Removes the grant of `principal`
+    pub async fn revoke(
+        &self,
+        jwt: &str,
+        kind: ShareKind,
+        id: i64,
+        principal: PrincipalRequest,
+    ) -> Result<(), Error> {
+        let request = reqwest::Client::new()
+            .post(self.url(SharesRouting::REVOKE_PATH, kind, id))
+            .json(&RevokeShareRequest { principal });
+        self.base_client
+            .send_authenticated(request, jwt, "revoke share")
+            .await?;
+        Ok(())
+    }
+}
+
+/// Query parameters of a list request: `all=true` when everything is wanted, otherwise none.
+fn all_query(all: bool) -> Vec<(&'static str, &'static str)> {
+    if all {
+        vec![("all", "true")]
+    } else {
+        Vec::new()
+    }
+}

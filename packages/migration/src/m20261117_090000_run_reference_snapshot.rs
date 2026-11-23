@@ -1,0 +1,49 @@
+use sea_orm_migration::{prelude::*, schema::*};
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+/// Name of the point-in-time snapshot of the global reference data a run reads, and the
+/// fingerprint (file count, size, newest change, time) of the reference data at run start.
+/// Both are `NULL` for runs that read the live reference folder (desktop, runs from before
+/// snapshots).
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table("runs")
+                    .add_column(string_null("reference_snapshot"))
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table("runs")
+                    .add_column(json_binary_null("reference_fingerprint"))
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table("runs")
+                    .drop_column("reference_fingerprint")
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table("runs")
+                    .drop_column("reference_snapshot")
+                    .to_owned(),
+            )
+            .await
+    }
+}

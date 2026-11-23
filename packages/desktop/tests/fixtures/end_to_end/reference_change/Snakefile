@@ -1,0 +1,23 @@
+# Reference change test workflow, does the same as main.nf: read `ref_a`, signal the test with
+# `ready` in the project directory, wait for `go` (the test changes the reference data in
+# between), read `ref_b`. results/result.txt holds what both reads returned.
+rule all:
+    input:
+        "results/result.txt",
+
+
+rule read_both:
+    output:
+        "results/result.txt",
+    params:
+        a=config["ref_a"],
+        b=config["ref_b"],
+    shell:
+        """
+        mkdir -p results
+        cat {params.a} > a.copy
+        touch ready
+        while [ ! -f go ]; do sleep 1; done
+        cat {params.b} > b.copy
+        echo "a=$(cat a.copy) b=$(cat b.copy)" > {output}
+        """

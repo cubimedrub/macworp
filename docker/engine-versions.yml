@@ -1,0 +1,37 @@
+# Engine images that CI builds (.github/workflows/engine-images.yml) and that workflows can pin
+# (read by `Engine::catalog` in packages/core). Policy: the latest release of each of the last
+# three major versions of an engine (Nextflow: the year, 26.x / 25.x / 24.x). Newest first.
+# Behaviour that differs per major version is handled by the executors (packages/worker/src/executors):
+# Nextflow 26 reports progress through the nf-weblog plugin, Snakemake 9 through the Panoptes plugin
+# and 7/8 through --wms-monitor, Snakemake 7 uses the Singularity option names, Toil 7 has no step cache.
+#
+#   target:    build target in docker/engine.dockerfile
+#   build_arg: dockerfile build argument that selects the version
+#   default:   version used by workflows that pin nothing, one of `versions`
+#   versions:  every version with an image (quote them: `9.6` would be a number)
+nextflow:
+  target: nextflow
+  build_arg: NXF_VER
+  default: "26.10.6"
+  versions:
+    - "26.10.6"
+    - "25.10.9"
+    - "24.10.9"
+
+snakemake:
+  target: snakemake
+  build_arg: SNAKEMAKE_VER
+  default: "9.27.2"
+  versions:
+    - "9.27.2"
+    - "8.30.0"
+    - "7.32.4"
+
+cwl:
+  target: cwl
+  build_arg: TOIL_VER
+  default: "9.6.0"
+  versions:
+    - "9.6.0"
+    - "8.2.0"
+    - "7.0.0"

@@ -1,0 +1,5 @@
+// Modals are shown by toggling `show` and `display` from Rust, without Bootstrap's JS, so there
+// is no `.modal-backdrop` element. The open modal already covers the viewport: dim it itself.
+.modal.show
+  background-color: rgba(0, 0, 0, 0.5)
+  overflow-y: auto

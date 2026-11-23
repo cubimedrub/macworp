@@ -1,0 +1,37 @@
+use dioxus::prelude::{asset, Asset};
+
+/// Client for communicating with backend
+pub mod client;
+/// Reusable components for UI
+pub mod components;
+/// UI configuration
+pub mod configuration;
+/// The logged in user as context, e.g. to show admin-only navigation
+pub mod current_user;
+/// App layouts
+pub mod layouts;
+/// Folder picker for local workflows (desktop), the zip upload is the default
+pub mod local_workflow;
+/// Capability flag whether the platform has a logout, and the return-to-login helper
+pub mod logout;
+/// Pages showing a single task (a resource, resource list, resource edit, ...)
+pub mod pages;
+/// Reordering helpers for workflow parameter lists
+pub mod parameter_arrangement;
+/// Defintion of a router
+pub mod router;
+/// Container runtime status bar (only shown if the platform provides a handle)
+pub mod runtime_status;
+/// Logged-in client handle shared by components
+mod session;
+/// Capability flag whether sharing and groups are offered
+pub mod sharing;
+/// Trait defining how to store data, e.g. login etc.
+pub mod storage;
+/// Sleep helper for polling loops
+mod timer;
+
+/// The common favicon
+pub const FAVICON: Asset = asset!("/assets/favicon.ico");
+/// Shared CSS
+pub const MAIN_CSS: Asset = asset!("/assets/sass/main.sass");

@@ -1,0 +1,15 @@
+# End-to-end test of image builds: the rule runs in an image that exists only because the worker
+# built it from the Dockerfile next to this file and put it into the Apptainer image cache (a
+# pull of the name would fail). The URL must equal `docker://` plus the name in the configuration.
+rule all:
+    input:
+        "results/built.txt",
+
+
+rule built:
+    output:
+        "results/built.txt",
+    container:
+        "docker://macworp-e2e/snakemake-built:1"
+    shell:
+        "cat /marker.txt > {output}"

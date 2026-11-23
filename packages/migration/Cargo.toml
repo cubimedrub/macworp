@@ -1,0 +1,10 @@
+[package]
+edition      = "2024"
+name         = "macworp_database_migration"
+publish      = false
+version      = "0.1.0"
+
+[dependencies]
+macworp_core = { workspace = true, features = ["database"] }
+sea-orm-migration = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

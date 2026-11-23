@@ -1,0 +1,409 @@
+use std::{fmt::Display, path::PathBuf};
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    entities::{FailureReason, LogStream, ReferenceFingerprint, Role, RunProvenance, RunStatus},
+    requests::ParameterValue,
+    workflow_configuration::WorkflowConfiguration,
+};
+
+/// Response of login
+///
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserResponse {
+    pub id: i64,
+    pub username: String,
+    pub firstname: String,
+    pub lastname: String,
+    pub email: String,
+    /// Whether the user administers the instance
+    #[serde(default)]
+    pub is_admin: bool,
+    /// Whether the account is blocked from logging in
+    #[serde(default)]
+    pub disabled: bool,
+    /// Whether the user may create local workflows on this server (`permit_local_workflows`).
+    /// Only set when the user asks about themselves (`GET /user/current`), `None` otherwise.
+    #[serde(default)]
+    pub can_create_local_workflows: Option<bool>,
+}
+
+/// Response of login
+///
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct ProjectResponse {
+    pub id: i64,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub owner_username: String,
+    /// Nobody (no user or group) owns the project, see `Resource::ownerless_among`
+    #[serde(default)]
+    pub ownerless: bool,
+    pub current: PathBuf,
+    pub files: Vec<String>,
+    pub directories: Vec<String>,
+    /// The listed folder is read-only for everybody (the virtual global reference data folder),
+    /// whatever `my_role` says
+    #[serde(default)]
+    pub read_only: bool,
+    /// Project directory on the user's machine, only set when the backend runs locally (desktop)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<PathBuf>,
+    /// Role of the requesting user, only set by endpoints returning a single project
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub my_role: Option<Role>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum LoginProviderResponse {
+    Local(bool),
+    OpenIdConnect { name: String, description: String },
+}
+
+impl LoginProviderResponse {
+    pub fn description(&self) -> String {
+        match self {
+            LoginProviderResponse::Local(_) => "Local authentication".to_string(),
+            LoginProviderResponse::OpenIdConnect { description, .. } => description.clone(),
+        }
+    }
+}
+
+impl Display for LoginProviderResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoginProviderResponse::Local(_) => write!(f, "Local login"),
+            LoginProviderResponse::OpenIdConnect {
+                name,
+                description: _,
+            } => write!(f, "{name}"),
+        }
+    }
+}
+
+/// A schema file shipped with a workflow, returned as text (YAML is not parsed server side).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SchemaFile {
+    /// Path inside the workflow repository
+    pub path: String,
+    /// File content
+    pub content: String,
+}
+
+/// Schemas found in a workflow's repository, used to generate and validate input forms.
+/// Everything is optional: workflows are not required to ship schemas.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct WorkflowSchemasResponse {
+    /// Commit the schemas were read from, `None` for local sources
+    pub commit: Option<String>,
+    /// Parsed `nextflow_schema.json` (parameters)
+    pub nextflow_schema: Option<serde_json::Value>,
+    /// Parsed sample sheet schema, found through `properties.input.schema` of the Nextflow
+    /// schema, else `assets/schema_input.json`
+    pub input_schema: Option<serde_json::Value>,
+    /// Snakemake schemas (`*.schema.yaml` in `workflow/schemas` and `config`)
+    pub snakemake_schemas: Vec<SchemaFile>,
+    /// The main CWL document of a CWL workflow (the script the executor runs), whose `inputs`
+    /// generate the parameter form. Empty for other engines or when the script is unreadable.
+    #[serde(default)]
+    pub cwl_files: Vec<SchemaFile>,
+    /// Container build files (`Dockerfile`, `Dockerfile.*`, `*.dockerfile`, `Containerfile`) of a
+    /// local workflow, relative to the workflow directory and sorted, the candidates for the
+    /// image builds of the configuration. Empty for remote sources, builds are local only.
+    #[serde(default)]
+    pub dockerfiles: Vec<String>,
+}
+
+/// State of the background download of a workflow's remote repository into the cache, started
+/// when the workflow is saved.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum PrefetchResponse {
+    /// No download was started since the backend started (local source, or not saved yet)
+    #[default]
+    Idle,
+    /// The repository is being downloaded
+    Fetching,
+    /// The repository is cached
+    Done {
+        /// Commit the configured reference resolved to
+        commit: String,
+    },
+    /// The download or validation failed; the workflow is saved anyway
+    Failed {
+        /// Why it failed, e.g. host unreachable or unknown reference
+        message: String,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WorkflowIntegrationResponse {
+    pub id: i64,
+    pub owner_username: String,
+    /// Nobody (no user or group) owns the workflow, see `Resource::ownerless_among`
+    #[serde(default)]
+    pub ownerless: bool,
+    pub name: String,
+    pub description: String,
+    pub configuration: WorkflowConfiguration,
+    /// Role of the requesting user, only set by endpoints returning a single workflow
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub my_role: Option<Role>,
+}
+
+impl WorkflowIntegrationResponse {
+    pub fn configuration(&self) -> &WorkflowConfiguration {
+        &self.configuration
+    }
+
+    pub fn configuration_mut(&mut self) -> &mut WorkflowConfiguration {
+        &mut self.configuration
+    }
+}
+
+/// State of a run
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RunResponse {
+    pub id: i64,
+    /// Project the run belongs to
+    pub project_id: i64,
+    /// `None` if the workflow was deleted since
+    pub workflow_id: Option<i64>,
+    /// Name of the workflow at start, empty if unknown
+    pub workflow_name: String,
+    pub status: RunStatus,
+    /// Engine exit code, `None` until it exited
+    pub exit_code: Option<i32>,
+    /// Why the run failed when the exit code does not say, e.g. timeout
+    pub error: Option<String>,
+    /// Machine-readable cause, only set for failed runs
+    #[serde(default)]
+    pub failure_reason: Option<FailureReason>,
+    /// Repository, reference and commit of a remote workflow, `None` for local workflows
+    #[serde(default)]
+    pub provenance: Option<RunProvenance>,
+    /// State of the global reference data the run read, `None` if it read the live folder
+    #[serde(default)]
+    pub reference_fingerprint: Option<ReferenceFingerprint>,
+    /// Tasks the engine announced so far, grows during the run (0 if the engine reports none)
+    pub tasks_total: i32,
+    /// Tasks the engine finished
+    pub tasks_done: i32,
+    /// Latest progress detail reported by the engine
+    pub progress_message: Option<String>,
+    /// Comment given at start
+    pub comment: String,
+    /// A user asked to cancel a running run, the worker has not stopped it yet
+    pub cancel_requested: bool,
+    /// Locked runs are kept by the run limit
+    pub locked: bool,
+    /// When the run was queued
+    pub created_at: DateTime<Utc>,
+    /// When a worker started it, `None` while queued
+    pub started_at: Option<DateTime<Utc>>,
+    /// When it reached a terminal status
+    pub finished_at: Option<DateTime<Utc>>,
+}
+
+/// A batch of consecutive log lines of one stream
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RunLogChunk {
+    /// Position within the run, the cursor for the next request
+    pub seq: i64,
+    pub stream: LogStream,
+    pub created_at: DateTime<Utc>,
+    /// Lines joined by `\n`
+    pub content: String,
+    pub line_count: i32,
+}
+
+/// New log chunks of a run together with the current state
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RunLogsResponse {
+    /// Chunks after the requested cursor, oldest first. More may be waiting if the page limit was hit.
+    pub chunks: Vec<RunLogChunk>,
+    /// The run itself, includes status and progress, so one request is enough per poll
+    pub run: RunResponse,
+}
+
+/// Workflow and parameter values of the last run of a project
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LastRunResponse {
+    pub workflow_id: i64,
+    /// Values as submitted at start, may contain names the workflow no longer defines
+    pub parameters: Vec<ParameterValue>,
+}
+
+/// A user as shown when picking share principals or group members
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct UserSummaryResponse {
+    /// User id
+    pub id: i64,
+    /// Login name
+    pub username: String,
+}
+
+/// A group with its members
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GroupResponse {
+    /// Group id
+    pub id: i64,
+    /// Name of the group
+    pub name: String,
+    /// Description of the group
+    pub description: String,
+    /// Username of the group's owner
+    pub owner_username: String,
+    /// The group has no owner (its owner deleted their account)
+    #[serde(default)]
+    pub ownerless: bool,
+    /// Whether the requesting user owns the group and may change it
+    pub is_owner: bool,
+    /// Members, only set by the endpoint returning a single group
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub members: Vec<UserSummaryResponse>,
+}
+
+/// Who a share is granted to
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PrincipalResponse {
+    /// A single user
+    User {
+        /// User id
+        id: i64,
+        /// Login name
+        username: String,
+    },
+    /// All members of a group
+    Group {
+        /// Group id
+        id: i64,
+        /// Group name
+        name: String,
+    },
+    /// Every user
+    Public,
+}
+
+/// One grant of a role on a resource
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShareResponse {
+    /// Who holds the role
+    pub principal: PrincipalResponse,
+    /// The granted role
+    pub role: Role,
+}
+
+/// A run leased to a worker
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WorkerClaimResponse {
+    pub run_id: i64,
+    /// Project directory: relative to the storage root, which the worker resolves against its
+    /// own mount of the shared storage; absolute if it lies outside the storage (then it must
+    /// be valid on the worker too)
+    pub project_dir: PathBuf,
+    /// Global reference data directory, relative to the storage root like `project_dir`;
+    /// `None` for an older backend
+    #[serde(default)]
+    pub reference_dir: Option<PathBuf>,
+    /// Workflow configuration snapshot with the parameter values applied. A relative location of
+    /// a local source is relative to the storage root as well.
+    pub configuration: WorkflowConfiguration,
+    /// Per-run token for all further calls, sent as `Authorization: Run <token>`
+    pub token: String,
+    /// Seconds the worker may stay silent; heartbeat several times within it
+    pub lease_seconds: u32,
+}
+
+/// Answer to a heartbeat
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerHeartbeatResponse {
+    /// A user asked to stop the run, the worker should cancel it and report `Cancelled`
+    pub cancel_requested: bool,
+}
+
+/// Answer to an announce
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerAnnounceResponse {
+    /// Seconds the announcement stays valid, the worker should announce again well within it
+    pub ttl_seconds: u32,
+    /// File the worker must be able to read to prove it shares the backend's storage,
+    /// `None` if the backend has no shared storage requirement (desktop)
+    #[serde(default)]
+    pub storage: Option<StorageProbe>,
+}
+
+/// A marker file in the shared storage root. The backend keeps it with a random content; a
+/// worker that reads the same content at the same place in its own mount sees the same
+/// filesystem.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageProbe {
+    /// Path of the marker file relative to the storage root (an absolute path from an older
+    /// backend is used as it is)
+    pub path: PathBuf,
+    /// Content the file must have
+    pub content: String,
+}
+
+/// Engines no live worker can run
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnginesResponse {
+    pub unavailable: Vec<crate::workflow_configuration::engine::Engine>,
+    /// Workers with a valid announcement
+    pub workers_online: usize,
+}
+
+/// A pipeline of the public nf-core index
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NfCorePipeline {
+    /// Short name without the `nf-core/` prefix
+    pub name: String,
+    pub description: String,
+    pub archived: bool,
+}
+
+/// Pipelines of the public nf-core index
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NfCorePipelinesResponse {
+    pub pipelines: Vec<NfCorePipeline>,
+    /// Unix seconds the backend fetched the index
+    pub fetched_at: u64,
+    /// True if the index could not be refreshed and an older copy is served
+    pub stale: bool,
+}
+
+/// A release of an nf-core pipeline
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NfCoreRelease {
+    pub tag: String,
+    pub published_at: String,
+    /// True if the release ships a `nextflow_schema.json`
+    pub has_schema: bool,
+}
+
+/// Releases of one nf-core pipeline, newest first
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NfCoreReleasesResponse {
+    pub releases: Vec<NfCoreRelease>,
+    /// Unix seconds the backend fetched the index
+    pub fetched_at: u64,
+    /// True if the index could not be refreshed and an older copy is served
+    pub stale: bool,
+}
+
+/// Answer of `GET /projects/read-text/{id}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectTextResponse {
+    /// File content (UTF-8)
+    pub content: String,
+}
+
+/// Answer of `POST /user/one-time-token`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OneTimeTokenResponse {
+    /// Token that authenticates exactly one request, for a few seconds, as the query parameter
+    /// `ONE_TIME_TOKEN_PARAM`
+    pub token: String,
+}

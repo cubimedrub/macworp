@@ -1,0 +1,29 @@
+[package]
+name = "macworp_ui_core"
+version = "0.1.0"
+authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
+edition = "2021"
+
+
+[dependencies]
+dioxus = { workspace = true, features = ["router"] }
+http = { workspace = true }
+num-traits = { workspace = true }
+manganis = { workspace = true }
+macworp_core = { workspace = true }
+reqwest = { workspace = true, features = ["json", "query", "multipart", "stream"] }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+urlencoding = { workspace = true }
+# `format` for timestamps, the features are not unified in the wasm build
+chrono = { workspace = true, features = ["alloc"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { workspace = true, features = ["futures"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["time"] }

@@ -1,0 +1,35 @@
+[package]
+name = "macworp_web"
+version = "0.1.0"
+authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
+edition = "2021"
+
+[dependencies]
+dioxus = { workspace = true, features = ["router"] }
+futures = { workspace = true }
+http = { workspace = true }
+macworp_core = { workspace = true }
+macworp_ui_core = { workspace = true }
+reqwest = { workspace = true }
+thiserror = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true, features = [
+    "DataTransferItem",
+    "FileSystem",
+    "FileSystemDirectoryEntry",
+    "FileSystemDirectoryReader",
+    "FileSystemEntry",
+    "FileSystemFileEntry",
+    "FileSystemHandle",
+    "FileSystemHandleKind",
+    "Location",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Storage",
+    "Window",
+] }
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]

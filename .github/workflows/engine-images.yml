@@ -1,0 +1,69 @@
+# Builds the engine images (docker/engine.dockerfile), one per engine and version listed in
+# docker/engine-versions.yml, and pushes them to ghcr.io/<owner>/macworp-<engine>:<version>.
+# The default version of an engine also gets the tag `latest`. Pull requests only build.
+name: Engine images
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - docker/engine.dockerfile
+      - docker/engine-versions.yml
+      - .github/workflows/engine-images.yml
+  pull_request:
+    paths:
+      - docker/engine.dockerfile
+      - docker/engine-versions.yml
+      - .github/workflows/engine-images.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      include: ${{ steps.matrix.outputs.include }}
+    steps:
+      - uses: actions/checkout@v4
+      # One entry per engine and version
+      - id: matrix
+        run: |
+          include=$(yq -o=json '.' docker/engine-versions.yml | jq -c '[to_entries[] | .key as $engine | .value as $v | $v.versions[] | {engine: $engine, target: $v.target, build_arg: $v.build_arg, version: ., latest: (. == $v.default)}]')
+          echo "include=$include" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: matrix
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.matrix.outputs.include) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Image names must be lower case
+      - id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/macworp-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/engine.dockerfile
+          target: ${{ matrix.target }}
+          build-args: ${{ matrix.build_arg }}=${{ matrix.version }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ matrix.version }}
+            ${{ matrix.latest && format('{0}:latest', steps.image.outputs.name) || '' }}
+          cache-from: type=gha,scope=${{ matrix.engine }}-${{ matrix.version }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.engine }}-${{ matrix.version }}

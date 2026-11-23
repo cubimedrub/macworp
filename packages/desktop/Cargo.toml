@@ -1,0 +1,39 @@
+[package]
+name = "macworp_desktop"
+version = "0.1.0"
+authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
+edition = "2021"
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+dioxus = { workspace = true, features = ["router", "desktop"] }
+directories = { workspace = true }
+macworp_backend = { workspace = true, features = ["integration"] }
+chrono = { workspace = true, features = ["clock"] }
+macworp_core = { workspace = true }
+macworp_ui_core = { workspace = true }
+macworp_worker = { workspace = true }
+notify = { workspace = true }
+opener = { workspace = true }
+password-auth = { workspace = true }
+rand = { workspace = true }
+rfd = { workspace = true }
+reqwest = { workspace = true }
+sea-orm = { workspace = true, features = ["sqlx-sqlite"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+
+[dev-dependencies]
+macworp_database_migration = { workspace = true }
+tempfile = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+
+[features]
+default = ["desktop"]
+desktop = ["dioxus/desktop"]

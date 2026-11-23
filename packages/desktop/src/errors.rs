@@ -1,0 +1,31 @@
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Failed to create app directory, error: {0}")]
+    AppDirectoryCreation(std::io::Error),
+    #[error("{0}")]
+    Backend(#[from] macworp_backend::error::Error),
+    #[error("Failed to get address from backend socket, error: {0}")]
+    BackendAddressNotFound(std::io::Error),
+    #[error("Failed to send stop signal to backend.")]
+    BackendStopSignal,
+    #[error("Stopping backend went wronf, {0}")]
+    BackendStopping(tokio::task::JoinError),
+    #[error("Backend stopped unexpectedly.")]
+    BackendStoppedUnexpectedly,
+    #[error("{0}")]
+    Core(#[from] macworp_core::error::Error),
+    #[error("Login failed: {0}")]
+    LoginFailed(macworp_ui_core::client::Error),
+    #[error("Failed to get project directory")]
+    ProjectDirectoryNotFound,
+    #[error("Worker could not open the database: {0}")]
+    WorkerDatabase(sea_orm::DbErr),
+    #[error("Stopping worker went wrong, {0}")]
+    WorkerStopping(tokio::task::JoinError),
+    #[error("Settings: {0}")]
+    Settings(#[from] crate::settings::Error),
+    #[error(transparent)]
+    Storage(#[from] crate::storage::Error),
+}

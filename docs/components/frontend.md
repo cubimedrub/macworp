@@ -1,1 +1,0 @@
---8<-- "frontend/Readme.md"

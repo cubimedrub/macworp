@@ -1,0 +1,32 @@
+use dioxus::router::{NavigationTarget, Routable};
+
+pub trait IsRouter: Routable {
+    const LOGIN_VARIANT: Self;
+
+    fn project_new_route() -> NavigationTarget<Self>;
+    fn project_index_route() -> NavigationTarget<Self>;
+    fn project_route(id: i64) -> NavigationTarget<Self>;
+    fn login_route(message: Option<String>) -> NavigationTarget<Self>;
+    fn error_route(message: String) -> NavigationTarget<Self>;
+    fn workflow_integration_new_route() -> NavigationTarget<Self>;
+    fn workflow_integration_index_route() -> NavigationTarget<Self>;
+    fn workflow_integration_route(id: i64) -> NavigationTarget<Self>;
+    /// The global reference data page
+    fn reference_route() -> NavigationTarget<Self>;
+    /// Page with the application settings, `None` where there are none (only the desktop app has)
+    fn settings_route() -> Option<NavigationTarget<Self>> {
+        None
+    }
+    /// List of the user's groups
+    fn group_index_route() -> NavigationTarget<Self>;
+    /// Page to create a group
+    fn group_new_route() -> NavigationTarget<Self>;
+    /// Page of one group
+    fn group_route(id: i64) -> NavigationTarget<Self>;
+    /// List of all users (administrators)
+    fn user_index_route() -> NavigationTarget<Self>;
+    /// Page to create a user (administrators)
+    fn user_new_route() -> NavigationTarget<Self>;
+    /// Page of one user (administrators)
+    fn user_route(id: i64) -> NavigationTarget<Self>;
+}

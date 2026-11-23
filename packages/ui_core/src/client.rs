@@ -40,6 +40,9 @@ pub enum Error {
     /// gone or disabled. The user has to log in again.
     #[error("{0}")]
     Unauthorized(String),
+    /// A URL could not be built from the configured base URL
+    #[error("Invalid URL: {0}")]
+    InvalidUrl(String),
 }
 
 impl Error {
@@ -922,6 +925,34 @@ impl<'a> ProjectsClient<'a> {
             ));
         }
         Ok(())
+    }
+
+    /// URL that downloads a file as it is, or a folder as a zip archive, when the browser opens it.
+    /// The token stands in for the `Authorization` header.
+    ///
+    /// # Arguments
+    /// * `id` - The project id
+    /// * `path` - File or folder, relative to the project; empty for all of it
+    /// * `one_time_token` - Token from [`UsersClient::one_time_token`], valid for one request
+    ///
+    /// Fails with [`Error::InvalidUrl`] if the base URL of the client cannot be parsed.
+    pub fn download_url(
+        &self,
+        id: i64,
+        path: &std::path::Path,
+        one_time_token: &str,
+    ) -> Result<String, Error> {
+        let url = format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            self.controller_path,
+            ProjectsRouting::DOWNLOAD_PATH.replace("{id}", &id.to_string())
+        );
+        let mut url = reqwest::Url::parse(&url).map_err(|_| Error::InvalidUrl(url))?;
+        url.query_pairs_mut()
+            .append_pair("path", &path.to_string_lossy())
+            .append_pair(ONE_TIME_TOKEN_PARAM, one_time_token);
+        Ok(url.into())
     }
 
     /// Deletes the given path

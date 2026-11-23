@@ -29,6 +29,10 @@ mod authorization_http_tests;
 #[cfg(all(test, feature = "integration"))]
 mod project_text_http_tests;
 
+/// HTTP-level tests of file and folder downloads
+#[cfg(all(test, feature = "integration"))]
+mod download_http_tests;
+
 /// HTTP-level tests of the worker protocol
 #[cfg(all(test, feature = "integration"))]
 mod worker_http_tests;

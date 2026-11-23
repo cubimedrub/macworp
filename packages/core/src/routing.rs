@@ -81,6 +81,10 @@ impl ProjectsRouting {
     pub const READ_TEXT_PATH: &str = "/read-text/{id}";
     /// PUT (Editor): replace or create a small text file, query parameter `path`
     pub const WRITE_TEXT_PATH: &str = "/write-text/{id}";
+    /// GET (Viewer): download of a file as is, or of a folder as a zip archive built while
+    /// streaming. Query parameters: `path` (empty for the whole project) and optionally
+    /// [`ONE_TIME_TOKEN_PARAM`] in place of the `Authorization` header.
+    pub const DOWNLOAD_PATH: &str = "/download/{id}";
 }
 
 impl IsRouting for ProjectsRouting {
@@ -102,6 +106,10 @@ impl ReferenceRouting {
     pub const CREATE_FOLDER_PATH: &str = "/create-folder/{id}";
     /// POST (Editor): delete a file or folder
     pub const DELETE_PATH_PATH: &str = "/delete-path/{id}";
+    /// GET (Viewer): download of a file as is, or of a folder as a zip archive built while
+    /// streaming. Query parameters: `path` (empty for all reference data) and optionally
+    /// [`ONE_TIME_TOKEN_PARAM`] in place of the `Authorization` header.
+    pub const DOWNLOAD_PATH: &str = "/download/{id}";
 }
 
 impl IsRouting for ReferenceRouting {

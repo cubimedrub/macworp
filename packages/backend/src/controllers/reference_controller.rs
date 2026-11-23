@@ -17,9 +17,9 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::{
-    authorization::{Authorized, Editor, Viewer},
+    authorization::{Authorized, Editor, OneTimeTokenAuthorized, Viewer},
     filesystems::{
-        directory_files::DirectoryFiles, is_filesystem::IsFilesystem,
+        directory_files::DirectoryFiles, download::Download, is_filesystem::IsFilesystem,
         project_content::ProjectContent,
     },
     models::ReferenceData,
@@ -54,6 +54,9 @@ impl IntoResponse for Error {
             Self::Filesystem(crate::filesystems::errors::Error::SymlinkNotAllowed(_)) => {
                 (StatusCode::FORBIDDEN, "Symlinks are not allowed").into_response()
             }
+            Self::Filesystem(crate::filesystems::errors::Error::FileNotFound(_)) => {
+                StatusCode::NOT_FOUND.into_response()
+            }
             Self::MissingContentRangeHeader | Self::InvalidContentRangeHeader(_) => {
                 (StatusCode::BAD_REQUEST, self.to_string()).into_response()
             }
@@ -72,6 +75,14 @@ pub struct BrowseQuery {
     /// Folder below the reference directory, empty for the top level
     #[serde(default)]
     subpath: std::path::PathBuf,
+}
+
+/// Query of the download endpoint
+#[derive(Deserialize)]
+pub struct DownloadQuery {
+    /// File or folder below the reference directory, empty for all of it
+    #[serde(default)]
+    path: std::path::PathBuf,
 }
 
 /// Query of the upload endpoint
@@ -103,6 +114,7 @@ where
                 post(Self::create_folder),
             )
             .route(ReferenceRouting::DELETE_PATH_PATH, post(Self::delete_path))
+            .route(ReferenceRouting::DOWNLOAD_PATH, get(Self::download))
             .with_state(state)
     }
 
@@ -113,6 +125,24 @@ where
         } else {
             Err(Error::ReadOnly)
         }
+    }
+
+    /// Download of a reference file as it is, or of a folder as a zip archive that is built while
+    /// it streams (Viewer). The user may authenticate with a one-time token in the query. 404 if
+    /// the path does not exist, 403 if it passes a symlink.
+    async fn download(
+        State(state): State<Arc<AppState>>,
+        OneTimeTokenAuthorized(_): OneTimeTokenAuthorized<ReferenceData, Viewer>,
+        Query(query): Query<DownloadQuery>,
+    ) -> Result<axum::response::Response, Error> {
+        let base = state.reference_directory().get();
+        let resolved = F::join_paths(&base, &query.path)?;
+        let name = resolved
+            .file_name()
+            .filter(|_| !query.path.as_os_str().is_empty())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "reference-data".to_string());
+        Ok(Download::new(resolved, name).into_response().await?)
     }
 
     /// Lists a folder of the reference data.

@@ -374,6 +374,43 @@ impl TestApp {
         )
     }
 
+    /// `GET uri` as `user` (anonymous for `None`), returning status, headers and the raw body.
+    ///
+    /// # Arguments
+    /// * `user` - Authenticated user, or `None` to send no `Authorization` header
+    /// * `uri` - Request path with query
+    pub async fn get_raw(
+        &self,
+        user: Option<&User>,
+        uri: &str,
+    ) -> (StatusCode, http::HeaderMap, Vec<u8>) {
+        let mut request = Request::builder().method(Method::GET).uri(uri);
+        if let Some(user) = user {
+            let token =
+                JsonWebToken::encode(user.id, user.token_version, self.state.config()).unwrap();
+            request = request.header(header::AUTHORIZATION, format!("JWT {token}"));
+        }
+        let response = self
+            .router
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let (parts, body) = response.into_parts();
+        let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
+        (parts.status, parts.headers, bytes.to_vec())
+    }
+
+    /// Obtains a one-time token for `user` through the API.
+    ///
+    /// # Arguments
+    /// * `user` - The user to authenticate as
+    pub async fn one_time_token(&self, user: &User) -> String {
+        let (status, body) = self.post(user, "/user/one-time-token", None).await;
+        assert_eq!(status, StatusCode::OK);
+        body["token"].as_str().unwrap().to_string()
+    }
+
     /// `GET uri` as `user`.
     pub async fn get(&self, user: &User, uri: &str) -> (StatusCode, Value) {
         self.send(Some(user), Method::GET, uri, None).await

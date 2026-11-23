@@ -22,10 +22,12 @@ web-sys = { workspace = true, features = [
     "FileSystemFileEntry",
     "FileSystemHandle",
     "FileSystemHandleKind",
+    "Location",
     "Request",
     "RequestInit",
     "RequestMode",
     "Storage",
+    "Window",
 ] }
 
 [features]

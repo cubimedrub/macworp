@@ -25,8 +25,12 @@ use thiserror::Error;
 
 use crate::{
     authentication::middleware::{ListScope, RequireUser},
-    authorization::{Authorized, Editor, Owner, Principal, Resource, Viewer},
-    filesystems::{is_filesystem::IsFilesystem, project_content::ProjectContent},
+    authorization::{
+        Authorized, Editor, OneTimeTokenAuthorized, Owner, Principal, Resource, Viewer,
+    },
+    filesystems::{
+        download::Download, is_filesystem::IsFilesystem, project_content::ProjectContent,
+    },
     models::{ActiveProject, Project, ProjectTable, User},
     state::State as AppState,
 };
@@ -88,6 +92,14 @@ pub struct ProjectTextQuery {
     pub path: PathBuf,
 }
 
+/// Query of the download endpoint.
+#[derive(Deserialize)]
+pub struct ProjectDownloadQuery {
+    /// File or folder, relative to the project; empty for the whole project
+    #[serde(default)]
+    pub path: PathBuf,
+}
+
 #[derive(Deserialize)]
 pub struct ProjectFileUploadQuery {
     /// File name to upload
@@ -116,6 +128,7 @@ where
             .route(ProjectsRouting::DELETE_PATH_PATH, post(Self::delete_path))
             .route(ProjectsRouting::READ_TEXT_PATH, get(Self::read_text))
             .route(ProjectsRouting::WRITE_TEXT_PATH, put(Self::write_text))
+            .route(ProjectsRouting::DOWNLOAD_PATH, get(Self::download))
             .with_state(state)
     }
 
@@ -356,6 +369,47 @@ where
         Self::ensure_not_reserved(&params.path)?;
         let content = F::read_text(state.as_ref(), &project, params.path).await?;
         Ok(Json(ProjectTextResponse { content }))
+    }
+
+    /// Download of a file of the project as it is, or of a folder as a zip archive that is built
+    /// while it streams (Viewer). The user may authenticate with a one-time token in the query.
+    /// Paths below the virtual reference folder are served from the reference data. 404 if the
+    /// path does not exist, 403 if it passes a symlink.
+    pub async fn download(
+        State(state): State<Arc<AppState>>,
+        OneTimeTokenAuthorized(Authorized { model: project, .. }): OneTimeTokenAuthorized<
+            Project,
+            Viewer,
+        >,
+        Query(params): Query<ProjectDownloadQuery>,
+    ) -> Result<axum::response::Response, Error> {
+        let (base, path, fallback_name, skip_reference_folder) =
+            match strip_reference_prefix(&params.path) {
+                Some(rest) => (
+                    state.reference_directory().get(),
+                    rest,
+                    "reference-data".to_string(),
+                    false,
+                ),
+                None => (
+                    F::project_path(state.as_ref(), &project)?,
+                    params.path,
+                    project.name.clone(),
+                    true,
+                ),
+            };
+        let resolved = F::join_paths(&base, &path)?;
+        let name = resolved
+            .file_name()
+            .filter(|_| !path.as_os_str().is_empty())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or(fallback_name);
+        let mut download = Download::new(resolved, name);
+        if skip_reference_folder && path.as_os_str().is_empty() {
+            // The folder only exists in listings; a real folder of that name is hidden by it
+            download = download.skipping_top_level(REFERENCE_PREFIX);
+        }
+        Ok(download.into_response().await?)
     }
 
     /// Replaces or creates a small text file of the project (Editor), atomically.

@@ -25,6 +25,18 @@ pub struct DeletePathProps {
     pub reload_content_callback: Callback<(), ()>,
 }
 
+/// Properties of the download button of a file or folder.
+#[derive(Clone, PartialEq, Props)]
+pub struct DownloadPathProps {
+    /// The listed project, or the reference data listing
+    pub project: Signal<ProjectResponse>,
+    /// The path belongs to the global reference data, not to a project
+    #[props(default)]
+    pub reference: bool,
+    /// File or folder to download, relative to the project. A folder is zipped while it streams.
+    pub path: PathBuf,
+}
+
 /// Defines a type of file browser.
 ///
 pub trait IsFileBrowser {
@@ -36,6 +48,11 @@ pub trait IsFileBrowser {
 
     #[allow(non_upper_case_globals)]
     const PathDelete: Component<DeletePathProps>;
+
+    /// Button that downloads a file, or a folder as a zip archive. Shown to everybody who can see
+    /// the listing.
+    #[allow(non_upper_case_globals)]
+    const PathDownload: Component<DownloadPathProps>;
 }
 
 #[derive(Clone, PartialEq, Props)]
@@ -125,6 +142,11 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
                             "Shared reference data, e.g. genomes, proteomes, annotations, ... (read-only, managed by administrator)"
                         }
                     }
+                    F::PathDownload {
+                        project: props.project,
+                        reference: false,
+                        path: PathBuf::from(REFERENCE_PREFIX),
+                    }
                 }
             }
             for folder in props.project.read().directories.iter().filter(|folder| !(has_reference_folder && folder.as_str() == REFERENCE_PREFIX)).cloned() {
@@ -140,12 +162,21 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
                         }
                         "{folder}"
                     }
-                    if can_edit {
-                        F::PathDelete {
+                    div {
+                        class: "btn-group ms-2",
+                        role: "group",
+                        F::PathDownload {
                             project: props.project,
                             reference: props.reference,
                             path: props.project.read().current.join(&folder),
-                            reload_content_callback: props.reload_content_callback,
+                        }
+                        if can_edit {
+                            F::PathDelete {
+                                project: props.project,
+                                reference: props.reference,
+                                path: props.project.read().current.join(&folder),
+                                reload_content_callback: props.reload_content_callback,
+                            }
                         }
                     }
 
@@ -161,12 +192,21 @@ pub fn FileBrowser<F: IsFileBrowser>(props: FileBrowserProps) -> Element {
                         }
                         "{file}"
                     }
-                    if can_edit {
-                        F::PathDelete {
+                    div {
+                        class: "btn-group ms-2",
+                        role: "group",
+                        F::PathDownload {
                             project: props.project,
                             reference: props.reference,
                             path: props.project.read().current.join(file),
-                            reload_content_callback: props.reload_content_callback,
+                        }
+                        if can_edit {
+                            F::PathDelete {
+                                project: props.project,
+                                reference: props.reference,
+                                path: props.project.read().current.join(file),
+                                reload_content_callback: props.reload_content_callback,
+                            }
                         }
                     }
                 }

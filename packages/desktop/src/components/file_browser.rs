@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use macworp_ui_core::components::file_browser::{
-    CreateFolderProps, DeletePathProps, IsFileBrowser,
+    CreateFolderProps, DeletePathProps, DownloadPathProps, IsFileBrowser,
 };
 use thiserror::Error;
 
@@ -22,6 +22,11 @@ impl IsFileBrowser for FileBrowser {
     };
 
     const PathDelete: Component<DeletePathProps> = |_props| {
+        rsx! {}
+    };
+
+    /// The desktop app works on the files directly, so it offers no download.
+    const PathDownload: Component<DownloadPathProps> = |_props| {
         rsx! {}
     };
 }

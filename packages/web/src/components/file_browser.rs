@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use dioxus::prelude::*;
 use macworp_ui_core::{
     client::Client,
-    components::file_browser::{CreateFolderProps, DeletePathProps, IsFileBrowser},
+    components::file_browser::{
+        CreateFolderProps, DeletePathProps, DownloadPathProps, IsFileBrowser,
+    },
     configuration::Configuration,
     storage::IsStorage,
 };
@@ -21,6 +23,9 @@ pub enum Error {
     Request(#[from] macworp_ui_core::client::Error),
     #[error("Folder name cannot be empty")]
     EmptyFolderName,
+    /// The browser refused to open the download link
+    #[error("Unable to start the download")]
+    Navigation,
 }
 
 /// Mutable version of the file browser offers uploads,
@@ -159,6 +164,55 @@ impl IsFileBrowser for FileBrowser {
                     class: "fas fa-trash me-1",
                 }
                 "(2x click)"
+            }
+        }
+    };
+
+    const PathDownload: Component<DownloadPathProps> = |props| {
+        let storage = use_context::<Signal<Self::Storage>>();
+        let config = use_context::<Signal<Configuration>>();
+
+        // The browser follows the download link itself and cannot send the JWT, so a one-time
+        // token that is only valid for this request goes into the URL. The response is saved by
+        // the browser as it arrives; the page stays where it is.
+        let mut download_action =
+            use_action(move |id: i64, path: PathBuf, reference: bool| async move {
+                let jwt = storage
+                    .read()
+                    .jwt()
+                    .map_err(Error::Storage)?
+                    .ok_or(Error::NotLoggedIn)?;
+                let config = config.read().clone();
+
+                let client = Client::new(config.base_url().to_string(), config.timeout());
+                let token = client.users().one_time_token(&jwt).await?;
+                let files = if reference {
+                    client.reference_files()
+                } else {
+                    client.projects()
+                };
+                let url = files.download_url(id, &path, &token)?;
+                web_sys::window()
+                    .ok_or(Error::Navigation)?
+                    .location()
+                    .set_href(&url)
+                    .map_err(|_| Error::Navigation)?;
+                Ok::<(), Error>(())
+            });
+
+        // A button group takes only buttons, so a failure shows on the button itself
+        let failure = download_action
+            .value()
+            .and_then(|result| result.err().map(|error| error.to_string()));
+        rsx! {
+            button {
+                class: if failure.is_some() { "btn btn-sm btn-outline-danger" } else { "btn btn-sm btn-outline-secondary" },
+                r#type: "button",
+                title: failure.unwrap_or_else(|| "Download (folders as zip)".to_string()),
+                onclick: move |_| download_action.call(props.project.read().id, props.path.clone(), props.reference),
+                i {
+                    class: "fas fa-download",
+                }
             }
         }
     };

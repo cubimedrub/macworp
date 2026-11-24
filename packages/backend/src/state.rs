@@ -36,6 +36,9 @@ pub struct State {
     prefetches: Mutex<HashMap<i64, (u64, PrefetchResponse)>>,
     /// Tokens that authenticate one request made by the browser itself (downloads)
     one_time_tokens: OneTimeTokens,
+    /// The container runtime of this machine, provided by the desktop app
+    #[cfg(feature = "integration")]
+    runtime_control: Option<Arc<dyn crate::runtime_control::RuntimeControl>>,
 }
 
 impl State {
@@ -66,11 +69,32 @@ impl State {
             nf_core_index,
             prefetches: Mutex::default(),
             one_time_tokens: OneTimeTokens::default(),
+            #[cfg(feature = "integration")]
+            runtime_control: None,
         })
     }
 
     pub fn config(&self) -> &Configuration {
         &self.config
+    }
+
+    /// Lets the embedding application provide the container runtime of this machine (`/runtime`).
+    ///
+    /// # Arguments
+    /// * `runtime_control` - what the routes forward to
+    #[cfg(feature = "integration")]
+    pub fn with_runtime_control(
+        mut self,
+        runtime_control: Arc<dyn crate::runtime_control::RuntimeControl>,
+    ) -> Self {
+        self.runtime_control = Some(runtime_control);
+        self
+    }
+
+    /// The container runtime of this machine, `None` if the embedding application has none.
+    #[cfg(feature = "integration")]
+    pub fn runtime_control(&self) -> Option<&Arc<dyn crate::runtime_control::RuntimeControl>> {
+        self.runtime_control.as_ref()
     }
 
     /// The store of one-time tokens, see [`OneTimeTokens`].

@@ -3,6 +3,8 @@ mod login_controller;
 mod projects_controller;
 mod reference_controller;
 mod runs_controller;
+#[cfg(feature = "integration")]
+mod runtime_controller;
 mod shares_controller;
 mod users_controller;
 mod utilities_controller;
@@ -15,11 +17,17 @@ pub use login_controller::LoginController;
 pub use projects_controller::ProjectsController;
 pub use reference_controller::ReferenceController;
 pub use runs_controller::RunsController;
+#[cfg(feature = "integration")]
+pub use runtime_controller::RuntimeController;
 pub use shares_controller::SharesController;
 pub use users_controller::UsersController;
 pub use utilities_controller::UtilitiesController;
 pub use worker_controller::WorkerController;
 pub use workflow_integrations_controllers::WorkflowIntegrationsController;
+
+/// HTTP tests of the container runtime routes of the desktop
+#[cfg(all(test, feature = "integration"))]
+mod runtime_http_tests;
 
 /// HTTP-level authorization tests over the full router
 #[cfg(all(test, feature = "integration"))]

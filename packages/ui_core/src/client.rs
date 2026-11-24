@@ -23,6 +23,7 @@ use macworp_core::{
         UserResponse, UserSummaryResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse,
     },
     routing::*,
+    runtime_status::{AdjustMemoryRequest, RuntimeStatus},
     workflow_configuration::WorkflowConfiguration,
 };
 
@@ -93,6 +94,11 @@ impl Client {
         UtilitiesClient::new(self)
     }
 
+    /// The container runtime of the machine the backend runs on (desktop app only)
+    pub fn runtime<'a>(&'a self) -> RuntimeClient<'a> {
+        RuntimeClient::new(self)
+    }
+
     pub fn login<'a>(&'a self) -> LoginClient<'a> {
         LoginClient::new(self)
     }
@@ -157,6 +163,88 @@ impl Client {
             ));
         }
         Ok(response)
+    }
+}
+
+/// Container runtime subclient: the backend of the desktop app manages the runtime of the
+/// machine it runs on, the UI asks it (a web backend answers 404).
+pub struct RuntimeClient<'a> {
+    base_client: &'a Client,
+}
+
+impl<'a> RuntimeClient<'a> {
+    /// Creates a new client
+    ///
+    /// # Arguments
+    /// * `base_client` - Base client
+    pub fn new(base_client: &'a Client) -> Self {
+        Self { base_client }
+    }
+
+    /// The runtime status as the backend last checked it
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    pub async fn status(&self, jwt: &str) -> Result<RuntimeStatus, Error> {
+        let request = reqwest::Client::new().get(self.url(RuntimeRouting::STATUS_PATH));
+        self.base_client
+            .send_authenticated(request, jwt, "fetch the container runtime status")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Makes the backend check the runtime again
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    pub async fn refresh(&self, jwt: &str) -> Result<RuntimeStatus, Error> {
+        let request = reqwest::Client::new().post(self.url(RuntimeRouting::REFRESH_PATH));
+        self.base_client
+            .send_authenticated(request, jwt, "check the container runtime")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Changes the memory of the container VM, which restarts it. Takes a while: no request
+    /// timeout applies. A refusal (runs are active) or failure comes back as its plain message.
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    /// * `mebibytes` - the new memory
+    pub async fn adjust_memory(&self, jwt: &str, mebibytes: u64) -> Result<RuntimeStatus, Error> {
+        let response = reqwest::Client::new()
+            .post(self.url(RuntimeRouting::MEMORY_PATH))
+            .header(
+                http::header::AUTHORIZATION,
+                format!("{} {jwt}", TokenType::Jwt),
+            )
+            .json(&AdjustMemoryRequest { mebibytes })
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            tracing::error!("Failed to change the container engine memory: HTTP {status}: {text}");
+            return Err(Error::from_status(status, text));
+        }
+        response.json().await.map_err(Error::Request)
+    }
+
+    /// URL of a route of the runtime controller.
+    ///
+    /// # Arguments
+    /// * `path` - route below the controller
+    fn url(&self, path: &str) -> String {
+        format!(
+            "{}{}{}",
+            self.base_client.base_url(),
+            RuntimeRouting::controller_path(),
+            path
+        )
     }
 }
 

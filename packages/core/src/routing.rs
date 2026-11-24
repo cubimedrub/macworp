@@ -22,6 +22,23 @@ impl IsRouting for UtilitiesRouting {
     const CONTROLLER_PATH: &str = "/utilities";
 }
 
+/// Routes of the desktop app only (the backend has them with the `integration` feature): the
+/// container runtime of the machine the backend runs on.
+pub struct RuntimeRouting;
+impl RuntimeRouting {
+    /// GET: the container runtime status as last checked (`RuntimeStatus`)
+    pub const STATUS_PATH: &str = "/status";
+    /// POST: check the runtime again and return the status
+    pub const REFRESH_PATH: &str = "/refresh";
+    /// POST (`AdjustMemoryRequest`): change the memory of the container VM and restart it,
+    /// 409 while runs are queued or running; returns the status afterwards
+    pub const MEMORY_PATH: &str = "/memory";
+}
+
+impl IsRouting for RuntimeRouting {
+    const CONTROLLER_PATH: &str = "/runtime";
+}
+
 /// Query parameter that carries a one-time token instead of the `Authorization` header, for
 /// requests the browser makes itself (downloads) and so cannot add the header to.
 pub const ONE_TIME_TOKEN_PARAM: &str = "one-time-token";

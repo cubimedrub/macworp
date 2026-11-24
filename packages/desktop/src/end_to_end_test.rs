@@ -405,6 +405,10 @@ impl TestApp {
             reference_directory.clone(),
         );
         let cache_directory = root.join("workflows").join("remote_cache");
+        let runtime_control: std::sync::Arc<dyn macworp_backend::runtime_control::RuntimeControl> =
+            std::sync::Arc::new(crate::runtime_status::DesktopRuntime::new(
+                crate::runtime_status::check_runtime().await,
+            ));
         let backend = tokio::spawn(async move {
             Backend::<LocalFilesystem>::start(
                 listener,
@@ -422,6 +426,7 @@ impl TestApp {
                         Duration::from_secs(3600),
                     ),
                 ),
+                runtime_control,
             )
             .await
         });

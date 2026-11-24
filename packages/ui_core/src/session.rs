@@ -4,7 +4,7 @@ use crate::{client::Client, configuration::Configuration, storage::IsStorage};
 
 /// Credentials and client to talk to the backend from event handlers and resources that need no
 /// typed storage error.
-pub(crate) struct Session {
+pub struct Session {
     /// Client for the configured backend
     pub client: Client,
     /// JWT of the logged in user

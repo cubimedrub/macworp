@@ -17,6 +17,9 @@ pub mod nf_core_index;
 /// Shared location of the global reference data
 pub mod reference_directory;
 pub mod reference_snapshots;
+/// What the desktop app lets its backend do with the container runtime of its machine
+#[cfg(feature = "integration")]
+pub mod runtime_control;
 
 /// How long an unreferenced reference snapshot survives: a snapshot is made before its run is
 /// stored, so a young one may belong to a run being started.
@@ -237,6 +240,12 @@ where
             )
             .layer(Extension(state.clone()))
             .with_state(state.clone());
+        // Only the desktop app manages a container runtime
+        #[cfg(feature = "integration")]
+        let router = router.nest(
+            macworp_core::routing::RuntimeRouting::controller_path(),
+            RuntimeController::routes(state.clone()).with_state(state.clone()),
+        );
         let router = match cors {
             Some(cors) => router.layer(cors),
             None => router,
@@ -288,6 +297,7 @@ impl Backend<LocalFilesystem> {
     /// * `desktop_user_name` - Name of the single desktop user
     /// * `reference_directory` - Location of the global reference data, shared with the desktop settings
     /// * `workflow_repository_cache` - Repository cache, shared with the desktop settings
+    /// * `runtime_control` - The container runtime of this machine, served under `/runtime`
     pub async fn start(
         tcp_listener: TcpListener,
         shutdown_signal: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
@@ -295,6 +305,7 @@ impl Backend<LocalFilesystem> {
         desktop_user_name: String,
         reference_directory: crate::reference_directory::ReferenceDirectory,
         workflow_repository_cache: Arc<crate::workflow_repository_cache::WorkflowRepositoryCache>,
+        runtime_control: Arc<dyn crate::runtime_control::RuntimeControl>,
     ) -> Result<(), Error> {
         use macworp_database_migration::{Migrator, MigratorTrait};
 
@@ -304,7 +315,8 @@ impl Backend<LocalFilesystem> {
         let state = State::new_for_integration(config)
             .await?
             .with_reference_directory(reference_directory)
-            .with_workflow_repository_cache(workflow_repository_cache);
+            .with_workflow_repository_cache(workflow_repository_cache)
+            .with_runtime_control(runtime_control);
 
         Migrator::up(state.db(), None)
             .await

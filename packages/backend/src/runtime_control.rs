@@ -1,0 +1,26 @@
+//! What the desktop app lets its backend do with the container runtime of the machine it runs
+//! on. The backend does not know how: the embedding app implements [`RuntimeControl`] with its
+//! doctor and VM tooling, the `/runtime` routes only forward to it.
+
+use std::{future::Future, pin::Pin};
+
+use macworp_core::runtime_status::RuntimeStatus;
+
+/// Boxed future, so the control can be used as a trait object.
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// The container runtime of the machine the backend runs on.
+pub trait RuntimeControl: Send + Sync {
+    /// The status as last checked, no new check.
+    fn status(&self) -> BoxFuture<'_, RuntimeStatus>;
+
+    /// Checks the runtime again and returns (and keeps) the new status.
+    fn refresh(&self) -> BoxFuture<'_, RuntimeStatus>;
+
+    /// Changes the memory of the container VM, restarting it, and returns the status
+    /// afterwards. The caller makes sure no run is active.
+    ///
+    /// # Arguments
+    /// * `mebibytes` - the new memory
+    fn adjust_memory(&self, mebibytes: u64) -> BoxFuture<'_, Result<RuntimeStatus, String>>;
+}

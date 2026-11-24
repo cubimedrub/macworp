@@ -18,6 +18,9 @@ pub enum Error {
     Core(#[from] macworp_core::error::Error),
     #[error("Login failed: {0}")]
     LoginFailed(macworp_ui_core::client::Error),
+    /// The backend could not tell the status of the container runtime
+    #[error("Cannot read the container runtime status: {0}")]
+    RuntimeStatus(macworp_ui_core::client::Error),
     #[error("Failed to get project directory")]
     ProjectDirectoryNotFound,
     #[error("Worker could not open the database: {0}")]

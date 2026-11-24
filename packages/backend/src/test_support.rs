@@ -57,6 +57,16 @@ impl TestApp {
         Self::build(|c| *c.allow_local_paths_mut() = true, true).await
     }
 
+    /// Like [`Self::new`], with a container runtime the `/runtime` routes forward to.
+    ///
+    /// # Arguments
+    /// * `control` - the runtime of the test
+    pub async fn new_with_runtime_control(
+        control: Arc<dyn crate::runtime_control::RuntimeControl>,
+    ) -> Self {
+        Self::build_with(|_| {}, false, Some(control)).await
+    }
+
     /// Like [`Self::new`], but lets `adjust` change the configuration first.
     ///
     /// # Arguments
@@ -71,6 +81,20 @@ impl TestApp {
     /// * `adjust` - Called with the default test configuration before the backend state is built
     /// * `reference_snapshots` - Whether runs get a snapshot of the reference data
     async fn build(adjust: impl FnOnce(&mut Configuration), reference_snapshots: bool) -> Self {
+        Self::build_with(adjust, reference_snapshots, None).await
+    }
+
+    /// Builds the app.
+    ///
+    /// # Arguments
+    /// * `adjust` - Called with the default test configuration before the backend state is built
+    /// * `reference_snapshots` - Whether runs get a snapshot of the reference data
+    /// * `runtime_control` - The container runtime served under `/runtime`, if any
+    async fn build_with(
+        adjust: impl FnOnce(&mut Configuration),
+        reference_snapshots: bool,
+        runtime_control: Option<Arc<dyn crate::runtime_control::RuntimeControl>>,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut configuration = Configuration::default();
         *configuration.worker_mut() = crate::configuration::WorkerCredentials::new(
@@ -90,6 +114,10 @@ impl TestApp {
             state.with_reference_snapshots(root)
         } else {
             state
+        };
+        let state = match runtime_control {
+            Some(control) => state.with_runtime_control(control),
+            None => state,
         };
         std::fs::create_dir_all(directory.path().join("reference")).unwrap();
         Migrator::up(state.db(), None).await.unwrap();
@@ -135,6 +163,10 @@ impl TestApp {
             .nest(
                 WorkerRouting::controller_path(),
                 WorkerController::<LocalFilesystem>::routes(state.clone()),
+            )
+            .nest(
+                macworp_core::routing::RuntimeRouting::controller_path(),
+                RuntimeController::routes(state.clone()),
             )
             .layer(Extension(state.clone()))
             .with_state(state.clone());

@@ -19,6 +19,8 @@ pub mod requests;
 pub mod responses;
 /// Routing segments of controllers
 pub mod routing;
+/// Container runtime status of the desktop app and the request to change its memory
+pub mod runtime_status;
 /// Sample sheets: model, file formats, columns, editing
 pub mod sample_sheet;
 /// JSON Schema validation with the nf-schema extensions used by sample sheets

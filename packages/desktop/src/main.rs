@@ -27,7 +27,7 @@ use macworp_backend::models::RunTable;
 use macworp_core::logging::init_tracing_subscription;
 use macworp_ui_core::{
     client::Client, components::Bootstrap, configuration::Configuration,
-    runtime_status::RuntimeStatusHandle, storage::IsStorage, FAVICON, MAIN_CSS,
+    runtime_status::RuntimeStatusHandle, session::Session, storage::IsStorage, FAVICON, MAIN_CSS,
 };
 
 use macworp_worker::{
@@ -46,7 +46,7 @@ use crate::{
     db_job_source::DbJobSource,
     errors::Error,
     router::Router,
-    runtime_status::{check_runtime, to_status, InitialRuntimeStatus},
+    runtime_status::{to_status, InitialRuntimeStatus},
     storage::Storage,
 };
 
@@ -143,9 +143,10 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     let container_runtime_report =
         macworp_worker::container_runtime::doctor(runtime_status::preference()).await;
     let unavailable_engines = container_runtime_report.unavailable_engines();
-    let mut initial_status = to_status(&container_runtime_report);
-    initial_status.memory_fix = runtime_status::memory_fix(&container_runtime_report).await;
-    let runtime_status = InitialRuntimeStatus(initial_status);
+    let mut startup_status = to_status(&container_runtime_report);
+    startup_status.memory_fix = runtime_status::memory_fix(&container_runtime_report).await;
+    // The backend serves the status and the memory change to the UI under `/runtime`
+    let runtime_control = Arc::new(runtime_status::DesktopRuntime::new(startup_status));
     if container_runtime_report.is_ok() {
         tracing::info!("Container runtime:\n{container_runtime_report}");
     } else {
@@ -194,7 +195,6 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     let database_url = format!("sqlite://{}", database_path.to_str().unwrap());
 
     tracing::info!("Using database at: {}", database_url);
-    runtime_status::set_database_url(&database_url);
 
     let max_log_bytes =
         macworp_backend::configuration::Configuration::default().max_log_bytes_per_run();
@@ -242,6 +242,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
             DESKTOP_USER_NAME.to_string(),
             reference_directory,
             workflow_repository_cache,
+            runtime_control,
         )
         .await
         {
@@ -295,6 +296,15 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         .local_login(DESKTOP_USER_NAME.to_string(), application_password.clone())
         .await
         .map_err(Error::LoginFailed)?;
+
+    // The UI gets the runtime status from the backend like any other data
+    let runtime_status = InitialRuntimeStatus(
+        client
+            .runtime()
+            .status(&jwt)
+            .await
+            .map_err(Error::RuntimeStatus)?,
+    );
 
     storage.set_jwt(Some(jwt))?;
 
@@ -460,11 +470,12 @@ fn App() -> Element {
     let storage = consume_context::<Storage>();
 
     // Make both available app wide
-    use_context_provider(|| Signal::new(config));
+    let config_signal = use_context_provider(|| Signal::new(config));
     // Storage need to be wrapped in Result, like on web version (depending on Browser storage initialization may fail)
-    use_context_provider(|| Signal::new(storage));
+    let storage_signal = use_context_provider(|| Signal::new(storage));
 
-    // Container runtime status bar. A refresh only updates the UI: the backend keeps the
+    // Container runtime status bar. Everything goes through the backend (`/runtime`), the UI runs
+    // no checks or commands itself. A refresh only updates the UI: the backend keeps the
     // engine availability it was started with.
     let initial_status = consume_context::<InitialRuntimeStatus>();
     let mut status = use_signal(|| initial_status.0);
@@ -474,8 +485,13 @@ fn App() -> Element {
     let refresh = use_callback(move |()| {
         spawn(async move {
             refreshing.set(true);
-            let new_status = check_runtime().await;
-            status.set(new_status);
+            match Session::new(storage_signal, config_signal) {
+                Ok(session) => match session.client.runtime().refresh(&session.jwt).await {
+                    Ok(new_status) => status.set(new_status),
+                    Err(error) => tracing::warn!("Cannot check the container runtime: {error}"),
+                },
+                Err(error) => tracing::warn!("Cannot check the container runtime: {error}"),
+            }
             refreshing.set(false);
         });
     });
@@ -483,7 +499,16 @@ fn App() -> Element {
         spawn(async move {
             adjusting.set(true);
             adjust_error.set(None);
-            match runtime_status::adjust_memory(mebibytes).await {
+            let result = match Session::new(storage_signal, config_signal) {
+                Ok(session) => session
+                    .client
+                    .runtime()
+                    .adjust_memory(&session.jwt, mebibytes)
+                    .await
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error),
+            };
+            match result {
                 Ok(new_status) => status.set(new_status),
                 Err(message) => adjust_error.set(Some(message)),
             }

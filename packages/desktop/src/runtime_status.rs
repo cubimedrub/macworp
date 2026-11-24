@@ -1,7 +1,8 @@
 use std::sync::OnceLock;
 
+use macworp_backend::runtime_control::{BoxFuture, RuntimeControl};
+use macworp_core::runtime_status::{MemoryFix, RuntimeStatus, StatusCheck, StatusLevel};
 use macworp_core::workflow_configuration::engine::Engine;
-use macworp_ui_core::runtime_status::{MemoryFix, RuntimeStatus, StatusCheck, StatusLevel};
 use macworp_worker::container_runtime::{
     doctor, Check, CheckStatus, DoctorReport, MemoryAdjustment, MemoryRange, RuntimeInfo,
     RuntimePreference,
@@ -67,17 +68,6 @@ pub fn preference() -> RuntimePreference {
     PREFERENCE.get().copied().unwrap_or_default()
 }
 
-static DATABASE_URL: OnceLock<String> = OnceLock::new();
-
-/// Tells the status where the backend database is, once at startup: changing the container
-/// engine is refused while runs are active.
-///
-/// # Arguments
-/// * `url` - database URL of the embedded backend
-pub fn set_database_url(url: &str) {
-    DATABASE_URL.set(url.to_string()).ok();
-}
-
 /// What the Settings page needs to let the user change the memory of the container VM, `None`
 /// where that is not possible (Linux, wslc, no machine found).
 ///
@@ -99,43 +89,72 @@ pub async fn memory_fix(report: &DoctorReport) -> Option<MemoryFix> {
     })
 }
 
-/// Raises the memory of the container VM and restarts it, then checks the runtime again.
-///
-/// # Arguments
-/// * `mebibytes` - the memory the user chose
-///
-/// # Returns
-/// The new status, or why nothing was changed. Refused while runs are active, they would be
-/// stopped by the restart.
-pub async fn adjust_memory(mebibytes: u64) -> Result<RuntimeStatus, String> {
-    if let Some(url) = DATABASE_URL.get() {
-        let db = sea_orm::Database::connect(url)
-            .await
-            .map_err(|e| e.to_string())?;
-        let active = macworp_backend::models::RunTable::active_count(&db)
-            .await
-            .map_err(|e| e.to_string())?;
-        if active > 0 {
-            return Err(
-                "Workflows are running. Wait until they are finished or stop them, then try again."
-                    .to_string(),
-            );
+/// The container runtime of this computer, served by the backend under `/runtime`. Keeps the
+/// status of the last check; the UI never runs the doctor itself.
+pub struct DesktopRuntime {
+    /// Status of the last check
+    status: std::sync::Mutex<RuntimeStatus>,
+}
+
+impl DesktopRuntime {
+    /// Starts with the status of the check made at startup.
+    ///
+    /// # Arguments
+    /// * `status` - the status to serve until the next check
+    pub fn new(status: RuntimeStatus) -> Self {
+        Self {
+            status: std::sync::Mutex::new(status),
         }
     }
-    let report = doctor(preference()).await;
-    let kind = report
-        .runtimes
-        .first()
-        .map(|usable| usable.info.kind)
-        .ok_or("No container runtime found")?;
-    let adjustment = MemoryAdjustment::detect(kind)
-        .await
-        .ok_or("The memory of this container engine cannot be changed from here")?;
-    adjustment
-        .apply(mebibytes)
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok(check_runtime().await)
+
+    /// Keeps `status` as the latest and returns it.
+    ///
+    /// # Arguments
+    /// * `status` - the result of a check
+    fn remember(&self, status: RuntimeStatus) -> RuntimeStatus {
+        *self.status.lock().unwrap_or_else(|e| e.into_inner()) = status.clone();
+        status
+    }
+
+    /// Raises the memory of the container VM and restarts it, then checks again.
+    ///
+    /// # Arguments
+    /// * `mebibytes` - the memory the user chose
+    async fn change_memory(&self, mebibytes: u64) -> Result<RuntimeStatus, String> {
+        let report = doctor(preference()).await;
+        let kind = report
+            .runtimes
+            .first()
+            .map(|usable| usable.info.kind)
+            .ok_or("No container runtime found")?;
+        let adjustment = MemoryAdjustment::detect(kind)
+            .await
+            .ok_or("The memory of this container engine cannot be changed from here")?;
+        adjustment
+            .apply(mebibytes)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(self.remember(check_runtime().await))
+    }
+}
+
+impl RuntimeControl for DesktopRuntime {
+    fn status(&self) -> BoxFuture<'_, RuntimeStatus> {
+        Box::pin(async {
+            self.status
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        })
+    }
+
+    fn refresh(&self) -> BoxFuture<'_, RuntimeStatus> {
+        Box::pin(async { self.remember(check_runtime().await) })
+    }
+
+    fn adjust_memory(&self, mebibytes: u64) -> BoxFuture<'_, Result<RuntimeStatus, String>> {
+        Box::pin(self.change_memory(mebibytes))
+    }
 }
 
 /// Runs the doctor check again, with the same runtime preference as at startup.
@@ -263,8 +282,9 @@ mod tests {
         assert_eq!(status.level(), StatusLevel::Fail);
     }
 
-    /// Runs the whole adjustment the Settings button runs, against the real runtime: restarts
-    /// the container engine, so it only runs on request (`MACWORP_ADJUST_MEBIBYTES=4608`).
+    /// Runs the whole adjustment the Settings button asks the backend for, against the real
+    /// runtime: restarts the container engine, so it only runs on request
+    /// (`MACWORP_ADJUST_MEBIBYTES=4608`). The active-run check is the backend's, not tested here.
     #[tokio::test]
     #[ignore = "restarts the container engine"]
     async fn settings_button_adjusts_the_real_runtime() {
@@ -272,7 +292,8 @@ mod tests {
             .expect("set MACWORP_ADJUST_MEBIBYTES")
             .parse()
             .unwrap();
-        let status = adjust_memory(mebibytes).await.unwrap();
+        let runtime = DesktopRuntime::new(check_runtime().await);
+        let status = runtime.adjust_memory(mebibytes).await.unwrap();
         println!("{:?}", status.memory_fix);
     }
 }

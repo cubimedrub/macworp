@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use clap::{Parser, Subcommand};
 use macworp_core::workflow_configuration::engine::Engine;
@@ -151,9 +151,16 @@ async fn run_remote(
         .collect();
     let image_stores = configuration.image_stores(&runtimes);
     let apptainer_cache_store = configuration.apptainer_cache_store();
+    let options = WorkerOptions {
+        progress_warning_after: Duration::from_secs(configuration.progress_timeout.min(600) / 5)
+            .min(WorkerOptions::default().progress_warning_after),
+        progress_timeout: (configuration.progress_timeout > 0)
+            .then(|| Duration::from_secs(configuration.progress_timeout)),
+        ..WorkerOptions::default()
+    };
     let mut slots = Vec::new();
     for _ in 0..remote.capacity {
-        let mut worker = Worker::new(source.clone(), executors.clone(), WorkerOptions::default())
+        let mut worker = Worker::new(source.clone(), executors.clone(), options.clone())
             .with_image_builders(builders.clone())
             .with_image_stores(image_stores.clone())
             .with_apptainer_cache_store(apptainer_cache_store.clone());

@@ -14,7 +14,11 @@ use macworp_core::workflow_configuration::engine::Engine;
 use rand::{RngExt, distr::Alphanumeric};
 use serde::Deserialize;
 use serde_json::json;
-use tokio::{net::TcpListener, sync::mpsc, task::JoinHandle};
+use tokio::{
+    net::TcpListener,
+    sync::{mpsc, watch},
+    task::JoinHandle,
+};
 
 use crate::container_runtime::RuntimeKind;
 use crate::progress::{ProgressTracker, ProgressUpdate};
@@ -71,6 +75,8 @@ struct Registration {
     run_id: i64,
     tracker: ProgressTracker,
     updates: mpsc::UnboundedSender<ProgressUpdate>,
+    /// Turns `true` with the first accepted request of the engine, whether or not it changes the progress
+    first_event: watch::Sender<bool>,
 }
 
 type Registry = Arc<Mutex<HashMap<String, Registration>>>;
@@ -79,6 +85,7 @@ type Registry = Arc<Mutex<HashMap<String, Registration>>>;
 pub struct RegisteredRun {
     pub endpoint: ProgressEndpoint,
     updates: Option<mpsc::UnboundedReceiver<ProgressUpdate>>,
+    first_event: watch::Receiver<bool>,
     token: String,
     registry: Registry,
 }
@@ -87,6 +94,13 @@ impl RegisteredRun {
     /// The progress updates of the run, once. The channel closes when `self` is dropped.
     pub fn take_updates(&mut self) -> Option<mpsc::UnboundedReceiver<ProgressUpdate>> {
         self.updates.take()
+    }
+}
+
+impl RegisteredRun {
+    /// Turns `true` when the engine's first request arrived: proof that it reaches the receiver.
+    pub fn first_event(&self) -> watch::Receiver<bool> {
+        self.first_event.clone()
     }
 }
 
@@ -167,12 +181,14 @@ impl ProgressReceiver {
             .map(char::from)
             .collect();
         let (updates_tx, updates) = mpsc::unbounded_channel();
+        let (first_event_tx, first_event) = watch::channel(false);
         self.registry.lock().ok()?.insert(
             token.clone(),
             Registration {
                 run_id,
                 tracker: ProgressTracker::new(engine.clone()),
                 updates: updates_tx,
+                first_event: first_event_tx,
             },
         );
         Some(RegisteredRun {
@@ -181,6 +197,7 @@ impl ProgressReceiver {
                 run_args: access.run_args.clone(),
             },
             updates: Some(updates),
+            first_event,
             token,
             registry: self.registry.clone(),
         })
@@ -215,6 +232,7 @@ fn handle_event(registry: &Registry, token: &str, payload: &str) -> StatusCode {
     let Some(run) = registry.get_mut(token) else {
         return StatusCode::NOT_FOUND;
     };
+    run.first_event.send_replace(true);
     if let Some(update) = run.tracker.handle(payload) {
         // the receiver of the run is gone when it ended, nothing to do then
         let _ = run.updates.send(update);
@@ -236,6 +254,7 @@ async fn snakemake_create(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let registry = registry.lock().map_err(|_| StatusCode::OK)?;
     let run = registry.get(&token).ok_or(StatusCode::NOT_FOUND)?;
+    run.first_event.send_replace(true);
     Ok(Json(json!({ "id": run.run_id })))
 }
 

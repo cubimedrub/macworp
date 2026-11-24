@@ -852,7 +852,10 @@ mod tests {
             report.progress_check("img").await.unwrap()
         };
         assert_eq!(check(Ok(())).await.status, CheckStatus::Ok);
-        for stderr in ["Unable to find image 'img' locally", "Error: img: image not known"] {
+        for stderr in [
+            "Unable to find image 'img' locally",
+            "Error: img: image not known",
+        ] {
             let missing = check(Err(stderr)).await;
             assert_eq!(missing.status, CheckStatus::Ok);
             assert!(missing.message.contains("not verified"));

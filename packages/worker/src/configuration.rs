@@ -17,6 +17,12 @@ pub struct WorkerConfiguration {
         default_value_t = RuntimePreference::Auto
     )]
     pub container_runtime: RuntimePreference,
+    /// Seconds an engine that reports progress (Nextflow, Snakemake) may stay silent after its
+    /// first output before the run is failed (0 = never). Only the wait for the first event
+    /// counts: it arrives right after the engine starts unless a firewall blocks the worker. A
+    /// warning goes to the run log after a fifth of it, at most two minutes.
+    #[arg(long, env = "MACWORP_PROGRESS_TIMEOUT", default_value_t = 600)]
+    pub progress_timeout: u64,
     /// Most images the worker keeps that runs used; the least recently used ones beyond it are
     /// removed after a run (0 = keep all). Images no run used are never touched.
     #[arg(long, env = "MACWORP_MAX_IMAGES", default_value_t = 0)]

@@ -1,4 +1,11 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use macworp_core::{
     entities::{FailureReason, LogStream},
@@ -6,6 +13,7 @@ use macworp_core::{
 };
 use tokio::{
     sync::{mpsc, watch},
+    task::JoinHandle,
     time::{MissedTickBehavior, interval},
 };
 
@@ -38,6 +46,14 @@ pub struct WorkerOptions {
     /// Wait between attempts to report the result. Attempts times interval should stay well below
     /// the backend's lease so a short outage does not make the run execute twice.
     pub finish_retry_interval: Duration,
+    /// An engine that reports progress (Nextflow, Snakemake) sends its first event right after it
+    /// starts. If none arrived this long after its first output, a warning goes to the run log:
+    /// the receiver is probably unreachable (firewall). Only the wait for the first event is
+    /// limited, never the gaps between events or the total run time.
+    pub progress_warning_after: Duration,
+    /// Same wait, after which the run is failed with that explanation. `None` waits forever, for
+    /// engine images that cannot report progress.
+    pub progress_timeout: Option<Duration>,
 }
 
 impl Default for WorkerOptions {
@@ -50,6 +66,8 @@ impl Default for WorkerOptions {
             idle_interval: Duration::from_secs(2),
             finish_attempts: 5,
             finish_retry_interval: Duration::from_secs(5),
+            progress_warning_after: Duration::from_secs(120),
+            progress_timeout: Some(Duration::from_secs(600)),
         }
     }
 }
@@ -187,8 +205,11 @@ impl Worker {
             receiver.register(job.run_id, &engine, access.as_ref())
         });
         let mut progress_task = None;
+        // Turns `true` with the first event of the engine, see `watch_first_progress`
+        let mut reported_rx = watch::channel(false).1;
         if let Some(registered) = &mut registered {
             job.progress = Some(registered.endpoint.clone());
+            reported_rx = registered.first_event();
             progress_task = registered.take_updates().map(|updates| {
                 tokio::spawn(forward_progress(
                     self.source.clone(),
@@ -198,6 +219,7 @@ impl Worker {
                 ))
             });
         }
+        let expects_progress = progress_task.is_some();
 
         // Tracked from before the first container of the run, so the image events cover it
         let image_store = self.image_store_for(executor.runtime_kind());
@@ -210,18 +232,22 @@ impl Worker {
             .map(|(store, directory)| (store.clone(), directory, store.begin_run()));
 
         let (cancel_tx, cancel_rx) = watch::channel(false);
+        let cancel_tx = Arc::new(cancel_tx);
         let (log_tx, log_rx) = mpsc::channel(256);
+        // Turns `true` with the first line of the engine's output
+        let (started_tx, started_rx) = watch::channel(false);
 
         let logs = tokio::spawn(forward_logs(
             self.source.clone(),
             job.run_id,
             log_rx,
             self.options.clone(),
+            started_tx,
         ));
         let cancel_poll = tokio::spawn(poll_cancel(
             self.source.clone(),
             job.run_id,
-            cancel_tx,
+            cancel_tx.clone(),
             self.options.cancel_poll_interval,
         ));
 
@@ -240,16 +266,31 @@ impl Worker {
 
         // Own task, so a panic in the executor fails this run instead of ending the worker loop
         let executor = executor.clone();
+        let silent = Arc::new(AtomicBool::new(false));
+        let mut watchdog: Option<JoinHandle<()>> = None;
         let outcome = match built {
             Some(outcome) => {
                 // Closes the log channel, the forwarding task ends once the rest is flushed
                 drop(log_tx);
                 outcome
             }
-            None => match tokio::spawn({
-                let job = job.clone();
-                async move { executor.run(&job, log_tx, cancel_rx).await }
-            })
+            None => match {
+                if expects_progress {
+                    watchdog = Some(tokio::spawn(watch_first_progress(
+                        started_rx,
+                        reported_rx,
+                        log_tx.clone(),
+                        cancel_tx.clone(),
+                        silent.clone(),
+                        self.options.progress_warning_after,
+                        self.options.progress_timeout,
+                    )));
+                }
+                tokio::spawn({
+                    let job = job.clone();
+                    async move { executor.run(&job, log_tx, cancel_rx).await }
+                })
+            }
             .await
             {
                 Ok(outcome) => outcome,
@@ -259,6 +300,19 @@ impl Worker {
                     reason: Some(FailureReason::StartFailed),
                 },
             },
+        };
+
+        // Holds a log sender: stopped before the log task is awaited
+        if let Some(watchdog) = watchdog {
+            watchdog.abort();
+        }
+        let outcome = match outcome {
+            Outcome::Cancelled if silent.load(Ordering::SeqCst) => Outcome::Failed {
+                exit_code: None,
+                error: Some(NO_PROGRESS_ERROR.into()),
+                reason: Some(FailureReason::StartFailed),
+            },
+            outcome => outcome,
         };
 
         drop(image_hold);
@@ -343,7 +397,7 @@ impl Worker {
 async fn poll_cancel(
     source: Arc<dyn JobSource>,
     run_id: i64,
-    cancel: watch::Sender<bool>,
+    cancel: Arc<watch::Sender<bool>>,
     every: Duration,
 ) {
     let mut ticker = interval(every);
@@ -412,12 +466,79 @@ fn merge(previous: ProgressUpdate, next: ProgressUpdate) -> ProgressUpdate {
     }
 }
 
+/// Why a run is failed when the engine never reported progress.
+const NO_PROGRESS_ERROR: &str = "The engine reported no progress after it started, its reports probably cannot reach the worker (firewall: allow the worker program, see `macworp_worker doctor`) or the engine image cannot report progress";
+
+/// Guards the wait for the first progress event of an engine that reports progress. The clock
+/// starts with the engine's first output (pulling and building before it do not count) and ends
+/// with the first event, from then on nothing is watched: tasks may take hours between events.
+/// After `warning_after` a line is written to the run log, after `timeout` the run is cancelled
+/// and marked by `silent` so it ends as failed instead of cancelled.
+///
+/// # Arguments
+/// * `started` - turns `true` with the first output of the engine
+/// * `reported` - turns `true` with the first progress event
+/// * `log` - run log, receives the warning
+/// * `cancel` - stops the run
+/// * `silent` - set when the run is stopped because of the timeout
+/// * `warning_after` - wait for the first event until the warning
+/// * `timeout` - wait for the first event until the run fails, `None` for never
+async fn watch_first_progress(
+    mut started: watch::Receiver<bool>,
+    mut reported: watch::Receiver<bool>,
+    log: mpsc::Sender<LogLine>,
+    cancel: Arc<watch::Sender<bool>>,
+    silent: Arc<AtomicBool>,
+    warning_after: Duration,
+    timeout: Option<Duration>,
+) {
+    if started.wait_for(|started| *started).await.is_err() {
+        return;
+    }
+    let first_event = async |reported: &mut watch::Receiver<bool>, wait: Duration| {
+        tokio::select! {
+            _ = reported.wait_for(|reported| *reported) => true,
+            _ = tokio::time::sleep(wait) => false,
+        }
+    };
+    if first_event(&mut reported, warning_after).await {
+        return;
+    }
+    let _ = log
+        .send(LogLine {
+            stream: LogStream::Engine,
+            line: format!(
+                "No progress report from the engine for {} s. If this persists the run is failed: its reports probably cannot reach the worker (firewall: allow the worker program, see `macworp_worker doctor`)",
+                warning_after.as_secs()
+            ),
+        })
+        .await;
+    let Some(timeout) = timeout else {
+        return;
+    };
+    if first_event(&mut reported, timeout.saturating_sub(warning_after)).await {
+        return;
+    }
+    let _ = log
+        .send(LogLine {
+            stream: LogStream::Engine,
+            line: format!(
+                "No progress report from the engine for {} s, stopping the run",
+                timeout.as_secs()
+            ),
+        })
+        .await;
+    silent.store(true, Ordering::SeqCst);
+    let _ = cancel.send(true);
+}
+
 /// Buffers lines per stream and sends them as chunks.
 async fn forward_logs(
     source: Arc<dyn JobSource>,
     run_id: i64,
     mut lines: mpsc::Receiver<LogLine>,
     options: WorkerOptions,
+    started: watch::Sender<bool>,
 ) {
     // Stream order is fixed so chunks of one flush are sent deterministically
     let mut buffers: [(LogStream, Vec<String>, usize); 3] = [
@@ -433,6 +554,7 @@ async fn forward_logs(
         tokio::select! {
             line = lines.recv() => match line {
                 Some(LogLine { stream, line }) => {
+                    started.send_replace(true);
                     let (_, buffer, bytes) = buffers.iter_mut().find(|(s, ..)| *s == stream).unwrap();
                     *bytes += line.len() + 1;
                     buffer.push(line);
@@ -668,6 +790,151 @@ mod tests {
         assert_eq!(last.0, 1);
         assert_eq!((last.1.total, last.1.done), (2, 1));
         assert_eq!(*source.finished.lock().unwrap(), [(1, Outcome::Succeeded)]);
+    }
+
+    /// A Nextflow-like engine that prints a line, waits `delay` and then reports its first event
+    /// (never when `report` is false); it ends when cancelled or after `run_for`.
+    struct SilentExecutor {
+        delay: Duration,
+        report: bool,
+        run_for: Duration,
+    }
+
+    impl Executor for SilentExecutor {
+        fn engine(&self) -> Engine {
+            Engine::Nextflow
+        }
+        fn run<'a>(
+            &'a self,
+            job: &'a Job,
+            log: mpsc::Sender<LogLine>,
+            mut cancel: watch::Receiver<bool>,
+        ) -> BoxFuture<'a, Outcome> {
+            Box::pin(async move {
+                let _ = log
+                    .send(LogLine {
+                        stream: LogStream::Stdout,
+                        line: "engine started".into(),
+                    })
+                    .await;
+                tokio::time::sleep(self.delay).await;
+                if self.report {
+                    let url = format!("{}/nextflow", job.progress.as_ref().unwrap().base_url);
+                    let body = r#"{"event":"started"}"#;
+                    reqwest::Client::new()
+                        .post(&url)
+                        .body(body)
+                        .send()
+                        .await
+                        .unwrap();
+                }
+                tokio::select! {
+                    _ = cancel.wait_for(|cancelled| *cancelled) => Outcome::Cancelled,
+                    _ = tokio::time::sleep(self.run_for) => Outcome::Succeeded,
+                }
+            })
+        }
+    }
+
+    /// Runs one Nextflow job on a [`SilentExecutor`] and returns the source with its result.
+    ///
+    /// # Arguments
+    /// * `executor` - the engine behaviour
+    /// * `warning_after` - see `WorkerOptions::progress_warning_after`
+    /// * `timeout` - see `WorkerOptions::progress_timeout`
+    async fn run_silent(
+        executor: SilentExecutor,
+        warning_after: Duration,
+        timeout: Option<Duration>,
+    ) -> Arc<FakeSource> {
+        let source = Arc::new(FakeSource::default());
+        source.jobs.lock().unwrap().push(job("Nextflow"));
+        let receiver = Arc::new(
+            ProgressReceiver::start(HostAccess {
+                host: "127.0.0.1".into(),
+                run_args: vec![],
+            })
+            .await
+            .unwrap(),
+        );
+        let options = WorkerOptions {
+            progress_warning_after: warning_after,
+            progress_timeout: timeout,
+            ..fast()
+        };
+        Worker::new(source.clone(), vec![Arc::new(executor)], options)
+            .with_progress_receiver(receiver)
+            .run_next()
+            .await
+            .unwrap();
+        source
+    }
+
+    /// Whether the run log of the source has a line containing `text`.
+    fn logged(source: &FakeSource, text: &str) -> bool {
+        source
+            .logs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, _, lines)| lines.iter().any(|line| line.contains(text)))
+    }
+
+    /// An engine that never reports is warned about, then failed (not cancelled).
+    #[tokio::test]
+    async fn silent_engine_is_failed_after_the_timeout() {
+        let source = run_silent(
+            SilentExecutor {
+                delay: Duration::ZERO,
+                report: false,
+                run_for: Duration::from_secs(30),
+            },
+            Duration::from_millis(100),
+            Some(Duration::from_millis(300)),
+        )
+        .await;
+        let finished = source.finished.lock().unwrap();
+        assert!(matches!(
+            &finished[0].1,
+            Outcome::Failed { reason: Some(FailureReason::StartFailed), error: Some(e), .. }
+                if e.contains("no progress")
+        ));
+        assert!(logged(&source, "firewall"));
+        assert!(logged(&source, "stopping the run"));
+    }
+
+    /// The first event stops the watch: a long run after it is never failed.
+    #[tokio::test]
+    async fn reporting_engine_is_never_failed() {
+        let source = run_silent(
+            SilentExecutor {
+                delay: Duration::from_millis(50),
+                report: true,
+                run_for: Duration::from_millis(600),
+            },
+            Duration::from_millis(100),
+            Some(Duration::from_millis(300)),
+        )
+        .await;
+        assert_eq!(*source.finished.lock().unwrap(), [(1, Outcome::Succeeded)]);
+        assert!(!logged(&source, "firewall"));
+    }
+
+    /// Without a timeout the run is warned about but left running.
+    #[tokio::test]
+    async fn no_timeout_only_warns() {
+        let source = run_silent(
+            SilentExecutor {
+                delay: Duration::ZERO,
+                report: false,
+                run_for: Duration::from_millis(500),
+            },
+            Duration::from_millis(100),
+            None,
+        )
+        .await;
+        assert_eq!(*source.finished.lock().unwrap(), [(1, Outcome::Succeeded)]);
+        assert!(logged(&source, "firewall"));
     }
 
     /// A job whose workflow brings one image build.

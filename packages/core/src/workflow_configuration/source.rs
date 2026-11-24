@@ -114,7 +114,9 @@ impl LocalSource {
 impl Default for LocalSource {
     fn default() -> Self {
         Self {
-            location: PathBuf::from("/tmp/my-workflow"),
+            // A placeholder the user replaces. Relative on purpose: a Unix path such as `/tmp/...`
+            // means nothing on Windows, a relative one is resolved the same way everywhere.
+            location: PathBuf::from("my-workflow"),
             script: PathBuf::from("main.nf"),
         }
     }

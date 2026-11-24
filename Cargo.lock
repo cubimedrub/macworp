@@ -4422,6 +4422,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "clap",
+ "directories",
  "libc",
  "macworp_core",
  "md-5",

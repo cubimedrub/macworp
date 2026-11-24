@@ -131,6 +131,8 @@ mod tests {
                     rootless: Some(true),
                     storage_root: None,
                     socket: None,
+                    socket_exists: None,
+                    unsupported_socket: None,
                 })
             })
         }

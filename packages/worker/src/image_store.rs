@@ -250,8 +250,7 @@ impl ImageStore {
     }
 
     /// Default state file for a runtime: `<state directory>/images-<runtime>.toml`, where the
-    /// directory is `$XDG_STATE_HOME/macworp`, else `$HOME/.local/state/macworp`. `None` when
-    /// neither variable is set.
+    /// directory is [`Self::default_state_directory`]. `None` when that has no answer.
     ///
     /// # Arguments
     /// * `directory` - explicit state directory, overrides the default
@@ -264,17 +263,18 @@ impl ImageStore {
         Some(directory.join(format!("images-{runtime}.toml")))
     }
 
-    /// `$XDG_STATE_HOME/macworp`, else `$HOME/.local/state/macworp`; `None` when neither
-    /// variable is set.
+    /// Where the worker keeps its own state when no directory is given: `$XDG_STATE_HOME/macworp`
+    /// or `~/.local/state/macworp` on Linux; macOS and Windows have no state directory, so
+    /// the per-user local application data directory is used (`~/Library/Application
+    /// Support/macworp`, `%LOCALAPPDATA%\macworp\data`). `None` when the home directory is unknown.
     pub fn default_state_directory() -> Option<PathBuf> {
-        std::env::var_os("XDG_STATE_HOME")
-            .filter(|value| !value.is_empty())
-            .map(|state| PathBuf::from(state).join("macworp"))
-            .or_else(|| {
-                std::env::var_os("HOME")
-                    .filter(|value| !value.is_empty())
-                    .map(|home| PathBuf::from(home).join(".local/state/macworp"))
-            })
+        let directories = directories::ProjectDirs::from("", "", "macworp")?;
+        Some(
+            directories
+                .state_dir()
+                .unwrap_or_else(|| directories.data_local_dir())
+                .to_path_buf(),
+        )
     }
 
     /// Reads the state file; problems are logged and give an empty state.
@@ -446,6 +446,19 @@ impl ImageStore {
 
 #[cfg(test)]
 mod tests {
+    /// The default state directory is per user and named after the application.
+    #[test]
+    fn default_state_directory_is_per_user() {
+        let directory = ImageStore::default_state_directory().expect("home directory is known");
+        assert!(directory.is_absolute(), "{directory:?}");
+        assert!(
+            directory
+                .components()
+                .any(|part| part.as_os_str() == "macworp"),
+            "{directory:?}"
+        );
+    }
+
     use std::path::Path;
 
     use super::*;

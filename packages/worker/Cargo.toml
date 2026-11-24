@@ -28,6 +28,7 @@ toml = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+directories = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true, features = ["json", "form"] }

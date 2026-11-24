@@ -469,6 +469,54 @@ impl DoctorReport {
     }
 }
 
+/// Whether engine containers can reach the runtime's API socket, which Nextflow, Snakemake and
+/// CWL need to start their tool containers. `None` for runtimes without engine support.
+///
+/// # Arguments
+/// * `info` - What the runtime reported about itself
+fn socket_check(info: &RuntimeInfo) -> Option<Check> {
+    let kind = info.kind;
+    if !kind.supports_engine(&Engine::Nextflow) {
+        return None;
+    }
+    let name = "socket".to_string();
+    if let Some(address) = &info.unsupported_socket {
+        return Some(Check {
+            name,
+            status: CheckStatus::Warn,
+            message: format!(
+                "{kind} listens on `{address}`, which cannot be mounted into an engine container: only Container workflows can run. Use {kind} inside Linux (WSL) or a runtime with a Unix socket"
+            ),
+        });
+    }
+    if info.socket_exists == Some(false) {
+        let hint = match kind {
+            RuntimeKind::Podman => {
+                "; start it with `systemctl --user enable --now podman.socket` (`podman system service` works for one session)"
+            }
+            _ => "",
+        };
+        return Some(Check {
+            name,
+            status: CheckStatus::Warn,
+            message: format!(
+                "the {kind} API socket {} does not exist, engines cannot start tool containers{hint}",
+                info.socket
+                    .as_deref()
+                    .map_or_else(String::new, |path| format!("`{}`", path.display()))
+            ),
+        });
+    }
+    Some(Check {
+        name,
+        status: CheckStatus::Ok,
+        message: match &info.socket {
+            Some(path) => format!("API socket `{}`", path.display()),
+            None => format!("{kind} socket mounted from its default location"),
+        },
+    })
+}
+
 fn checks_for(info: &RuntimeInfo) -> Vec<Check> {
     let kind = info.kind;
     let mut checks = vec![Check {
@@ -498,6 +546,10 @@ fn checks_for(info: &RuntimeInfo) -> Vec<Check> {
                 message: format!("unable to parse version `{}`", info.version),
             },
         });
+    }
+
+    if let Some(check) = socket_check(info) {
+        checks.push(check);
     }
 
     checks.push(match info.rootless {
@@ -548,6 +600,8 @@ mod tests {
                     rootless: Some(rootless),
                     storage_root: None,
                     socket: None,
+                    socket_exists: None,
+                    unsupported_socket: None,
                 }),
                 probe: Ok(()),
             })
@@ -705,6 +759,8 @@ mod tests {
                     rootless: Some(true),
                     storage_root: None,
                     socket: None,
+                    socket_exists: None,
+                    unsupported_socket: None,
                 }),
                 probe: result.map_err(String::from),
             });
@@ -846,5 +902,55 @@ mod tests {
     #[tokio::test]
     async fn no_candidates_fails() {
         assert!(!doctor_with(vec![]).await.is_ok());
+    }
+
+    /// Runtime info for the socket check tests.
+    ///
+    /// # Arguments
+    /// * `kind` - Runtime kind
+    /// * `socket_exists` - What the runtime says about its socket file
+    /// * `unsupported_socket` - Non-Unix socket address, if any
+    fn socket_info(
+        kind: RuntimeKind,
+        socket_exists: Option<bool>,
+        unsupported_socket: Option<&str>,
+    ) -> RuntimeInfo {
+        RuntimeInfo {
+            kind,
+            version: "5.7.0".into(),
+            rootless: Some(true),
+            storage_root: None,
+            socket: Some(PathBuf::from("/run/user/1000/podman/podman.sock")),
+            socket_exists,
+            unsupported_socket: unsupported_socket.map(String::from),
+        }
+    }
+
+    #[test]
+    fn missing_podman_socket_warns_with_the_unit_to_start() {
+        let check = socket_check(&socket_info(RuntimeKind::Podman, Some(false), None)).unwrap();
+        assert_eq!(check.status, CheckStatus::Warn);
+        assert!(check.message.contains("podman.socket"), "{}", check.message);
+    }
+
+    #[test]
+    fn named_pipe_warns_that_only_container_workflows_run() {
+        let check = socket_check(&socket_info(
+            RuntimeKind::Docker,
+            None,
+            Some("npipe:////./pipe/docker_engine"),
+        ))
+        .unwrap();
+        assert_eq!(check.status, CheckStatus::Warn);
+        assert!(check.message.contains("npipe:"), "{}", check.message);
+    }
+
+    #[test]
+    fn existing_or_unreported_socket_is_ok_and_wslc_has_no_check() {
+        for exists in [Some(true), None] {
+            let check = socket_check(&socket_info(RuntimeKind::Podman, exists, None)).unwrap();
+            assert_eq!(check.status, CheckStatus::Ok);
+        }
+        assert!(socket_check(&socket_info(RuntimeKind::Wslc, None, None)).is_none());
     }
 }

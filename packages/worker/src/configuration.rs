@@ -34,7 +34,8 @@ pub struct WorkerConfiguration {
     #[arg(long = "pin-image", env = "MACWORP_PIN_IMAGES", value_delimiter = ',')]
     pub pinned_images: Vec<String>,
     /// Directory for the worker's own state (which images runs used), default
-    /// `$XDG_STATE_HOME/macworp` or `~/.local/state/macworp`
+    /// `$XDG_STATE_HOME/macworp` or `~/.local/state/macworp` (the local application data
+    /// directory on macOS and Windows)
     #[arg(long, env = "MACWORP_STATE_DIRECTORY")]
     pub state_directory: Option<std::path::PathBuf>,
 }

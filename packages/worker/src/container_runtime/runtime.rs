@@ -87,8 +87,15 @@ pub struct RuntimeInfo {
     pub rootless: Option<bool>,
     /// Where images and containers are stored
     pub storage_root: Option<PathBuf>,
-    /// API socket of the runtime, if it exposes one
+    /// API socket of the runtime, if it exposes one as a Unix socket path (as seen by the
+    /// runtime: inside the VM for a podman machine)
     pub socket: Option<PathBuf>,
+    /// Whether the runtime says the socket file exists, `None` if it does not say. A rootless
+    /// podman on Linux only has one while its `podman.socket` unit is active.
+    pub socket_exists: Option<bool>,
+    /// The runtime's socket address when it is not a Unix socket (`npipe:////./pipe/...` of a
+    /// native Windows runtime): such an address cannot be mounted into an engine container
+    pub unsupported_socket: Option<String>,
 }
 
 /// Where the engine container reaches the runtime API, see [`RuntimeInfo::engine_access_args`].
@@ -320,6 +327,8 @@ impl CliRuntime {
                     rootless: None,
                     storage_root: None,
                     socket: None,
+                    socket_exists: None,
+                    unsupported_socket: None,
                 });
             }
         };
@@ -375,6 +384,18 @@ fn string_at(value: &Value, pointer: &str) -> Option<String> {
 
 pub(crate) fn parse_podman_info(json: &str) -> Result<RuntimeInfo, serde_json::Error> {
     let value: Value = serde_json::from_str(json)?;
+    let address = string_at(&value, "/host/remoteSocket/path");
+    // A bare path and `unix://<path>` are Unix sockets, any other scheme (`npipe:`) is not
+    let (socket, unsupported_socket) = match address {
+        Some(address) => match address.strip_prefix("unix://") {
+            Some(path) => (Some(PathBuf::from(path)), None),
+            None if address.contains("://") || address.starts_with("npipe:") => {
+                (None, Some(address))
+            }
+            None => (Some(PathBuf::from(address)), None),
+        },
+        None => (None, None),
+    };
     Ok(RuntimeInfo {
         kind: RuntimeKind::Podman,
         version: string_at(&value, "/version/Version").unwrap_or_default(),
@@ -382,8 +403,11 @@ pub(crate) fn parse_podman_info(json: &str) -> Result<RuntimeInfo, serde_json::E
             .pointer("/host/security/rootless")
             .and_then(Value::as_bool),
         storage_root: string_at(&value, "/store/graphRoot").map(PathBuf::from),
-        socket: string_at(&value, "/host/remoteSocket/path")
-            .map(|path| PathBuf::from(path.strip_prefix("unix://").unwrap_or(&path))),
+        socket,
+        socket_exists: value
+            .pointer("/host/remoteSocket/exists")
+            .and_then(Value::as_bool),
+        unsupported_socket,
     })
 }
 
@@ -404,6 +428,8 @@ pub(crate) fn parse_docker_info(json: &str) -> Result<RuntimeInfo, serde_json::E
         rootless,
         storage_root: string_at(&value, "/DockerRootDir").map(PathBuf::from),
         socket: None,
+        socket_exists: None,
+        unsupported_socket: None,
     })
 }
 
@@ -560,6 +586,36 @@ mod tests {
     #[test]
     fn rejects_garbage() {
         assert!(parse_podman_info("not json").is_err());
+    }
+
+    /// A podman machine on Windows reports the socket inside its VM, and whether it exists.
+    #[test]
+    fn podman_reports_whether_the_socket_exists() {
+        let info = parse_podman_info(
+            r#"{"host":{"remoteSocket":{"path":"unix:///run/podman/podman.sock","exists":false}}}"#,
+        )
+        .unwrap();
+        assert_eq!(info.socket, Some(PathBuf::from("/run/podman/podman.sock")));
+        assert_eq!(info.socket_exists, Some(false));
+        assert_eq!(info.unsupported_socket, None);
+        let unknown =
+            parse_podman_info(r#"{"host":{"remoteSocket":{"path":"/run/p.sock"}}}"#).unwrap();
+        assert_eq!(unknown.socket_exists, None);
+    }
+
+    /// A named pipe cannot be mounted: no socket, so no engine access arguments.
+    #[test]
+    fn named_pipe_is_not_a_socket() {
+        let info = parse_podman_info(
+            r#"{"host":{"remoteSocket":{"path":"npipe:////./pipe/podman-machine-default","exists":true}}}"#,
+        )
+        .unwrap();
+        assert_eq!(info.socket, None);
+        assert_eq!(
+            info.unsupported_socket.as_deref(),
+            Some("npipe:////./pipe/podman-machine-default")
+        );
+        assert_eq!(info.engine_access_args(), None);
     }
 
     #[tokio::test]

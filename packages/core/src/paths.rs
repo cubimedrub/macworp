@@ -4,15 +4,31 @@
 
 use std::path::{Component, Path, PathBuf};
 
-/// Keeps only the normal components of `path`: root, prefix (drive), `.` and `..` are dropped,
-/// so joining the result onto a base directory cannot leave it.
-pub fn sanitize_relative(path: &Path) -> PathBuf {
-    path.components()
+/// Rebuilds a relative `path` from its components joined with `/`, whatever the platform.
+///
+/// Relative paths cross machines (backend to worker, API to UI) as JSON strings, and a
+/// `PathBuf` serialises with the separator of the platform it was built on. Normalising to `/`
+/// keeps the wire form identical on Windows and Unix; Windows accepts `/` when the path is
+/// used. Only use it on relative paths: a root or drive prefix is dropped.
+///
+/// # Arguments
+/// * `path` - Relative path in any separator style the platform understands
+pub fn to_portable(path: &Path) -> PathBuf {
+    let parts: Vec<_> = path
+        .components()
         .filter_map(|component| match component {
-            Component::Normal(c) => Some(c),
+            Component::Normal(c) => Some(c.to_string_lossy()),
             _ => None,
         })
-        .collect()
+        .collect();
+    PathBuf::from(parts.join("/"))
+}
+
+/// Keeps only the normal components of `path`: root, prefix (drive), `.` and `..` are dropped,
+/// so joining the result onto a base directory cannot leave it. The result uses `/` as
+/// separator on every platform (see [`to_portable`]).
+pub fn sanitize_relative(path: &Path) -> PathBuf {
+    to_portable(path)
 }
 
 /// Where the Apptainer image cache of Snakemake lives below the storage root, shared by all
@@ -68,7 +84,7 @@ pub fn resolve_in_storage(storage: &Path, path: &Path) -> PathBuf {
 /// * `path` - Absolute path, possibly below the storage root
 pub fn relative_to_storage(storage: &Path, path: &Path) -> PathBuf {
     path.strip_prefix(storage)
-        .map(Path::to_path_buf)
+        .map(to_portable)
         .unwrap_or_else(|_| path.to_path_buf())
 }
 
@@ -130,6 +146,8 @@ mod tests {
 
     /// Relative paths are resolved below the storage (and cannot leave it), absolute ones are
     /// kept; `relative_to_storage` strips the root and leaves outside paths alone.
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn storage_paths_round_trip() {
         let storage = Path::new("/mnt/storage");

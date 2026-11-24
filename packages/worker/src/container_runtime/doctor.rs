@@ -19,7 +19,6 @@ pub enum RuntimePreference {
     Podman,
     Docker,
     /// WSL Containers, can only run `Container` workflows
-    #[cfg(windows)]
     Wslc,
 }
 
@@ -32,7 +31,6 @@ impl RuntimePreference {
             Self::Auto => &[RuntimeKind::Podman, RuntimeKind::Docker],
             Self::Podman => &[RuntimeKind::Podman],
             Self::Docker => &[RuntimeKind::Docker],
-            #[cfg(windows)]
             Self::Wslc => &[RuntimeKind::Wslc],
         };
         kinds
@@ -228,7 +226,6 @@ fn min_version(kind: RuntimeKind) -> Option<(u64, u64)> {
     match kind {
         RuntimeKind::Podman => Some((4, 0)),
         RuntimeKind::Docker => Some((20, 10)),
-        #[cfg(windows)]
         RuntimeKind::Wslc => None,
     }
 }
@@ -242,9 +239,10 @@ fn parse_version(version: &str) -> Option<(u64, u64)> {
 
 fn hint(kind: RuntimeKind, error: &RuntimeError) -> String {
     match (error, kind) {
-        #[cfg(windows)]
         (RuntimeError::NotFound(_), RuntimeKind::Wslc) => {
-            format!("{error}; install or update WSL (`wsl --update`, needs WSL 2.9.3 or newer)")
+            format!(
+                "{error}; install or update WSL (`wsl --update`, needs WSL 2.9.3 or newer); wslc exists on Windows only"
+            )
         }
         (RuntimeError::NotFound(_), _) => {
             format!("{error}; install {kind} (podman preferred, rootless)")
@@ -257,7 +255,6 @@ fn hint(kind: RuntimeKind, error: &RuntimeError) -> String {
                 "{error}; check that the docker daemon is running and reachable (`docker info`)"
             )
         }
-        #[cfg(windows)]
         (_, RuntimeKind::Wslc) => {
             format!(
                 "{error}; check that WSL containers work (`wsl --update`, needs WSL 2.9.3 or newer)"
@@ -801,7 +798,6 @@ mod tests {
         assert!(report.into_runtimes().is_err());
     }
 
-    #[cfg(windows)]
     #[tokio::test]
     async fn wslc_only_limits_engines() {
         let report = doctor_with(vec![Mock::ok(RuntimeKind::Wslc, "2.9.4.0", false)]).await;
@@ -818,7 +814,6 @@ mod tests {
         );
     }
 
-    #[cfg(windows)]
     #[tokio::test]
     async fn podman_only_loses_snakemake_and_wslc_loses_to_it() {
         let report = doctor_with(vec![

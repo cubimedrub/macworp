@@ -341,10 +341,13 @@ impl CwlExecutor {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use macworp_core::workflow_configuration::parameters::{
+        Parameter, parameter::IsParameterWithValue, text::Text,
+    };
     use macworp_core::workflow_configuration::{
         WorkflowConfiguration,
         engine::EngineParameter,
-        parameters::{Parameter, parameter::IsParameterWithValue, text::Text},
         source::{LocalSource, RemoteSource},
     };
 
@@ -454,6 +457,8 @@ mod tests {
     }
 
     /// Outputs go to the project, work files below it, the tool comes last.
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn local_source() {
         let spec = executor().launch_spec(&job(local())).unwrap();
@@ -489,6 +494,8 @@ mod tests {
 
     /// The shared step cache is passed to Toil with temporary folders below the work directory
     /// and mounted read-write at its host path.
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn step_cache_is_shared() {
         let mut job = job(local());
@@ -544,6 +551,8 @@ mod tests {
     }
 
     /// Engine parameters go before the tool, and a given job store replaces the default.
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn engine_parameters_replace_locations() {
         let mut job = job(local());
@@ -581,6 +590,8 @@ mod tests {
     }
 
     /// Values go into a read-only mounted JSON input object after the tool.
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn parameters_are_the_input_object() {
         let mut job = job(local());

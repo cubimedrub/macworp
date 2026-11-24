@@ -424,9 +424,11 @@ impl Configuration {
     /// # Arguments
     /// * `workflow_integration_id` - Id of the workflow
     pub fn local_workflow_location(&self, workflow_integration_id: i64) -> std::path::PathBuf {
-        std::path::PathBuf::from(WORKFLOWS_DIRECTORY_NAME)
-            .join(LOCAL_WORKFLOWS_DIRECTORY_NAME)
-            .join(workflow_integration_id.to_string())
+        macworp_core::paths::to_portable(
+            &std::path::PathBuf::from(WORKFLOWS_DIRECTORY_NAME)
+                .join(LOCAL_WORKFLOWS_DIRECTORY_NAME)
+                .join(workflow_integration_id.to_string()),
+        )
     }
 
     pub fn worker(&self) -> &WorkerCredentials {

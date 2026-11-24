@@ -835,6 +835,11 @@ mod tests {
     /// * `parent` - Parent commit, `None` for the first commit
     fn commit(repo: &Repository, file: &str, content: &str, parent: Option<Oid>) -> Oid {
         let workdir = repo.workdir().unwrap();
+        // Like the cache's own repositories: lets the deep-path test add files beyond MAX_PATH on Windows
+        repo.config()
+            .unwrap()
+            .set_bool("core.longpaths", true)
+            .unwrap();
         fs::create_dir_all(workdir.join(file).parent().unwrap()).unwrap();
         fs::write(workdir.join(file), content).unwrap();
         let mut index = repo.index().unwrap();

@@ -245,7 +245,9 @@ where
                     ProjectContent::try_from((&base, &requested)).map_err(Error::Filesystem)?;
                 // `join` with an empty path would append a trailing separator
                 if !content.current.as_os_str().is_empty() {
-                    content.current = std::path::Path::new(REFERENCE_PREFIX).join(content.current);
+                    content.current = macworp_core::paths::to_portable(
+                        &std::path::Path::new(REFERENCE_PREFIX).join(content.current),
+                    );
                 } else {
                     content.current = std::path::PathBuf::from(REFERENCE_PREFIX);
                 }

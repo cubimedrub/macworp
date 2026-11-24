@@ -199,9 +199,10 @@ pub trait IsFilesystem {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use crate::filesystems::{
-        errors::Error, project_content::ProjectContent, remote_filesystem::RemoteFilesystem,
-    };
+    use crate::filesystems::remote_filesystem::RemoteFilesystem;
+    // Only the symlink tests use these, and they exist on Unix only.
+    #[cfg(unix)]
+    use crate::filesystems::{errors::Error, project_content::ProjectContent};
 
     use super::IsFilesystem;
 

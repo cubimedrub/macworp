@@ -29,7 +29,6 @@ pub enum RuntimeKind {
     Podman,
     Docker,
     /// WSL Containers (`wslc.exe`)
-    #[cfg(windows)]
     Wslc,
 }
 
@@ -38,7 +37,6 @@ impl RuntimeKind {
         match self {
             Self::Podman => "podman",
             Self::Docker => "docker",
-            #[cfg(windows)]
             Self::Wslc => "wslc",
         }
     }
@@ -57,7 +55,6 @@ impl RuntimeKind {
         match self {
             Self::Docker => true,
             Self::Podman => !matches!(engine, Engine::Snakemake) || Self::podman_runs_snakemake(),
-            #[cfg(windows)]
             Self::Wslc => matches!(engine, Engine::Container),
         }
     }
@@ -126,7 +123,6 @@ impl RuntimeInfo {
                 let group = Self::socket_group(&socket);
                 (socket, vec!["--group-add".into(), group])
             }
-            #[cfg(windows)]
             RuntimeKind::Wslc => return None,
         };
         let mut args = vec![
@@ -309,7 +305,6 @@ impl CliRuntime {
             RuntimeKind::Podman => &["info", "--format", "json"],
             RuntimeKind::Docker => &["info", "--format", "{{json .}}"],
             // `info` and a machine readable format are not documented for wslc, `version` is
-            #[cfg(windows)]
             RuntimeKind::Wslc => &["version"],
         };
 
@@ -318,7 +313,6 @@ impl CliRuntime {
         let parsed = match self.kind {
             RuntimeKind::Podman => parse_podman_info(&stdout),
             RuntimeKind::Docker => parse_docker_info(&stdout),
-            #[cfg(windows)]
             RuntimeKind::Wslc => {
                 return Ok(RuntimeInfo {
                     kind: RuntimeKind::Wslc,
@@ -540,7 +534,6 @@ mod tests {
         assert_eq!(parse_wslc_version(""), "");
     }
 
-    #[cfg(windows)]
     #[test]
     fn wslc_only_runs_container_engine() {
         use strum::IntoEnumIterator;

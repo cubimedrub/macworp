@@ -1007,6 +1007,8 @@ $graph:
     }
 
     /// Imported CWL parameters render into the input object.
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn cwl_parameters_render() {
         let imported = parameters_from_cwl(CWL_MAP);

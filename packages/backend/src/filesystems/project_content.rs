@@ -40,10 +40,9 @@ impl TryFrom<(&PathBuf, &PathBuf)> for ProjectContent {
         Ok(ProjectContent {
             files,
             directories,
-            current: requested_path
-                .strip_prefix(project_path)
-                .unwrap()
-                .to_path_buf(),
+            current: macworp_core::paths::to_portable(
+                requested_path.strip_prefix(project_path).unwrap(),
+            ),
         })
     }
 }

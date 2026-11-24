@@ -867,6 +867,8 @@ mod tests {
         ));
     }
 
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn cwl() {
         let mut c = config(Engine::Cwl);
@@ -1028,6 +1030,8 @@ mod tests {
 
     /// Values below the reference prefix become absolute reference paths, other values are
     /// untouched, `..` still cannot escape, and a missing reference directory is an error.
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn reference_prefix_is_rewritten_at_render() {
         let mut c = config(Engine::Nextflow);

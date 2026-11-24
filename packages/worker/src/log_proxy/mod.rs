@@ -43,7 +43,6 @@ impl HostAccess {
         match kind {
             RuntimeKind::Podman => Some(Self::podman()),
             RuntimeKind::Docker => Some(Self::docker()),
-            #[cfg(windows)]
             RuntimeKind::Wslc => None,
         }
     }

@@ -413,6 +413,8 @@ async fn set_admin(
 }
 
 /// Shutdown signal that listens for Ctrl+C or SIGTERM and completes when either of them is received.
+///
+/// SIGTERM exists only on Unix; on other platforms (Windows) only Ctrl+C ends the wait.
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
@@ -420,12 +422,16 @@ async fn shutdown_signal() {
             .expect("failed to install Ctrl+C handler");
     };
 
+    #[cfg(unix)]
     let terminate = async {
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("failed to install signal handler")
             .recv()
             .await;
     };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
 
     tokio::select! {
         _ = ctrl_c => {},

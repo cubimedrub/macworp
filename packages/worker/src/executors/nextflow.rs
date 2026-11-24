@@ -465,6 +465,8 @@ mod tests {
         }
     }
 
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn local_source() {
         let spec = without_deployment_config(

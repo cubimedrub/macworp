@@ -566,6 +566,8 @@ mod tests {
         );
     }
 
+    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    #[cfg(unix)]
     #[test]
     fn local_source_defaults_to_all_cores() {
         let spec = executor().launch_spec(&job(local(), vec![])).unwrap();

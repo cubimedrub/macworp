@@ -46,6 +46,7 @@ sqlx = "0.9.0"
 strum = "0.28.0"
 tempfile = "3"
 thiserror = { version = "2.0.18" }
+sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }
 tokio = { version = "1.50.0" }
 tokio-util = "0.7.18"
 # implements TOML spec 1.1.0

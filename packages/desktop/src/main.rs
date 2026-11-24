@@ -143,7 +143,9 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     let container_runtime_report =
         macworp_worker::container_runtime::doctor(runtime_status::preference()).await;
     let unavailable_engines = container_runtime_report.unavailable_engines();
-    let runtime_status = InitialRuntimeStatus(to_status(&container_runtime_report));
+    let mut initial_status = to_status(&container_runtime_report);
+    initial_status.memory_fix = runtime_status::memory_fix(&container_runtime_report).await;
+    let runtime_status = InitialRuntimeStatus(initial_status);
     if container_runtime_report.is_ok() {
         tracing::info!("Container runtime:\n{container_runtime_report}");
     } else {
@@ -192,6 +194,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     let database_url = format!("sqlite://{}", database_path.to_str().unwrap());
 
     tracing::info!("Using database at: {}", database_url);
+    runtime_status::set_database_url(&database_url);
 
     let max_log_bytes =
         macworp_backend::configuration::Configuration::default().max_log_bytes_per_run();
@@ -466,12 +469,25 @@ fn App() -> Element {
     let initial_status = consume_context::<InitialRuntimeStatus>();
     let mut status = use_signal(|| initial_status.0);
     let mut refreshing = use_signal(|| false);
+    let mut adjusting = use_signal(|| false);
+    let mut adjust_error = use_signal(|| None::<String>);
     let refresh = use_callback(move |()| {
         spawn(async move {
             refreshing.set(true);
             let new_status = check_runtime().await;
             status.set(new_status);
             refreshing.set(false);
+        });
+    });
+    let adjust_memory = use_callback(move |mebibytes: u64| {
+        spawn(async move {
+            adjusting.set(true);
+            adjust_error.set(None);
+            match runtime_status::adjust_memory(mebibytes).await {
+                Ok(new_status) => status.set(new_status),
+                Err(message) => adjust_error.set(Some(message)),
+            }
+            adjusting.set(false);
         });
     });
     // One local user owns everything: no sharing, groups or owner column
@@ -481,6 +497,9 @@ fn App() -> Element {
         status,
         refreshing,
         refresh,
+        adjust_memory,
+        adjusting,
+        adjust_error,
     });
 
     rsx! {

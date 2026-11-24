@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 
 use dioxus::prelude::*;
+use macworp_ui_core::runtime_status::MemorySetting;
 
 use crate::settings::{Folder, Settings, StorageLimits};
 
 /// Desktop settings: where the global reference data (genomes, indices, annotation shared by all
 /// projects) and the workflow cache (fetched remote workflow repositories) live. The user picks
 /// a folder with the native dialog, nothing is typed or edited in files. The choice is saved at
-/// once and applies to the next run.
+/// once and applies to the next run. The memory of the container engine is changed here too.
 #[component]
 pub fn SettingsPage() -> Element {
     rsx! {
@@ -38,6 +39,7 @@ pub fn SettingsPage() -> Element {
                  Must be a folder the container runtime can write to.",
         }
         StorageLimitsSetting {}
+        MemorySetting {}
     }
 }
 

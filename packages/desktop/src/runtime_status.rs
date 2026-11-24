@@ -1,9 +1,10 @@
 use std::sync::OnceLock;
 
 use macworp_core::workflow_configuration::engine::Engine;
-use macworp_ui_core::runtime_status::{RuntimeStatus, StatusCheck, StatusLevel};
+use macworp_ui_core::runtime_status::{MemoryFix, RuntimeStatus, StatusCheck, StatusLevel};
 use macworp_worker::container_runtime::{
-    doctor, Check, CheckStatus, DoctorReport, RuntimeInfo, RuntimePreference,
+    doctor, Check, CheckStatus, DoctorReport, MemoryAdjustment, MemoryRange, RuntimeInfo,
+    RuntimePreference,
 };
 
 /// Initial status, handed to the UI through the launch context.
@@ -66,6 +67,77 @@ pub fn preference() -> RuntimePreference {
     PREFERENCE.get().copied().unwrap_or_default()
 }
 
+static DATABASE_URL: OnceLock<String> = OnceLock::new();
+
+/// Tells the status where the backend database is, once at startup: changing the container
+/// engine is refused while runs are active.
+///
+/// # Arguments
+/// * `url` - database URL of the embedded backend
+pub fn set_database_url(url: &str) {
+    DATABASE_URL.set(url.to_string()).ok();
+}
+
+/// What the Settings page needs to let the user change the memory of the container VM, `None`
+/// where that is not possible (Linux, wslc, no machine found).
+///
+/// # Arguments
+/// * `report` - the doctor report the status is built from
+pub async fn memory_fix(report: &DoctorReport) -> Option<MemoryFix> {
+    let info = &report.runtimes.first()?.info;
+    let adjustment = MemoryAdjustment::detect(info.kind).await?;
+    let range = MemoryRange::of_this_host()?;
+    Some(MemoryFix {
+        current_mebibytes: info.memory_bytes.map(|bytes| bytes / 1024 / 1024),
+        host_mebibytes: MemoryRange::host_mebibytes().unwrap_or(0),
+        minimum_mebibytes: range.minimum_mebibytes,
+        maximum_mebibytes: range.maximum_mebibytes,
+        start_mebibytes: range.start_mebibytes,
+        step_mebibytes: range.step_mebibytes,
+        warning_mebibytes: range.warning_mebibytes,
+        impact: adjustment.impact().to_string(),
+    })
+}
+
+/// Raises the memory of the container VM and restarts it, then checks the runtime again.
+///
+/// # Arguments
+/// * `mebibytes` - the memory the user chose
+///
+/// # Returns
+/// The new status, or why nothing was changed. Refused while runs are active, they would be
+/// stopped by the restart.
+pub async fn adjust_memory(mebibytes: u64) -> Result<RuntimeStatus, String> {
+    if let Some(url) = DATABASE_URL.get() {
+        let db = sea_orm::Database::connect(url)
+            .await
+            .map_err(|e| e.to_string())?;
+        let active = macworp_backend::models::RunTable::active_count(&db)
+            .await
+            .map_err(|e| e.to_string())?;
+        if active > 0 {
+            return Err(
+                "Workflows are running. Wait until they are finished or stop them, then try again."
+                    .to_string(),
+            );
+        }
+    }
+    let report = doctor(preference()).await;
+    let kind = report
+        .runtimes
+        .first()
+        .map(|usable| usable.info.kind)
+        .ok_or("No container runtime found")?;
+    let adjustment = MemoryAdjustment::detect(kind)
+        .await
+        .ok_or("The memory of this container engine cannot be changed from here")?;
+    adjustment
+        .apply(mebibytes)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(check_runtime().await)
+}
+
 /// Runs the doctor check again, with the same runtime preference as at startup.
 pub async fn check_runtime() -> RuntimeStatus {
     let report = doctor(preference()).await;
@@ -74,7 +146,9 @@ pub async fn check_runtime() -> RuntimeStatus {
     } else {
         tracing::warn!("No usable container runtime, workflows cannot run:\n{report}");
     }
-    to_status(&report)
+    let mut status = to_status(&report);
+    status.memory_fix = memory_fix(&report).await;
+    status
 }
 
 fn from_parts(
@@ -101,6 +175,7 @@ fn from_parts(
             })
             .collect(),
         unavailable_engines,
+        memory_fix: None,
     }
 }
 
@@ -186,5 +261,18 @@ mod tests {
         );
         assert_eq!(status.kind.as_deref(), Some("podman"));
         assert_eq!(status.level(), StatusLevel::Fail);
+    }
+
+    /// Runs the whole adjustment the Settings button runs, against the real runtime: restarts
+    /// the container engine, so it only runs on request (`MACWORP_ADJUST_MEBIBYTES=4608`).
+    #[tokio::test]
+    #[ignore = "restarts the container engine"]
+    async fn settings_button_adjusts_the_real_runtime() {
+        let mebibytes: u64 = std::env::var("MACWORP_ADJUST_MEBIBYTES")
+            .expect("set MACWORP_ADJUST_MEBIBYTES")
+            .parse()
+            .unwrap();
+        let status = adjust_memory(mebibytes).await.unwrap();
+        println!("{:?}", status.memory_fix);
     }
 }

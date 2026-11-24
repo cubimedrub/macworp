@@ -706,6 +706,18 @@ impl Entity {
             .collect())
     }
 
+    /// Number of runs that are queued or running, for actions that would interrupt them (the
+    /// desktop restarts its container engine to change its memory).
+    ///
+    /// # Arguments
+    /// * `db` - database connection
+    pub async fn active_count<C: ConnectionTrait>(db: &C) -> Result<u64, Error> {
+        Ok(Entity::find()
+            .filter(Column::Status.is_in([RunStatus::Queued, RunStatus::Running]))
+            .count(db)
+            .await?)
+    }
+
     /// Fails runs still marked `Running`, for use at start when no worker can be executing them
     /// (embedded desktop worker crashed or was killed). Returns the number of runs changed.
     pub async fn fail_orphaned_running<C: ConnectionTrait>(db: &C) -> Result<u64, Error> {

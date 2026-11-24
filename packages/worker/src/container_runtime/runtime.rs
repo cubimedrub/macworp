@@ -112,6 +112,10 @@ pub struct RuntimeInfo {
     /// The runtime's socket address when it is not a Unix socket (`npipe:////./pipe/...` of a
     /// native Windows runtime): such an address cannot be mounted into an engine container
     pub unsupported_socket: Option<String>,
+    /// Memory in bytes the runtime can give to containers, `None` if it does not say. On
+    /// macOS and Windows this is the memory of the runtime's VM (podman machine, Docker Desktop,
+    /// WSL2), not of the host.
+    pub memory_bytes: Option<u64>,
 }
 
 /// Where the engine container reaches the runtime API, see [`RuntimeInfo::engine_access_args`].
@@ -345,6 +349,7 @@ impl CliRuntime {
                     socket: None,
                     socket_exists: None,
                     unsupported_socket: None,
+                    memory_bytes: None,
                 });
             }
         };
@@ -424,6 +429,7 @@ pub(crate) fn parse_podman_info(json: &str) -> Result<RuntimeInfo, serde_json::E
             .pointer("/host/remoteSocket/exists")
             .and_then(Value::as_bool),
         unsupported_socket,
+        memory_bytes: value.pointer("/host/memTotal").and_then(Value::as_u64),
     })
 }
 
@@ -446,6 +452,7 @@ pub(crate) fn parse_docker_info(json: &str) -> Result<RuntimeInfo, serde_json::E
         socket: None,
         socket_exists: None,
         unsupported_socket: None,
+        memory_bytes: value.pointer("/MemTotal").and_then(Value::as_u64),
     })
 }
 
@@ -470,7 +477,7 @@ mod tests {
     #[test]
     fn parses_rootless_podman() {
         let info = parse_podman_info(
-            r#"{"host":{"security":{"rootless":true},"remoteSocket":{"path":"/run/user/1000/podman/podman.sock"}},
+            r#"{"host":{"security":{"rootless":true},"remoteSocket":{"path":"/run/user/1000/podman/podman.sock"},"memTotal":2034413568},
                 "store":{"graphRoot":"/home/u/.local/share/containers/storage"},
                 "version":{"Version":"5.2.1"}}"#,
         )
@@ -483,6 +490,15 @@ mod tests {
             Some(Path::new("/run/user/1000/podman/podman.sock"))
         );
         assert!(info.storage_root.is_some());
+        assert_eq!(info.memory_bytes, Some(2_034_413_568));
+    }
+
+    /// Docker reports the memory of its VM as `MemTotal`.
+    #[test]
+    fn parses_docker_memory() {
+        let info =
+            parse_docker_info(r#"{"ServerVersion":"29.9.3","MemTotal":16745496576}"#).unwrap();
+        assert_eq!(info.memory_bytes, Some(16_745_496_576));
     }
 
     #[test]

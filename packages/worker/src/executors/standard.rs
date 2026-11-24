@@ -138,6 +138,7 @@ mod tests {
                     socket: None,
                     socket_exists: None,
                     unsupported_socket: None,
+                    memory_bytes: None,
                 })
             })
         }

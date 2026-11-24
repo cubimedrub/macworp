@@ -600,6 +600,53 @@ fn socket_check(info: &RuntimeInfo) -> Option<Check> {
     })
 }
 
+/// Memory below which a runtime VM gets a warning: the engine container itself (JVM of
+/// Nextflow, Toil, Snakemake) needs about 1 GiB and tool containers come on top.
+const MIN_VM_MEMORY_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
+/// Warns when the VM that runs the containers (podman machine, Docker Desktop, WSL2) has little
+/// memory: containers are killed when it runs out (exit code 137), the host's memory does not
+/// count. Nothing is changed for the user, the check names the setting.
+///
+/// # Arguments
+/// * `info` - What the runtime reported about itself
+/// * `vm` - Whether the runtime runs in a VM on this host (macOS and Windows), `false` on Linux
+///   where containers can use the host's memory
+/// * `windows` - Whether the host is Windows, where the WSL2 backend is limited by `.wslconfig`
+fn memory_check(info: &RuntimeInfo, vm: bool, windows: bool) -> Option<Check> {
+    let bytes = info.memory_bytes?;
+    if !vm || info.kind == RuntimeKind::Wslc {
+        return None;
+    }
+    let name = "memory".to_string();
+    let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+    if bytes >= MIN_VM_MEMORY_BYTES {
+        return Some(Check {
+            name,
+            status: CheckStatus::Ok,
+            message: format!("{gib:.1} GiB available to containers"),
+        });
+    }
+    let kind = info.kind;
+    let fix = match (kind, windows) {
+        (_, true) => {
+            "with the WSL2 backend set `memory=8GB` under `[wsl2]` in `%UserProfile%\\.wslconfig` and run `wsl --shutdown` (MAcWorP never writes that file)"
+        }
+        (RuntimeKind::Docker, false) => "raise Settings > Resources > Memory in Docker Desktop",
+        (_, false) => {
+            "`podman machine stop`, `podman machine set --memory 8192`, `podman machine start`"
+        }
+    };
+    Some(Check {
+        name,
+        status: CheckStatus::Warn,
+        message: format!(
+            "{kind} has only {gib:.1} GiB for containers, workflows with larger tasks are killed (exit code 137). At least {} GiB is recommended: {fix}",
+            MIN_VM_MEMORY_BYTES / (1024 * 1024 * 1024)
+        ),
+    })
+}
+
 fn checks_for(info: &RuntimeInfo) -> Vec<Check> {
     let kind = info.kind;
     let mut checks = vec![Check {
@@ -634,6 +681,12 @@ fn checks_for(info: &RuntimeInfo) -> Vec<Check> {
     if let Some(check) = socket_check(info) {
         checks.push(check);
     }
+
+    checks.extend(memory_check(
+        info,
+        cfg!(any(windows, target_os = "macos")),
+        cfg!(windows),
+    ));
 
     checks.push(match info.rootless {
         Some(true) => Check {
@@ -685,6 +738,7 @@ mod tests {
                     socket: None,
                     socket_exists: None,
                     unsupported_socket: None,
+                    memory_bytes: None,
                 }),
                 probe: Ok(()),
             })
@@ -845,6 +899,7 @@ mod tests {
                     socket: None,
                     socket_exists: None,
                     unsupported_socket: None,
+                    memory_bytes: None,
                 }),
                 probe: probe.map_err(String::from),
             })])
@@ -882,6 +937,7 @@ mod tests {
                     socket: None,
                     socket_exists: None,
                     unsupported_socket: None,
+                    memory_bytes: None,
                 }),
                 probe: result.map_err(String::from),
             });
@@ -1049,7 +1105,34 @@ mod tests {
             socket: Some(PathBuf::from("/run/user/1000/podman/podman.sock")),
             socket_exists,
             unsupported_socket: unsupported_socket.map(String::from),
+            memory_bytes: None,
         }
+    }
+
+    /// Memory warnings: only VM-based hosts, only below the minimum, with the setting that fixes it.
+    #[test]
+    fn memory_check_warns_for_small_vms_only() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        let info = |kind, gib: u64| RuntimeInfo {
+            memory_bytes: Some(gib * GIB),
+            ..socket_info(kind, None, None)
+        };
+        let small = memory_check(&info(RuntimeKind::Podman, 2), true, false).unwrap();
+        assert_eq!(small.status, CheckStatus::Warn);
+        assert!(small.message.contains("podman machine set --memory"));
+        let docker = memory_check(&info(RuntimeKind::Docker, 2), true, false).unwrap();
+        assert!(docker.message.contains("Docker Desktop"));
+        let windows = memory_check(&info(RuntimeKind::Podman, 2), true, true).unwrap();
+        assert!(windows.message.contains(".wslconfig"));
+        assert_eq!(
+            memory_check(&info(RuntimeKind::Podman, 8), true, false)
+                .unwrap()
+                .status,
+            CheckStatus::Ok
+        );
+        // Linux uses the host's memory, unknown memory is not judged
+        assert!(memory_check(&info(RuntimeKind::Podman, 2), false, false).is_none());
+        assert!(memory_check(&socket_info(RuntimeKind::Podman, None, None), true, false).is_none());
     }
 
     #[test]

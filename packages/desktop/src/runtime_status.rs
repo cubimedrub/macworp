@@ -33,6 +33,7 @@ pub fn to_status(report: &DoctorReport) -> RuntimeStatus {
         socket: None,
         socket_exists: None,
         unsupported_socket: None,
+        memory_bytes: None,
     });
     let mut status = from_parts(
         combined.as_ref(),
@@ -118,6 +119,7 @@ mod tests {
             socket: None,
             socket_exists: None,
             unsupported_socket: None,
+            memory_bytes: None,
         }
     }
 

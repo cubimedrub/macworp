@@ -5,7 +5,10 @@ use macworp_core::workflow_configuration::engine::Engine;
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
-use crate::selinux::DirectoryLabel;
+use crate::{
+    log_proxy::{HostAccess, ProgressReceiver},
+    selinux::DirectoryLabel,
+};
 
 use super::runtime::{
     CliRuntime, ContainerRuntime, Error as RuntimeError, RuntimeInfo, RuntimeKind,
@@ -323,11 +326,16 @@ pub async fn doctor_with(candidates: Vec<Arc<dyn ContainerRuntime>>) -> DoctorRe
             &crate::executors::snakemake::image(),
         )
         .await;
+    let progress = report
+        .progress_check(&crate::executors::nextflow::image())
+        .await;
     let selinux = report.selinux_check(crate::executors::selinux_enforcing());
     let builds = report.build_check();
-    report
-        .checks
-        .extend([engines, apparmor, selinux, builds].into_iter().flatten());
+    report.checks.extend(
+        [engines, apparmor, progress, selinux, builds]
+            .into_iter()
+            .flatten(),
+    );
     report
 }
 
@@ -432,6 +440,81 @@ impl DoctorReport {
                 ),
             },
         }
+    }
+
+    /// Checks that an engine container reaches the worker's progress receiver. Nextflow and
+    /// Snakemake report through it; when a firewall drops the connection (Windows asks once per
+    /// program and blocks until answered, firewalld and similar on Linux) the engine blocks on
+    /// its first report and the run hangs without output. A receiver is started for the check
+    /// and a throwaway container connects to it. `None` when no usable runtime runs such an engine.
+    ///
+    /// # Arguments
+    /// * `image` - engine image the probe container starts from, needs `bash`
+    async fn progress_check(&self, image: &str) -> Option<Check> {
+        let usable = self
+            .runtimes
+            .iter()
+            .find(|usable| usable.runtime.supports_engine(&Engine::Nextflow))?;
+        let access = HostAccess::for_runtime(usable.info.kind)?;
+        let name = "progress-receiver".to_string();
+        let receiver = match ProgressReceiver::start(access.clone()).await {
+            Ok(receiver) => receiver,
+            Err(error) => {
+                return Some(Check {
+                    name,
+                    status: CheckStatus::Warn,
+                    message: format!("cannot listen for engine progress, runs show none: {error}"),
+                });
+            }
+        };
+        let mut args = access.run_args.clone();
+        args.extend(
+            [
+                "--pull",
+                "never",
+                "--entrypoint",
+                "timeout",
+                image,
+                "5",
+                "bash",
+                "-c",
+            ]
+            .map(String::from),
+        );
+        args.push(format!(
+            "exec 3<>/dev/tcp/{}/{}",
+            access.host,
+            receiver.port()
+        ));
+        Some(match usable.runtime.probe_container(args).await {
+            Ok(()) => Check {
+                name,
+                status: CheckStatus::Ok,
+                message: format!("engine containers reach the worker via {}", access.host),
+            },
+            Err(RuntimeError::Failed { stderr, .. })
+                if stderr.contains("No such image")
+                    || stderr.contains("Unable to find image")
+                    || stderr.contains("image not known") =>
+            {
+                Check {
+                    name,
+                    status: CheckStatus::Ok,
+                    message: format!(
+                        "connection from engine containers not verified, engine image `{image}` is not available locally"
+                    ),
+                }
+            }
+            Err(error) => Check {
+                name,
+                status: CheckStatus::Warn,
+                message: format!(
+                    "a container cannot connect to the worker on {}:{}: Nextflow and Snakemake runs would hang without progress. Allow the worker program through the firewall (Windows: answer the firewall prompt with Allow, or add an inbound rule for the program; Linux: allow the container network, e.g. `firewall-cmd --zone=trusted --add-interface=podman0`): {error}",
+                    access.host,
+                    receiver.port()
+                ),
+            },
+        })
     }
 
     /// Warning naming the engines no usable runtime can run, `None` if all can run.
@@ -747,6 +830,41 @@ mod tests {
         );
     }
 
+    /// The progress receiver check follows the probe container: connected, image missing,
+    /// connection refused or dropped.
+    #[tokio::test]
+    async fn progress_check_reports_unreachable_receiver() {
+        let check = async |probe: Result<(), &str>| {
+            let report = doctor_with(vec![Arc::new(Mock {
+                kind: RuntimeKind::Podman,
+                result: Ok(RuntimeInfo {
+                    kind: RuntimeKind::Podman,
+                    version: "5.2.1".to_string(),
+                    rootless: Some(true),
+                    storage_root: None,
+                    socket: None,
+                    socket_exists: None,
+                    unsupported_socket: None,
+                }),
+                probe: probe.map_err(String::from),
+            })])
+            .await;
+            report.progress_check("img").await.unwrap()
+        };
+        assert_eq!(check(Ok(())).await.status, CheckStatus::Ok);
+        for stderr in ["Unable to find image 'img' locally", "Error: img: image not known"] {
+            let missing = check(Err(stderr)).await;
+            assert_eq!(missing.status, CheckStatus::Ok);
+            assert!(missing.message.contains("not verified"));
+        }
+        let blocked = check(Err("timed out")).await;
+        assert_eq!(blocked.status, CheckStatus::Warn);
+        assert!(blocked.message.contains("firewall"));
+        // wslc runs no engines that report progress
+        let wslc = doctor_with(vec![Mock::ok(RuntimeKind::Wslc, "1", true)]).await;
+        assert!(wslc.progress_check("img").await.is_none());
+    }
+
     /// A configured profile is probed with a container: loaded, not loaded, image missing.
     #[tokio::test]
     async fn apparmor_probe_reports_unloaded_profiles() {
@@ -877,7 +995,12 @@ mod tests {
             Mock::ok(RuntimeKind::Wslc, "2.9.4.0", true),
         ])
         .await;
-        assert_eq!(report.unavailable_engines(), vec![Engine::Snakemake]);
+        let expected = if RuntimeKind::podman_runs_snakemake() {
+            vec![]
+        } else {
+            vec![Engine::Snakemake]
+        };
+        assert_eq!(report.unavailable_engines(), expected);
     }
 
     #[tokio::test]

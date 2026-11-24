@@ -15,7 +15,7 @@
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -146,6 +146,15 @@ struct Inner {
     active_runs: usize,
 }
 
+/// What the tracked images take together.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ImageUsage {
+    /// Number of tracked images
+    pub images: usize,
+    /// Their size in bytes
+    pub bytes: u64,
+}
+
 /// Result of one collection.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Collected {
@@ -166,7 +175,8 @@ pub struct RunTracking {
 #[derive(Debug)]
 pub struct ImageStore {
     runtime: Arc<dyn ContainerRuntime>,
-    policy: ImagePolicy,
+    /// Current limits; replaceable while the worker runs ([`ImageStore::set_policy`])
+    policy: RwLock<ImagePolicy>,
     /// Where the usage is persisted (TOML), `None` keeps it in memory only
     state_file: Option<PathBuf>,
     inner: Mutex<Inner>,
@@ -187,13 +197,51 @@ impl ImageStore {
         let state = state_file.as_deref().map(Self::load).unwrap_or_default();
         Self {
             runtime,
-            policy,
+            policy: RwLock::new(policy),
             state_file,
             inner: Mutex::new(Inner {
                 state,
                 active_runs: 0,
             }),
         }
+    }
+
+    /// The limits in force now.
+    pub fn policy(&self) -> ImagePolicy {
+        self.policy
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Replaces the limits; the next collection uses them. A run in progress is not affected
+    /// beyond that, since collection only happens while no run is active.
+    ///
+    /// # Arguments
+    /// * `policy` - the new limits
+    pub fn set_policy(&self, policy: ImagePolicy) {
+        *self.policy.write().unwrap_or_else(|e| e.into_inner()) = policy;
+    }
+
+    /// What the images this store tracks take: how many and their size together (layers shared
+    /// by several images count in each, as for the limit).
+    pub async fn usage(&self) -> Result<ImageUsage, RuntimeError> {
+        let images = self.runtime.list_images().await?;
+        let inner = self.inner.lock().unwrap();
+        let tracked = images
+            .iter()
+            .filter(|image| inner.state.images.contains_key(&image.id));
+        Ok(
+            tracked.fold(ImageUsage::default(), |usage, image| ImageUsage {
+                images: usage.images + 1,
+                bytes: usage.bytes + image.size_bytes,
+            }),
+        )
+    }
+
+    /// Whether no run of this store is active, so a collection may start.
+    pub fn is_idle(&self) -> bool {
+        self.inner.lock().unwrap().active_runs == 0
     }
 
     /// The runtime this store manages
@@ -314,7 +362,7 @@ impl ImageStore {
             inner.active_runs = inner.active_runs.saturating_sub(1);
             inner.active_runs == 0
         };
-        if idle && self.policy.is_enabled() {
+        if idle && self.policy().is_enabled() {
             match self.collect().await {
                 Ok(collected) if !collected.removed.is_empty() => tracing::info!(
                     "Removed {} unused image(s): {}",
@@ -347,6 +395,7 @@ impl ImageStore {
     /// longer has are forgotten. Removal never forces, so an image a container uses stays.
     pub async fn collect(&self) -> Result<Collected, RuntimeError> {
         let images = self.runtime.list_images().await?;
+        let policy = self.policy();
         let (chosen, usage) = {
             let mut inner = self.inner.lock().unwrap();
             let before = inner.state.images.len();
@@ -358,7 +407,7 @@ impl ImageStore {
                 self.save(&inner.state);
             }
             (
-                self.policy.plan(&images, &inner.state.images),
+                policy.plan(&images, &inner.state.images),
                 inner.state.images.clone(),
             )
         };
@@ -623,6 +672,43 @@ mod tests {
         assert_eq!(runtime.images.lock().unwrap().len(), 1);
     }
 
+    /// A policy replaced while the store lives is used by the next collection, and usage counts
+    /// only tracked images
+    #[tokio::test]
+    async fn policy_change_applies_to_the_next_collection() {
+        let runtime = FakeRuntime {
+            images: Mutex::new(vec![
+                image("a", &["a:1"], 10),
+                image("b", &["b:1"], 20),
+                image("foreign", &["foreign:1"], 99),
+            ]),
+            events: vec![],
+            busy: vec![],
+        };
+        let (runtime, store) = store(runtime, 10, None);
+        {
+            let mut inner = store.inner.lock().unwrap();
+            inner.state.images.insert("a".into(), 1);
+            inner.state.images.insert("b".into(), 2);
+        }
+        assert_eq!(
+            store.usage().await.unwrap(),
+            ImageUsage {
+                images: 2,
+                bytes: 30
+            }
+        );
+        assert!(store.collect().await.unwrap().removed.is_empty());
+
+        store.set_policy(ImagePolicy {
+            max_images: Some(1),
+            ..Default::default()
+        });
+        assert_eq!(store.policy().max_images, Some(1));
+        assert_eq!(store.collect().await.unwrap().removed, ["a:1"]);
+        assert_eq!(runtime.images.lock().unwrap().len(), 2);
+    }
+
     /// Usage survives a restart (as TOML); a corrupt file is ignored
     #[tokio::test]
     async fn usage_is_persisted() {
@@ -677,7 +763,11 @@ mod tests {
         let kind = match std::env::var("MACWORP_CONTAINER_RUNTIME").as_deref() {
             Ok("docker") => RuntimeKind::Docker,
             Ok("podman") => RuntimeKind::Podman,
-            _ if std::process::Command::new("podman").arg("--version").output().is_ok() => {
+            _ if std::process::Command::new("podman")
+                .arg("--version")
+                .output()
+                .is_ok() =>
+            {
                 RuntimeKind::Podman
             }
             _ => RuntimeKind::Docker,
@@ -721,11 +811,19 @@ mod tests {
         store.end_run(tracking).await;
 
         let remaining = runtime.list_images().await.unwrap();
-        let still_there = remaining.iter().any(|image| image.names.iter().any(|n| n.ends_with(&name)));
+        let still_there = remaining
+            .iter()
+            .any(|image| image.names.iter().any(|n| n.ends_with(&name)));
         if still_there {
-            let _ = std::process::Command::new(binary).args(["rmi", &name]).status();
+            let _ = std::process::Command::new(binary)
+                .args(["rmi", &name])
+                .status();
         }
         assert!(!still_there, "the probe image was not removed");
-        assert!(std::fs::read_to_string(&state).unwrap().contains("[images]"));
+        assert!(
+            std::fs::read_to_string(&state)
+                .unwrap()
+                .contains("[images]")
+        );
     }
 }

@@ -63,8 +63,8 @@ struct CachedFile {
 /// Usage tracking and trimming of one Apptainer image cache.
 #[derive(Debug)]
 pub struct ApptainerCacheStore {
-    /// Most bytes the cache may take, `None` = never remove
-    max_bytes: Option<u64>,
+    /// Most bytes the cache may take, `None` = never remove; replaceable while the worker runs
+    max_bytes: Mutex<Option<u64>>,
     /// Least age of the last use before a file may be removed
     grace: Duration,
     /// Where the usage is persisted (TOML), `None` keeps it in memory only
@@ -81,7 +81,7 @@ impl ApptainerCacheStore {
     pub fn new(max_bytes: Option<u64>, state_file: Option<PathBuf>) -> Self {
         let state = state_file.as_deref().map(Self::load).unwrap_or_default();
         Self {
-            max_bytes,
+            max_bytes: Mutex::new(max_bytes),
             grace: DEFAULT_GRACE,
             state_file,
             inner: Mutex::new(Inner {
@@ -89,6 +89,47 @@ impl ApptainerCacheStore {
                 active_runs: 0,
             }),
         }
+    }
+
+    /// The size limit in force now, `None` = unlimited.
+    pub fn max_bytes(&self) -> Option<u64> {
+        *self.max_bytes.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Replaces the size limit; the next trim uses it.
+    ///
+    /// # Arguments
+    /// * `max_bytes` - the new limit, `None` = unlimited
+    pub fn set_max_bytes(&self, max_bytes: Option<u64>) {
+        *self.max_bytes.lock().unwrap_or_else(|e| e.into_inner()) = max_bytes;
+    }
+
+    /// Bytes the image files of `directory` take, markers included.
+    ///
+    /// # Arguments
+    /// * `directory` - the cache directory
+    pub fn usage(directory: &Path) -> std::io::Result<u64> {
+        Ok(Self::scan(directory)?.iter().map(|file| file.size).sum())
+    }
+
+    /// Whether no run of this store is active, so trimming may start.
+    pub fn is_idle(&self) -> bool {
+        self.inner.lock().unwrap().active_runs == 0
+    }
+
+    /// Trims `directory` to the limit now, outside a run. Does nothing while a run is active.
+    ///
+    /// # Arguments
+    /// * `directory` - the cache directory
+    ///
+    /// # Returns
+    /// The removed image files.
+    pub fn trim_now(&self, directory: &Path) -> std::io::Result<Vec<PathBuf>> {
+        if !self.is_idle() {
+            return Ok(Vec::new());
+        }
+        // Nothing counts as used by a run that just ended: `started` lies in the future
+        self.sweep(directory, u64::MAX, true, Self::now())
     }
 
     /// Changes the grace period (tests use zero).
@@ -285,7 +326,7 @@ impl ApptainerCacheStore {
         }
 
         let mut removed = Vec::new();
-        if let (true, Some(max)) = (trim, self.max_bytes) {
+        if let (true, Some(max)) = (trim, self.max_bytes()) {
             let mut total: u64 = files.iter().map(|file| file.size).sum();
             let mut order: Vec<&CachedFile> = files.iter().collect();
             order.sort_by_key(|file| {
@@ -457,5 +498,31 @@ mod tests {
         std::fs::remove_file(&gone).unwrap();
         store.sweep(directory.path(), now, false, now).unwrap();
         assert!(store.inner.lock().unwrap().state.files.is_empty());
+    }
+
+    /// A changed limit applies to the next trim without a new store, usage reports the size, and
+    /// `trim_now` removes what exceeds the limit
+    #[test]
+    fn limit_change_applies_live_and_trim_now_removes() {
+        let directory = tempfile::tempdir().unwrap();
+        let oldest = image(directory.path(), "a", 100, 5000);
+        let newest = image(directory.path(), "b", 100, 4000);
+        let store = store(10_000, None);
+        assert_eq!(ApptainerCacheStore::usage(directory.path()).unwrap(), 206);
+        assert!(store.trim_now(directory.path()).unwrap().is_empty());
+
+        store.set_max_bytes(Some(150));
+        assert_eq!(store.max_bytes(), Some(150));
+        assert_eq!(
+            store.trim_now(directory.path()).unwrap(),
+            std::slice::from_ref(&oldest)
+        );
+        assert!(newest.exists());
+
+        // While a run is active nothing is removed
+        store.set_max_bytes(Some(1));
+        let _started = store.begin_run();
+        assert!(store.trim_now(directory.path()).unwrap().is_empty());
+        assert!(newest.exists());
     }
 }

@@ -31,7 +31,7 @@ use macworp_ui_core::{
 };
 
 use macworp_worker::{
-    apptainer_cache_store::{ApptainerCacheStore, DESKTOP_MAX_BYTES},
+    apptainer_cache_store::ApptainerCacheStore,
     configuration::WorkerConfiguration,
     container_runtime::ContainerRuntime,
     executors::standard_executors,
@@ -278,7 +278,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
                 settings.reference_directory(),
                 settings.apptainer_cache(),
                 settings.cwl_cache(),
-                app_data_directory,
+                &settings,
             )
             .await?,
         ),
@@ -333,6 +333,16 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
 /// Starts the embedded worker on the backend database.
 ///
 /// Runs left `Running` by an earlier crash are failed first, nothing can be executing them now.
+///
+/// # Arguments
+/// * `database_url` - the backend database the worker claims runs from
+/// * `max_log_bytes` - log size kept per run
+/// * `runtimes` - usable container runtimes
+/// * `reference_directory` - live handle of the global reference data folder
+/// * `apptainer_cache` - live handle of the Snakemake image cache folder
+/// * `cwl_cache` - folder of the CWL step cache
+/// * `settings` - supplies the storage limits and the state directory for usage files; the
+///   worker's stores are attached to it so limit changes apply live
 async fn start_worker(
     database_url: &str,
     max_log_bytes: u64,
@@ -340,7 +350,7 @@ async fn start_worker(
     reference_directory: macworp_backend::reference_directory::ReferenceDirectory,
     apptainer_cache: macworp_backend::reference_directory::ReferenceDirectory,
     cwl_cache: std::path::PathBuf,
-    state_directory: &std::path::Path,
+    settings: &settings::Settings,
 ) -> Result<(watch::Sender<bool>, tokio::task::JoinHandle<()>), Error> {
     let db = sea_orm::Database::connect(database_url)
         .await
@@ -352,7 +362,7 @@ async fn start_worker(
     }
 
     let executors = standard_executors(&runtimes).await;
-    let mut worker = Worker::new(
+    let worker = Worker::new(
         Arc::new(DbJobSource::new(
             db,
             max_log_bytes,
@@ -368,25 +378,26 @@ async fn start_worker(
             .iter()
             .map(|runtime| ImageBuilder::for_runtime(runtime.as_ref()))
             .collect(),
-    )
-    // Desktop users are not expected to manage container images: the worker removes the ones
-    // that were not used for the longest time once the limits are exceeded
-    .with_image_stores(
-        runtimes
-            .iter()
-            .map(|runtime| {
-                Arc::new(ImageStore::new(
-                    runtime.clone(),
-                    ImagePolicy::desktop_default(),
-                    ImageStore::state_file_in(Some(state_directory), &runtime.kind().to_string()),
-                ))
-            })
-            .collect(),
-    )
-    .with_apptainer_cache_store(Arc::new(ApptainerCacheStore::new(
-        Some(DESKTOP_MAX_BYTES),
-        ApptainerCacheStore::state_file_in(Some(state_directory)),
-    )));
+    );
+    // Limits come from the settings page; the stores start with the saved ones
+    let image_stores: Vec<Arc<ImageStore>> = runtimes
+        .iter()
+        .map(|runtime| {
+            Arc::new(ImageStore::new(
+                runtime.clone(),
+                ImagePolicy::desktop_default(),
+                ImageStore::state_file_in(Some(settings.directory()), &runtime.kind().to_string()),
+            ))
+        })
+        .collect();
+    let cache_store = Arc::new(ApptainerCacheStore::new(
+        None,
+        ApptainerCacheStore::state_file_in(Some(settings.directory())),
+    ));
+    settings.attach_stores(image_stores.clone(), cache_store.clone());
+    let mut worker = worker
+        .with_image_stores(image_stores)
+        .with_apptainer_cache_store(cache_store);
     if let Some(access) = runtimes
         .iter()
         .find_map(|runtime| HostAccess::for_runtime(runtime.kind()))

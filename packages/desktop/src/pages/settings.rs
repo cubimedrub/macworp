@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use dioxus::prelude::*;
 
-use crate::settings::{Folder, Settings};
+use crate::settings::{Folder, Settings, StorageLimits};
 
 /// Desktop settings: where the global reference data (genomes, indices, annotation shared by all
 /// projects) and the workflow cache (fetched remote workflow repositories) live. The user picks
@@ -36,6 +36,180 @@ pub fn SettingsPage() -> Element {
             description: "Snakemake workflows with container rules pull their images here once and \
                  reuse them in every project, instead of keeping a copy in each project folder. \
                  Must be a folder the container runtime can write to.",
+        }
+        StorageLimitsSetting {}
+    }
+}
+
+/// Formats a byte count for people ("3.2 GiB").
+///
+/// # Arguments
+/// * `bytes` - the size
+fn format_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// Disk space limits for downloaded tool images: the section shows what is used now, lets the
+/// user change the limits (saved at once and applied to the running app) and clean up right away.
+/// When a limit is exceeded after a run, the tools used longest ago are removed first; they are
+/// downloaded again when a workflow needs them.
+#[component]
+fn StorageLimitsSetting() -> Element {
+    let settings = use_context::<Settings>();
+    let initial = settings.storage_limits();
+    let mut max_images = use_signal(move || initial.max_images);
+    let mut max_image_gib = use_signal(move || initial.max_image_gib);
+    let mut max_cache_gib = use_signal(move || initial.max_cache_gib);
+    let mut usage = use_resource({
+        let settings = settings.clone();
+        move || {
+            let settings = settings.clone();
+            async move { settings.storage_usage().await }
+        }
+    });
+    let mut save = use_action({
+        let settings = settings.clone();
+        move || {
+            let settings = settings.clone();
+            async move {
+                settings
+                    .set_storage_limits(StorageLimits {
+                        max_images: *max_images.read(),
+                        max_image_gib: *max_image_gib.read(),
+                        max_cache_gib: *max_cache_gib.read(),
+                    })
+                    .map_err(dioxus::CapturedError::from_display)
+            }
+        }
+    });
+    let mut clean = use_action({
+        let settings = settings.clone();
+        move || {
+            let settings = settings.clone();
+            async move {
+                let cleaned = settings.clean_up_now().await;
+                usage.restart();
+                Ok::<_, dioxus::CapturedError>(cleaned)
+            }
+        }
+    });
+    let reset = move |_| {
+        let defaults = StorageLimits::default();
+        max_images.set(defaults.max_images);
+        max_image_gib.set(defaults.max_image_gib);
+        max_cache_gib.set(defaults.max_cache_gib);
+    };
+
+    rsx! {
+        h2 { class: "h4 mt-4", "Disk space for downloaded tools" }
+        p {
+            class: "text-body-secondary",
+            "Workflows download the tools they need (container images). They are kept so the next run starts faster. When the limits below are exceeded, the tools used longest ago are removed after a run and downloaded again when needed. Tools that are used by a running workflow are never removed."
+        }
+        if let Some(used) = usage.read().as_ref() {
+            p {
+                "Currently used: {used.images} tools taking {format_size(used.image_bytes)}, and {format_size(used.cache_bytes)} in the Snakemake tool cache."
+            }
+        }
+        if let Some(Err(err)) = save.value().map(|r| r.map(|_| ())) {
+            div { class: "alert alert-danger", role: "alert", "{err}" }
+        }
+        if let Some(Err(err)) = clean.value().map(|r| r.map(|_| ())) {
+            div { class: "alert alert-danger", role: "alert", "{err}" }
+        }
+        if let Some(Ok(cleaned)) = clean.value().map(|r| r.map(|c| *c.read())) {
+            div {
+                class: "alert alert-success",
+                role: "status",
+                "Removed {cleaned.images} tools and {cleaned.cache_files} cached files."
+            }
+        }
+        LimitField { id: "limit-images", label: "Most tools kept", unit: "tools", value: max_images }
+        LimitField { id: "limit-image-size", label: "Most space for tools", unit: "GiB", value: max_image_gib }
+        LimitField { id: "limit-cache-size", label: "Most space for the Snakemake tool cache", unit: "GiB", value: max_cache_gib }
+        div {
+            class: "d-flex gap-2 mb-2",
+            button {
+                class: "btn btn-primary",
+                r#type: "button",
+                onclick: move |_| save.call(),
+                "Save limits"
+            }
+            button {
+                class: "btn btn-outline-secondary",
+                r#type: "button",
+                onclick: reset,
+                "Restore recommended limits"
+            }
+            button {
+                class: "btn btn-outline-secondary",
+                r#type: "button",
+                title: "Remove the tools that exceed the saved limits now",
+                onclick: move |_| clean.call(),
+                "Clean up now"
+            }
+        }
+        p {
+            class: "form-text",
+            "Limits apply after you save them. \"Clean up now\" uses the saved limits and skips anything while a workflow is running. Restoring only fills in the recommended values, save to keep them."
+        }
+    }
+}
+
+/// One limit: a number field and a "No limit" switch.
+///
+/// # Arguments
+/// * `id` - unique element id prefix
+/// * `label` - what is limited
+/// * `unit` - shown after the number
+/// * `value` - the limit, `None` = no limit; edited in place
+#[component]
+fn LimitField(id: String, label: String, unit: String, mut value: Signal<Option<u32>>) -> Element {
+    let current = *value.read();
+    rsx! {
+        div {
+            class: "input-group mb-2",
+            label { class: "input-group-text", r#for: "{id}", "{label}" }
+            input {
+                id: "{id}",
+                r#type: "number",
+                class: "form-control",
+                min: "1",
+                disabled: current.is_none(),
+                value: current.map(|number| number.to_string()).unwrap_or_default(),
+                oninput: move |event| {
+                    // Unreadable or empty text keeps the old number; the backend check rejects 0
+                    if let Ok(number) = event.value().trim().parse::<u32>() {
+                        value.set(Some(number));
+                    }
+                },
+            }
+            span { class: "input-group-text", "{unit}" }
+            div {
+                class: "input-group-text",
+                input {
+                    class: "form-check-input mt-0 me-2",
+                    id: "{id}-none",
+                    r#type: "checkbox",
+                    checked: current.is_none(),
+                    onchange: move |event| {
+                        // 1 is the smallest valid number to start from when a limit is switched on
+                        value.set(if event.checked() { None } else { Some(1) });
+                    },
+                }
+                label { r#for: "{id}-none", "No limit" }
+            }
         }
     }
 }

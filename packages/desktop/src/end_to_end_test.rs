@@ -434,6 +434,9 @@ impl TestApp {
             .local_login(USER_NAME.into(), password.into())
             .await
             .unwrap();
+        let settings_directory = root.join("settings");
+        std::fs::create_dir_all(&settings_directory).unwrap();
+        let settings = crate::settings::Settings::load(&settings_directory, 3600).unwrap();
         let (stop, worker) = crate::start_worker(
             &database_url,
             max_log_bytes,
@@ -441,7 +444,7 @@ impl TestApp {
             worker_reference.clone(),
             macworp_backend::reference_directory::ReferenceDirectory::new(apptainer_cache.clone()),
             cwl_cache.clone(),
-            &std::env::temp_dir(),
+            &settings,
         )
         .await
         .unwrap();

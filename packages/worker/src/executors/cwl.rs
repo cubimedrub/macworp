@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use macworp_core::workflow_configuration::{engine::Engine, render::render_args, source::Source};
 use tokio::sync::{mpsc, watch};
 
-use super::containerized_execution::path_arg;
+use macworp_core::paths::PathMapping;
+
+use super::containerized_execution::{mount_arg, path_arg};
 use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
     default_engine_image, engine_image, run_spec, worker_user_args,
@@ -50,6 +52,8 @@ pub fn image() -> String {
 /// socket, like Nextflow does.
 #[derive(Debug, Clone)]
 pub struct CwlExecutor {
+    /// How paths on this machine look inside the runtime's containers
+    paths: PathMapping,
     runtime_binary: PathBuf,
     image: String,
     engine_access: Vec<String>,
@@ -65,10 +69,21 @@ impl CwlExecutor {
     pub fn new(runtime_binary: impl Into<PathBuf>, image: impl Into<String>) -> Self {
         Self {
             runtime_binary: runtime_binary.into(),
+            paths: PathMapping::Native,
             image: image.into(),
             engine_access: Vec::new(),
             runtime_kind: RuntimeKind::Docker,
         }
+    }
+
+    /// How paths on this machine look inside the runtime's containers, see [`PathMapping`]
+    /// (default: unchanged).
+    ///
+    /// # Arguments
+    /// * `paths` - The mapping of the runtime behind this executor
+    pub fn with_path_mapping(mut self, paths: PathMapping) -> Self {
+        self.paths = paths;
+        self
     }
 
     /// Tells the executor which runtime its binary belongs to (default Docker). With Podman Toil
@@ -128,7 +143,7 @@ impl CwlExecutor {
         let mut command: Vec<String> = vec![
             "toil-cwl-runner".into(),
             "--outdir".into(),
-            path_arg(&job.project_dir),
+            path_arg(self.paths, &job.project_dir),
             "--disableProgress".into(),
         ];
         if self.runtime_kind == RuntimeKind::Podman {
@@ -138,9 +153,9 @@ impl CwlExecutor {
             let work = job.project_dir.join(WORK_DIRECTORY);
             command.extend([
                 "--workDir".into(),
-                path_arg(&work),
+                path_arg(self.paths, &work),
                 "--jobStore".into(),
-                path_arg(&work.join("jobstore")),
+                path_arg(self.paths, &work.join("jobstore")),
             ]);
         }
         if !configuration
@@ -152,13 +167,14 @@ impl CwlExecutor {
         }
         if let Some(cache) = Self::cache_directory(job) {
             let temporary = path_arg(
+                self.paths,
                 &job.project_dir
                     .join(WORK_DIRECTORY)
                     .join(TEMPORARY_DIRECTORY),
             );
             command.extend([
                 "--cachedir".into(),
-                path_arg(cache),
+                path_arg(self.paths, cache),
                 "--tmp-outdir-prefix".into(),
                 format!("{temporary}/"),
                 "--tmpdir-prefix".into(),
@@ -175,18 +191,23 @@ impl CwlExecutor {
         {
             command.push("--no-prepull".into());
         }
-        command.extend(render_args(configuration, job.reference_dir.as_deref())?);
-        command.push(path_arg(&local.location().join(local.script())));
+        command.extend(render_args(
+            configuration,
+            job.reference_dir.as_deref(),
+            self.paths,
+        )?);
+        command.push(path_arg(self.paths, &local.location().join(local.script())));
         // Last step that can fail, so no scratch directory is left behind by an error
-        let parameters = ParameterFile::write(job)?;
+        let parameters = ParameterFile::write(job, self.paths)?;
         if let Some(parameters) = &parameters {
-            command.push(path_arg(parameters.file()));
+            command.push(path_arg(self.paths, parameters.file()));
             read_only.push(parameters.directory());
         }
         let mut spec = containerized_spec(
             &self.runtime_binary,
             &engine_image(&self.image, job.configuration.engine_version())?,
             job,
+            self.paths,
             &read_only,
             &self.run_args(job),
             command,
@@ -280,8 +301,7 @@ impl CwlExecutor {
         let mut args = worker_user_args();
         args.extend(self.engine_access.iter().cloned());
         if let Some(cache) = Self::cache_directory(job) {
-            let cache = path_arg(cache);
-            args.extend(["-v".into(), format!("{cache}:{cache}")]);
+            args.extend(["-v".into(), mount_arg(self.paths, cache, false)]);
         }
         args
     }
@@ -457,7 +477,7 @@ mod tests {
     }
 
     /// Outputs go to the project, work files below it, the tool comes last.
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn local_source() {
@@ -494,7 +514,7 @@ mod tests {
 
     /// The shared step cache is passed to Toil with temporary folders below the work directory
     /// and mounted read-write at its host path.
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn step_cache_is_shared() {
@@ -551,7 +571,7 @@ mod tests {
     }
 
     /// Engine parameters go before the tool, and a given job store replaces the default.
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn engine_parameters_replace_locations() {
@@ -590,7 +610,7 @@ mod tests {
     }
 
     /// Values go into a read-only mounted JSON input object after the tool.
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn parameters_are_the_input_object() {

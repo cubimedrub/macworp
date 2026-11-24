@@ -9,7 +9,7 @@ use super::{
     parameters::{Parameter, parameter::IsParameterWithValue},
 };
 use crate::{
-    paths::{is_confined, sanitize_relative, strip_reference_prefix},
+    paths::{PathMapping, is_confined, sanitize_relative, strip_reference_prefix},
     requests::ParameterValue,
 };
 
@@ -291,8 +291,32 @@ pub fn apply_values_lenient(
     skipped
 }
 
-/// The paths of a `Path` parameter as strings, `Path` values below
-/// [`crate::paths::REFERENCE_PREFIX`] rewritten onto the reference directory.
+/// A value of a `Path` parameter on its way to the command line.
+struct ResolvedPath {
+    /// The path on this machine: the value itself (relative to the project), or for a value below
+    /// the reference prefix the path inside the reference directory
+    host: std::path::PathBuf,
+    /// Whether `host` is absolute because the value pointed into the reference data
+    from_reference: bool,
+}
+
+impl ResolvedPath {
+    /// The path as the engine sees it: reference paths in the container-side form, relative
+    /// values as they are.
+    ///
+    /// # Arguments
+    /// * `mapping` - How host paths look inside the container
+    fn text(&self, mapping: PathMapping) -> String {
+        if self.from_reference {
+            mapping.container(&self.host)
+        } else {
+            self.host.display().to_string()
+        }
+    }
+}
+
+/// The values of a `Path` parameter, those below [`crate::paths::REFERENCE_PREFIX`] rewritten
+/// onto the reference directory.
 ///
 /// # Arguments
 /// * `parameter` - The parameter the paths belong to, for the error
@@ -303,19 +327,23 @@ fn resolve_paths(
     parameter: &Parameter,
     paths: &[std::path::PathBuf],
     reference_directory: Option<&Path>,
-) -> Result<Vec<String>, Error> {
-    let mut rendered = Vec::with_capacity(paths.len());
+) -> Result<Vec<ResolvedPath>, Error> {
+    let mut resolved = Vec::with_capacity(paths.len());
     for path in paths {
-        rendered.push(match strip_reference_prefix(path) {
-            Some(rest) => reference_directory
-                .ok_or_else(|| Error::ReferenceUnavailable(parameter.name().to_string()))?
-                .join(rest)
-                .display()
-                .to_string(),
-            None => path.display().to_string(),
+        resolved.push(match strip_reference_prefix(path) {
+            Some(rest) => ResolvedPath {
+                host: reference_directory
+                    .ok_or_else(|| Error::ReferenceUnavailable(parameter.name().to_string()))?
+                    .join(rest),
+                from_reference: true,
+            },
+            None => ResolvedPath {
+                host: path.clone(),
+                from_reference: false,
+            },
         });
     }
-    Ok(rendered)
+    Ok(resolved)
 }
 
 /// Renders the value of a parameter as it is passed on the command line, `None` if unset.
@@ -324,9 +352,11 @@ fn resolve_paths(
 /// * `parameter` - The parameter to render
 /// * `reference_directory` - Absolute directory of the global reference data. `Path` values below
 ///   [`crate::paths::REFERENCE_PREFIX`] are rewritten onto it; without it they are an error
+/// * `mapping` - How host paths look inside the container, applied to the reference directory
 fn value_string(
     parameter: &Parameter,
     reference_directory: Option<&Path>,
+    mapping: PathMapping,
 ) -> Result<Option<String>, Error> {
     Ok(match parameter {
         Parameter::Text(p) => p.value().cloned(),
@@ -336,7 +366,13 @@ fn value_string(
         Parameter::Float(p) => p.value().map(|v| v.to_string()),
         Parameter::Path(p) => match p.value() {
             None => None,
-            Some(paths) => Some(resolve_paths(parameter, paths, reference_directory)?.join(",")),
+            Some(paths) => Some(
+                resolve_paths(parameter, paths, reference_directory)?
+                    .iter()
+                    .map(|resolved| resolved.text(mapping))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ),
         },
         Parameter::ValueSelect(p) => p.value().map(|values| values.join(",")),
         Parameter::Group(_) => None,
@@ -436,13 +472,16 @@ fn insert_nested(
 /// * `project_directory` - Absolute project directory the relative paths are joined onto (CWL
 ///   resolves relative paths against the input file, not the working directory); `None` leaves
 ///   them relative
+/// * `mapping` - How host paths look inside the container; whether a path is a directory is
+///   decided on the host path, the object holds the container-side form
 fn cwl_value(
     parameter: &Parameter,
     reference_directory: Option<&Path>,
     project_directory: Option<&Path>,
+    mapping: PathMapping,
 ) -> Result<Option<Value>, Error> {
     let Parameter::Path(p) = parameter else {
-        return Ok(value_string(parameter, reference_directory)?
+        return Ok(value_string(parameter, reference_directory, mapping)?
             .map(|plain| configuration_value(parameter, plain)));
     };
     let Some(paths) = p.value() else {
@@ -450,17 +489,16 @@ fn cwl_value(
     };
     let mut objects: Vec<Value> = resolve_paths(parameter, paths, reference_directory)?
         .into_iter()
-        .map(|path| match project_directory {
-            Some(base) => base.join(path).display().to_string(),
-            None => path,
+        .map(|resolved| match project_directory {
+            Some(base) => {
+                let host = base.join(&resolved.host);
+                (mapping.container(&host), host)
+            }
+            None => (resolved.text(mapping), resolved.host),
         })
-        .map(|path| {
-            let class = if Path::new(&path).is_dir() {
-                "Directory"
-            } else {
-                "File"
-            };
-            serde_json::json!({ "class": class, "path": path })
+        .map(|(text, host)| {
+            let class = if host.is_dir() { "Directory" } else { "File" };
+            serde_json::json!({ "class": class, "path": text })
         })
         .collect();
     Ok(match objects.len() {
@@ -489,10 +527,12 @@ fn cwl_value(
 /// * `project_directory` - Absolute project directory, CWL paths are made absolute with it (the
 ///   other engines run in it, so their relative paths work as they are); `None` leaves them
 ///   relative, enough to check a configuration
+/// * `mapping` - How host paths look inside the container, see [`PathMapping`]
 pub fn render_parameter_file(
     config: &WorkflowConfiguration,
     reference_directory: Option<&Path>,
     project_directory: Option<&Path>,
+    mapping: PathMapping,
 ) -> Result<Option<Value>, Error> {
     if !matches!(
         config.engine(),
@@ -515,10 +555,10 @@ pub fn render_parameter_file(
             if keys.len() != 1 {
                 return Err(Error::InvalidName(p.name().to_string()));
             }
-            if let Some(value) = cwl_value(p, reference_directory, project_directory)? {
+            if let Some(value) = cwl_value(p, reference_directory, project_directory, mapping)? {
                 insert_nested(&mut root, &keys, value, p.name())?;
             }
-        } else if let Some(plain) = value_string(p, reference_directory)? {
+        } else if let Some(plain) = value_string(p, reference_directory, mapping)? {
             insert_nested(&mut root, &keys, configuration_value(p, plain), p.name())?;
         }
     }
@@ -553,9 +593,11 @@ fn container_flag(name: &str) -> String {
 /// # Arguments
 /// * `config` - The workflow configuration with the parameter values applied
 /// * `reference_directory` - Absolute directory of the global reference data, see [`value_string`]
+/// * `mapping` - How host paths look inside the container, see [`PathMapping`]
 pub fn render_args(
     config: &WorkflowConfiguration,
     reference_directory: Option<&Path>,
+    mapping: PathMapping,
 ) -> Result<Vec<String>, Error> {
     let engine_prefix = match config.engine() {
         Engine::Nextflow => "-",
@@ -566,7 +608,7 @@ pub fn render_args(
                     Engine::Container.to_string(),
                 ));
             }
-            return render_container_args(config, reference_directory);
+            return render_container_args(config, reference_directory, mapping);
         }
     };
 
@@ -582,9 +624,16 @@ pub fn render_args(
     Ok(args)
 }
 
+/// The command line arguments of a `Container` workflow, see [`render_args`].
+///
+/// # Arguments
+/// * `config` - The workflow configuration with the parameter values applied
+/// * `reference_directory` - Absolute directory of the global reference data
+/// * `mapping` - How host paths look inside the container
 fn render_container_args(
     config: &WorkflowConfiguration,
     reference_directory: Option<&Path>,
+    mapping: PathMapping,
 ) -> Result<Vec<String>, Error> {
     let mut args = Vec::new();
     for p in config
@@ -594,7 +643,7 @@ fn render_container_args(
         .filter(|p| !matches!(p, Parameter::Group(_)))
     {
         validate_name(p.name())?;
-        if let Some(v) = value_string(p, reference_directory)? {
+        if let Some(v) = value_string(p, reference_directory, mapping)? {
             args.push(container_flag(p.name()));
             args.push(v);
         }
@@ -660,11 +709,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            render_args(&c, None).unwrap(),
+            render_args(&c, None, PathMapping::Native).unwrap(),
             ["-profile", "docker", "-resume"]
         );
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap(),
+            render_parameter_file(&c, None, None, PathMapping::Native).unwrap(),
             Some(json!({
                 "mode": "fast", "threads": 4, "input": "a.fq,b.fq"
             }))
@@ -675,9 +724,13 @@ mod tests {
     fn snakemake() {
         let mut c = config(Engine::Snakemake);
         apply_values(&mut c, &[pv("threads", json!(2)), pv("name", json!("x y"))]).unwrap();
-        assert!(render_args(&c, None).unwrap().is_empty());
+        assert!(
+            render_args(&c, None, PathMapping::Native)
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap(),
+            render_parameter_file(&c, None, None, PathMapping::Native).unwrap(),
             Some(json!({"mode": "fast", "threads": 2, "name": "x y"}))
         );
     }
@@ -700,7 +753,7 @@ mod tests {
             c.dynamic_parameters_mut().push(Parameter::Text(text));
         }
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap(),
+            render_parameter_file(&c, None, None, PathMapping::Native).unwrap(),
             Some(json!({
                 "a": "line one\nline two", "b": "a: b", "c": "7",
                 "d": "say \"hi\"", "e": "[1,2]"
@@ -738,7 +791,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap(),
+            render_parameter_file(&c, None, None, PathMapping::Native).unwrap(),
             Some(json!({
                 "threads": 2,
                 "ref": {"species": "it's", "release": 100},
@@ -762,7 +815,7 @@ mod tests {
             }
             assert!(
                 matches!(
-                    render_parameter_file(&c, None, None),
+                    render_parameter_file(&c, None, None, PathMapping::Native),
                     Err(Error::InvalidName(_))
                 ),
                 "{names:?}"
@@ -799,7 +852,7 @@ mod tests {
             c.dynamic_parameters_mut().push(Parameter::Text(text));
         }
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap(),
+            render_parameter_file(&c, None, None, PathMapping::Native).unwrap(),
             Some(json!({"ref": {"v1.2": "x", "v1.3": "x"}}))
         );
     }
@@ -808,8 +861,15 @@ mod tests {
     fn unset_is_skipped() {
         let mut c = config(Engine::Snakemake);
         c.fixed_parameters_mut().clear();
-        assert!(render_args(&c, None).unwrap().is_empty());
-        assert_eq!(render_parameter_file(&c, None, None).unwrap(), None);
+        assert!(
+            render_args(&c, None, PathMapping::Native)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            render_parameter_file(&c, None, None, PathMapping::Native).unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -839,7 +899,7 @@ mod tests {
         *c.dynamic_parameters_mut()[1].name_mut() = "-x".into();
         apply_values(&mut c, &[pv("-x", json!("v"))]).unwrap();
         assert_eq!(
-            render_parameter_file(&c, None, None),
+            render_parameter_file(&c, None, None, PathMapping::Native),
             Err(Error::InvalidName("-x".into()))
         );
     }
@@ -851,7 +911,7 @@ mod tests {
         *short.value_mut() = Some("3".into());
         c.fixed_parameters_mut().push(Parameter::Text(short));
         assert_eq!(
-            render_args(&c, None).unwrap(),
+            render_args(&c, None, PathMapping::Native).unwrap(),
             ["--mode", "fast", "-n", "3"]
         );
     }
@@ -862,12 +922,12 @@ mod tests {
         c.engine_parameters_mut()
             .push(EngineParameter::new("memory".into(), "2g".into()));
         assert!(matches!(
-            render_args(&c, None),
+            render_args(&c, None, PathMapping::Native),
             Err(Error::EngineParametersUnsupported(_))
         ));
     }
 
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn cwl() {
@@ -883,9 +943,13 @@ mod tests {
             ],
         )
         .unwrap();
-        assert_eq!(render_args(&c, None).unwrap(), ["--maxCores", "2"]);
         assert_eq!(
-            render_parameter_file(&c, None, Some(Path::new("/no/such/p"))).unwrap(),
+            render_args(&c, None, PathMapping::Native).unwrap(),
+            ["--maxCores", "2"]
+        );
+        assert_eq!(
+            render_parameter_file(&c, None, Some(Path::new("/no/such/p")), PathMapping::Native)
+                .unwrap(),
             Some(json!({
                 "mode": "fast", "threads": 2, "name": "x y",
                 "input": [
@@ -905,7 +969,7 @@ mod tests {
         let name = project.file_name().unwrap().to_str().unwrap().to_string();
         let parent = project.parent().unwrap();
         apply_values(&mut c, &[pv("input", json!([name.clone()]))]).unwrap();
-        let rendered = render_parameter_file(&c, None, Some(parent))
+        let rendered = render_parameter_file(&c, None, Some(parent), PathMapping::Native)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -924,7 +988,7 @@ mod tests {
             t
         }));
         assert!(matches!(
-            render_parameter_file(&c, None, None),
+            render_parameter_file(&c, None, None, PathMapping::Native),
             Err(Error::InvalidName(_))
         ));
     }
@@ -946,7 +1010,9 @@ mod tests {
             .push(Parameter::ValueSelect(select(false)));
         apply_values(&mut c, &[pv("mode2", json!("b"))]).unwrap();
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap().unwrap()["mode2"],
+            render_parameter_file(&c, None, None, PathMapping::Native)
+                .unwrap()
+                .unwrap()["mode2"],
             json!("b")
         );
         assert!(matches!(
@@ -966,7 +1032,9 @@ mod tests {
             .push(Parameter::ValueSelect(select(true)));
         apply_values(&mut c, &[pv("mode2", json!(["a", "b"]))]).unwrap();
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap().unwrap()["mode2"],
+            render_parameter_file(&c, None, None, PathMapping::Native)
+                .unwrap()
+                .unwrap()["mode2"],
             json!("a,b")
         );
         assert_eq!(
@@ -981,7 +1049,7 @@ mod tests {
         c.dynamic_parameters_mut()
             .push(Parameter::Group(Group::new("S".into(), "".into())));
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap(),
+            render_parameter_file(&c, None, None, PathMapping::Native).unwrap(),
             Some(json!({"mode": "fast"}))
         );
     }
@@ -999,7 +1067,9 @@ mod tests {
         ));
         apply_values(&mut c, &[pv("input", json!("/a/b.fq"))]).unwrap();
         assert_eq!(
-            render_parameter_file(&c, None, None).unwrap().unwrap()["input"],
+            render_parameter_file(&c, None, None, PathMapping::Native)
+                .unwrap()
+                .unwrap()["input"],
             json!("a/b.fq")
         );
     }
@@ -1028,9 +1098,58 @@ mod tests {
         );
     }
 
+    /// On a Windows host the reference directory and the project directory reach the engine in
+    /// the container-side form of the runtime, relative values stay as they are.
+    #[test]
+    fn windows_host_paths_are_mapped_for_the_container() {
+        let mut c = config(Engine::Nextflow);
+        apply_values(
+            &mut c,
+            &[pv(
+                "input",
+                json!(["macworp_global_reference_data/hg38/a.fa", "reads/b.fq"]),
+            )],
+        )
+        .unwrap();
+        let reference = Path::new(r"C:\Data\Reference");
+        for (mapping, expected) in [
+            (
+                PathMapping::WslMount,
+                "/mnt/c/Data/Reference/hg38/a.fa,reads/b.fq",
+            ),
+            (
+                PathMapping::DriveRoot,
+                "/c/Data/Reference/hg38/a.fa,reads/b.fq",
+            ),
+        ] {
+            assert_eq!(
+                render_parameter_file(&c, Some(reference), None, mapping)
+                    .unwrap()
+                    .unwrap()["input"],
+                json!(expected)
+            );
+        }
+    }
+
+    /// CWL input objects hold container-side paths built from the project directory; a path
+    /// that does not exist on the host is a `File`.
+    #[test]
+    fn windows_host_project_paths_are_mapped_for_cwl() {
+        let mut c = config(Engine::Cwl);
+        apply_values(&mut c, &[pv("input", json!(["a.fq"]))]).unwrap();
+        let project = Path::new(r"C:\Users\Admin\p1");
+        let rendered = render_parameter_file(&c, None, Some(project), PathMapping::DriveRoot)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            rendered["input"],
+            json!({"class": "File", "path": "/c/Users/Admin/p1/a.fq"})
+        );
+    }
+
     /// Values below the reference prefix become absolute reference paths, other values are
     /// untouched, `..` still cannot escape, and a missing reference directory is an error.
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn reference_prefix_is_rewritten_at_render() {
@@ -1045,13 +1164,13 @@ mod tests {
         .unwrap();
         let reference = Path::new("/data/reference");
         assert_eq!(
-            render_parameter_file(&c, Some(reference), None)
+            render_parameter_file(&c, Some(reference), None, PathMapping::Native)
                 .unwrap()
                 .unwrap()["input"],
             json!("/data/reference/hg38/a.fa,reads/b.fq")
         );
         assert_eq!(
-            render_parameter_file(&c, None, None),
+            render_parameter_file(&c, None, None, PathMapping::Native),
             Err(Error::ReferenceUnavailable("input".into()))
         );
         assert!(matches!(

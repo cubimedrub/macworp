@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use macworp_core::workflow_configuration::{engine::Engine, render::render_args, source::Source};
 use tokio::sync::{mpsc, watch};
 
+use macworp_core::paths::PathMapping;
+
 use super::containerized_execution::path_arg;
 use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
@@ -77,6 +79,8 @@ pub fn uses_weblog_plugin(pinned: Option<&str>) -> bool {
 /// Runs Nextflow inside an engine image through the container runtime.
 #[derive(Debug, Clone)]
 pub struct NextflowExecutor {
+    /// How paths on this machine look inside the runtime's containers
+    paths: PathMapping,
     runtime_binary: PathBuf,
     image: String,
     engine_access: Vec<String>,
@@ -86,9 +90,20 @@ impl NextflowExecutor {
     pub fn new(runtime_binary: impl Into<PathBuf>, image: impl Into<String>) -> Self {
         Self {
             runtime_binary: runtime_binary.into(),
+            paths: PathMapping::Native,
             image: image.into(),
             engine_access: Vec::new(),
         }
+    }
+
+    /// How paths on this machine look inside the runtime's containers, see [`PathMapping`]
+    /// (default: unchanged).
+    ///
+    /// # Arguments
+    /// * `paths` - The mapping of the runtime behind this executor
+    pub fn with_path_mapping(mut self, paths: PathMapping) -> Self {
+        self.paths = paths;
+        self
     }
 
     /// Extra `run` arguments so the engine can start sibling containers, see
@@ -110,7 +125,7 @@ impl NextflowExecutor {
         match config.source() {
             Source::Local(local) => {
                 read_only.push(local.location().as_path());
-                command.push(path_arg(&local.location().join(local.script())));
+                command.push(path_arg(self.paths, &local.location().join(local.script())));
             }
             Source::Remote(remote) => {
                 command.push(remote.url().to_string());
@@ -146,17 +161,24 @@ impl NextflowExecutor {
                 command.extend(["-with-weblog".into(), address]);
             }
         }
-        command.extend(render_args(config, job.reference_dir.as_deref())?);
+        command.extend(render_args(
+            config,
+            job.reference_dir.as_deref(),
+            self.paths,
+        )?);
         // Last step that can fail, so no scratch directory is left behind by an error
-        let parameters = ParameterFile::write_with(job, &extra_files)?;
+        let parameters = ParameterFile::write_with(job, self.paths, &extra_files)?;
         if let Some(parameters) = &parameters {
             for name in [WEBLOG_CONFIG, DEPLOYMENT_CONFIG] {
                 if let Some(file) = parameters.extra_file(name) {
-                    command.extend(["-c".into(), path_arg(file)]);
+                    command.extend(["-c".into(), path_arg(self.paths, file)]);
                 }
             }
             if parameters.has_values() {
-                command.extend(["-params-file".into(), path_arg(parameters.file())]);
+                command.extend([
+                    "-params-file".into(),
+                    path_arg(self.paths, parameters.file()),
+                ]);
             }
             read_only.push(parameters.directory());
         }
@@ -165,6 +187,7 @@ impl NextflowExecutor {
             &self.runtime_binary,
             &engine_image(&self.image, job.configuration.engine_version())?,
             job,
+            self.paths,
             &read_only,
             &self.run_args(),
             command,
@@ -210,6 +233,7 @@ impl NextflowExecutor {
             &self.runtime_binary,
             &image,
             job,
+            self.paths,
             &read_only,
             &run_args,
             vec!["sh".into(), "-c".into(), script],
@@ -279,6 +303,39 @@ mod tests {
 
     fn executor() -> NextflowExecutor {
         NextflowExecutor::new("podman", "img:1")
+    }
+
+    /// On a Windows host the mounts take the host path as source and the runtime's view of it
+    /// as target, and everything the engine is told uses that view (identical inside and for the
+    /// sibling containers).
+    #[test]
+    fn windows_host_paths_are_mapped_per_runtime() {
+        for (mapping, project, workflow) in [
+            (PathMapping::WslMount, "/mnt/c/data/p1", "/mnt/c/w/main.nf"),
+            (PathMapping::DriveRoot, "/c/data/p1", "/c/w/main.nf"),
+        ] {
+            let mut job = job(Source::Local(LocalSource::new(
+                r"C:\w".into(),
+                "main.nf".into(),
+            )));
+            job.project_dir = r"C:\data\p1".into();
+            let spec = executor()
+                .with_path_mapping(mapping)
+                .launch_spec(&job)
+                .unwrap();
+            let args = super::super::containerized_execution::without_worker_user(spec.args);
+            assert!(args.contains(&format!(r"C:\data\p1:{project}")), "{args:?}");
+            assert!(
+                args.contains(&format!(r"C:\w:{}:ro", &workflow[..workflow.len() - 8])),
+                "{args:?}"
+            );
+            assert_eq!(
+                args[args.iter().position(|a| a == "-w").unwrap() + 1],
+                project
+            );
+            let engine = args.iter().position(|a| a == "nextflow").unwrap();
+            assert_eq!(args[engine + 2], workflow);
+        }
     }
 
     /// The dialect follows the major version: the plugin from 26 on, the option before.
@@ -465,7 +522,7 @@ mod tests {
         }
     }
 
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn local_source() {

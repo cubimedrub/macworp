@@ -41,6 +41,22 @@ impl RuntimeKind {
         }
     }
 
+    /// How host paths look inside this runtime's containers. Linux and macOS use the host path
+    /// itself; on Windows the runtime's VM sees the drives under a mount point that depends on
+    /// the runtime (podman machine and wslc `/mnt/c/...`, Docker Desktop `/c/...`, verified
+    /// 2026-11-24, see ADR 0004).
+    pub fn path_mapping(self) -> macworp_core::paths::PathMapping {
+        use macworp_core::paths::PathMapping;
+        if cfg!(windows) {
+            match self {
+                Self::Podman | Self::Wslc => PathMapping::WslMount,
+                Self::Docker => PathMapping::DriveRoot,
+            }
+        } else {
+            PathMapping::Native
+        }
+    }
+
     /// Whether workflows of `engine` can run on this runtime.
     ///
     /// Nextflow, Snakemake and CWL run inside an engine container that starts sibling

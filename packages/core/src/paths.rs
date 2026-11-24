@@ -88,6 +88,76 @@ pub fn relative_to_storage(storage: &Path, path: &Path) -> PathBuf {
         .unwrap_or_else(|_| path.to_path_buf())
 }
 
+/// How a path of the machine running the worker (the *host path*) looks inside the engine
+/// container and in the sibling containers the engine starts, which the runtime's daemon
+/// resolves. Mounts use the host path as source and this as the target, and every path handed
+/// to the engine is the target form, so the container-side path is identical wherever it is
+/// seen (the rule of ADR 0002/0004).
+///
+/// Only Windows hosts differ: the runtime runs in a Linux VM that sees the Windows drives
+/// below a mount point, and the mount point depends on the runtime (checked 2026-11-24 with
+/// the engine socket pattern: podman machine needs `/mnt/c/...`, Docker Desktop `/c/...`,
+/// the other form does not resolve for the sibling container).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PathMapping {
+    /// The host path is valid inside the container as it is (Linux, macOS)
+    #[default]
+    Native,
+    /// `C:\Users\x` becomes `/mnt/c/Users/x` (podman machine, WSL)
+    WslMount,
+    /// `C:\Users\x` becomes `/c/Users/x` (Docker Desktop)
+    DriveRoot,
+}
+
+impl PathMapping {
+    /// The container-side form of `host`, always with `/` as separator for the Windows
+    /// mappings. A drive path (`C:\a`, `C:/a`) gets the drive prefix of the mapping, a path
+    /// without a drive (relative, or already POSIX) only has its separators normalised, and a
+    /// UNC path (`\\server\share`) cannot be mounted by any of the runtimes and comes out as
+    /// `//server/share/...`, which then fails when the run starts. [`Self::Native`] returns the
+    /// path as it is.
+    ///
+    /// # Arguments
+    /// * `host` - A path on the machine running the worker
+    pub fn container(self, host: &Path) -> String {
+        let text = host.to_string_lossy();
+        match self {
+            Self::Native => text.into_owned(),
+            Self::WslMount => Self::map_windows(&text, "/mnt"),
+            Self::DriveRoot => Self::map_windows(&text, ""),
+        }
+    }
+
+    /// The part of [`Self::container`] that does not depend on the platform: maps a Windows path
+    /// given as text. `root` is what goes before the lower-case drive letter.
+    ///
+    /// # Arguments
+    /// * `host` - Path text, `\` or `/` separated
+    /// * `root` - `/mnt` or empty
+    fn map_windows(host: &str, root: &str) -> String {
+        let normalised = host.replace('\\', "/");
+        // `std::fs::canonicalize` on Windows returns `\\?\C:\...` (verbatim form)
+        let normalised = normalised
+            .strip_prefix("//?/")
+            .map_or(normalised.as_str(), |rest| rest)
+            .to_string();
+        let mut chars = normalised.chars();
+        match (chars.next(), chars.next()) {
+            (Some(drive), Some(':')) if drive.is_ascii_alphabetic() => {
+                let rest = &normalised[2..];
+                let rest = if rest.is_empty() || rest.starts_with('/') {
+                    rest.to_string()
+                } else {
+                    // `C:file` is relative to the drive's current folder, which has no meaning here
+                    format!("/{rest}")
+                };
+                format!("{root}/{}{rest}", drive.to_ascii_lowercase())
+            }
+            _ => normalised,
+        }
+    }
+}
+
 /// Whether `path` is free of components that could point out of the project: `..` and
 /// drive prefixes. A leading `/` is tolerated, [`sanitize_relative`] strips it.
 pub fn is_confined(path: &Path) -> bool {
@@ -146,7 +216,7 @@ mod tests {
 
     /// Relative paths are resolved below the storage (and cannot leave it), absolute ones are
     /// kept; `relative_to_storage` strips the root and leaves outside paths alone.
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn storage_paths_round_trip() {
@@ -171,6 +241,48 @@ mod tests {
         assert_eq!(
             relative_to_storage(backend, Path::new("/data/elsewhere")),
             PathBuf::from("/data/elsewhere")
+        );
+    }
+
+    /// Drive paths map per runtime, with either separator and any drive letter case.
+    #[test]
+    fn windows_drive_paths_map_to_the_runtime_view() {
+        let host = Path::new(r"C:\Users\Admin\hp");
+        assert_eq!(
+            PathMapping::WslMount.container(host),
+            "/mnt/c/Users/Admin/hp"
+        );
+        assert_eq!(PathMapping::DriveRoot.container(host), "/c/Users/Admin/hp");
+        let slashes = Path::new("D:/data/p 1");
+        assert_eq!(PathMapping::WslMount.container(slashes), "/mnt/d/data/p 1");
+        assert_eq!(PathMapping::DriveRoot.container(slashes), "/d/data/p 1");
+        assert_eq!(PathMapping::DriveRoot.container(Path::new("C:\\")), "/c/");
+        assert_eq!(PathMapping::DriveRoot.container(Path::new("C:")), "/c");
+        // The verbatim form `canonicalize` returns on Windows
+        assert_eq!(
+            PathMapping::WslMount.container(Path::new(r"\\?\C:\Users\a")),
+            "/mnt/c/Users/a"
+        );
+    }
+
+    /// Without a drive only the separators change, `Native` changes nothing.
+    #[test]
+    fn paths_without_a_drive_are_only_normalised() {
+        assert_eq!(
+            PathMapping::WslMount.container(Path::new("/data/ref")),
+            "/data/ref"
+        );
+        assert_eq!(
+            PathMapping::DriveRoot.container(Path::new(r"reads\a.fq")),
+            "reads/a.fq"
+        );
+        assert_eq!(
+            PathMapping::DriveRoot.container(Path::new(r"\\server\share\x")),
+            "//server/share/x"
+        );
+        assert_eq!(
+            PathMapping::Native.container(Path::new("/data/p1")),
+            "/data/p1"
         );
     }
 }

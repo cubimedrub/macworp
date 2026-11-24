@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use macworp_core::paths::PathMapping;
 use macworp_core::workflow_configuration::{engine::Engine, render::render_args, source::Source};
 use tokio::sync::{mpsc, watch};
 
@@ -15,6 +16,8 @@ use crate::container_runtime::BoxFuture;
 /// single character names), engine parameters are rejected.
 #[derive(Debug, Clone)]
 pub struct ContainerExecutor {
+    /// How paths on this machine look inside the runtime's containers
+    paths: PathMapping,
     runtime_binary: PathBuf,
 }
 
@@ -22,7 +25,18 @@ impl ContainerExecutor {
     pub fn new(runtime_binary: impl Into<PathBuf>) -> Self {
         Self {
             runtime_binary: runtime_binary.into(),
+            paths: PathMapping::Native,
         }
+    }
+
+    /// How paths on this machine look inside the runtime's containers, see [`PathMapping`]
+    /// (default: unchanged).
+    ///
+    /// # Arguments
+    /// * `paths` - The mapping of the runtime behind this executor
+    pub fn with_path_mapping(mut self, paths: PathMapping) -> Self {
+        self.paths = paths;
+        self
     }
 
     /// The `<runtime> run ...` command for the job, see [`containerized_spec`].
@@ -35,9 +49,10 @@ impl ContainerExecutor {
                     &self.runtime_binary,
                     image.image(),
                     job,
+                    self.paths,
                     &read_only,
                     &[],
-                    render_args(&job.configuration, job.reference_dir.as_deref())?,
+                    render_args(&job.configuration, job.reference_dir.as_deref(), self.paths)?,
                 ))
             }
             other => Err(ExecutorError::UnsupportedSource(format!("{other:?}"))),

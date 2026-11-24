@@ -346,8 +346,17 @@ impl RunsController {
         }
         // Fail now instead of in the worker
         let reference_directory = state.reference_directory().get();
-        render_args(&configuration, Some(&reference_directory))?;
-        render_parameter_file(&configuration, Some(&reference_directory), None)?;
+        render_args(
+            &configuration,
+            Some(&reference_directory),
+            macworp_core::paths::PathMapping::Native,
+        )?;
+        render_parameter_file(
+            &configuration,
+            Some(&reference_directory),
+            None,
+            macworp_core::paths::PathMapping::Native,
+        )?;
 
         let parameters: serde_json::Map<String, serde_json::Value> = payload
             .parameters

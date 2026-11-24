@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use macworp_core::workflow_configuration::render::render_parameter_file;
+use macworp_core::{paths::PathMapping, workflow_configuration::render::render_parameter_file};
 
 use super::{ExecutorError, Job};
 
@@ -27,8 +27,9 @@ impl ParameterFile {
     ///
     /// # Arguments
     /// * `job` - the job whose parameters are written
-    pub fn write(job: &Job) -> Result<Option<Self>, ExecutorError> {
-        Self::write_with(job, &[])
+    /// * `mapping` - how host paths look inside the runtime's containers
+    pub fn write(job: &Job, mapping: PathMapping) -> Result<Option<Self>, ExecutorError> {
+        Self::write_with(job, mapping, &[])
     }
 
     /// Like [`Self::write`], with further small files in the same scratch directory (for
@@ -38,15 +39,18 @@ impl ParameterFile {
     ///
     /// # Arguments
     /// * `job` - the job whose parameters are written
+    /// * `mapping` - how host paths look inside the runtime's containers
     /// * `extra_files` - `(file name, content)` pairs, the names are plain file names
     pub fn write_with(
         job: &Job,
+        mapping: PathMapping,
         extra_files: &[(&str, String)],
     ) -> Result<Option<Self>, ExecutorError> {
         let values = render_parameter_file(
             &job.configuration,
             job.reference_dir.as_deref(),
             Some(&job.project_dir),
+            mapping,
         )?;
         if values.is_none() && extra_files.is_empty() {
             return Ok(None);

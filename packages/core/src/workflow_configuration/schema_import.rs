@@ -735,7 +735,10 @@ mod tests {
             value,
         });
         apply_values(&mut config, &values).unwrap();
-        let rendered = render_parameter_file(&config, None, None).unwrap().unwrap();
+        let rendered =
+            render_parameter_file(&config, None, None, crate::paths::PathMapping::Native)
+                .unwrap()
+                .unwrap();
         assert_eq!(rendered["input"], json!("sheet.csv"));
         assert_eq!(rendered["threads"], json!(8));
     }
@@ -891,7 +894,10 @@ required: [genome]
             }
         });
         apply_values(&mut config, &values).unwrap();
-        let rendered = render_parameter_file(&config, None, None).unwrap().unwrap();
+        let rendered =
+            render_parameter_file(&config, None, None, crate::paths::PathMapping::Native)
+                .unwrap()
+                .unwrap();
         assert_eq!(rendered["genome"], json!("GRCh37"));
         assert_eq!(rendered["threads"], json!(8));
     }
@@ -1007,7 +1013,7 @@ $graph:
     }
 
     /// Imported CWL parameters render into the input object.
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn cwl_parameters_render() {
@@ -1025,9 +1031,14 @@ $graph:
             value,
         });
         apply_values(&mut config, &values).unwrap();
-        let rendered = render_parameter_file(&config, None, Some(std::path::Path::new("/p")))
-            .unwrap()
-            .unwrap();
+        let rendered = render_parameter_file(
+            &config,
+            None,
+            Some(std::path::Path::new("/p")),
+            crate::paths::PathMapping::Native,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(
             rendered["reads"],
             json!({"class": "File", "path": "/p/a.fq"})

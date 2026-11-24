@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use macworp_core::workflow_configuration::{engine::Engine, render::render_args, source::Source};
 use tokio::sync::{mpsc, watch};
 
-use super::containerized_execution::path_arg;
+use macworp_core::paths::PathMapping;
+
+use super::containerized_execution::{mount_arg, path_arg};
 use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
     default_engine_image, engine_image, run_spec, worker_user_args,
@@ -118,6 +120,8 @@ impl Generation {
 /// Runs Snakemake inside an engine image through the container runtime.
 #[derive(Debug, Clone)]
 pub struct SnakemakeExecutor {
+    /// How paths on this machine look inside the runtime's containers
+    paths: PathMapping,
     runtime_binary: PathBuf,
     image: String,
     /// The runtime behind `runtime_binary`, decides the `run` options
@@ -130,10 +134,21 @@ impl SnakemakeExecutor {
     pub fn new(runtime_binary: impl Into<PathBuf>, image: impl Into<String>) -> Self {
         Self {
             runtime_binary: runtime_binary.into(),
+            paths: PathMapping::Native,
             image: image.into(),
             runtime_kind: RuntimeKind::Docker,
             apparmor_profile: None,
         }
+    }
+
+    /// How paths on this machine look inside the runtime's containers, see [`PathMapping`]
+    /// (default: unchanged).
+    ///
+    /// # Arguments
+    /// * `paths` - The mapping of the runtime behind this executor
+    pub fn with_path_mapping(mut self, paths: PathMapping) -> Self {
+        self.paths = paths;
+        self
     }
 
     /// Runs the engine container under an AppArmor profile (Docker only, Podman ignores it).
@@ -174,7 +189,7 @@ impl SnakemakeExecutor {
             Source::NfCore(_) => return Err(ExecutorError::UnsupportedSource("nf-core".into())),
             Source::Image(_) => return Err(ExecutorError::UnsupportedSource("image".into())),
         }
-        let parameters = ParameterFile::write(job)?;
+        let parameters = ParameterFile::write(job, self.paths)?;
         match self.launch_spec_with(job, parameters.as_ref()) {
             Ok(mut spec) => {
                 spec.scratch_directory = parameters.map(|file| file.directory().to_path_buf());
@@ -208,14 +223,14 @@ impl SnakemakeExecutor {
         let mut command: Vec<String> = vec![
             "snakemake".into(),
             "--directory".into(),
-            path_arg(&job.project_dir),
+            path_arg(self.paths, &job.project_dir),
         ];
         match config.source() {
             Source::Local(local) => {
                 read_only.push(local.location().as_path());
                 command.extend([
                     "--snakefile".into(),
-                    path_arg(&local.location().join(local.script())),
+                    path_arg(self.paths, &local.location().join(local.script())),
                 ]);
             }
             // Snakemake cannot run a repository by URL, the worker would have to clone it first
@@ -228,7 +243,10 @@ impl SnakemakeExecutor {
             Source::Image(_) => return Err(ExecutorError::UnsupportedSource("image".into())),
         }
         if let Some(parameters) = parameters {
-            command.extend(["--configfile".into(), path_arg(parameters.file())]);
+            command.extend([
+                "--configfile".into(),
+                path_arg(self.paths, parameters.file()),
+            ]);
         }
         if !config
             .engine_parameters()
@@ -253,14 +271,14 @@ impl SnakemakeExecutor {
                 Generation::V8 | Generation::V9 => ("--apptainer-prefix", "--apptainer-args"),
             };
             if let Some(cache) = self.cache_directory(job) {
-                command.extend([prefix_option.into(), path_arg(cache)]);
+                command.extend([prefix_option.into(), path_arg(self.paths, cache)]);
             }
             // Apptainer binds the working directory, home and /tmp on its own, the rest of the
             // read-only inputs (workflow files, reference data) it only sees when asked
             if !read_only.is_empty() {
                 let binds: Vec<String> = read_only
                     .iter()
-                    .map(|dir| format!("-B {0}:{0}:ro", path_arg(dir)))
+                    .map(|dir| format!("-B {0}:{0}:ro", path_arg(self.paths, dir)))
                     .collect();
                 command.extend([arguments_option.into(), binds.join(" ")]);
             }
@@ -279,12 +297,17 @@ impl SnakemakeExecutor {
                 ]),
             }
         }
-        command.extend(render_args(config, job.reference_dir.as_deref())?);
+        command.extend(render_args(
+            config,
+            job.reference_dir.as_deref(),
+            self.paths,
+        )?);
 
         Ok(containerized_spec(
             &self.runtime_binary,
             &engine_image(&self.image, job.configuration.engine_version())?,
             job,
+            self.paths,
             &read_only,
             &self.run_args(job),
             command,
@@ -330,8 +353,7 @@ impl SnakemakeExecutor {
         }
         args.extend(worker_user_args());
         if let Some(cache) = self.cache_directory(job) {
-            let cache = path_arg(cache);
-            args.extend(["-v".into(), format!("{cache}:{cache}")]);
+            args.extend(["-v".into(), mount_arg(self.paths, cache, false)]);
         }
         args
     }
@@ -566,7 +588,7 @@ mod tests {
         );
     }
 
-    // POSIX paths: the worker builds container arguments for Linux and runs there (inside WSL on Windows).
+    // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).
     #[cfg(unix)]
     #[test]
     fn local_source_defaults_to_all_cores() {

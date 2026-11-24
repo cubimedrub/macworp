@@ -80,21 +80,26 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
                 runtime.kind()
             );
         }
+        let mapping = runtime.kind().path_mapping();
         let inner: Arc<dyn Executor> = match engine {
             Engine::Nextflow => Arc::new(
-                NextflowExecutor::new(&binary, nextflow::image()).with_engine_access(engine_access),
+                NextflowExecutor::new(&binary, nextflow::image())
+                    .with_path_mapping(mapping)
+                    .with_engine_access(engine_access),
             ),
             Engine::Cwl => Arc::new(
                 CwlExecutor::new(&binary, cwl::image())
+                    .with_path_mapping(mapping)
                     .with_runtime_kind(runtime.kind())
                     .with_engine_access(engine_access),
             ),
             Engine::Snakemake => Arc::new(
                 SnakemakeExecutor::new(&binary, snakemake::image())
+                    .with_path_mapping(mapping)
                     .with_runtime_kind(runtime.kind())
                     .with_apparmor_profile(snakemake::apparmor_profile()),
             ),
-            _ => Arc::new(ContainerExecutor::new(&binary)),
+            _ => Arc::new(ContainerExecutor::new(&binary).with_path_mapping(mapping)),
         };
         executors.push(Arc::new(OnRuntime {
             inner,

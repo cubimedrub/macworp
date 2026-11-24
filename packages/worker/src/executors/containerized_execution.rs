@@ -1,13 +1,40 @@
 use std::path::{Path, PathBuf};
 
-use macworp_core::entities::FailureReason;
+use macworp_core::{entities::FailureReason, paths::PathMapping};
 use rand::{RngExt, distr::Alphanumeric};
 use tokio::sync::{mpsc, watch};
 
 use super::{ExecutorError, Job, LaunchSpec, LogLine, Outcome, run_process};
 
-pub(super) fn path_arg(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
+/// `path` (a path on this machine) as the container sees it, see [`PathMapping`]. Every path
+/// that is part of a command inside a container goes through this.
+///
+/// # Arguments
+/// * `mapping` - How host paths look inside the runtime's containers
+/// * `path` - A path on this machine
+pub(super) fn path_arg(mapping: PathMapping, path: &Path) -> String {
+    mapping.container(path)
+}
+
+/// Value of a `-v` option that mounts the host directory `path` at its container-side path (the
+/// same path inside and outside, as far as [`PathMapping`] allows), so mounts the engine
+/// creates itself resolve on the runtime's side. The source stays the host form because the
+/// runtime's client reads it.
+///
+/// # Arguments
+/// * `mapping` - How host paths look inside the runtime's containers
+/// * `path` - Directory on this machine
+/// * `read_only` - Add `:ro`
+pub(super) fn mount_arg(mapping: PathMapping, path: &Path, read_only: bool) -> String {
+    let source = path.to_string_lossy();
+    // The runtime's client does not read the verbatim form `canonicalize` gives on Windows
+    let source = source.strip_prefix(r"\\?\").unwrap_or(&source);
+    let target = mapping.container(path);
+    if read_only {
+        format!("{source}:{target}:ro")
+    } else {
+        format!("{source}:{target}")
+    }
 }
 
 /// Registry (and namespace) the prebuilt engine images are pulled from unless
@@ -128,13 +155,24 @@ pub fn selinux_args(enforcing: bool) -> Vec<String> {
 /// `<runtime> run --rm --name macworp-run-<id>-<random> -v <project>:<project> -w <project> [-v <dir>:<dir>:ro]... <image> <command>`
 ///
 /// The project directory is mounted read-write and every `read_only` directory read-only, all at
-/// their host path so mounts the engine creates itself resolve on the host. `engine_access` are
+/// their container-side path ([`PathMapping`], the host path itself where the runtime runs on
+/// the host) so mounts the engine creates itself resolve on the runtime's side. `engine_access` are
 /// extra `run` arguments for sibling-container access ([`crate::container_runtime::RuntimeInfo::engine_access_args`]).
 /// Hardening is not part of it yet, that is P6.
+///
+/// # Arguments
+/// * `runtime_binary` - The runtime's command line client
+/// * `image` - Image to run
+/// * `job` - The job, whose project directory is mounted and used as working directory
+/// * `mapping` - How host paths look inside the runtime's containers
+/// * `read_only` - Further host directories to mount read-only
+/// * `engine_access` - Extra `run` arguments (user, runtime socket)
+/// * `command` - Command and arguments inside the container, paths already in container form
 pub fn containerized_spec(
     runtime_binary: &Path,
     image: &str,
     job: &Job,
+    mapping: PathMapping,
     read_only: &[&Path],
     engine_access: &[String],
     command: Vec<String>,
@@ -147,7 +185,6 @@ pub fn containerized_spec(
         .map(char::from)
         .collect();
     let container_name = format!("macworp-run-{}-{suffix}", job.run_id);
-    let project_dir = path_arg(&job.project_dir);
 
     let mut args: Vec<String> = vec![
         "run".into(),
@@ -155,13 +192,12 @@ pub fn containerized_spec(
         "--name".into(),
         container_name.clone(),
         "-v".into(),
-        format!("{project_dir}:{project_dir}"),
+        mount_arg(mapping, &job.project_dir, false),
         "-w".into(),
-        project_dir,
+        path_arg(mapping, &job.project_dir),
     ];
     for dir in read_only {
-        let dir = path_arg(dir);
-        args.extend(["-v".into(), format!("{dir}:{dir}:ro")]);
+        args.extend(["-v".into(), mount_arg(mapping, dir, true)]);
     }
     args.extend(selinux_args(selinux_enforcing()));
     args.extend(engine_access.iter().cloned());

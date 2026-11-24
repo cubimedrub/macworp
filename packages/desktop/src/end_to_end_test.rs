@@ -373,7 +373,14 @@ impl TestApp {
         .unwrap();
 
         let password = "end-to-end-password";
-        let database_url = format!("sqlite://{}", root.join("db.sqlite").display());
+        // The URL cannot hold the `\\?\` form `canonicalize` gives on Windows
+        let database_url = format!(
+            "sqlite://{}",
+            root.join("db.sqlite")
+                .display()
+                .to_string()
+                .trim_start_matches(r"\\?\")
+        );
         let mut backend_config = macworp_backend::configuration::Configuration::default();
         let max_log_bytes = backend_config.max_log_bytes_per_run();
         *backend_config.allow_local_paths_mut() = true;
@@ -422,7 +429,9 @@ impl TestApp {
         let client = Client::new(base_url, 20);
         let started = Instant::now();
         while client.utilities().healthcheck().await.is_err() {
-            assert!(!backend.is_finished(), "backend stopped during startup");
+            if backend.is_finished() {
+                panic!("backend stopped during startup: {:?}", backend.await);
+            }
             assert!(
                 started.elapsed() < Duration::from_secs(30),
                 "backend did not come up"

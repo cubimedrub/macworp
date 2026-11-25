@@ -203,6 +203,25 @@ pub struct Machine {
 }
 
 impl Machine {
+    /// The podman machines of this computer (running first), empty if podman cannot list them.
+    pub async fn list() -> Vec<Machine> {
+        match SystemCommands
+            .run(
+                "podman",
+                &[
+                    "machine".into(),
+                    "list".into(),
+                    "--format".into(),
+                    "json".into(),
+                ],
+            )
+            .await
+        {
+            Ok(listed) => Self::parse_list(&listed),
+            Err(_) => Vec::new(),
+        }
+    }
+
     /// Parses the output of `podman machine list --format json`: the running machine first,
     /// otherwise the default one.
     ///
@@ -313,19 +332,7 @@ impl MemoryAdjustment {
     /// * `kind` - the runtime
     pub async fn detect(kind: super::RuntimeKind) -> Option<Self> {
         let machines = if kind == super::RuntimeKind::Podman {
-            let listed = SystemCommands
-                .run(
-                    "podman",
-                    &[
-                        "machine".into(),
-                        "list".into(),
-                        "--format".into(),
-                        "json".into(),
-                    ],
-                )
-                .await
-                .ok()?;
-            Machine::parse_list(&listed)
+            Machine::list().await
         } else {
             Vec::new()
         };

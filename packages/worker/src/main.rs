@@ -53,6 +53,9 @@ async fn main() -> std::process::ExitCode {
     let mut report = container_runtime::doctor(cli.configuration.container_runtime).await;
     if let Ok(storage) = cli.remote.storage_path() {
         report.check_label_of(&storage);
+        report
+            .check_shared_folders(&[("storage".to_string(), storage.clone())])
+            .await;
     }
 
     match cli.command.unwrap_or(Command::Run) {

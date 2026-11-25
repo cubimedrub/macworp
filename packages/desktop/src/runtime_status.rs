@@ -119,6 +119,10 @@ pub async fn status_of(report: &DoctorReport) -> RuntimeStatus {
     status
 }
 
+/// What MAcWorP keeps on disk and the container VM must see: name for messages and path. Asked
+/// again at every check, the user can move the folders in the settings.
+pub type Folders = Arc<dyn Fn() -> Vec<(String, std::path::PathBuf)> + Send + Sync>;
+
 /// The container runtime of this computer, served by the backend under `/runtime`. Keeps the
 /// status of the last check; the UI never runs the doctor itself.
 pub struct DesktopRuntime {
@@ -127,6 +131,8 @@ pub struct DesktopRuntime {
     /// The usable runtimes, `None` while none answers. The embedded worker waits on it: when a
     /// runtime appears (the user started the engine) it starts working.
     runtimes: watch::Sender<Option<Vec<Arc<dyn ContainerRuntime>>>>,
+    /// The folders the VM must see
+    folders: Folders,
 }
 
 impl DesktopRuntime {
@@ -135,20 +141,23 @@ impl DesktopRuntime {
     /// # Arguments
     /// * `status` - the status to serve until the next check
     /// * `runtimes` - publishes the usable runtimes to the embedded worker
+    /// * `folders` - the folders the VM must see, checked with every check
     pub fn new(
         status: RuntimeStatus,
         runtimes: watch::Sender<Option<Vec<Arc<dyn ContainerRuntime>>>>,
+        folders: Folders,
     ) -> Self {
         Self {
             status: std::sync::Mutex::new(status),
             runtimes,
+            folders,
         }
     }
 
     /// Checks the runtime, keeps the result as the latest status and hands newly usable
     /// runtimes to the embedded worker.
     async fn checked(&self) -> RuntimeStatus {
-        let (status, runtimes) = check().await;
+        let (status, runtimes) = check(&self.folders).await;
         if runtimes.is_some() {
             // Only the first appearance matters: a worker that runs keeps its runtimes
             self.runtimes.send_if_modified(|current| {
@@ -228,10 +237,14 @@ impl RuntimeControl for DesktopRuntime {
 
 /// Runs the doctor check again, with the same runtime preference as at startup.
 ///
+/// # Arguments
+/// * `folders` - the folders the VM must see
+///
 /// # Returns
 /// The status for the UI and the usable runtimes, `None` if there is none.
-pub async fn check() -> (RuntimeStatus, Option<Vec<Arc<dyn ContainerRuntime>>>) {
-    let report = doctor(preference()).await;
+pub async fn check(folders: &Folders) -> (RuntimeStatus, Option<Vec<Arc<dyn ContainerRuntime>>>) {
+    let mut report = doctor(preference()).await;
+    report.check_shared_folders(&folders()).await;
     if report.is_ok() {
         tracing::info!("Container runtime:\n{report}");
     } else {
@@ -244,7 +257,7 @@ pub async fn check() -> (RuntimeStatus, Option<Vec<Arc<dyn ContainerRuntime>>>) 
 /// [`check`] for callers that only need the status.
 #[cfg(test)]
 pub async fn check_runtime() -> RuntimeStatus {
-    check().await.0
+    check(&(Arc::new(Vec::new) as Folders)).await.0
 }
 
 fn from_parts(
@@ -370,8 +383,9 @@ mod tests {
             .expect("set MACWORP_ADJUST_MEBIBYTES")
             .parse()
             .unwrap();
-        let (status, runtimes) = super::check().await;
-        let runtime = DesktopRuntime::new(status, watch::channel(runtimes).0);
+        let folders: Folders = Arc::new(Vec::new);
+        let (status, runtimes) = super::check(&folders).await;
+        let runtime = DesktopRuntime::new(status, watch::channel(runtimes).0, folders);
         let status = runtime.adjust_memory(mebibytes).await.unwrap();
         println!("{:?}", status.memory_fix);
     }
@@ -381,10 +395,11 @@ mod tests {
     #[tokio::test]
     #[ignore = "starts the container engine"]
     async fn start_button_starts_the_real_engine() {
-        let (status, runtimes) = super::check().await;
+        let folders: Folders = Arc::new(Vec::new);
+        let (status, runtimes) = super::check(&folders).await;
         println!("before: ok={} offer={:?}", status.ok, status.start_offer);
         let (sender, mut receiver) = watch::channel(runtimes);
-        let runtime = DesktopRuntime::new(status, sender);
+        let runtime = DesktopRuntime::new(status, sender, folders);
         let after = runtime.start().await.unwrap();
         println!("after: ok={} offer={:?}", after.ok, after.start_offer);
         assert!(after.ok);

@@ -409,6 +409,7 @@ impl TestApp {
             std::sync::Arc::new(crate::runtime_status::DesktopRuntime::new(
                 crate::runtime_status::check_runtime().await,
                 tokio::sync::watch::channel(None).0,
+                std::sync::Arc::new(Vec::new),
             ));
         let backend = tokio::spawn(async move {
             Backend::<LocalFilesystem>::start(

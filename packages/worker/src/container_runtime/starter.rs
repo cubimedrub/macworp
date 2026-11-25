@@ -65,21 +65,7 @@ impl EngineStart {
             return None;
         }
         let machines = if kinds.contains(&RuntimeKind::Podman) {
-            match SystemCommands
-                .run(
-                    "podman",
-                    &[
-                        "machine".into(),
-                        "list".into(),
-                        "--format".into(),
-                        "json".into(),
-                    ],
-                )
-                .await
-            {
-                Ok(listed) => Machine::parse_list(&listed),
-                Err(_) => Vec::new(),
-            }
+            Machine::list().await
         } else {
             Vec::new()
         };

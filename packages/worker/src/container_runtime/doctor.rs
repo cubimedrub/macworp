@@ -13,6 +13,7 @@ use crate::{
 use super::runtime::{
     CliRuntime, ContainerRuntime, Error as RuntimeError, RuntimeInfo, RuntimeKind,
 };
+use super::sharing::SharedFolders;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub enum RuntimePreference {
@@ -95,6 +96,62 @@ impl DoctorReport {
         let current = label.current();
         let check = self.label_check(crate::executors::selinux_enforcing(), directory, current);
         self.checks.extend(check);
+    }
+
+    /// Adds the `shared-folders` check: on macOS the containers run in a VM that sees only some
+    /// folders, a folder of MAcWorP outside them fails at the first run with a confusing mount
+    /// error. Nothing is added where the VM sees everything or no usable runtime reports
+    /// its shared folders.
+    ///
+    /// # Arguments
+    /// * `folders` - what MAcWorP keeps on disk, name for the message and path
+    pub async fn check_shared_folders(&mut self, folders: &[(String, std::path::PathBuf)]) {
+        let Some(usable) = self.runtimes.first() else {
+            return;
+        };
+        let Some(home) = directories::UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf())
+        else {
+            return;
+        };
+        let Some(shared) = SharedFolders::detect(&usable.info, &home).await else {
+            return;
+        };
+        let check = Self::shared_folders_check(&shared, folders);
+        self.checks.push(check);
+    }
+
+    /// The `shared-folders` check for known shared folders.
+    ///
+    /// # Arguments
+    /// * `shared` - what the VM sees
+    /// * `folders` - what MAcWorP keeps on disk, name for the message and path
+    fn shared_folders_check(
+        shared: &SharedFolders,
+        folders: &[(String, std::path::PathBuf)],
+    ) -> Check {
+        let name = "shared-folders".to_string();
+        let missing: Vec<String> = folders
+            .iter()
+            .filter(|(_, path)| !shared.covers(path))
+            .map(|(label, path)| format!("{label} (`{}`)", path.display()))
+            .collect();
+        if missing.is_empty() {
+            return Check {
+                name,
+                status: CheckStatus::Ok,
+                message: format!("{} shares the folders MAcWorP uses", shared.owner()),
+            };
+        }
+        Check {
+            name,
+            status: CheckStatus::Warn,
+            message: format!(
+                "{} does not share {}: runs that need those folders fail to start. To fix it, {}",
+                shared.owner(),
+                missing.join(", "),
+                shared.fix()
+            ),
+        }
     }
 
     /// The `selinux-labels` check, see [`Self::check_label_of`].
@@ -1165,5 +1222,27 @@ mod tests {
             assert_eq!(check.status, CheckStatus::Ok);
         }
         assert!(socket_check(&socket_info(RuntimeKind::Wslc, None, None)).is_none());
+    }
+
+    /// The shared-folders check names the folders the VM does not see, with the fix.
+    #[test]
+    fn shared_folders_check_names_missing_folders() {
+        let shared =
+            SharedFolders::from_docker_desktop(r#"{"FilesharingDirectories":["/shared"]}"#)
+                .unwrap();
+        let folder = |label: &str, path: &str| (label.to_string(), std::path::PathBuf::from(path));
+        let ok = DoctorReport::shared_folders_check(&shared, &[folder("projects", "/shared/p")]);
+        assert_eq!(ok.status, CheckStatus::Ok);
+        let warn = DoctorReport::shared_folders_check(
+            &shared,
+            &[
+                folder("projects", "/shared/p"),
+                folder("reference data", "/opt/ref"),
+            ],
+        );
+        assert_eq!(warn.status, CheckStatus::Warn);
+        assert!(warn.message.contains("reference data (`/opt/ref`)"));
+        assert!(!warn.message.contains("projects"));
+        assert!(warn.message.contains("File sharing"));
     }
 }

@@ -19,7 +19,7 @@ use tokio::{
 
 use crate::{
     apptainer_cache_store::ApptainerCacheStore,
-    container_runtime::RuntimeKind,
+    container_runtime::{RuntimeKind, SharedFolders},
     executors::{Executor, Job, LogLine, Outcome},
     image_builder::{ImageBuilder, ImageHold},
     image_store::ImageStore,
@@ -84,6 +84,10 @@ pub struct Worker {
     image_stores: Vec<Arc<ImageStore>>,
     /// Trims the Apptainer image cache of Snakemake after runs
     apptainer_cache_store: Option<Arc<ApptainerCacheStore>>,
+    /// The folders the container VM sees (macOS); a run whose folders are outside fails to
+    /// start with a clear message instead of an engine mount error. `None` where the VM sees
+    /// everything.
+    shared_folders: Option<Arc<SharedFolders>>,
 }
 
 impl Worker {
@@ -100,6 +104,7 @@ impl Worker {
             image_builders: Vec::new(),
             image_stores: Vec::new(),
             apptainer_cache_store: None,
+            shared_folders: None,
         }
     }
 
@@ -129,6 +134,15 @@ impl Worker {
     /// * `store` - shared by all slots
     pub fn with_apptainer_cache_store(mut self, store: Arc<ApptainerCacheStore>) -> Self {
         self.apptainer_cache_store = Some(store);
+        self
+    }
+
+    /// Lets the worker refuse runs whose folders the container VM cannot see.
+    ///
+    /// # Arguments
+    /// * `shared_folders` - what the VM of the runtime shares, see [`SharedFolders::detect`]
+    pub fn with_shared_folders(mut self, shared_folders: Option<Arc<SharedFolders>>) -> Self {
+        self.shared_folders = shared_folders;
         self
     }
 
@@ -198,6 +212,10 @@ impl Worker {
                 reason: Some(FailureReason::StartFailed),
             };
         };
+
+        if let Some(outcome) = self.unshared_folders_outcome(&job) {
+            return outcome;
+        }
 
         // Registered for the whole run: the token stops working when this is dropped
         let mut registered = self.progress.as_ref().and_then(|receiver| {
@@ -335,6 +353,39 @@ impl Worker {
 }
 
 impl Worker {
+    /// How the run ends when a folder it needs is outside what the container VM shares, `None`
+    /// when all are visible (or the VM sees everything).
+    ///
+    /// # Arguments
+    /// * `job` - the claimed run
+    fn unshared_folders_outcome(&self, job: &Job) -> Option<Outcome> {
+        let shared = self.shared_folders.as_ref()?;
+        let folders = [
+            Some(&job.project_dir),
+            job.reference_dir.as_ref(),
+            job.apptainer_cache.as_ref(),
+            job.cwl_cache.as_ref(),
+        ];
+        let missing = shared.missing(folders.into_iter().flatten().map(|path| path.as_path()));
+        if missing.is_empty() {
+            return None;
+        }
+        let list: Vec<String> = missing
+            .iter()
+            .map(|path| format!("`{}`", path.display()))
+            .collect();
+        Some(Outcome::Failed {
+            exit_code: None,
+            error: Some(format!(
+                "{} does not share {}, so the engine cannot use it. To fix it, {}",
+                shared.owner(),
+                list.join(", "),
+                shared.fix()
+            )),
+            reason: Some(FailureReason::StartFailed),
+        })
+    }
+
     /// The image store of the runtime `kind` (the first one if unknown or none matches).
     ///
     /// # Arguments
@@ -1109,5 +1160,42 @@ mod tests {
             &finished[0].1,
             Outcome::Failed { error: Some(e), reason: Some(FailureReason::StartFailed), .. } if e.contains("crashed")
         ));
+    }
+
+    /// A run whose project folder the VM does not see fails to start with the fix, one inside reaches the engine.
+    #[tokio::test]
+    async fn run_outside_the_shared_folders_fails_to_start() {
+        let shared = Arc::new(
+            SharedFolders::from_docker_desktop(r#"{"FilesharingDirectories":["/shared"]}"#)
+                .unwrap(),
+        );
+        for (project, runs) in [("/shared/p", true), ("/opt/p", false)] {
+            let source = Arc::new(FakeSource::default());
+            let mut job = job("Nextflow");
+            job.project_dir = project.into();
+            source.jobs.lock().unwrap().push(job);
+            worker(&source, false)
+                .with_shared_folders(Some(shared.clone()))
+                .run_next()
+                .await
+                .unwrap();
+            let finished = source.finished.lock().unwrap();
+            if runs {
+                // The fake engine ran (and failed on its own terms)
+                assert!(matches!(
+                    &finished[0].1,
+                    Outcome::Failed {
+                        reason: Some(FailureReason::ExitCode),
+                        ..
+                    }
+                ));
+            } else {
+                assert!(matches!(
+                    &finished[0].1,
+                    Outcome::Failed { reason: Some(FailureReason::StartFailed), error: Some(e), .. }
+                        if e.contains("/opt/p") && e.contains("File sharing")
+                ));
+            }
+        }
     }
 }

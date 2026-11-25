@@ -137,27 +137,6 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         app_data_directory.to_str().unwrap()
     );
 
-    let container_runtime_report =
-        macworp_worker::container_runtime::doctor(runtime_status::preference()).await;
-    let startup_status = runtime_status::status_of(&container_runtime_report).await;
-    if container_runtime_report.is_ok() {
-        tracing::info!("Container runtime:\n{container_runtime_report}");
-    } else {
-        tracing::warn!(
-            "No usable container runtime, workflows cannot run:\n{container_runtime_report}"
-        );
-    }
-    // The usable runtimes reach the embedded worker through this channel: when the user starts
-    // a stopped engine from the app, the worker starts then
-    let (runtimes_sender, runtimes_receiver) =
-        tokio::sync::watch::channel(container_runtime_report.into_runtimes().ok());
-    // The backend serves the status, starting the engine and the memory change to the UI
-    // under `/runtime`, and rejects runs of the engines the last check found unavailable
-    let runtime_control = Arc::new(runtime_status::DesktopRuntime::new(
-        startup_status,
-        runtimes_sender,
-    ));
-
     if app_data_directory.is_file() {
         return Err(Error::AppDirectoryCreation(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
@@ -191,6 +170,53 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
 
     let application_password = generate_password();
     let jwt_secret = macworp_backend::configuration::generate_secret();
+
+    let folders: runtime_status::Folders = {
+        let settings = settings.clone();
+        let data_directory = app_data_directory.to_path_buf();
+        Arc::new(move || {
+            vec![
+                ("application data".to_string(), data_directory.clone()),
+                (
+                    "reference data".to_string(),
+                    settings.path(settings::Folder::Reference),
+                ),
+                (
+                    "workflow cache".to_string(),
+                    settings.path(settings::Folder::WorkflowCache),
+                ),
+                (
+                    "container image cache".to_string(),
+                    settings.path(settings::Folder::ApptainerCache),
+                ),
+                ("CWL cache".to_string(), settings.cwl_cache()),
+            ]
+        })
+    };
+    let mut container_runtime_report =
+        macworp_worker::container_runtime::doctor(runtime_status::preference()).await;
+    container_runtime_report
+        .check_shared_folders(&folders())
+        .await;
+    let startup_status = runtime_status::status_of(&container_runtime_report).await;
+    if container_runtime_report.is_ok() {
+        tracing::info!("Container runtime:\n{container_runtime_report}");
+    } else {
+        tracing::warn!(
+            "No usable container runtime, workflows cannot run:\n{container_runtime_report}"
+        );
+    }
+    // The usable runtimes reach the embedded worker through this channel: when the user starts
+    // a stopped engine from the app, the worker starts then
+    let (runtimes_sender, runtimes_receiver) =
+        tokio::sync::watch::channel(container_runtime_report.into_runtimes().ok());
+    // The backend serves the status, starting the engine and the memory change to the UI
+    // under `/runtime`, and rejects runs of the engines the last check found unavailable
+    let runtime_control = Arc::new(runtime_status::DesktopRuntime::new(
+        startup_status,
+        runtimes_sender,
+        folders,
+    ));
 
     let database_path = app_data_directory.join("db.sqlite");
 
@@ -400,6 +426,18 @@ async fn start_worker(
         Err(e) => tracing::warn!("Unable to clean up interrupted runs: {e}"),
     }
 
+    let shared_folders = match (
+        runtimes.first(),
+        directories::UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf()),
+    ) {
+        (Some(runtime), Some(home)) => match runtime.info().await {
+            Ok(info) => macworp_worker::container_runtime::SharedFolders::detect(&info, &home)
+                .await
+                .map(Arc::new),
+            Err(_) => None,
+        },
+        _ => None,
+    };
     let executors = standard_executors(&runtimes).await;
     let worker = Worker::new(
         Arc::new(DbJobSource::new(
@@ -417,7 +455,9 @@ async fn start_worker(
             .iter()
             .map(|runtime| ImageBuilder::for_runtime(runtime.as_ref()))
             .collect(),
-    );
+    )
+    // Runs whose folders the container VM cannot see fail with a clear message (macOS)
+    .with_shared_folders(shared_folders);
     // Limits come from the settings page; the stores start with the saved ones
     let image_stores: Vec<Arc<ImageStore>> = runtimes
         .iter()

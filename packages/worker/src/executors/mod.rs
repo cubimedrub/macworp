@@ -10,6 +10,8 @@ pub mod cwl;
 mod executor;
 /// Types describing a claimed run and how it ended
 mod job;
+/// Memory limit for the tasks of a run, derived from the runtime's VM
+mod memory_limit;
 /// Executor for Nextflow, runs the engine inside an engine image
 pub mod nextflow;
 /// The workflow parameters of a job as a file for the engine
@@ -27,6 +29,7 @@ pub use containerized_execution::{
 };
 pub use executor::{Error as ExecutorError, Executor};
 pub use job::{Job, LogLine, Outcome};
+pub use memory_limit::MemoryLimit;
 pub use parameter_file::ParameterFile;
 pub use process::{LaunchSpec, run_process};
 pub use standard::standard_executors;

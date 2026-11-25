@@ -4,7 +4,7 @@ use macworp_core::workflow_configuration::engine::Engine;
 use tokio::sync::{mpsc, watch};
 
 use super::{
-    Executor, Job, LogLine, Outcome,
+    Executor, Job, LogLine, MemoryLimit, Outcome,
     container::ContainerExecutor,
     cwl::{self, CwlExecutor},
     nextflow::{self, NextflowExecutor},
@@ -19,6 +19,41 @@ struct OnRuntime {
     inner: Arc<dyn Executor>,
     /// Runtime `inner` starts its containers with
     kind: RuntimeKind,
+    /// The runtime itself, asked for the memory of its VM before each run
+    runtime: Arc<dyn ContainerRuntime>,
+    /// Limit handle shared with `inner`, `None` for engines without a memory option
+    memory: Option<MemoryLimit>,
+}
+
+/// Whether the runtime's containers run in a VM of limited memory on this host: Docker Desktop
+/// and podman machine on macOS and Windows. On Linux containers share the host's memory, and
+/// `wslc` reports none.
+///
+/// # Arguments
+/// * `kind` - the runtime
+fn runs_in_vm(kind: RuntimeKind) -> bool {
+    cfg!(any(windows, target_os = "macos")) && kind != RuntimeKind::Wslc
+}
+
+impl OnRuntime {
+    /// Sets the memory limit of `inner` from what the runtime reports now, so a VM that was
+    /// resized since the worker started is respected. A runtime that does not answer leaves no
+    /// limit.
+    async fn refresh_memory_limit(&self) {
+        let Some(memory) = &self.memory else {
+            return;
+        };
+        if !runs_in_vm(self.kind) {
+            return;
+        }
+        match self.runtime.info().await {
+            Ok(info) => memory.set_from_vm(info.memory_bytes),
+            Err(error) => {
+                tracing::warn!("Cannot read the memory of {}: {error}", self.kind);
+                memory.set_from_vm(None);
+            }
+        }
+    }
 }
 
 impl Executor for OnRuntime {
@@ -36,7 +71,10 @@ impl Executor for OnRuntime {
         logs: mpsc::Sender<LogLine>,
         cancel: watch::Receiver<bool>,
     ) -> BoxFuture<'a, Outcome> {
-        self.inner.run(job, logs, cancel)
+        Box::pin(async move {
+            self.refresh_memory_limit().await;
+            self.inner.run(job, logs, cancel).await
+        })
     }
 }
 
@@ -81,22 +119,26 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
             );
         }
         let mapping = runtime.kind().path_mapping();
+        let memory = MemoryLimit::default();
         let inner: Arc<dyn Executor> = match engine {
             Engine::Nextflow => Arc::new(
                 NextflowExecutor::new(&binary, nextflow::image())
                     .with_path_mapping(mapping)
+                    .with_memory_limit(memory.clone())
                     .with_engine_access(engine_access),
             ),
             Engine::Cwl => Arc::new(
                 CwlExecutor::new(&binary, cwl::image())
                     .with_path_mapping(mapping)
                     .with_runtime_kind(runtime.kind())
+                    .with_memory_limit(memory.clone())
                     .with_engine_access(engine_access),
             ),
             Engine::Snakemake => Arc::new(
                 SnakemakeExecutor::new(&binary, snakemake::image())
                     .with_path_mapping(mapping)
                     .with_runtime_kind(runtime.kind())
+                    .with_memory_limit(memory.clone())
                     .with_apparmor_profile(snakemake::apparmor_profile()),
             ),
             _ => Arc::new(ContainerExecutor::new(&binary).with_path_mapping(mapping)),
@@ -104,6 +146,9 @@ pub async fn standard_executors(runtimes: &[Arc<dyn ContainerRuntime>]) -> Vec<A
         executors.push(Arc::new(OnRuntime {
             inner,
             kind: runtime.kind(),
+            runtime: runtime.clone(),
+            memory: matches!(engine, Engine::Nextflow | Engine::Snakemake | Engine::Cwl)
+                .then_some(memory),
         }));
     }
     executors
@@ -142,6 +187,49 @@ mod tests {
                 })
             })
         }
+    }
+
+    /// Runtime that reports a VM with 4 GiB.
+    #[derive(Debug)]
+    struct Vm;
+
+    impl ContainerRuntime for Vm {
+        fn kind(&self) -> RuntimeKind {
+            RuntimeKind::Podman
+        }
+        fn binary(&self) -> &Path {
+            Path::new("fake")
+        }
+        fn info(&self) -> BoxFuture<'_, Result<RuntimeInfo, RuntimeError>> {
+            Box::pin(async {
+                Ok(RuntimeInfo {
+                    kind: RuntimeKind::Podman,
+                    version: "1.0".into(),
+                    rootless: Some(true),
+                    storage_root: None,
+                    socket: None,
+                    socket_exists: None,
+                    unsupported_socket: None,
+                    memory_bytes: Some(4 * 1024 * 1024 * 1024),
+                })
+            })
+        }
+    }
+
+    /// The limit follows what the runtime reports before a run, but only where containers run
+    /// in a VM (macOS, Windows); on Linux the host's memory applies and no limit is set.
+    #[tokio::test]
+    async fn memory_limit_is_read_from_the_runtime_in_a_vm_only() {
+        let memory = MemoryLimit::default();
+        let on_runtime = OnRuntime {
+            inner: Arc::new(ContainerExecutor::new("fake")),
+            kind: RuntimeKind::Podman,
+            runtime: Arc::new(Vm),
+            memory: Some(memory.clone()),
+        };
+        on_runtime.refresh_memory_limit().await;
+        let expected = cfg!(any(windows, target_os = "macos")).then_some(3 * 1024);
+        assert_eq!(memory.mebibytes(), expected);
     }
 
     /// Runtime kind per engine of the executors built for `kinds`.

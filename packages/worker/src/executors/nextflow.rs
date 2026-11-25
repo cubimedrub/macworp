@@ -7,8 +7,9 @@ use macworp_core::paths::PathMapping;
 
 use super::containerized_execution::path_arg;
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
-    default_engine_image, engine_image, run_process, run_spec, worker_user, worker_user_args,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, MemoryLimit, Outcome, ParameterFile,
+    containerized_spec, default_engine_image, engine_image, run_process, run_spec, worker_user,
+    worker_user_args,
 };
 use crate::container_runtime::BoxFuture;
 
@@ -84,6 +85,8 @@ pub struct NextflowExecutor {
     runtime_binary: PathBuf,
     image: String,
     engine_access: Vec<String>,
+    /// Memory the tasks may use in total, see [`MemoryLimit`]
+    memory: MemoryLimit,
 }
 
 impl NextflowExecutor {
@@ -93,6 +96,7 @@ impl NextflowExecutor {
             paths: PathMapping::Native,
             image: image.into(),
             engine_access: Vec::new(),
+            memory: MemoryLimit::default(),
         }
     }
 
@@ -110,6 +114,17 @@ impl NextflowExecutor {
     /// [`crate::container_runtime::RuntimeInfo::engine_access_args`].
     pub fn with_engine_access(mut self, args: Vec<String>) -> Self {
         self.engine_access = args;
+        self
+    }
+
+    /// Caps the memory a task may request (`process.resourceLimits`, Nextflow 24.04+, older
+    /// versions ignore it) at what the runtime's VM has, so a pipeline asking for more than the
+    /// VM stays runnable. Applies to the next run when the handle changes.
+    ///
+    /// # Arguments
+    /// * `memory` - the shared limit, unset means no cap
+    pub fn with_memory_limit(mut self, memory: MemoryLimit) -> Self {
+        self.memory = memory;
         self
     }
 
@@ -147,7 +162,13 @@ impl NextflowExecutor {
             }
         }
         let plugin = uses_weblog_plugin(config.engine_version());
-        let mut extra_files = vec![(DEPLOYMENT_CONFIG, DEPLOYMENT_CONFIG_CONTENT.to_string())];
+        let mut deployment = DEPLOYMENT_CONFIG_CONTENT.to_string();
+        if let Some(mebibytes) = self.memory.mebibytes() {
+            deployment.push_str(&format!(
+                "process.resourceLimits = [ memory: '{mebibytes}.MB' ]\n"
+            ));
+        }
+        let mut extra_files = vec![(DEPLOYMENT_CONFIG, deployment)];
         if let Some(progress) = &job.progress {
             let address = format!("{}/nextflow", progress.base_url);
             if plugin {
@@ -520,6 +541,42 @@ mod tests {
             }
             std::fs::remove_dir_all(directory).unwrap();
         }
+    }
+
+    /// Reads the deployment configuration a launch generated and removes its scratch directory.
+    ///
+    /// # Arguments
+    /// * `spec` - the launch to read from
+    fn deployment_config_of(spec: &LaunchSpec) -> String {
+        let directory = spec.scratch_directory.clone().unwrap();
+        let config = std::fs::read_to_string(directory.join(DEPLOYMENT_CONFIG)).unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+        config
+    }
+
+    /// A limit from the runtime's VM caps the memory a task may request, and a limit that is
+    /// cleared again (VM too small, runtime gone) leaves no cap in the next launch.
+    #[test]
+    fn memory_limit_caps_task_requests_in_the_deployment_configuration() {
+        let job = job(Source::Local(LocalSource::new(
+            "/w".into(),
+            "main.nf".into(),
+        )));
+        let memory = MemoryLimit::default();
+        let executor = executor().with_memory_limit(memory.clone());
+        let unlimited = deployment_config_of(&executor.launch_spec(&job).unwrap());
+        assert!(!unlimited.contains("resourceLimits"), "{unlimited}");
+        memory.set_from_vm(Some(4 * 1024 * 1024 * 1024));
+        let limited = deployment_config_of(&executor.launch_spec(&job).unwrap());
+        assert!(
+            limited
+                .lines()
+                .any(|line| line == "process.resourceLimits = [ memory: '3072.MB' ]"),
+            "{limited}"
+        );
+        memory.set_from_vm(None);
+        let cleared = deployment_config_of(&executor.launch_spec(&job).unwrap());
+        assert!(!cleared.contains("resourceLimits"), "{cleared}");
     }
 
     // Native mapping with POSIX host paths: a Windows host uses a mapped style (see the `PathMapping` tests).

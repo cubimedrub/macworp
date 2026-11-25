@@ -7,8 +7,8 @@ use macworp_core::paths::PathMapping;
 
 use super::containerized_execution::{mount_arg, path_arg};
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
-    default_engine_image, engine_image, run_spec, worker_user_args,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, MemoryLimit, Outcome, ParameterFile,
+    containerized_spec, default_engine_image, engine_image, run_spec, worker_user_args,
 };
 use crate::container_runtime::{BoxFuture, RuntimeKind};
 
@@ -60,6 +60,8 @@ pub struct CwlExecutor {
     /// Runtime of `runtime_binary`: tool containers started through a Podman socket need Toil's
     /// `--podman` mode
     runtime_kind: RuntimeKind,
+    /// Memory the jobs may use in total, see [`MemoryLimit`]
+    memory: MemoryLimit,
 }
 
 impl CwlExecutor {
@@ -73,7 +75,20 @@ impl CwlExecutor {
             image: image.into(),
             engine_access: Vec::new(),
             runtime_kind: RuntimeKind::Docker,
+            memory: MemoryLimit::default(),
         }
+    }
+
+    /// Limits the memory Toil may hand out to jobs (`--maxMemory`) to what the runtime's VM
+    /// has, so a step asking for more fails with a clear Toil message instead of being killed.
+    /// A `maxMemory` engine parameter of the workflow wins. Applies to the next run when the
+    /// handle changes.
+    ///
+    /// # Arguments
+    /// * `memory` - the shared limit, unset means no limit
+    pub fn with_memory_limit(mut self, memory: MemoryLimit) -> Self {
+        self.memory = memory;
+        self
     }
 
     /// How paths on this machine look inside the runtime's containers, see [`PathMapping`]
@@ -164,6 +179,15 @@ impl CwlExecutor {
             .any(|p| p.name() == "defaultMemory")
         {
             command.extend(["--defaultMemory".into(), DEFAULT_MEMORY.into()]);
+        }
+        if let Some(mebibytes) = self.memory.mebibytes() {
+            if !configuration
+                .engine_parameters()
+                .iter()
+                .any(|p| p.name() == "maxMemory")
+            {
+                command.extend(["--maxMemory".into(), format!("{mebibytes}M")]);
+            }
         }
         if let Some(cache) = Self::cache_directory(job) {
             let temporary = path_arg(
@@ -595,6 +619,26 @@ mod tests {
                 "/w/tool.cwl"
             ]
         );
+    }
+
+    /// The VM's memory becomes `--maxMemory` unless the workflow sets it, and no limit adds
+    /// nothing.
+    #[test]
+    fn memory_limit_sets_max_memory_unless_the_workflow_does() {
+        let memory = MemoryLimit::default();
+        let executor = executor().with_memory_limit(memory.clone());
+        let args = executor.launch_spec(&job(local())).unwrap().args;
+        assert!(!args.contains(&"--maxMemory".to_string()));
+        memory.set_from_vm(Some(4 * 1024 * 1024 * 1024));
+        let args = executor.launch_spec(&job(local())).unwrap().args;
+        let at = args.iter().position(|a| a == "--maxMemory").unwrap();
+        assert_eq!(args[at + 1], "3072M");
+        let mut own = job(local());
+        *own.configuration.engine_parameters_mut() =
+            vec![EngineParameter::new("maxMemory".into(), "1G".into())];
+        let args = executor.launch_spec(&own).unwrap().args;
+        assert_eq!(args.iter().filter(|a| *a == "--maxMemory").count(), 1);
+        assert!(args.contains(&"1G".to_string()));
     }
 
     /// A workflow that sets `defaultMemory` itself is not given the default twice.

@@ -7,8 +7,8 @@ use macworp_core::paths::PathMapping;
 
 use super::containerized_execution::{mount_arg, path_arg};
 use super::{
-    Executor, ExecutorError, Job, LaunchSpec, LogLine, Outcome, ParameterFile, containerized_spec,
-    default_engine_image, engine_image, run_spec, worker_user_args,
+    Executor, ExecutorError, Job, LaunchSpec, LogLine, MemoryLimit, Outcome, ParameterFile,
+    containerized_spec, default_engine_image, engine_image, run_spec, worker_user_args,
 };
 use crate::container_runtime::{BoxFuture, RuntimeKind};
 
@@ -128,6 +128,8 @@ pub struct SnakemakeExecutor {
     runtime_kind: RuntimeKind,
     /// AppArmor profile passed to Docker, see [`APPARMOR_PROFILE_VARIABLE`]
     apparmor_profile: Option<String>,
+    /// Memory the jobs may use in total, see [`MemoryLimit`]
+    memory: MemoryLimit,
 }
 
 impl SnakemakeExecutor {
@@ -138,7 +140,20 @@ impl SnakemakeExecutor {
             image: image.into(),
             runtime_kind: RuntimeKind::Docker,
             apparmor_profile: None,
+            memory: MemoryLimit::default(),
         }
+    }
+
+    /// Limits the memory all jobs together may use (`--resources mem_mb=`) to what the
+    /// runtime's VM has, so Snakemake schedules jobs that fit instead of getting them killed.
+    /// A `resources` engine parameter of the workflow wins. Applies to the next run when the
+    /// handle changes.
+    ///
+    /// # Arguments
+    /// * `memory` - the shared limit, unset means no limit
+    pub fn with_memory_limit(mut self, memory: MemoryLimit) -> Self {
+        self.memory = memory;
+        self
     }
 
     /// How paths on this machine look inside the runtime's containers, see [`PathMapping`]
@@ -254,6 +269,15 @@ impl SnakemakeExecutor {
             .any(|p| CORE_PARAMETERS.contains(&p.name()))
         {
             command.extend(["--cores".into(), "all".into()]);
+        }
+        if let Some(mebibytes) = self.memory.mebibytes() {
+            if !config
+                .engine_parameters()
+                .iter()
+                .any(|p| p.name() == "resources")
+            {
+                command.extend(["--resources".into(), format!("mem_mb={mebibytes}")]);
+            }
         }
         if !config
             .engine_parameters()
@@ -465,6 +489,25 @@ mod tests {
 
     fn executor() -> SnakemakeExecutor {
         SnakemakeExecutor::new("podman", "img:1")
+    }
+
+    /// The VM's memory becomes `--resources mem_mb=` unless the workflow sets `resources`.
+    #[test]
+    fn memory_limit_sets_resources_unless_the_workflow_does() {
+        let memory = MemoryLimit::default();
+        memory.set_from_vm(Some(4 * 1024 * 1024 * 1024));
+        let executor = executor().with_memory_limit(memory);
+        let args = executor.launch_spec(&job(local(), vec![])).unwrap().args;
+        let at = args.iter().position(|a| a == "--resources").unwrap();
+        assert_eq!(args[at + 1], "mem_mb=3072");
+        let own = vec![EngineParameter::new(
+            "resources".into(),
+            "mem_mb=100".into(),
+        )];
+        let args = executor.launch_spec(&job(local(), own)).unwrap().args;
+        assert_eq!(args.iter().filter(|a| *a == "--resources").count(), 1);
+        assert!(args.contains(&"mem_mb=100".to_string()));
+        assert!(!args.contains(&"mem_mb=3072".to_string()));
     }
 
     /// Podman gets its own spelling of the options Apptainer needs, Docker keeps the old ones.

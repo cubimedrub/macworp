@@ -30,6 +30,9 @@ impl RuntimeRouting {
     pub const STATUS_PATH: &str = "/status";
     /// POST: check the runtime again and return the status
     pub const REFRESH_PATH: &str = "/refresh";
+    /// POST: start the stopped container engine (a podman machine, Docker Desktop) and return the
+    /// status once it answers
+    pub const START_PATH: &str = "/start";
     /// POST (`AdjustMemoryRequest`): change the memory of the container VM and restart it,
     /// 409 while runs are queued or running; returns the status afterwards
     pub const MEMORY_PATH: &str = "/memory";

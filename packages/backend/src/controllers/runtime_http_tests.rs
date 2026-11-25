@@ -1,7 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use http::{Method, StatusCode};
-use macworp_core::runtime_status::{RuntimeStatus, StatusCheck, StatusLevel};
+use macworp_core::{
+    runtime_status::{RuntimeStatus, StatusCheck, StatusLevel},
+    workflow_configuration::engine::Engine,
+};
 use serde_json::json;
 
 use crate::{
@@ -13,6 +16,8 @@ use crate::{
 const STATUS: &str = "/runtime/status";
 /// Refresh path.
 const REFRESH: &str = "/runtime/refresh";
+/// Start path.
+const START: &str = "/runtime/start";
 /// Memory path.
 const MEMORY: &str = "/runtime/memory";
 
@@ -23,8 +28,10 @@ struct FakeRuntime {
     adjusted: Mutex<Vec<u64>>,
     /// Number of `refresh` calls
     refreshed: Mutex<u32>,
-    /// Error `adjust_memory` answers with
+    /// Error `adjust_memory` and `start` answer with
     failure: Option<&'static str>,
+    /// Number of `start` calls
+    started: Mutex<u32>,
 }
 
 impl FakeRuntime {
@@ -45,6 +52,7 @@ impl FakeRuntime {
             }],
             unavailable_engines: vec![],
             memory_fix: None,
+            start_offer: None,
         }
     }
 }
@@ -58,6 +66,20 @@ impl RuntimeControl for FakeRuntime {
         Box::pin(async {
             *self.refreshed.lock().unwrap() += 1;
             Self::status_named("fresh")
+        })
+    }
+
+    fn unavailable_engines(&self) -> Vec<Engine> {
+        vec![Engine::Cwl]
+    }
+
+    fn start(&self) -> BoxFuture<'_, Result<RuntimeStatus, String>> {
+        Box::pin(async {
+            *self.started.lock().unwrap() += 1;
+            match self.failure {
+                Some(message) => Err(message.to_string()),
+                None => Ok(Self::status_named("started")),
+            }
         })
     }
 
@@ -141,4 +163,27 @@ async fn routes_need_a_runtime_and_a_user() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _) = app.send(None, Method::GET, STATUS, None).await;
     assert!(status == StatusCode::BAD_REQUEST || status == StatusCode::UNAUTHORIZED);
+}
+
+/// Starting forwards to the runtime and returns the new status; a failure is a 502; the engines
+/// runs are rejected for come from the runtime's last check, not from a fixed list.
+#[tokio::test]
+async fn start_forwards_and_engines_follow_the_runtime() {
+    let fake = Arc::new(FakeRuntime::default());
+    let app = TestApp::new_with_runtime_control(fake.clone()).await;
+    let alice = app.user("alice").await;
+    let (status, body) = app.post(&alice, START, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["checks"][0]["name"], json!("started"));
+    assert_eq!(*fake.started.lock().unwrap(), 1);
+    assert_eq!(app.state.unavailable_engines(), vec![Engine::Cwl]);
+
+    let failing = Arc::new(FakeRuntime {
+        failure: Some("no machine"),
+        ..Default::default()
+    });
+    let app = TestApp::new_with_runtime_control(failing).await;
+    let alice = app.user("alice").await;
+    let (status, _) = app.post(&alice, START, None).await;
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
 }

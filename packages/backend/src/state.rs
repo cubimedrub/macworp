@@ -484,9 +484,14 @@ impl State {
         &self.workers
     }
 
-    /// Engines runs are rejected for: the list the embedding application fixed (desktop), else
+    /// Engines runs are rejected for: the list of the embedding application's runtime (desktop), the list it fixed, else
     /// every engine no live worker can run (all of them without a live worker).
     pub fn unavailable_engines(&self) -> Vec<Engine> {
+        // The desktop's engine can be started while the app runs: ask for the latest check
+        #[cfg(feature = "integration")]
+        if let Some(control) = &self.runtime_control {
+            return control.unavailable_engines();
+        }
         if let Some(fixed) = self.config.fixed_unavailable_engines() {
             return fixed.to_vec();
         }

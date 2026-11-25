@@ -209,6 +209,15 @@ impl<'a> RuntimeClient<'a> {
             .map_err(Error::Request)
     }
 
+    /// Starts the stopped container engine. Takes a while: no request timeout applies. A failure
+    /// comes back as its plain message.
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    pub async fn start(&self, jwt: &str) -> Result<RuntimeStatus, Error> {
+        self.post_plain(RuntimeRouting::START_PATH, jwt, None).await
+    }
+
     /// Changes the memory of the container VM, which restarts it. Takes a while: no request
     /// timeout applies. A refusal (runs are active) or failure comes back as its plain message.
     ///
@@ -216,19 +225,38 @@ impl<'a> RuntimeClient<'a> {
     /// * `jwt` - token of the logged in user
     /// * `mebibytes` - the new memory
     pub async fn adjust_memory(&self, jwt: &str, mebibytes: u64) -> Result<RuntimeStatus, Error> {
-        let response = reqwest::Client::new()
-            .post(self.url(RuntimeRouting::MEMORY_PATH))
-            .header(
-                http::header::AUTHORIZATION,
-                format!("{} {jwt}", TokenType::Jwt),
-            )
-            .json(&AdjustMemoryRequest { mebibytes })
-            .send()
-            .await?;
+        self.post_plain(
+            RuntimeRouting::MEMORY_PATH,
+            jwt,
+            Some(AdjustMemoryRequest { mebibytes }),
+        )
+        .await
+    }
+
+    /// POSTs to a route that takes long and answers a failure with a plain-text reason.
+    ///
+    /// # Arguments
+    /// * `path` - route below the controller
+    /// * `jwt` - token of the logged in user
+    /// * `body` - JSON body, if the route takes one
+    async fn post_plain(
+        &self,
+        path: &str,
+        jwt: &str,
+        body: Option<AdjustMemoryRequest>,
+    ) -> Result<RuntimeStatus, Error> {
+        let mut request = reqwest::Client::new().post(self.url(path)).header(
+            http::header::AUTHORIZATION,
+            format!("{} {jwt}", TokenType::Jwt),
+        );
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+        let response = request.send().await?;
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            tracing::error!("Failed to change the container engine memory: HTTP {status}: {text}");
+            tracing::error!("Container runtime request {path} failed: HTTP {status}: {text}");
             return Err(Error::from_status(status, text));
         }
         response.json().await.map_err(Error::Request)

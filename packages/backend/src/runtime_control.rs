@@ -4,7 +4,7 @@
 
 use std::{future::Future, pin::Pin};
 
-use macworp_core::runtime_status::RuntimeStatus;
+use macworp_core::{runtime_status::RuntimeStatus, workflow_configuration::engine::Engine};
 
 /// Boxed future, so the control can be used as a trait object.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -16,6 +16,12 @@ pub trait RuntimeControl: Send + Sync {
 
     /// Checks the runtime again and returns (and keeps) the new status.
     fn refresh(&self) -> BoxFuture<'_, RuntimeStatus>;
+
+    /// Engines no usable runtime can run, as of the last check: runs of these are rejected.
+    fn unavailable_engines(&self) -> Vec<Engine>;
+
+    /// Starts the stopped container engine and returns the status once it answers.
+    fn start(&self) -> BoxFuture<'_, Result<RuntimeStatus, String>>;
 
     /// Changes the memory of the container VM, restarting it, and returns the status
     /// afterwards. The caller makes sure no run is active.

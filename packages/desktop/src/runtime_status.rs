@@ -1,12 +1,15 @@
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use macworp_backend::runtime_control::{BoxFuture, RuntimeControl};
-use macworp_core::runtime_status::{MemoryFix, RuntimeStatus, StatusCheck, StatusLevel};
+use macworp_core::runtime_status::{
+    MemoryFix, RuntimeStatus, StartOffer, StatusCheck, StatusLevel,
+};
 use macworp_core::workflow_configuration::engine::Engine;
 use macworp_worker::container_runtime::{
-    doctor, Check, CheckStatus, DoctorReport, MemoryAdjustment, MemoryRange, RuntimeInfo,
-    RuntimePreference,
+    doctor, Check, CheckStatus, ContainerRuntime, DoctorReport, EngineStart, MemoryAdjustment,
+    MemoryRange, RuntimeInfo, RuntimePreference,
 };
+use tokio::sync::watch;
 
 /// Initial status, handed to the UI through the launch context.
 #[derive(Clone)]
@@ -89,11 +92,41 @@ pub async fn memory_fix(report: &DoctorReport) -> Option<MemoryFix> {
     })
 }
 
+/// The offer to start a stopped container engine, `None` when a runtime answers or there is
+/// nothing the app can start.
+///
+/// # Arguments
+/// * `report` - the doctor report the status is built from
+pub async fn start_offer(report: &DoctorReport) -> Option<StartOffer> {
+    if report.is_ok() {
+        return None;
+    }
+    let start = EngineStart::detect(&preference().kinds()).await?;
+    Some(StartOffer {
+        name: start.name(),
+        impact: start.impact().to_string(),
+    })
+}
+
+/// The status of a doctor report with the things the UI can offer (more memory, starting).
+///
+/// # Arguments
+/// * `report` - what the doctor found
+pub async fn status_of(report: &DoctorReport) -> RuntimeStatus {
+    let mut status = to_status(report);
+    status.memory_fix = memory_fix(report).await;
+    status.start_offer = start_offer(report).await;
+    status
+}
+
 /// The container runtime of this computer, served by the backend under `/runtime`. Keeps the
 /// status of the last check; the UI never runs the doctor itself.
 pub struct DesktopRuntime {
     /// Status of the last check
     status: std::sync::Mutex<RuntimeStatus>,
+    /// The usable runtimes, `None` while none answers. The embedded worker waits on it: when a
+    /// runtime appears (the user started the engine) it starts working.
+    runtimes: watch::Sender<Option<Vec<Arc<dyn ContainerRuntime>>>>,
 }
 
 impl DesktopRuntime {
@@ -101,19 +134,43 @@ impl DesktopRuntime {
     ///
     /// # Arguments
     /// * `status` - the status to serve until the next check
-    pub fn new(status: RuntimeStatus) -> Self {
+    /// * `runtimes` - publishes the usable runtimes to the embedded worker
+    pub fn new(
+        status: RuntimeStatus,
+        runtimes: watch::Sender<Option<Vec<Arc<dyn ContainerRuntime>>>>,
+    ) -> Self {
         Self {
             status: std::sync::Mutex::new(status),
+            runtimes,
         }
     }
 
-    /// Keeps `status` as the latest and returns it.
-    ///
-    /// # Arguments
-    /// * `status` - the result of a check
-    fn remember(&self, status: RuntimeStatus) -> RuntimeStatus {
+    /// Checks the runtime, keeps the result as the latest status and hands newly usable
+    /// runtimes to the embedded worker.
+    async fn checked(&self) -> RuntimeStatus {
+        let (status, runtimes) = check().await;
+        if runtimes.is_some() {
+            // Only the first appearance matters: a worker that runs keeps its runtimes
+            self.runtimes.send_if_modified(|current| {
+                if current.is_none() {
+                    *current = runtimes;
+                    true
+                } else {
+                    false
+                }
+            });
+        }
         *self.status.lock().unwrap_or_else(|e| e.into_inner()) = status.clone();
         status
+    }
+
+    /// Starts the stopped engine, then checks again.
+    async fn start_engine(&self) -> Result<RuntimeStatus, String> {
+        let start = EngineStart::detect(&preference().kinds())
+            .await
+            .ok_or("There is no container engine the app can start")?;
+        start.start().await.map_err(|error| error.to_string())?;
+        Ok(self.checked().await)
     }
 
     /// Raises the memory of the container VM and restarts it, then checks again.
@@ -134,7 +191,7 @@ impl DesktopRuntime {
             .apply(mebibytes)
             .await
             .map_err(|error| error.to_string())?;
-        Ok(self.remember(check_runtime().await))
+        Ok(self.checked().await)
     }
 }
 
@@ -149,7 +206,19 @@ impl RuntimeControl for DesktopRuntime {
     }
 
     fn refresh(&self) -> BoxFuture<'_, RuntimeStatus> {
-        Box::pin(async { self.remember(check_runtime().await) })
+        Box::pin(self.checked())
+    }
+
+    fn unavailable_engines(&self) -> Vec<Engine> {
+        self.status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .unavailable_engines
+            .clone()
+    }
+
+    fn start(&self) -> BoxFuture<'_, Result<RuntimeStatus, String>> {
+        Box::pin(self.start_engine())
     }
 
     fn adjust_memory(&self, mebibytes: u64) -> BoxFuture<'_, Result<RuntimeStatus, String>> {
@@ -158,16 +227,24 @@ impl RuntimeControl for DesktopRuntime {
 }
 
 /// Runs the doctor check again, with the same runtime preference as at startup.
-pub async fn check_runtime() -> RuntimeStatus {
+///
+/// # Returns
+/// The status for the UI and the usable runtimes, `None` if there is none.
+pub async fn check() -> (RuntimeStatus, Option<Vec<Arc<dyn ContainerRuntime>>>) {
     let report = doctor(preference()).await;
     if report.is_ok() {
         tracing::info!("Container runtime:\n{report}");
     } else {
         tracing::warn!("No usable container runtime, workflows cannot run:\n{report}");
     }
-    let mut status = to_status(&report);
-    status.memory_fix = memory_fix(&report).await;
-    status
+    let status = status_of(&report).await;
+    (status, report.into_runtimes().ok())
+}
+
+/// [`check`] for callers that only need the status.
+#[cfg(test)]
+pub async fn check_runtime() -> RuntimeStatus {
+    check().await.0
 }
 
 fn from_parts(
@@ -195,6 +272,7 @@ fn from_parts(
             .collect(),
         unavailable_engines,
         memory_fix: None,
+        start_offer: None,
     }
 }
 
@@ -292,8 +370,25 @@ mod tests {
             .expect("set MACWORP_ADJUST_MEBIBYTES")
             .parse()
             .unwrap();
-        let runtime = DesktopRuntime::new(check_runtime().await);
+        let (status, runtimes) = super::check().await;
+        let runtime = DesktopRuntime::new(status, watch::channel(runtimes).0);
         let status = runtime.adjust_memory(mebibytes).await.unwrap();
         println!("{:?}", status.memory_fix);
+    }
+
+    /// Starts the real stopped engine the way the "Start" button does and prints the new
+    /// status. Starts a podman machine or Docker Desktop, so it only runs on request.
+    #[tokio::test]
+    #[ignore = "starts the container engine"]
+    async fn start_button_starts_the_real_engine() {
+        let (status, runtimes) = super::check().await;
+        println!("before: ok={} offer={:?}", status.ok, status.start_offer);
+        let (sender, mut receiver) = watch::channel(runtimes);
+        let runtime = DesktopRuntime::new(status, sender);
+        let after = runtime.start().await.unwrap();
+        println!("after: ok={} offer={:?}", after.ok, after.start_offer);
+        assert!(after.ok);
+        // The embedded worker would be told now
+        assert!(receiver.borrow_and_update().is_some());
     }
 }

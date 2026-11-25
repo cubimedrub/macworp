@@ -22,6 +22,7 @@ impl RuntimeController {
         Router::new()
             .route(RuntimeRouting::STATUS_PATH, get(Self::status))
             .route(RuntimeRouting::REFRESH_PATH, post(Self::refresh))
+            .route(RuntimeRouting::START_PATH, post(Self::start))
             .route(RuntimeRouting::MEMORY_PATH, post(Self::adjust_memory))
             .with_state(state)
     }
@@ -40,6 +41,18 @@ impl RuntimeController {
         _user: RequireUser,
     ) -> Result<Json<RuntimeStatus>, (StatusCode, String)> {
         Ok(Json(Self::control(&state)?.refresh().await))
+    }
+
+    /// Starts the stopped container engine.
+    async fn start(
+        AxumState(state): AxumState<Arc<State>>,
+        _user: RequireUser,
+    ) -> Result<Json<RuntimeStatus>, (StatusCode, String)> {
+        Self::control(&state)?
+            .start()
+            .await
+            .map(Json)
+            .map_err(|message| (StatusCode::BAD_GATEWAY, message))
     }
 
     /// Changes the memory of the container VM. Refused (409) while runs are queued or running:

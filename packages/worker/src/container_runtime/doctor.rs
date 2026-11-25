@@ -26,19 +26,23 @@ pub enum RuntimePreference {
 }
 
 impl RuntimePreference {
-    fn candidates(self) -> Vec<Arc<dyn ContainerRuntime>> {
-        let kinds: &[RuntimeKind] = match self {
+    /// The runtimes this preference allows, in order of preference.
+    pub fn kinds(self) -> Vec<RuntimeKind> {
+        match self {
             #[cfg(windows)]
-            Self::Auto => &[RuntimeKind::Podman, RuntimeKind::Docker, RuntimeKind::Wslc],
+            Self::Auto => vec![RuntimeKind::Podman, RuntimeKind::Docker, RuntimeKind::Wslc],
             #[cfg(not(windows))]
-            Self::Auto => &[RuntimeKind::Podman, RuntimeKind::Docker],
-            Self::Podman => &[RuntimeKind::Podman],
-            Self::Docker => &[RuntimeKind::Docker],
-            Self::Wslc => &[RuntimeKind::Wslc],
-        };
-        kinds
-            .iter()
-            .map(|kind| Arc::new(CliRuntime::new(*kind)) as Arc<dyn ContainerRuntime>)
+            Self::Auto => vec![RuntimeKind::Podman, RuntimeKind::Docker],
+            Self::Podman => vec![RuntimeKind::Podman],
+            Self::Docker => vec![RuntimeKind::Docker],
+            Self::Wslc => vec![RuntimeKind::Wslc],
+        }
+    }
+
+    fn candidates(self) -> Vec<Arc<dyn ContainerRuntime>> {
+        self.kinds()
+            .into_iter()
+            .map(|kind| Arc::new(CliRuntime::new(kind)) as Arc<dyn ContainerRuntime>)
             .collect()
     }
 }

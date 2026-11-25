@@ -72,6 +72,12 @@ pub struct RuntimeStatusHandle {
     pub refreshing: Signal<bool>,
     /// Re-runs the check and updates `status`
     pub refresh: Callback<()>,
+    /// Starts the stopped container engine; the platform refreshes `status` afterwards
+    pub start_engine: Callback<()>,
+    /// The engine is starting, this takes a while
+    pub starting: Signal<bool>,
+    /// Why the engine did not start, `None` otherwise
+    pub start_error: Signal<Option<String>>,
     /// Sets the memory of the container VM (mebibytes) and restarts it; the platform refreshes
     /// `status` afterwards
     pub adjust_memory: Callback<u64>,
@@ -144,6 +150,7 @@ pub fn RuntimeStatusBar() -> Element {
                                 {status.unavailable_engines.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")}
                             }
                         }
+                        StartEnginePanel {}
                         if status.memory_fix.is_some() && status.checks.iter().any(|c| c.name == "memory" && c.level == StatusLevel::Warn) {
                             p {
                                 class: "alert alert-warning",
@@ -172,6 +179,42 @@ pub fn RuntimeStatusBar() -> Element {
                             "Close"
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Offer to start a stopped container engine (a podman machine, Docker Desktop) with a button.
+/// Renders nothing without a [`RuntimeStatusHandle`] or when there is nothing to start.
+#[component]
+pub fn StartEnginePanel() -> Element {
+    let Some(handle) = try_use_context::<RuntimeStatusHandle>() else {
+        return rsx! {};
+    };
+    let Some(offer) = handle.status.read().start_offer.clone() else {
+        return rsx! {};
+    };
+    let busy = *handle.starting.read();
+    rsx! {
+        div {
+            class: "alert alert-warning",
+            role: "group",
+            h6 { class: "alert-heading", "The container engine is not running" }
+            p { class: "mb-2", "Workflows cannot run until it is started. {offer.impact}" }
+            if let Some(message) = handle.start_error.read().clone() {
+                p { class: "mb-2 text-danger", "{message}" }
+            }
+            button {
+                r#type: "button",
+                class: "btn btn-warning",
+                disabled: busy,
+                onclick: move |_| handle.start_engine.call(()),
+                if busy {
+                    span { class: "spinner-border spinner-border-sm me-2", role: "status" }
+                    "Starting..."
+                } else {
+                    "Start {offer.name}"
                 }
             }
         }

@@ -43,11 +43,8 @@ use macworp_worker::{
 use tokio::sync::watch;
 
 use crate::{
-    db_job_source::DbJobSource,
-    errors::Error,
-    router::Router,
-    runtime_status::{to_status, InitialRuntimeStatus},
-    storage::Storage,
+    db_job_source::DbJobSource, errors::Error, router::Router,
+    runtime_status::InitialRuntimeStatus, storage::Storage,
 };
 
 const DESKTOP_USER_NAME: &str = "admin";
@@ -142,11 +139,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
 
     let container_runtime_report =
         macworp_worker::container_runtime::doctor(runtime_status::preference()).await;
-    let unavailable_engines = container_runtime_report.unavailable_engines();
-    let mut startup_status = to_status(&container_runtime_report);
-    startup_status.memory_fix = runtime_status::memory_fix(&container_runtime_report).await;
-    // The backend serves the status and the memory change to the UI under `/runtime`
-    let runtime_control = Arc::new(runtime_status::DesktopRuntime::new(startup_status));
+    let startup_status = runtime_status::status_of(&container_runtime_report).await;
     if container_runtime_report.is_ok() {
         tracing::info!("Container runtime:\n{container_runtime_report}");
     } else {
@@ -154,7 +147,16 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
             "No usable container runtime, workflows cannot run:\n{container_runtime_report}"
         );
     }
-    let container_runtimes = container_runtime_report.into_runtimes().ok();
+    // The usable runtimes reach the embedded worker through this channel: when the user starts
+    // a stopped engine from the app, the worker starts then
+    let (runtimes_sender, runtimes_receiver) =
+        tokio::sync::watch::channel(container_runtime_report.into_runtimes().ok());
+    // The backend serves the status, starting the engine and the memory change to the UI
+    // under `/runtime`, and rejects runs of the engines the last check found unavailable
+    let runtime_control = Arc::new(runtime_status::DesktopRuntime::new(
+        startup_status,
+        runtimes_sender,
+    ));
 
     if app_data_directory.is_file() {
         return Err(Error::AppDirectoryCreation(std::io::Error::new(
@@ -203,7 +205,6 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
     *backend_config.allow_local_paths_mut() = true;
     *backend_config.database_url_mut() = database_url.clone();
     *backend_config.secret_mut() = jwt_secret;
-    *backend_config.fixed_unavailable_engines_mut() = Some(unavailable_engines);
     *backend_config.interface_mut() = "127.0.0.1".to_string();
     *backend_config.worker_mut().password_mut() =
         password_auth::generate_hash(application_password.as_bytes());
@@ -272,22 +273,42 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         }
     }
 
-    // Backend ran the migrations, the embedded worker can use the same database now
-    let worker = match container_runtimes {
-        Some(runtimes) => Some(
-            start_worker(
+    // Backend ran the migrations, the embedded worker can use the same database now. It starts
+    // as soon as a container runtime answers, which may be later than the app.
+    let worker_slot: Arc<std::sync::Mutex<Option<WorkerHandle>>> = Arc::default();
+    let worker_supervisor = tokio::spawn({
+        let database_url = database_url.clone();
+        let reference_directory = settings.reference_directory();
+        let apptainer_cache = settings.apptainer_cache();
+        let cwl_cache = settings.cwl_cache();
+        let settings = settings.clone();
+        let worker_slot = worker_slot.clone();
+        let mut runtimes_receiver = runtimes_receiver;
+        async move {
+            let runtimes = loop {
+                if let Some(runtimes) = runtimes_receiver.borrow_and_update().clone() {
+                    break runtimes;
+                }
+                if runtimes_receiver.changed().await.is_err() {
+                    return;
+                }
+            };
+            match start_worker(
                 &database_url,
                 max_log_bytes,
                 runtimes,
-                settings.reference_directory(),
-                settings.apptainer_cache(),
-                settings.cwl_cache(),
+                reference_directory,
+                apptainer_cache,
+                cwl_cache,
                 &settings,
             )
-            .await?,
-        ),
-        None => None,
-    };
+            .await
+            {
+                Ok(worker) => *worker_slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(worker),
+                Err(error) => tracing::error!("The embedded worker could not start: {error}"),
+            }
+        }
+    });
 
     let mut storage = Storage::new();
 
@@ -327,6 +348,8 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         ))
         .launch(App);
 
+    worker_supervisor.abort();
+    let worker = worker_slot.lock().unwrap_or_else(|e| e.into_inner()).take();
     if let Some((stop, handle)) = worker {
         // A running job is finished (or cancelled by process exit) before the backend goes away
         stop.send(true).ok();
@@ -342,6 +365,9 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         .map_err(Error::BackendStopping)?
         .map_err(Error::Backend)
 }
+
+/// How to stop the embedded worker: the stop signal and the task that ends when it has stopped.
+type WorkerHandle = (watch::Sender<bool>, tokio::task::JoinHandle<()>);
 
 /// Starts the embedded worker on the backend database.
 ///
@@ -364,7 +390,7 @@ async fn start_worker(
     apptainer_cache: macworp_backend::reference_directory::ReferenceDirectory,
     cwl_cache: std::path::PathBuf,
     settings: &settings::Settings,
-) -> Result<(watch::Sender<bool>, tokio::task::JoinHandle<()>), Error> {
+) -> Result<WorkerHandle, Error> {
     let db = sea_orm::Database::connect(database_url)
         .await
         .map_err(Error::WorkerDatabase)?;
@@ -480,6 +506,8 @@ fn App() -> Element {
     let initial_status = consume_context::<InitialRuntimeStatus>();
     let mut status = use_signal(|| initial_status.0);
     let mut refreshing = use_signal(|| false);
+    let mut starting = use_signal(|| false);
+    let mut start_error = use_signal(|| None::<String>);
     let mut adjusting = use_signal(|| false);
     let mut adjust_error = use_signal(|| None::<String>);
     let refresh = use_callback(move |()| {
@@ -493,6 +521,26 @@ fn App() -> Element {
                 Err(error) => tracing::warn!("Cannot check the container runtime: {error}"),
             }
             refreshing.set(false);
+        });
+    });
+    let start_engine = use_callback(move |()| {
+        spawn(async move {
+            starting.set(true);
+            start_error.set(None);
+            let result = match Session::new(storage_signal, config_signal) {
+                Ok(session) => session
+                    .client
+                    .runtime()
+                    .start(&session.jwt)
+                    .await
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error),
+            };
+            match result {
+                Ok(new_status) => status.set(new_status),
+                Err(message) => start_error.set(Some(message)),
+            }
+            starting.set(false);
         });
     });
     let adjust_memory = use_callback(move |mebibytes: u64| {
@@ -522,6 +570,9 @@ fn App() -> Element {
         status,
         refreshing,
         refresh,
+        start_engine,
+        starting,
+        start_error,
         adjust_memory,
         adjusting,
         adjust_error,

@@ -408,6 +408,7 @@ impl TestApp {
         let runtime_control: std::sync::Arc<dyn macworp_backend::runtime_control::RuntimeControl> =
             std::sync::Arc::new(crate::runtime_status::DesktopRuntime::new(
                 crate::runtime_status::check_runtime().await,
+                tokio::sync::watch::channel(None).0,
             ));
         let backend = tokio::spawn(async move {
             Backend::<LocalFilesystem>::start(

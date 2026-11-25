@@ -96,6 +96,15 @@ impl MemoryFix {
     }
 }
 
+/// A stopped container engine the app can start for the user.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StartOffer {
+    /// What would be started, for the button ("Docker Desktop", "podman machine default")
+    pub name: String,
+    /// What starting does, in plain language
+    pub impact: String,
+}
+
 /// Snapshot of the container runtime check of the machine the backend runs on (desktop).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeStatus {
@@ -112,6 +121,8 @@ pub struct RuntimeStatus {
     /// The memory of the container VM can be changed (Settings): its limits, `None` if the
     /// platform cannot change it
     pub memory_fix: Option<MemoryFix>,
+    /// No runtime answers and one can be started from the app, `None` otherwise
+    pub start_offer: Option<StartOffer>,
 }
 
 impl RuntimeStatus {
@@ -188,6 +199,7 @@ mod tests {
             checks: vec![],
             unavailable_engines: vec![],
             memory_fix: None,
+            start_offer: None,
         }
     }
 

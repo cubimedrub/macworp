@@ -21,6 +21,9 @@ pub enum Error {
     /// The backend could not tell the status of the container runtime
     #[error("Cannot read the container runtime status: {0}")]
     RuntimeStatus(macworp_ui_core::client::Error),
+    /// The tokio runtime of the app could not be created
+    #[error("Cannot start the async runtime: {0}")]
+    AsyncRuntime(std::io::Error),
     #[error("Failed to get project directory")]
     ProjectDirectoryNotFound,
     #[error("Worker could not open the database: {0}")]

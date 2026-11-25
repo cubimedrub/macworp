@@ -97,8 +97,7 @@ struct CommandLineInterface {
 /// * application: `env!("CARGO_PKG_NAME")`s
 ///
 /// Database is SQL
-#[tokio::main]
-async fn main() -> Result<(), Error> {
+fn main() -> Result<(), Error> {
     let cli_args = CommandLineInterface::parse();
 
     if let Some(subcommand) = &cli_args.subcommand {
@@ -107,22 +106,87 @@ async fn main() -> Result<(), Error> {
                 println!("{}", env!("CARGO_PKG_VERSION"));
             }
         }
-    } else {
-        init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
-        runtime_status::set_preference(cli_args.worker.container_runtime);
-        match start(cli_args.app_folder_suffix).await {
-            Ok(_) => tracing::info!("Application stopped successfully"),
-            Err(e) => tracing::error!("Application stopped with error: {e}"),
+        return Ok(());
+    }
+    init_tracing_subscription(cli_args.verbose, true, DEFAULT_LOGGING_DIRECTIVES)?;
+    runtime_status::set_preference(cli_args.worker.container_runtime);
+
+    // The runtime is not entered with `#[tokio::main]`: that would run the whole UI event loop
+    // inside `block_on`, which sets tokio's cooperative budget once for the lifetime of the
+    // loop and never resets it. After a few dozen HTTP calls every tokio future in the UI
+    // would answer "pending" and wake itself at once, spinning the UI at 100% CPU. Entering
+    // the runtime only (`enter`) leaves the UI threads without a budget.
+    let runtime = tokio::runtime::Runtime::new().map_err(Error::AsyncRuntime)?;
+    let result = match runtime.block_on(start(cli_args.app_folder_suffix)) {
+        Ok(mut running) => {
+            {
+                let _entered = runtime.enter();
+                running.launch();
+            }
+            runtime.block_on(running.stop())
+        }
+        Err(error) => Err(error),
+    };
+    match result {
+        Ok(()) => tracing::info!("Application stopped successfully"),
+        Err(e) => tracing::error!("Application stopped with error: {e}"),
+    }
+    Ok(())
+}
+
+/// The desktop app after startup, before and after its window: the UI to launch and what to
+/// stop afterwards.
+struct Running {
+    /// The UI with everything it needs from the setup, `None` once launched
+    ui: Option<dioxus::LaunchBuilder>,
+    /// Waits for the container runtime and starts the embedded worker
+    worker_supervisor: tokio::task::JoinHandle<()>,
+    /// The embedded worker once it started
+    worker_slot: Arc<std::sync::Mutex<Option<WorkerHandle>>>,
+    /// Stops the backend
+    backend_shutdown_signal_sender: tokio::sync::oneshot::Sender<()>,
+    /// The backend task
+    backend: tokio::task::JoinHandle<Result<(), macworp_backend::error::Error>>,
+}
+
+impl Running {
+    /// Shows the window and returns when it is closed. Must be called with the tokio runtime
+    /// entered, not inside `block_on`, see `main`.
+    fn launch(&mut self) {
+        if let Some(ui) = self.ui.take() {
+            ui.launch(App);
         }
     }
 
-    Ok(())
+    /// Stops the embedded worker (a running job is finished first) and the backend.
+    async fn stop(self) -> Result<(), Error> {
+        self.worker_supervisor.abort();
+        let worker = self
+            .worker_slot
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some((stop, handle)) = worker {
+            // A running job is finished (or cancelled by process exit) before the backend goes away
+            stop.send(true).ok();
+            handle.await.map_err(Error::WorkerStopping)?;
+        }
+
+        self.backend_shutdown_signal_sender
+            .send(())
+            .map_err(|_| Error::BackendStopSignal)?;
+
+        self.backend
+            .await
+            .map_err(Error::BackendStopping)?
+            .map_err(Error::Backend)
+    }
 }
 
 /// Starts the desktop application with the backend running in the background
 ///
 /// Pa
-async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
+async fn start(app_folder_suffix: Option<String>) -> Result<Running, Error> {
     let application_name = if let Some(app_folder_suffix) = app_folder_suffix {
         format!("{}-{}", env!("CARGO_PKG_NAME"), app_folder_suffix)
     } else {
@@ -359,7 +423,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
 
     storage.set_jwt(Some(jwt))?;
 
-    dioxus::LaunchBuilder::new()
+    let ui = dioxus::LaunchBuilder::new()
         .with_context(config)
         .with_context(storage)
         .with_context(runtime_status)
@@ -376,24 +440,15 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
                 })
             },
         ))
-        .launch(App);
+        ;
 
-    worker_supervisor.abort();
-    let worker = worker_slot.lock().unwrap_or_else(|e| e.into_inner()).take();
-    if let Some((stop, handle)) = worker {
-        // A running job is finished (or cancelled by process exit) before the backend goes away
-        stop.send(true).ok();
-        handle.await.map_err(Error::WorkerStopping)?;
-    }
-
-    backend_shutdown_signal_sender
-        .send(())
-        .map_err(|_| Error::BackendStopSignal)?;
-
-    backend
-        .await
-        .map_err(Error::BackendStopping)?
-        .map_err(Error::Backend)
+    Ok(Running {
+        ui: Some(ui),
+        worker_supervisor,
+        worker_slot,
+        backend_shutdown_signal_sender,
+        backend,
+    })
 }
 
 /// How to stop the embedded worker: the stop signal and the task that ends when it has stopped.

@@ -4,7 +4,7 @@
 
 use std::{future::Future, pin::Pin};
 
-use macworp_core::{runtime_status::RuntimeStatus, workflow_configuration::engine::Engine};
+use macworp_core::{runtime_status::{RuntimeStatus, SleepStatus}, workflow_configuration::engine::Engine};
 
 /// Boxed future, so the control can be used as a trait object.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -29,4 +29,7 @@ pub trait RuntimeControl: Send + Sync {
     /// # Arguments
     /// * `mebibytes` - the new memory
     fn adjust_memory(&self, mebibytes: u64) -> BoxFuture<'_, Result<RuntimeStatus, String>>;
+
+    /// Whether the computer is kept awake for the running workflows right now.
+    fn sleep_status(&self) -> SleepStatus;
 }

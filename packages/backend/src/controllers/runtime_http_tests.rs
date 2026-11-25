@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use http::{Method, StatusCode};
 use macworp_core::{
-    runtime_status::{RuntimeStatus, StatusCheck, StatusLevel},
+    runtime_status::{RuntimeStatus, SleepStatus, StatusCheck, StatusLevel},
     workflow_configuration::engine::Engine,
 };
 use serde_json::json;
@@ -20,6 +20,8 @@ const REFRESH: &str = "/runtime/refresh";
 const START: &str = "/runtime/start";
 /// Memory path.
 const MEMORY: &str = "/runtime/memory";
+/// Sleep path.
+const SLEEP: &str = "/runtime/sleep";
 
 /// A runtime that remembers what it was asked to do.
 #[derive(Default)]
@@ -92,6 +94,20 @@ impl RuntimeControl for FakeRuntime {
             }
         })
     }
+
+    fn sleep_status(&self) -> SleepStatus {
+        SleepStatus::OnBattery
+    }
+}
+
+/// The sleep status is forwarded from the runtime of the desktop.
+#[tokio::test]
+async fn sleep_status_forwards_to_the_runtime() {
+    let app = TestApp::new_with_runtime_control(Arc::new(FakeRuntime::default())).await;
+    let alice = app.user("alice").await;
+    let (status, body) = app.get(&alice, SLEEP).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!("OnBattery"));
 }
 
 /// Status and refresh forward to the runtime of the desktop.

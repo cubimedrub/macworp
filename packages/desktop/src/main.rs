@@ -25,6 +25,7 @@ use rand::prelude::*;
 
 use macworp_backend::models::RunTable;
 use macworp_core::logging::init_tracing_subscription;
+use macworp_core::runtime_status::SleepStatus;
 use macworp_ui_core::{
     client::Client, components::Bootstrap, configuration::Configuration,
     runtime_status::RuntimeStatusHandle, session::Session, storage::IsStorage, FAVICON, MAIN_CSS,
@@ -217,6 +218,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         runtimes_sender,
         folders,
     ));
+    let sleep_prevention = runtime_control.sleep_prevention();
 
     let database_path = app_data_directory.join("db.sqlite");
 
@@ -309,6 +311,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
         let cwl_cache = settings.cwl_cache();
         let settings = settings.clone();
         let worker_slot = worker_slot.clone();
+        let sleep_prevention = sleep_prevention.clone();
         let mut runtimes_receiver = runtimes_receiver;
         async move {
             let runtimes = loop {
@@ -327,6 +330,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<(), Error> {
                 apptainer_cache,
                 cwl_cache,
                 &settings,
+                sleep_prevention,
             )
             .await
             {
@@ -408,6 +412,9 @@ type WorkerHandle = (watch::Sender<bool>, tokio::task::JoinHandle<()>);
 /// * `cwl_cache` - folder of the CWL step cache
 /// * `settings` - supplies the storage limits and the state directory for usage files; the
 ///   worker's stores are attached to it so limit changes apply live
+/// * `sleep_prevention` - the worker holds it while a run executes, so the computer stays awake
+///   on mains power
+#[allow(clippy::too_many_arguments)]
 async fn start_worker(
     database_url: &str,
     max_log_bytes: u64,
@@ -416,6 +423,7 @@ async fn start_worker(
     apptainer_cache: macworp_backend::reference_directory::ReferenceDirectory,
     cwl_cache: std::path::PathBuf,
     settings: &settings::Settings,
+    sleep_prevention: Arc<macworp_worker::sleep_prevention::SleepPrevention>,
 ) -> Result<WorkerHandle, Error> {
     let db = sea_orm::Database::connect(database_url)
         .await
@@ -457,7 +465,8 @@ async fn start_worker(
             .collect(),
     )
     // Runs whose folders the container VM cannot see fail with a clear message (macOS)
-    .with_shared_folders(shared_folders);
+    .with_shared_folders(shared_folders)
+    .with_sleep_prevention(sleep_prevention);
     // Limits come from the settings page; the stores start with the saved ones
     let image_stores: Vec<Arc<ImageStore>> = runtimes
         .iter()
@@ -550,6 +559,20 @@ fn App() -> Element {
     let mut start_error = use_signal(|| None::<String>);
     let mut adjusting = use_signal(|| false);
     let mut adjust_error = use_signal(|| None::<String>);
+    let mut sleep = use_signal(SleepStatus::default);
+    // The power source can change at any time: ask the backend every few seconds
+    use_future(move || async move {
+        loop {
+            if let Ok(session) = Session::new(storage_signal, config_signal) {
+                if let Ok(current) = session.client.runtime().sleep(&session.jwt).await {
+                    if *sleep.peek() != current {
+                        sleep.set(current);
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
     let refresh = use_callback(move |()| {
         spawn(async move {
             refreshing.set(true);
@@ -616,6 +639,7 @@ fn App() -> Element {
         adjust_memory,
         adjusting,
         adjust_error,
+        sleep,
     });
 
     rsx! {

@@ -36,6 +36,8 @@ impl RuntimeRouting {
     /// POST (`AdjustMemoryRequest`): change the memory of the container VM and restart it,
     /// 409 while runs are queued or running; returns the status afterwards
     pub const MEMORY_PATH: &str = "/memory";
+    /// GET: whether the computer is kept awake for the running workflows (`SleepStatus`)
+    pub const SLEEP_PATH: &str = "/sleep";
 }
 
 impl IsRouting for RuntimeRouting {

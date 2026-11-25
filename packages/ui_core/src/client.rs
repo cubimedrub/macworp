@@ -23,7 +23,7 @@ use macworp_core::{
         UserResponse, UserSummaryResponse, WorkflowIntegrationResponse, WorkflowSchemasResponse,
     },
     routing::*,
-    runtime_status::{AdjustMemoryRequest, RuntimeStatus},
+    runtime_status::{AdjustMemoryRequest, RuntimeStatus, SleepStatus},
     workflow_configuration::WorkflowConfiguration,
 };
 
@@ -203,6 +203,20 @@ impl<'a> RuntimeClient<'a> {
         let request = reqwest::Client::new().post(self.url(RuntimeRouting::REFRESH_PATH));
         self.base_client
             .send_authenticated(request, jwt, "check the container runtime")
+            .await?
+            .json()
+            .await
+            .map_err(Error::Request)
+    }
+
+    /// Whether the computer is kept awake for the running workflows
+    ///
+    /// # Arguments
+    /// * `jwt` - token of the logged in user
+    pub async fn sleep(&self, jwt: &str) -> Result<SleepStatus, Error> {
+        let request = reqwest::Client::new().get(self.url(RuntimeRouting::SLEEP_PATH));
+        self.base_client
+            .send_authenticated(request, jwt, "fetch the sleep status")
             .await?
             .json()
             .await

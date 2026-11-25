@@ -8,7 +8,7 @@ use axum::{
 };
 use macworp_core::{
     routing::RuntimeRouting,
-    runtime_status::{AdjustMemoryRequest, RuntimeStatus},
+    runtime_status::{AdjustMemoryRequest, RuntimeStatus, SleepStatus},
 };
 
 use crate::{authentication::middleware::RequireUser, models::RunTable, state::State};
@@ -24,6 +24,7 @@ impl RuntimeController {
             .route(RuntimeRouting::REFRESH_PATH, post(Self::refresh))
             .route(RuntimeRouting::START_PATH, post(Self::start))
             .route(RuntimeRouting::MEMORY_PATH, post(Self::adjust_memory))
+            .route(RuntimeRouting::SLEEP_PATH, get(Self::sleep))
             .with_state(state)
     }
 
@@ -33,6 +34,14 @@ impl RuntimeController {
         _user: RequireUser,
     ) -> Result<Json<RuntimeStatus>, (StatusCode, String)> {
         Ok(Json(Self::control(&state)?.status().await))
+    }
+
+    /// Whether the computer is kept awake for the running workflows.
+    async fn sleep(
+        AxumState(state): AxumState<Arc<State>>,
+        _user: RequireUser,
+    ) -> Result<Json<SleepStatus>, (StatusCode, String)> {
+        Ok(Json(Self::control(&state)?.sleep_status()))
     }
 
     /// Checks the runtime again.

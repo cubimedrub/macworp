@@ -26,6 +26,7 @@ use crate::{
     job_source::{Error as SourceError, JobSource},
     log_proxy::{HostAccess, ProgressReceiver},
     progress::ProgressUpdate,
+    sleep_prevention::SleepPrevention,
 };
 
 #[derive(Debug, Clone)]
@@ -88,6 +89,8 @@ pub struct Worker {
     /// start with a clear message instead of an engine mount error. `None` where the VM sees
     /// everything.
     shared_folders: Option<Arc<SharedFolders>>,
+    /// Keeps the computer awake while a run executes (desktop); `None` leaves sleep alone
+    sleep_prevention: Option<Arc<SleepPrevention>>,
 }
 
 impl Worker {
@@ -105,7 +108,17 @@ impl Worker {
             image_stores: Vec::new(),
             apptainer_cache_store: None,
             shared_folders: None,
+            sleep_prevention: None,
         }
+    }
+
+    /// Lets the worker keep the computer from sleeping while a run executes (on mains power).
+    ///
+    /// # Arguments
+    /// * `prevention` - shared with whoever shows its status
+    pub fn with_sleep_prevention(mut self, prevention: Arc<SleepPrevention>) -> Self {
+        self.sleep_prevention = Some(prevention);
+        self
     }
 
     /// Lets the worker build the images of workflows that bring a build file, with the builder
@@ -158,7 +171,9 @@ impl Worker {
             return Ok(false);
         };
         let run_id = job.run_id;
+        let hold = self.sleep_prevention.as_ref().map(|p| p.hold());
         let outcome = self.execute(job).await;
+        drop(hold);
         tracing::info!("Run {run_id} ended: {outcome:?}");
         self.finish_with_retry(run_id, outcome).await?;
         Ok(true)

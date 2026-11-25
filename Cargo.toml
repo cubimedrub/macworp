@@ -22,6 +22,7 @@ futures-util = "0.3.32"
 git2 = { version = "0.20.3", default-features = false }
 gloo-timers = { version = "0.3" }
 http = { version = "1.4.0" }
+keepawake = "0.6.1"
 jsonschema = { version = "0.61.2", default-features = false }
 jsonwebtoken = { version = "10.3.0" }
 num-traits = "0.2.15"
@@ -46,6 +47,7 @@ sqlx = "0.9.0"
 strum = "0.28.0"
 tempfile = "3"
 thiserror = { version = "2.0.18" }
+starship-battery = "0.12.0"
 sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }
 tokio = { version = "1.50.0" }
 tokio-util = "0.7.18"

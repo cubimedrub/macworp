@@ -20,5 +20,7 @@ pub mod log_proxy;
 pub mod progress;
 /// SELinux labels of the directories MAcWorP owns
 pub mod selinux;
+/// Keeps the computer awake while runs execute on mains power
+pub mod sleep_prevention;
 /// Claims jobs and runs them with the executor of their engine
 pub mod worker;

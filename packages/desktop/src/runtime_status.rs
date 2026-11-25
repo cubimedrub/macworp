@@ -2,13 +2,14 @@ use std::sync::{Arc, OnceLock};
 
 use macworp_backend::runtime_control::{BoxFuture, RuntimeControl};
 use macworp_core::runtime_status::{
-    MemoryFix, RuntimeStatus, StartOffer, StatusCheck, StatusLevel,
+    MemoryFix, RuntimeStatus, SleepStatus, StartOffer, StatusCheck, StatusLevel,
 };
 use macworp_core::workflow_configuration::engine::Engine;
 use macworp_worker::container_runtime::{
     doctor, Check, CheckStatus, ContainerRuntime, DoctorReport, EngineStart, MemoryAdjustment,
     MemoryRange, RuntimeInfo, RuntimePreference,
 };
+use macworp_worker::sleep_prevention::SleepPrevention;
 use tokio::sync::watch;
 
 /// Initial status, handed to the UI through the launch context.
@@ -133,6 +134,8 @@ pub struct DesktopRuntime {
     runtimes: watch::Sender<Option<Vec<Arc<dyn ContainerRuntime>>>>,
     /// The folders the VM must see
     folders: Folders,
+    /// Keeps the computer awake while runs execute; shared with the embedded worker
+    sleep: Arc<SleepPrevention>,
 }
 
 impl DesktopRuntime {
@@ -151,7 +154,13 @@ impl DesktopRuntime {
             status: std::sync::Mutex::new(status),
             runtimes,
             folders,
+            sleep: SleepPrevention::system(),
         }
+    }
+
+    /// The sleep prevention the embedded worker holds while a run executes.
+    pub fn sleep_prevention(&self) -> Arc<SleepPrevention> {
+        Arc::clone(&self.sleep)
     }
 
     /// Checks the runtime, keeps the result as the latest status and hands newly usable
@@ -232,6 +241,10 @@ impl RuntimeControl for DesktopRuntime {
 
     fn adjust_memory(&self, mebibytes: u64) -> BoxFuture<'_, Result<RuntimeStatus, String>> {
         Box::pin(self.change_memory(mebibytes))
+    }
+
+    fn sleep_status(&self) -> SleepStatus {
+        self.sleep.status()
     }
 }
 

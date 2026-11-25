@@ -33,6 +33,8 @@ Snakemake needs Docker. CWL support is still planned.
 
 Which test covers which scenario: [docs/authorization-tests.md](docs/authorization-tests.md).
 
+Checks that need a real machine or a person (sleep prevention, ...): [docs/manual-testing.md](docs/manual-testing.md).
+
 Projects and workflows are private: only users (or groups) they are shared with can see them. A user's role on a resource is the highest of the roles granted to them directly, to a group they belong to and to everybody (public). The sharing UI exists on the web deployment only (the backend routes are mounted in both builds); the desktop app has a single local user who owns everything.
 
 Roles on a **project** or **workflow** (each includes the rights of the roles to its left):

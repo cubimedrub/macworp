@@ -461,6 +461,7 @@ impl TestApp {
             macworp_backend::reference_directory::ReferenceDirectory::new(apptainer_cache.clone()),
             cwl_cache.clone(),
             &settings,
+            macworp_worker::sleep_prevention::SleepPrevention::system(),
         )
         .await
         .unwrap();

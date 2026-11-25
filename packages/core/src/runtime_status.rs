@@ -96,6 +96,46 @@ impl MemoryFix {
     }
 }
 
+/// Whether the computer may go to sleep while the app runs workflows. Sleep suspends the
+/// container engine and every workflow in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum SleepStatus {
+    /// No workflow is running, nothing to protect
+    #[default]
+    Idle,
+    /// A workflow runs on mains power and the app keeps the computer from sleeping through
+    /// inactivity. Closing the lid still puts it to sleep.
+    KeepingAwake,
+    /// A workflow runs on battery: the app does not keep the computer awake (heat and
+    /// battery), so sleep stops the workflow
+    OnBattery,
+    /// A workflow runs on mains power but the system refused the request to stay awake
+    Unavailable,
+}
+
+impl SleepStatus {
+    /// A workflow is running, so the UI warns about sleep.
+    pub fn is_running(&self) -> bool {
+        !matches!(self, SleepStatus::Idle)
+    }
+
+    /// Warning for the status bar, `None` when no workflow runs.
+    pub fn warning(&self) -> Option<&'static str> {
+        match self {
+            SleepStatus::Idle => None,
+            SleepStatus::KeepingAwake => Some(
+                "Keeping the computer awake while workflows run. Closing the lid or unplugging the charger lets it sleep and stops the workflows.",
+            ),
+            SleepStatus::OnBattery => Some(
+                "On battery: do not close the lid or let the computer sleep, it would stop the running workflows. Plug in the charger to keep it awake.",
+            ),
+            SleepStatus::Unavailable => Some(
+                "The computer could not be kept awake. Do not close the lid or let it sleep, it would stop the running workflows.",
+            ),
+        }
+    }
+}
+
 /// A stopped container engine the app can start for the user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StartOffer {
@@ -175,6 +215,26 @@ impl RuntimeStatus {
             label.push_str(" · limited");
         }
         label
+    }
+}
+
+#[cfg(test)]
+mod sleep_tests {
+    use super::SleepStatus;
+
+    /// Only an idle status has no warning.
+    #[test]
+    fn idle_has_no_warning() {
+        assert!(SleepStatus::Idle.warning().is_none());
+        assert!(!SleepStatus::Idle.is_running());
+        for status in [
+            SleepStatus::KeepingAwake,
+            SleepStatus::OnBattery,
+            SleepStatus::Unavailable,
+        ] {
+            assert!(status.warning().is_some());
+            assert!(status.is_running());
+        }
     }
 }
 

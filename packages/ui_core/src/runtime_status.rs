@@ -4,7 +4,9 @@ use macworp_core::{
     workflow_configuration::engine::{Engine, ExecutionHost},
 };
 
-pub use macworp_core::runtime_status::{MemoryFix, RuntimeStatus, StatusCheck, StatusLevel};
+pub use macworp_core::runtime_status::{
+    MemoryFix, RuntimeStatus, SleepStatus, StatusCheck, StatusLevel,
+};
 
 /// Short tag of a check result.
 ///
@@ -85,6 +87,9 @@ pub struct RuntimeStatusHandle {
     pub adjusting: Signal<bool>,
     /// Why the last adjustment did not work, `None` otherwise
     pub adjust_error: Signal<Option<String>>,
+    /// Whether the computer is kept awake for the running workflows; the platform keeps it
+    /// current while workflows run
+    pub sleep: Signal<SleepStatus>,
 }
 
 #[component]
@@ -98,6 +103,7 @@ pub fn RuntimeStatusBar() -> Element {
     let level = status.level();
     let label = status.label();
     let refreshing = *handle.refreshing.read();
+    let sleep = *handle.sleep.read();
 
     rsx! {
         div {
@@ -108,6 +114,19 @@ pub fn RuntimeStatusBar() -> Element {
                 title: "Show container runtime details",
                 onclick: move |_| details_open.set(true),
                 "{label}"
+            }
+            if let Some(warning) = sleep.warning() {
+                span {
+                    class: if sleep == SleepStatus::KeepingAwake { "badge text-bg-info" } else { "badge text-bg-warning" },
+                    title: "{warning}",
+                    role: "status",
+                    i { class: "fa-solid fa-moon me-1" }
+                    if sleep == SleepStatus::KeepingAwake {
+                        "Keeping awake"
+                    } else {
+                        "Do not let the computer sleep"
+                    }
+                }
             }
             button {
                 r#type: "button",

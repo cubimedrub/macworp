@@ -238,7 +238,6 @@ where
                 WorkerRouting::controller_path(),
                 WorkerController::<F>::routes(state.clone()),
             )
-            .layer(Extension(state.clone()))
             .with_state(state.clone());
         // Only the desktop app manages a container runtime
         #[cfg(feature = "integration")]
@@ -246,6 +245,9 @@ where
             macworp_core::routing::RuntimeRouting::controller_path(),
             RuntimeController::routes(state.clone()).with_state(state.clone()),
         );
+        // After the last route: the extractors read the state from this extension, routes added
+        // later would answer 500 "State missing"
+        let router = router.layer(Extension(state.clone()));
         let router = match cors {
             Some(cors) => router.layer(cors),
             None => router,

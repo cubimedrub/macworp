@@ -390,16 +390,14 @@ impl SnakemakeExecutor {
             Ok(image) => image,
             Err(error) => return crate::image_builder::failed(error.to_string()),
         };
-        super::apptainer_seed::seed(
-            &self.runtime_binary,
-            &image,
-            &self.run_args(job),
-            job,
-            cache,
-            logs,
-            cancel,
-        )
-        .await
+        let run_arguments = self.run_args(job);
+        let conversion = super::apptainer_seed::ConversionRun {
+            runtime: &self.runtime_binary,
+            engine_image: &image,
+            run_arguments: &run_arguments,
+            mapping: self.paths,
+        };
+        super::apptainer_seed::seed(&conversion, job, cache, logs, cancel).await
     }
 }
 

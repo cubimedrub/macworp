@@ -350,6 +350,8 @@ impl ImageBuilder {
             // Plain output instead of the terminal animation, readable in a log
             args.extend(["--progress".into(), "plain".into()]);
         }
+        // Host paths on purpose: the runtime's client reads the build file and context itself,
+        // no container sees them, so no `PathMapping` applies
         args.extend([
             "--file".into(),
             image.file.display().to_string(),

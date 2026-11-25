@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use macworp_core::entities::LogStream;
+use macworp_core::{entities::LogStream, paths::PathMapping};
 use md5::{Digest, Md5};
 use tokio::{
     process::Command,
@@ -20,6 +20,7 @@ use tokio::{
 
 use rand::{RngExt, distr::Alphanumeric};
 
+use super::containerized_execution::path_arg;
 use super::{Job, LaunchSpec, LogLine, Outcome, run_process, selinux_args, selinux_enforcing};
 use crate::image_builder::failed;
 
@@ -36,28 +37,41 @@ pub fn cache_file_name(name: &str) -> String {
     format!("{hex}.simg")
 }
 
+/// How the conversion container is started: the same runtime, engine image, `run` options and
+/// path view as the engine run it prepares.
+pub struct ConversionRun<'a> {
+    /// Container runtime binary
+    pub runtime: &'a Path,
+    /// Snakemake engine image, it provides Apptainer
+    pub engine_image: &'a str,
+    /// The `run` options of the engine container (user, security options, cache mount)
+    pub run_arguments: &'a [String],
+    /// How host paths look inside the runtime's containers, applied to every path the
+    /// conversion command line gives to the container (the `docker save` call on the host keeps
+    /// host paths)
+    pub mapping: PathMapping,
+}
+
 /// Seeds the image cache with every image of the job's workflow that is missing or was made
 /// from another image. Runs under the name reservation of the run, so no other run changes what
 /// the names point to meanwhile.
 ///
 /// # Arguments
-/// * `runtime` - container runtime binary
-/// * `engine_image` - Snakemake engine image, it provides Apptainer
-/// * `run_arguments` - the `run` options of the engine container (user, security options, cache
-///   mount), so the conversion runs like the engine does
+/// * `conversion` - how the conversion container is started
 /// * `job` - the claimed run
 /// * `cache` - the Apptainer image cache the engine is given as its prefix
 /// * `logs` - run log
 /// * `cancel` - turns `true` when a user stops the run
 pub async fn seed(
-    runtime: &Path,
-    engine_image: &str,
-    run_arguments: &[String],
+    conversion: &ConversionRun<'_>,
     job: &Job,
     cache: &Path,
     logs: &mpsc::Sender<LogLine>,
     cancel: watch::Receiver<bool>,
 ) -> Outcome {
+    let ConversionRun {
+        runtime, mapping, ..
+    } = *conversion;
     for image in job.configuration.images() {
         let say = |text: String| async {
             let _ = logs
@@ -111,16 +125,14 @@ pub async fn seed(
             other => return other,
         }
         let build = conversion_spec(
-            runtime,
-            engine_image,
-            run_arguments,
+            conversion,
             cache,
             vec![
                 "apptainer".into(),
                 "build".into(),
                 "--force".into(),
-                converted.display().to_string(),
-                format!("docker-archive:{}", archive.display()),
+                path_arg(mapping, &converted),
+                format!("docker-archive:{}", path_arg(mapping, &archive)),
             ],
         );
         match run_process(&build, logs.clone(), cancel.clone()).await {
@@ -142,15 +154,11 @@ pub async fn seed(
 /// would create the project directory owned by root.
 ///
 /// # Arguments
-/// * `runtime` - container runtime binary
-/// * `engine_image` - Snakemake engine image
-/// * `run_arguments` - the `run` options of the engine container, they mount `cache`
-/// * `cache` - the Apptainer image cache, the working directory
+/// * `conversion` - how the container is started, its `run_arguments` mount `cache`
+/// * `cache` - the Apptainer image cache, the working directory (host path, mapped here)
 /// * `command` - what to run in the container
 fn conversion_spec(
-    runtime: &Path,
-    engine_image: &str,
-    run_arguments: &[String],
+    conversion: &ConversionRun<'_>,
     cache: &Path,
     command: Vec<String>,
 ) -> LaunchSpec {
@@ -166,14 +174,14 @@ fn conversion_spec(
         "--name".into(),
         container_name.clone(),
         "-w".into(),
-        cache.display().to_string(),
+        path_arg(conversion.mapping, cache),
     ];
     args.extend(selinux_args(selinux_enforcing()));
-    args.extend(run_arguments.iter().cloned());
-    args.push(engine_image.to_string());
+    args.extend(conversion.run_arguments.iter().cloned());
+    args.push(conversion.engine_image.to_string());
     args.extend(command);
     LaunchSpec {
-        program: runtime.to_path_buf(),
+        program: conversion.runtime.to_path_buf(),
         args,
         container_name: Some(container_name),
         scratch_directory: None,
@@ -290,17 +298,13 @@ mod tests {
         let (_tx, cancel) = watch::channel(false);
         let arguments = vec!["--user".to_string(), "1000".to_string()];
         let job = job();
-        let run = || {
-            seed(
-                &runtime,
-                "engine:1",
-                &arguments,
-                &job,
-                &cache,
-                &logs,
-                cancel.clone(),
-            )
+        let conversion = ConversionRun {
+            runtime: &runtime,
+            engine_image: "engine:1",
+            run_arguments: &arguments,
+            mapping: PathMapping::Native,
         };
+        let run = || seed(&conversion, &job, &cache, &logs, cancel.clone());
         let converted = |calls: &Path| {
             std::fs::read_to_string(calls)
                 .unwrap_or_default()
@@ -333,5 +337,34 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().starts_with(".seed-"))
             .count();
         assert_eq!(leftovers, 0);
+    }
+
+    /// Every host path in the conversion's container command line is mapped for the runtime's
+    /// VM, the working directory included.
+    #[test]
+    fn conversion_maps_host_paths() {
+        let cache = Path::new(r"C:\cache");
+        let command = vec![format!(
+            "docker-archive:{}",
+            path_arg(PathMapping::WslMount, &cache.join("image.tar"))
+        )];
+        for (mapping, root) in [
+            (PathMapping::WslMount, "/mnt/c/cache"),
+            (PathMapping::DriveRoot, "/c/cache"),
+        ] {
+            let conversion = ConversionRun {
+                runtime: Path::new("podman"),
+                engine_image: "engine:1",
+                run_arguments: &[],
+                mapping,
+            };
+            let spec = conversion_spec(&conversion, cache, command.clone());
+            let position = spec
+                .args
+                .iter()
+                .position(|argument| argument == "-w")
+                .unwrap();
+            assert_eq!(spec.args[position + 1], root);
+        }
     }
 }

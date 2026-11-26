@@ -9,8 +9,6 @@
 #   build_arg: dockerfile build argument that selects the version
 #   default:   version used by workflows that pin nothing, one of `versions`
 #   versions:  every version with an image (quote them: `9.6` would be a number)
-#
-# Temporary to trigger the workrflow
 nextflow:
   target: nextflow
   build_arg: NXF_VER

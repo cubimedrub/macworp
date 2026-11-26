@@ -270,15 +270,14 @@ impl SnakemakeExecutor {
         {
             command.extend(["--cores".into(), "all".into()]);
         }
-        if let Some(mebibytes) = self.memory.mebibytes() {
-            if !config
+        if let Some(mebibytes) = self.memory.mebibytes()
+            && !config
                 .engine_parameters()
                 .iter()
                 .any(|p| p.name() == "resources")
             {
                 command.extend(["--resources".into(), format!("mem_mb={mebibytes}")]);
             }
-        }
         if !config
             .engine_parameters()
             .iter()

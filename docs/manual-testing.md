@@ -63,3 +63,6 @@ Not automatable over SSH; run in the Windows VM's console. Context: `container-r
 1. Allow the app through Windows Firewall when the prompt appears (otherwise Nextflow/Snakemake runs hang, `doctor` shows `progress-receiver`).
 2. `cd packages\desktop && dx run --desktop --args=-vvv`. Create a project, open its page, click **Open in file explorer**: Explorer opens the project folder (no `\\?\` form).
 3. Start a Container workflow with `sleep 600`. For the whole run keep clicking through the app: it must stay responsive (the earlier 100 % CPU freeze came from running the UI inside `block_on`). If it freezes, record the symptom, the log and `Get-Process` CPU, and add it to PLAN.md P7.
+
+## What CI does not cover
+CI (`.github/workflows/ci.yml`) has no container runtime on its macOS and Windows runners, so only unit tests run there. Everything that starts a real engine on those systems (podman machine, Docker Desktop, native Windows podman, `wslc`) is checked by hand with the sections above. On Linux, CI runs the `Container` end-to-end test on Docker and Podman; Snakemake and CWL runs are not in CI.

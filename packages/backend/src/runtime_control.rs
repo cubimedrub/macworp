@@ -4,7 +4,10 @@
 
 use std::{future::Future, pin::Pin};
 
-use macworp_core::{runtime_status::{RuntimeStatus, SleepStatus}, workflow_configuration::engine::Engine};
+use macworp_core::{
+    runtime_status::{RuntimeStatus, SleepStatus},
+    workflow_configuration::engine::Engine,
+};
 
 /// Boxed future, so the control can be used as a trait object.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;

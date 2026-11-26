@@ -439,8 +439,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<Running, Error> {
                         .map(|folder| folder.path().to_path_buf())
                 })
             },
-        ))
-        ;
+        ));
 
     Ok(Running {
         ui: Some(ui),

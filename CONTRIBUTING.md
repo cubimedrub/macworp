@@ -24,6 +24,15 @@ Contributions are always welcome!
 2. Like bugfixes please develop the feature on a separate fork and branch and merge it via a PR.
 
 
+## Continuous integration
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `dev`:
+- `lint` (Linux): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo check -p macworp_web --target wasm32-unknown-unknown`, `cargo check -p macworp_backend` (standalone build).
+- `test` (Linux, macOS, Windows): `cargo test --workspace`.
+- `container-smoke` (Linux, Docker and Podman): `macworp_worker doctor` and the `Container` end-to-end test; the Nextflow end-to-end test is allowed to fail for now.
+- `desktop-build` (all three systems, not on pull requests): `cargo build -p macworp_desktop --release`.
+
+Run the `lint` and `test` commands locally before opening a PR. macOS and Windows runners have no container runtime, so runs there stay manual (`docs/manual-testing.md`).
+
 Thanks and happy coding!
 
 Your MAcWorP Team

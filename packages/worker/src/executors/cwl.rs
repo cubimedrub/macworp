@@ -185,9 +185,9 @@ impl CwlExecutor {
                 .engine_parameters()
                 .iter()
                 .any(|p| p.name() == "maxMemory")
-            {
-                command.extend(["--maxMemory".into(), format!("{mebibytes}M")]);
-            }
+        {
+            command.extend(["--maxMemory".into(), format!("{mebibytes}M")]);
+        }
         if let Some(cache) = Self::cache_directory(job) {
             let temporary = path_arg(
                 self.paths,

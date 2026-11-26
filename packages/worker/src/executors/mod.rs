@@ -24,8 +24,8 @@ pub mod snakemake;
 mod standard;
 
 pub use containerized_execution::{
-    containerized_spec, default_engine_image, engine_image, run_spec, selinux_args,
-    selinux_enforcing, worker_user, worker_user_args,
+    containerized_spec, default_engine_image, engine_image, non_root_user_args, run_spec,
+    selinux_args, selinux_enforcing, worker_user, worker_user_args,
 };
 pub use executor::{Error as ExecutorError, Executor};
 pub use job::{Job, LogLine, Outcome};

@@ -8,7 +8,7 @@ use macworp_core::paths::PathMapping;
 use super::containerized_execution::{mount_arg, path_arg};
 use super::{
     Executor, ExecutorError, Job, LaunchSpec, LogLine, MemoryLimit, Outcome, ParameterFile,
-    containerized_spec, default_engine_image, engine_image, run_spec, worker_user_args,
+    containerized_spec, default_engine_image, engine_image, non_root_user_args, run_spec,
 };
 use crate::container_runtime::{BoxFuture, RuntimeKind};
 
@@ -360,7 +360,8 @@ impl SnakemakeExecutor {
 
     /// Extra `run` arguments of the engine container: what Apptainer needs
     /// ([`DOCKER_APPTAINER_RUN_ARGS`] / [`PODMAN_APPTAINER_RUN_ARGS`] by runtime) and the worker's
-    /// user with a writable home for the image cache ([`worker_user_args`]). Apptainer cannot
+    /// user with a writable home for the image cache ([`non_root_user_args`]; a fixed non-root user
+    /// where the host has no Unix ids). Apptainer cannot
     /// unpack images as root, and running as the worker keeps the files the engine writes owned
     /// by the user of the shared storage. The shared image cache of `job` is mounted read-write
     /// at its host path.
@@ -375,7 +376,7 @@ impl SnakemakeExecutor {
         if let (RuntimeKind::Docker, Some(profile)) = (self.runtime_kind, &self.apparmor_profile) {
             args.extend(["--security-opt".into(), format!("apparmor={profile}")]);
         }
-        args.extend(worker_user_args());
+        args.extend(non_root_user_args());
         if let Some(cache) = self.cache_directory(job) {
             args.extend(["-v".into(), mount_arg(self.paths, cache, false)]);
         }

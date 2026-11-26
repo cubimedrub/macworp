@@ -130,6 +130,27 @@ pub fn worker_user_args() -> Vec<String> {
     }
 }
 
+/// User and group the Snakemake engine container runs as on a host without Unix ids (Windows),
+/// where [`worker_user`] is unknown. Any non-root id works: Apptainer cannot unpack images as root.
+const FALLBACK_ENGINE_USER: &str = "1000:1000";
+
+/// `run` arguments for an engine container that must not run as root (Apptainer unpacks images
+/// with `unsquashfs`, which fails changing owners as root): [`worker_user_args`], and on a host
+/// without Unix ids the fixed user [`FALLBACK_ENGINE_USER`] with the same `HOME`.
+pub fn non_root_user_args() -> Vec<String> {
+    let args = worker_user_args();
+    if args.is_empty() {
+        vec![
+            "--user".into(),
+            FALLBACK_ENGINE_USER.into(),
+            "-e".into(),
+            "HOME=/tmp".into(),
+        ]
+    } else {
+        args
+    }
+}
+
 /// Whether SELinux enforces its policy on this host (Fedora, RHEL): `/sys/fs/selinux/enforce`
 /// reads `1`. `false` where SELinux is absent or permissive, and off Linux.
 pub fn selinux_enforcing() -> bool {
@@ -248,12 +269,13 @@ pub async fn run_spec(
 /// * `args` - the `run` arguments of a launch spec
 #[cfg(test)]
 pub(super) fn without_worker_user(mut args: Vec<String>) -> Vec<String> {
-    let user = worker_user_args();
-    if let Some(start) = args
-        .windows(user.len().max(1))
-        .position(|part| part == user)
-    {
-        args.drain(start..start + user.len());
+    for user in [worker_user_args(), non_root_user_args()] {
+        if let Some(start) = args
+            .windows(user.len().max(1))
+            .position(|part| part == user)
+        {
+            args.drain(start..start + user.len());
+        }
     }
     let label = selinux_args(true);
     if let Some(start) = args.windows(label.len()).position(|part| part == label) {
@@ -281,6 +303,25 @@ mod tests {
             .chain(["img".to_string()])
             .collect();
         assert_eq!(without_worker_user(args), ["run", "img"]);
+    }
+
+    /// Without Unix ids the Snakemake engine still gets a non-root user (Apptainer cannot unpack
+    /// images as root), with the same `HOME` as the worker's user.
+    #[cfg(not(unix))]
+    #[test]
+    fn non_root_user_falls_back_without_unix_ids() {
+        assert!(worker_user_args().is_empty());
+        assert_eq!(
+            non_root_user_args(),
+            ["--user", FALLBACK_ENGINE_USER, "-e", "HOME=/tmp"]
+        );
+    }
+
+    /// On Unix the engine runs as the worker's own user.
+    #[cfg(unix)]
+    #[test]
+    fn non_root_user_is_the_worker_user_on_unix() {
+        assert_eq!(non_root_user_args(), worker_user_args());
     }
 }
 

@@ -55,3 +55,11 @@ Implemented 2026-11-25, design in `container-runtimes.md` "System sleep during d
 ### Not covered yet
 
 Windows and Linux hosts, a desktop without a battery (must count as mains), a sleep note in the run log after a detected suspend (not implemented).
+
+## Windows desktop app: Explorer button and responsiveness (interactive session)
+
+Not automatable over SSH; run in the Windows VM's console. Context: `container-runtimes.md` "Windows host", PLAN.md P7.
+
+1. Allow the app through Windows Firewall when the prompt appears (otherwise Nextflow/Snakemake runs hang, `doctor` shows `progress-receiver`).
+2. `cd packages\desktop && dx run --desktop --args=-vvv`. Create a project, open its page, click **Open in file explorer**: Explorer opens the project folder (no `\\?\` form).
+3. Start a Container workflow with `sleep 600`. For the whole run keep clicking through the app: it must stay responsive (the earlier 100 % CPU freeze came from running the UI inside `block_on`). If it freezes, record the symptom, the log and `Get-Process` CPU, and add it to PLAN.md P7.

@@ -22,6 +22,7 @@ use rand::{RngExt, distr::Alphanumeric};
 
 use super::containerized_execution::path_arg;
 use super::{Job, LaunchSpec, LogLine, Outcome, run_process, selinux_args, selinux_enforcing};
+use crate::console_window::HideConsoleWindow;
 use crate::image_builder::failed;
 
 /// File next to a seeded image that records which image it was made from.
@@ -195,6 +196,7 @@ fn conversion_spec(
 /// * `name` - image name or tag
 async fn image_id(runtime: &Path, name: &str) -> Result<String, String> {
     let output = Command::new(runtime)
+        .hide_console_window()
         .args(["image", "inspect", "--format", "{{.Id}}", name])
         .stdin(std::process::Stdio::null())
         .output()

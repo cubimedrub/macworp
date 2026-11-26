@@ -27,6 +27,7 @@ use tokio::{
 };
 
 use crate::{
+    console_window::HideConsoleWindow,
     container_runtime::{ContainerRuntime, RuntimeKind},
     executors::{Job, LaunchSpec, LogLine, Outcome, run_process},
 };
@@ -403,6 +404,7 @@ impl ImageBuilder {
     /// * `tag` - `repository:tag`
     async fn has_image(&self, tag: &str) -> bool {
         Command::new(&self.program)
+            .hide_console_window()
             .args(["image", "inspect", tag])
             .stdin(Stdio::null())
             .stdout(Stdio::null())

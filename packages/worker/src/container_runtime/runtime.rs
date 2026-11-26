@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+use crate::console_window::HideConsoleWindow;
 use macworp_core::workflow_configuration::engine::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -302,6 +303,7 @@ impl CliRuntime {
     ) -> Result<std::process::Output, Error> {
         let binary = self.binary_display();
         let output = Command::new(&self.binary)
+            .hide_console_window()
             .args(args)
             .stdin(Stdio::null())
             .kill_on_drop(true)

@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use crate::console_window::HideConsoleWindow;
 use macworp_core::entities::{FailureReason, LogStream};
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, BufReader},
@@ -74,6 +75,7 @@ pub async fn run_process(
     mut cancel: watch::Receiver<bool>,
 ) -> Outcome {
     let mut child = match Command::new(&spec.program)
+        .hide_console_window()
         .args(&spec.args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -134,6 +136,7 @@ async fn cancelled(cancel: &mut watch::Receiver<bool>) {
 async fn stop(spec: &LaunchSpec, child: &mut tokio::process::Child) {
     if let Some(name) = &spec.container_name {
         let stopped = Command::new(&spec.program)
+            .hide_console_window()
             .args(["stop", "-t", &STOP_TIMEOUT_SECONDS.to_string(), name])
             .stdin(Stdio::null())
             .stdout(Stdio::null())

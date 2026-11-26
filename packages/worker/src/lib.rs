@@ -3,6 +3,8 @@ pub mod apptainer_cache_store;
 /// Worker configuration
 pub mod configuration;
 /// Detection and access to the container runtime (podman/docker) the engines run in
+/// Keeps child processes from opening console windows on Windows
+pub mod console_window;
 pub mod container_runtime;
 /// Workflow executor, for building and running the workflow using an external tool
 pub mod executors;

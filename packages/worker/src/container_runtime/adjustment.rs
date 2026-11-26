@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+use crate::console_window::HideConsoleWindow;
 use serde_json::Value;
 use thiserror::Error;
 use tokio::process::Command;
@@ -159,6 +160,7 @@ impl CommandRunner for SystemCommands {
             let output_file = tempfile::tempfile().map_err(|e| failed(e.to_string()))?;
             let error_file = tempfile::tempfile().map_err(|e| failed(e.to_string()))?;
             let mut child = Command::new(program)
+                .hide_console_window()
                 .args(arguments)
                 .stdin(Stdio::null())
                 .stdout(Stdio::from(

@@ -123,7 +123,10 @@ pub struct Configuration {
     /// `workflows/remote_cache` (repository cache), `global_reference_data` and
     /// `workflows/local/<id>` (uploaded local workflows) and `cache/apptainer` (image cache, created by
     /// the workers). Workers mount it wherever they like (`--storage-path`) and resolve the
-    /// paths they are given relative to it.
+    /// paths they are given relative to it. Has no default (the generated configuration holds an
+    /// empty value): where shared storage is mounted is the operator's decision, so a standalone
+    /// backend refuses to start until it is set ([`Configuration::validate_storage`]). The
+    /// desktop app sets it to its own data directory.
     storage_path: String,
     /// Seconds a fetched branch of a cached repository is trusted before it is fetched again.
     #[serde(default = "default_branch_cache_seconds")]
@@ -243,6 +246,17 @@ impl Configuration {
         if self.worker_max_attempts == 0 {
             return Err(crate::error::Error::Configuration(
                 "worker_max_attempts must be at least 1",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Checks that the storage root was chosen, for the standalone backend and its commands that
+    /// read or write below it. The desktop app does not call this: it sets the root itself.
+    pub fn validate_storage(&self) -> Result<(), crate::error::Error> {
+        if self.storage_path.trim().is_empty() {
+            return Err(crate::error::Error::Configuration(
+                "storage_path must be set to the directory shared with the workers (e.g. an NFS mount)",
             ));
         }
         Ok(())
@@ -538,7 +552,7 @@ impl Default for Configuration {
             database_url: "postgresql://postgres:postgres@127.0.0.1:5432/postgres".to_string(), // for the provided docker compose
             secret: generate_secret(),
             login_validity: None,
-            storage_path: "dev_storage".to_string(),
+            storage_path: String::new(),
             branch_cache_seconds: default_branch_cache_seconds(),
             nf_core_index_cache_seconds: default_nf_core_index_cache_seconds(),
             nf_core_index_url: default_nf_core_index_url(),
@@ -651,7 +665,8 @@ mod tests {
     /// storage root go over the wire relative.
     #[test]
     fn storage_layout() {
-        let config = Configuration::default();
+        let mut config = Configuration::default();
+        *config.storage_path_mut() = "dev_storage".to_string();
         for directory in [
             config.storage_directory(),
             config.projects_directory(),
@@ -709,6 +724,17 @@ mod tests {
             Configuration::default().permit_local_workflows(),
             LocalWorkflowPolicy::All
         );
+    }
+
+    /// The default has no storage root, and the standalone check rejects an empty or blank one.
+    #[test]
+    fn storage_path_has_no_default() {
+        let mut config = Configuration::default();
+        assert!(config.validate_storage().is_err());
+        *config.storage_path_mut() = "  ".to_string();
+        assert!(config.validate_storage().is_err());
+        *config.storage_path_mut() = "/mnt/macworp".to_string();
+        assert!(config.validate_storage().is_ok());
     }
 
     #[test]

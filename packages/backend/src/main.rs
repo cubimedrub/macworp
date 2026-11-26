@@ -213,7 +213,7 @@ async fn main() -> Result<(), StandaloneError> {
         }
         SubCommand::WorkflowCache { subcommand } => match subcommand {
             CacheSubCommand::List { config } => {
-                let config = read_configuration(config)?;
+                let config = read_storage_configuration(config)?;
                 let cache =
                     macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
                         config.cache_directory(),
@@ -236,7 +236,7 @@ async fn main() -> Result<(), StandaloneError> {
                 reference,
                 config,
             } => {
-                let config = read_configuration(config)?;
+                let config = read_storage_configuration(config)?;
                 // Zero TTL: an explicit fetch always refreshes branches
                 let cache =
                     macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
@@ -250,7 +250,7 @@ async fn main() -> Result<(), StandaloneError> {
                 println!("{}  {}", resolved.sha, resolved.directory.display());
             }
             CacheSubCommand::Prune { days, config } => {
-                let config = read_configuration(config)?;
+                let config = read_storage_configuration(config)?;
                 let cache =
                     macworp_backend::workflow_repository_cache::WorkflowRepositoryCache::new(
                         config.cache_directory(),
@@ -387,6 +387,18 @@ fn read_configuration(config: Option<PathBuf>) -> Result<Configuration, Standalo
         }
         None => Err(StandaloneError::ConfigurationMissing),
     }
+}
+
+/// Reads the configuration file for commands that work on the storage root, which must be set.
+///
+/// # Arguments
+/// * `config` - Path to the configuration, required
+fn read_storage_configuration(config: Option<PathBuf>) -> Result<Configuration, StandaloneError> {
+    let configuration = read_configuration(config)?;
+    configuration
+        .validate_storage()
+        .map_err(StandaloneError::Backend)?;
+    Ok(configuration)
 }
 
 /// Connects to the database named in the configuration file and sets the administrator flag of `username`.

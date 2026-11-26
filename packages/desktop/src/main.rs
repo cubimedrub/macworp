@@ -295,6 +295,7 @@ async fn start(app_folder_suffix: Option<String>) -> Result<Running, Error> {
     let mut backend_config = macworp_backend::configuration::Configuration::default();
     // Single local user: workflows may live in any folder, picked in the native dialog
     *backend_config.allow_local_paths_mut() = true;
+    *backend_config.storage_path_mut() = app_data_directory.display().to_string();
     *backend_config.database_url_mut() = database_url.clone();
     *backend_config.secret_mut() = jwt_secret;
     *backend_config.interface_mut() = "127.0.0.1".to_string();

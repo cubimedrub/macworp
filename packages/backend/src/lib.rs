@@ -282,6 +282,7 @@ impl Backend<RemoteFilesystem> {
         config: Configuration,
     ) -> Result<(), Error> {
         config.validate()?;
+        config.validate_storage()?;
         let state = State::new_for_standalone(config).await?;
         let cors = cors_layer(state.config());
         Self::internal_start(tcp_listener, shutdown_signal, state, cors).await

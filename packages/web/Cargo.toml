@@ -3,6 +3,7 @@ name = "macworp_web"
 version = "0.1.0"
 authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
 edition = "2021"
+publish = false
 
 [dependencies]
 dioxus = { workspace = true, features = ["router"] }

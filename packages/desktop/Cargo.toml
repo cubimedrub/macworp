@@ -3,6 +3,7 @@ name = "macworp_desktop"
 version = "0.1.0"
 authors = ["Dirk Winkelhardt <dirk.winkelhardt@rub.de>"]
 edition = "2021"
+publish = false
 
 [dependencies]
 clap = { workspace = true, features = ["derive"] }

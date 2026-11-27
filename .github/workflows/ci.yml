@@ -88,11 +88,12 @@ jobs:
       # Builds its own image, so no engine image is needed
       - name: Container workflow end to end
         run: cargo test -p macworp_desktop runs_container_workflow_with_all_parameter_types -- --ignored --nocapture
-      # Pulls the published engine images; not blocking until proven stable
+      # Uses the published engine image (the worker's default registry); not blocking until
+      # proven stable, so a failure shows as a red step, not a red run
       - name: Nextflow workflow end to end
         continue-on-error: true
         run: |
-          make engine-image-nextflow RUNTIME=${{ matrix.runtime }}
+          ${{ matrix.runtime }} pull ghcr.io/cubimedrub/macworp-nextflow:latest
           cargo test -p macworp_desktop runs_nextflow_workflow_with_all_parameter_types -- --ignored --nocapture
 
   desktop-build:

@@ -251,10 +251,13 @@ mod tests {
         ));
     }
 
+    /// Cancelling stops the process. The script `exec`s `sleep`: without it some shells (dash on
+    /// Linux) keep running as the parent, the kill hits only the shell and the orphaned `sleep`
+    /// holds the output pipes open, so the drain after the kill would wait for the 30 seconds.
     #[tokio::test]
     async fn cancel_kills_process() {
         let (tx, cancel) = watch::channel(false);
-        let task = tokio::spawn(run(sh("sleep 30"), cancel));
+        let task = tokio::spawn(run(sh("exec sleep 30"), cancel));
         tokio::time::sleep(Duration::from_millis(200)).await;
         tx.send(true).unwrap();
         let (outcome, _) = tokio::time::timeout(Duration::from_secs(5), task)

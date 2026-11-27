@@ -83,6 +83,11 @@ pub fn resolve_in_storage(storage: &Path, path: &Path) -> PathBuf {
 /// * `storage` - The backend's absolute storage root
 /// * `path` - Absolute path, possibly below the storage root
 pub fn relative_to_storage(storage: &Path, path: &Path) -> PathBuf {
+    // An empty root (storage not configured) is a prefix of every path: stripping it would turn
+    // `/home/x` into the relative `home/x`
+    if storage.as_os_str().is_empty() {
+        return path.to_path_buf();
+    }
     path.strip_prefix(storage)
         .map(to_portable)
         .unwrap_or_else(|_| path.to_path_buf())
@@ -169,6 +174,20 @@ pub fn is_confined(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An empty storage root leaves absolute paths absolute (it would otherwise strip the root
+    /// of every path), a real root still makes paths below it relative.
+    #[test]
+    fn empty_storage_root_keeps_paths_absolute() {
+        assert_eq!(
+            relative_to_storage(Path::new(""), Path::new("/home/x/workflow")),
+            PathBuf::from("/home/x/workflow")
+        );
+        assert_eq!(
+            relative_to_storage(Path::new("/srv/storage"), Path::new("/srv/storage/a/b")),
+            PathBuf::from("a/b")
+        );
+    }
 
     #[test]
     fn sanitize_drops_everything_but_normal_components() {

@@ -384,6 +384,15 @@ impl TestApp {
         let mut backend_config = macworp_backend::configuration::Configuration::default();
         let max_log_bytes = backend_config.max_log_bytes_per_run();
         *backend_config.allow_local_paths_mut() = true;
+        // Like the app: the storage root exists (there is no default) and is a folder of its own,
+        // the workflow lies outside it as a folder the user picked does
+        let storage_directory = root.join("storage");
+        std::fs::create_dir_all(&storage_directory).unwrap();
+        *backend_config.storage_path_mut() = storage_directory
+            .display()
+            .to_string()
+            .trim_start_matches(r"\\?\")
+            .to_string();
         *backend_config.database_url_mut() = database_url.clone();
         *backend_config.secret_mut() = macworp_backend::configuration::generate_secret();
         *backend_config.fixed_unavailable_engines_mut() = Some(unavailable_engines);
